@@ -42,7 +42,10 @@ namespace pr7s
                                  repeatedBendClimb, chordChasingArpeggios, pedalDyadHook, hotStartCoolDown,
                                  // (0.129.0, round two from the same files; our names)
                                  unisonBendAnthem, octaveMelodyBuild, openStringPedalFire, twinLeadHarmony, easternTremoloStorm,
-                                 whammyWail, trillFallTag };
+                                 whammyWail, trillFallTag,
+                                 // (0.133.0, from the owner's Van Halen solos, shapes only; our names)
+                                 cellWithTheChanges, holdAndAccelerate, whammyFire, legatoThrows, squealsAndSextuplets,
+                                 chimingFourths };
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",

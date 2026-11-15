@@ -46,7 +46,7 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 38);   // (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more)
+    REQUIRE (soloStyles().size() == 44);   // (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: six more)
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
@@ -55,7 +55,7 @@ TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's"
         for (const auto* player : { "Gilmour", "Perry", "Van Halen", "Page", "EVH", "Zeppelin", "Floyd", "Aerosmith",
                                    "Dimebag", "Darrell", "Pantera", "Hammett", "Metallica", "Wylde", "Black Label", "Petrucci", "Dream Theater",
                                    "DeVille", "Poison", "Mick Mars", "Motley", "Slash", "Guns N", "Prince",
-                                   "Synyster", "Avenged", "Lowery", "Sevendust", "Cantrell", "Alice in Chains", "Cobain", "Nirvana" })
+                                   "Synyster", "Avenged", "Halen", "Eddie", "Panama", "Poundcake", "Runnin", "Lowery", "Sevendust", "Cantrell", "Alice in Chains", "Cobain", "Nirvana" })
         {
             CHECK_FALSE (soloStyleName (s).containsIgnoreCase (player));
             CHECK_FALSE (soloStyleDescription (s).containsIgnoreCase (player));
@@ -85,7 +85,7 @@ TEST_CASE ("0.66.0: every solo style writes a whole solo that builds and ends on
             for (auto from = 8.0; from <= 24.0; from += 4.0)
                 busiest = juce::jmax (busiest, onsetsIn (solo, from, from + 8.0));
             if (style != SoloStyle::shuffleConversation && style != SoloStyle::grungeMelody && style != SoloStyle::fallingMajorMelody
-                && style != SoloStyle::hotStartCoolDown)   // (no busy waves: flat on purpose; 0.128.0: busy first on purpose)
+                && style != SoloStyle::hotStartCoolDown && style != SoloStyle::whammyFire)   // (no busy waves: flat on purpose; 0.128.0: busy first on purpose)
                 CHECK (busiest >= onsetsIn (solo, 0.0, 8.0));
             auto bends = 0, vibratos = 0;
             for (const auto& n : solo.notes)
@@ -478,7 +478,7 @@ namespace
 
 TEST_CASE ("0.116.0: the new solo styles are there, with our names", "[solo][solostyles][solo116]")
 {
-    REQUIRE (soloStyles().size() == 38);   // (0.128.0: four more; 0.129.0: seven more)
+    REQUIRE (soloStyles().size() == 44);   // (0.128.0: four more; 0.129.0: seven more; 0.133.0: six more)
     for (const auto* name : { "SINGING BENDS", "SHUFFLE CONVERSATION", "SLOW BUILD WITH RAKES", "FALLING MAJOR MELODY", "SUNG IN THE GAPS",
                               "ROLLING SEQUENCES", "LAID-BACK SWEET BENDS", "THEME EVERY ROUND", "TWO SPEEDS", "LICK TWICE TO END" })
         CHECK (soloStyleNamed (name) != SoloStyle::automatic);
@@ -1091,5 +1091,158 @@ TEST_CASE ("0.129.0: EASTERN TREMOLO STORM, WHAMMY WAIL, TRILL & FALL TAG", "[so
         }
         CHECK (trills >= 6);
         CHECK (tags >= 3);
+    }
+}
+
+// 0.133.0: six styles from the owner's Van Halen solos (shapes only; our names).
+namespace
+{
+    int countOf (const LineIdea& idea, LineNote::Effect e)
+    {
+        auto c = 0;
+        for (const auto& n : idea.notes)
+            c += n.effect == e ? 1 : 0;
+        return c;
+    }
+    const LineNote& lastOf (const LineIdea& idea)
+    {
+        const auto* last = &idea.notes.front();
+        for (const auto& n : idea.notes)
+            if (n.beat >= last->beat)
+                last = &n;
+        return *last;
+    }
+}
+
+TEST_CASE ("0.133.0: the scoop is quick and vibrato starts early", "[solo][solostyles][solo133]")
+{
+    LineNote n;
+    n.beat = 0.0;
+    n.length = 2.0;
+    n.pitch = 64;
+    n.effect = LineNote::Effect::scoop;
+    n.amount = 12.0f;
+    const auto c = Studio::effectControllers ({ n }, 12, 120.0);
+    REQUIRE (c.size() == 2);
+    CHECK (c[0].value == 0);                                      // (an octave under on a range of 12)
+    CHECK (std::abs (c[1].start - 0.12) < 1.0e-6);                // (0.06 s at 120 BPM)
+    CHECK (c[1].value == 8192);
+    n.effect = LineNote::Effect::vibrato;
+    n.amount = 1.0f;
+    const auto v = Studio::effectControllers ({ n }, 2, 120.0);
+    REQUIRE (v.size() == 4);
+    CHECK (std::abs (v[1].start - 0.3) < 1.0e-6);                 // (15 % into a two-beat note)
+    CHECK (std::abs (v[2].start - 1.3) < 1.0e-6);
+}
+
+TEST_CASE ("0.133.0: the Van Halen round's styles have their own habits", "[solo][solostyles][solo133]")
+{
+    const auto spans = amBars (16);   // (64 beats)
+    const auto& tuning = GuitarTuning::all()[0];
+    auto onThird = 0, accelerated = 0, stairs = 0, throws = 0, cycles = 0, fourths = 0;
+    for (int variation = 0; variation < 4; ++variation)
+    {
+        INFO ("variation " << variation);
+        // CELL WITH THE CHANGES: the chord's third on chord changes; a dived double stop on the root to end.
+        {
+            const auto solo = composeSolo (SoloStyle::cellWithTheChanges, spans, 4.0, tuning, {}, variation, 0.0, 110.0);
+            for (const auto& n : solo.notes)
+                for (const auto& sp : spans)
+                    if (std::abs (n.beat - sp.start) < 1.0e-6)
+                    {
+                        const auto third = (sp.chord.root + (sp.chord.type == T::minor ? 3 : 4)) % 12;
+                        onThird += ((n.pitch % 12) + 12) % 12 == third ? 1 : 0;
+                    }
+            const auto& last = lastOf (solo);
+            CHECK (last.effect == LineNote::Effect::dive);
+            auto atLast = 0;
+            for (const auto& n : solo.notes)
+                atLast += std::abs (n.beat - last.beat) < 1.0e-6 && n.effect == LineNote::Effect::dive ? 1 : 0;
+            CHECK (atLast == 2);
+        }
+        // HOLD & ACCELERATE: in on a harmonic scooped up into; one note shaken, then struck again and again; harmonics
+        // dived away at the end.
+        {
+            const auto solo = composeSolo (SoloStyle::holdAndAccelerate, spans, 4.0, tuning, {}, variation, 0.0, 140.0);
+            CHECK (solo.notes.front().beat == 0.0);
+            CHECK (solo.notes.front().technique == LineNote::Technique::harmonic);
+            CHECK (solo.notes.front().effect == LineNote::Effect::scoop);
+            for (size_t i = 0; i < solo.notes.size(); ++i)
+                if (solo.notes[i].effect == LineNote::Effect::wobble && solo.notes[i].length >= 1.5)
+                {
+                    auto same = 0;
+                    for (size_t k = i + 1; k < solo.notes.size() && solo.notes[k].pitch == solo.notes[i].pitch; ++k)
+                        ++same;
+                    accelerated += same >= 6 ? 1 : 0;
+                }
+            auto harmonicDives = 0;
+            for (const auto& n : solo.notes)
+                harmonicDives += n.beat >= 60.0 - 1.0e-6 && n.technique == LineNote::Technique::harmonic && n.effect == LineNote::Effect::dive ? 1 : 0;
+            CHECK (harmonicDives >= 2);
+            CHECK (lastOf (solo).effect == LineNote::Effect::dive);
+        }
+        // WHAMMY FIRE: staircases of repeated notes, the whammy scooping in and diving out.
+        {
+            const auto solo = composeSolo (SoloStyle::whammyFire, spans, 4.0, tuning, {}, variation, 0.0, 200.0);
+            auto run = 1;
+            for (size_t i = 1; i < solo.notes.size(); ++i)
+            {
+                run = solo.notes[i].pitch == solo.notes[i - 1].pitch ? run + 1 : 1;
+                stairs += run == 3 ? 1 : 0;
+            }
+            CHECK (countOf (solo, LineNote::Effect::scoop) >= 2);
+            CHECK (countOf (solo, LineNote::Effect::dive) >= 2);
+        }
+        // LEGATO THROWS: a pickup two octaves under; a run up into the last held note.
+        {
+            const auto solo = composeSolo (SoloStyle::legatoThrows, spans, 4.0, tuning, {}, variation, 0.0, 132.0);
+            for (size_t i = 1; i < solo.notes.size(); ++i)
+                throws += std::abs (solo.notes[i].pitch - solo.notes[i - 1].pitch) >= 19 ? 1 : 0;
+            const auto& last = lastOf (solo);
+            CHECK (last.beat == 63.0);
+            CHECK (onsetsIn (solo, 60.0, 63.0) >= 6);
+        }
+        // SQUEALS & SEXTUPLETS: in on a harmonic; three-note cells cycled.
+        {
+            const auto solo = composeSolo (SoloStyle::squealsAndSextuplets, spans, 4.0, tuning, {}, variation, 0.0, 105.0);
+            CHECK (solo.notes.front().technique == LineNote::Technique::harmonic);
+            const auto& ns = solo.notes;
+            for (size_t i = 0; i + 5 < ns.size(); ++i)
+                if (ns[i].pitch == ns[i + 3].pitch && ns[i + 1].pitch == ns[i + 4].pitch && ns[i + 2].pitch == ns[i + 5].pitch
+                    && ns[i].pitch > ns[i + 1].pitch && ns[i + 1].pitch > ns[i + 2].pitch)
+                    ++cycles;
+        }
+        // CHIMING FOURTHS: fourths struck together; bends let down; a bend held to end.
+        {
+            const auto solo = composeSolo (SoloStyle::chimingFourths, spans, 4.0, tuning, {}, variation, 0.0, 96.0);
+            for (size_t i = 1; i < solo.notes.size(); ++i)
+                fourths += solo.notes[i].beat == solo.notes[i - 1].beat && std::abs (solo.notes[i].pitch - solo.notes[i - 1].pitch) == 5 ? 1 : 0;
+            CHECK (countOf (solo, LineNote::Effect::release) >= 1);
+            CHECK (lastOf (solo).effect == LineNote::Effect::bend);
+        }
+    }
+    CHECK (onThird >= 8);
+    CHECK (accelerated >= 2);
+    CHECK (stairs >= 8);
+    CHECK (throws >= 2);
+    CHECK (cycles >= 8);
+    CHECK (fourths >= 12);
+    // Phrases run into each other: hardly a rest of over a beat in these styles.
+    for (const auto style : { SoloStyle::cellWithTheChanges, SoloStyle::holdAndAccelerate, SoloStyle::whammyFire,
+                              SoloStyle::legatoThrows, SoloStyle::squealsAndSextuplets, SoloStyle::chimingFourths })
+    {
+        INFO (soloStyleName (style));
+        auto rests = 0;
+        for (int variation = 0; variation < 4; ++variation)
+        {
+            const auto solo = composeSolo (style, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+            auto reach = 0.0;
+            for (const auto& n : solo.notes)
+            {
+                rests += n.beat - reach > 1.0 + 1.0e-6 ? 1 : 0;
+                reach = juce::jmax (reach, n.beat + n.length);
+            }
+        }
+        CHECK (rests <= 4);
     }
 }

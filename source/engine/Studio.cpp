@@ -10804,7 +10804,8 @@ namespace pr7s
         for (const auto& n : notes)
         {
             if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive && n.effect != E::release
-                                && n.effect != E::slideIn && n.effect != E::fallOff && n.effect != E::slowBend && n.effect != E::wobble))
+                                && n.effect != E::slideIn && n.effect != E::fallOff && n.effect != E::slowBend && n.effect != E::wobble
+                                && n.effect != E::scoop))
                 continue;
             auto found = false;
             for (auto& g : groups)
@@ -10914,6 +10915,17 @@ namespace pr7s
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at, under, false });
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at + juce::jmin (slide, (end - g.at) / 3.0), 8192, true });
             }
+            else if (g.effect == E::scoop)
+            {
+                // (0.133.0, the owner's Van Halen solos) The whammy bar scooped up into the note: from `amount`
+                // semitones under (2 if none; up to an octave, as far as the range reaches) to none in 0.06 s (a third
+                // of the note at most): quicker than a slide.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto under = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, semitones / range) * 8192.0));
+                const auto scoop = bpm > 0.0 ? 0.06 * bpm / 60.0 : 0.125;
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, under, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + juce::jmin (scoop, (end - g.at) / 3.0), 8192, true });
+            }
             else if (g.effect == E::fallOff)
             {
                 // (0.128.0) Held, then slid down `amount` semitones over its last 30 % (as far as the range reaches),
@@ -10940,8 +10952,9 @@ namespace pr7s
             {
                 const auto peak = juce::jlimit (1, 127, juce::roundToInt (96.0f * (g.amount > 0.0f ? g.amount : 1.0f)));
                 out.push_back ({ Controller::Type::cc, 1, g.at, 0, false });
-                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.3, 0, false });
-                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.8, peak, true });
+                // (0.133.0, the owner's Van Halen solos: vibrato starts about 15 % into a held note, every one)
+                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.15, 0, false });
+                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.65, peak, true });
                 out.push_back ({ Controller::Type::cc, 1, end, 0, false });
             }
         }

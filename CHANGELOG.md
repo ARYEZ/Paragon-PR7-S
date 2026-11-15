@@ -2,6 +2,50 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.133.0
+
+**Solos from your nine Van Halen files** (read for their solos' shapes only, never copied; our own names). Three readers went through them:
+
+- **Seven of the nine have a guitar solo.** Runaround's file is only its intro, so it has none. Runnin' With the Devil's is a short composed break.
+- **None of them has wide two-handed tapping.** The fast passages are legato cells inside one box, repeated notes, and the whammy bar. So TAP & DIVE stays as it was; the new styles are built from what the files do.
+
+Six new styles, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+
+- **CELL WITH THE CHANGES:** a one-bar cell of sixteenths that starts again on each new chord, so it lands on that chord's third every time. It ends with major thirds climbing a half step at a time into a double stop on the root, dived an octave away.
+- **HOLD & ACCELERATE:** in on the downbeat with a high harmonic scooped up into with the whammy. Short bursts answered by bends, then the signature: one note held and shaken with the whammy, then struck again and again, faster each beat (eighths, eighth triplets, sixteenths). To end: harmonics a beat each stepping down the chord, each dived away, then the low root dived an octave.
+- **WHAMMY FIRE:** in at full speed, then staircases of repeated notes (each note struck three to six times in triplets, then a step up). The whammy scoops into the held notes and dives about half the phrase ends away. A dive to end.
+- **LEGATO THROWS:** high notes against fast legato runs down to low landings, and pickups thrown two octaves under the phrase they lead into. The fast cells stay in the key's box: one played three times in place, then stepped down. A run up into a long last note to end.
+- **SQUEALS & SEXTUPLETS:** in on a harmonic squeal, then down into three-note cells cycled in sextuplets, with pentatonic leaps between. Every held note is shaken, with hardly a bend.
+- **CHIMING FOURTHS:** bright and major: bends struck and let down, fourths as double stops, and a cycle of a bent note plus two fourths that runs three against four. It ends on a high bend held to the end.
+
+**What every one of them does, as the files did:**
+
+- Phrases run into each other: a rest of half a beat at most; the held notes are the breath.
+- The busiest passage comes in the first half, not right at the end.
+- Nearly all bends are a whole step; the big pitch moves come from the whammy.
+- Every held note gets vibrato.
+
+**Two changes for every solo, not just the new ones:**
+
+- **Vibrato starts sooner:** about 15% into a held note (it was 30%), as in all of these files. It is fully on by two thirds of the note.
+- **A new whammy scoop:** up into the note from 2, 3 or (now and then) 12 semitones under, reaching pitch in 0.06 seconds: twice as quick as the slide. It reaches only as far as your instrument's bend range (HUB > INSTRUMENTS); a range of 12 gives the full octave.
+
+**Checked:** tests cover each style's own habit:
+
+- the cell landing on each chord's third;
+- the held note followed by the same note struck faster and faster;
+- the repeated-note staircases;
+- the two-octave throws;
+- the cycled cells;
+- the fourth double stops;
+- the endings;
+- hardly a rest over a beat;
+- the scoop's speed and the vibrato's start.
+
+Not checked here: the sound in Shreddage (your ears).
+
+**Still to come, if you want them:** DOTTED BEND CHAIN (Poundcake's outro), HOOK, THIRDS, HOOK (Why Can't This Be Love), BENT RIFF SOLO (Panama), TREMOLO PEDAL OUTRO (Hot for Teacher's outro), BURST AND BEND (You Really Got Me's opening).
+
 ## 0.132.0
 
 **The play bar black, outlined in the gradient** (you chose it from the mock-up).
