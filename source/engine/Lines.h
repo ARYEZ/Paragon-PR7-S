@@ -35,13 +35,15 @@ namespace pr7s
         // (0.66.0) `dive`: the whammy bar pushed down over the note (pitch bend down by `amount` semitones, as
         // far as the bend range reaches). `amount`: a bend's size in semitones (0: a whole step), a vibrato's
         // depth 0-1 (0: the usual), a dive's depth in semitones.
-        enum class Effect { none, vibrato, bend, ring, dive, swell, release, slideIn, fallOff };   // (0.101.0) swell: faded in by expression (CC 11); (0.116.0) release: bent up before it's struck, let down onto its note; (0.128.0) slideIn: slid up into its note from `amount` semitones under, fallOff: held, then slid down `amount` semitones as it ends
+        enum class Effect { none, vibrato, bend, ring, dive, swell, release, slideIn, fallOff, slowBend, wobble };   // (0.101.0) swell: faded in by expression (CC 11); (0.116.0) release: bent up before it's struck, let down onto its note; (0.128.0) slideIn: slid up into its note from `amount` semitones under, fallOff: held, then slid down `amount` semitones as it ends; (0.129.0) slowBend: a bend rising over 0.5-1.3 s (the anthem bends), wobble: the whammy bar shaken `amount` semitones either way
         Effect effect = Effect::none;
         float amount = 0.0f;
         // (0.66.0) How the note is played, for an instrument with keys for it (Shreddage: Tapping A-1, Tremolo
         // F#-1, Harmonics G#-1): `useArticulationKeys` presses the key before it and Sustain after.
         enum class Technique { normal, tapping, tremolo, harmonic };
         Technique technique = Technique::normal;
+        // (0.129.0) A twin lead's harmony voice: on a lane with two tracks it goes onto the second (Studio::doubledCopy).
+        bool harmony = false;
         bool operator== (const LineNote&) const = default;
     };
 

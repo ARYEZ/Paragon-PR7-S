@@ -10755,7 +10755,7 @@ namespace pr7s
         for (const auto& n : notes)
         {
             if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive && n.effect != E::release
-                                && n.effect != E::slideIn && n.effect != E::fallOff))
+                                && n.effect != E::slideIn && n.effect != E::fallOff && n.effect != E::slowBend && n.effect != E::wobble))
                 continue;
             auto found = false;
             for (auto& g : groups)
@@ -10824,6 +10824,35 @@ namespace pr7s
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at, bent, false });
                 out.push_back ({ Controller::Type::pitchbend, 0, hold, bent, false });
                 out.push_back ({ Controller::Type::pitchbend, 0, juce::jmin (end - 0.01, hold + rise), 8192, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::slowBend)
+            {
+                // (0.129.0) The anthem bend: up by its amount over half the note's time, 0.5 s to 1.3 s (the owner's
+                // Def Leppard solos), held there.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
+                const auto rise = bpm > 0.0 ? juce::jlimit (0.5, 1.3, 0.5 * (end - g.at) * 60.0 / bpm) * bpm / 60.0 : (end - g.at) * 0.5;
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + juce::jmin (rise, (end - g.at) * 0.8), bent, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::wobble)
+            {
+                // (0.129.0) The whammy bar shaken: from a fifth of the note on, up and down `amount` semitones (1 if
+                // none) about 5.5 times a second, as far as the bend range reaches; back to none at the end.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 1.0;
+                const auto swing = juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0);
+                const auto from = g.at + (end - g.at) * 0.2;
+                const auto quarter = bpm > 0.0 ? (1.0 / 22.0) * bpm / 60.0 : 0.1;   // (a quarter of a 5.5 Hz cycle, in beats)
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, from, 8192, false });
+                auto k = 1;
+                for (auto x = from + quarter; x < end - 1.0e-6 && k < 400; x += quarter, ++k)
+                {
+                    const int shape[] = { 1, 0, -1, 0 };
+                    out.push_back ({ Controller::Type::pitchbend, 0, x, juce::jlimit (0, 16383, 8192 + shape[(k - 1) % 4] * swing), true });
+                }
                 out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
             }
             else if (g.effect == E::slideIn)
@@ -11063,8 +11092,21 @@ namespace pr7s
         return found;
     }
 
-    LineIdea Studio::doubledCopy (const LineIdea& idea, int copy, double originBeat) const
+    LineIdea Studio::doubledCopy (const LineIdea& source, int copy, double originBeat, int copies) const
     {
+        // (0.129.0) A twin lead on two tracks or more: the first plays the lead, the second its harmony voice (the
+        // keyswitches on both); further ones looser copies of the lead. On one track both voices play there.
+        auto idea = source;
+        const auto twin = std::any_of (source.notes.begin(), source.notes.end(), [] (const LineNote& n) { return n.harmony; });
+        if (twin && copies >= 2)
+        {
+            idea.notes.clear();
+            for (const auto& n : source.notes)
+                if (n.keyswitch || n.harmony == (copy == 1))
+                    idea.notes.push_back (n);
+            if (copy <= 1)
+                return idea;
+        }
         if (copy <= 0 || ! getLooseCopies())
             return idea;
         // A second take: the playable notes humanized again (keyswitches left where they are), each in its velocity layer.
@@ -14548,6 +14590,9 @@ namespace pr7s
             const auto layers = composeLayers (state, spans, context);
             const auto label = sectionLabel (project.songSections.blocks, index);
             std::map<int, int> copies;   // (0.112.0) a lane's second track on (EVERY matching track): its looser copy
+            std::map<int, int> laneTracks;   // (0.129.0) how many tracks each layer is on (a twin lead's harmony: the second)
+            for (const auto& lane : block.lanes)
+                ++laneTracks[lane.layer];
             for (auto& lane : block.lanes)
             {
                 const auto copy = copies[lane.layer]++;
@@ -14555,7 +14600,7 @@ namespace pr7s
                 if (track == nullptr || track->frozen || ! juce::isPositiveAndBelow (lane.layer, composerLayerCount)
                     || trackMark (place, lane.track) != lane.mark)
                     continue;   // (changed by hand since: it follows the chords instead)
-                const auto idea = doubledCopy (layers[(size_t) lane.layer], copy, spans.front().start);
+                const auto idea = doubledCopy (layers[(size_t) lane.layer], copy, spans.front().start, laneTracks[lane.layer]);
                 track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
                                     { return p.start >= place.start - 1.0e-9 && p.end() <= place.end + 1.0e-9; }), track->parts.end());
                 if (! idea.notes.empty())

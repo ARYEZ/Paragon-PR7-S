@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.129.0
+
+**Solos, round two from your Metallica and Def Leppard files** (read for their shapes only, never copied; our own names). Seven new styles, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+
+- **UNISON BEND ANTHEM:** long notes struck, then bent slowly back up into themselves (the bend rises over half a second to 1.3 s), wide and singing, with one short run near the end.
+  - **Honest limit:** a real unison bend holds one string while another bends up to meet it. A MIDI pitch bend moves every note on the channel at once, so here the bend comes just after the note is struck, not alongside it.
+- **OCTAVE MELODY BUILD:** the melody played in octaves, every note doubled, building from held notes to a busy end.
+- **OPEN-STRING PEDAL FIRE:** fast picking against the low tonic: the low note struck between the notes of a line climbing over it. It ends back down on the low root.
+- **TWIN-LEAD HARMONY:** one guitar alone, then two in harmony from about two fifths of the way in. The harmony is thirds, fourths or octaves, depending on the take.
+  - **Two tracks:** put the LEAD lane on two tracks: in HUB > COMPOSER TRACKS, give LEAD two track names (e.g. "Lead L, Lead R") and tick EVERY MATCHING TRACK. The upper track plays the lead and the lower one the harmony, as a real twin lead.
+  - **One track:** both voices play on it. The harmonised part has no bends, because a bend would bend both voices.
+- **EASTERN TREMOLO STORM:** an eastern colour (the flat second, the major third over the minor): tremolo-picked notes moving along the scale, half-step bends, a dive to end.
+  - On an instrument whose SHORTEST NOTE is a 16th (Shreddage), the tremolo is played with its tremolo articulation instead of written-out fast notes.
+- **WHAMMY WAIL:** the whammy bar everywhere: held notes shaken, phrase ends dived away (7 to 12 semitones), a dive or a fall-off to finish.
+  - The dives only reach as far as your instrument's bend range (HUB > INSTRUMENTS).
+- **TRILL & FALL TAG:** held notes trilled with the note above, phrases falling off at their ends, and a closing tag that trills, then falls off.
+
+**New pitch-bend shapes behind them:** a slow bend, and a whammy wobble (the wheel up and down about 5.5 times a second).
+
+**Checked:** tests cover each style's passages, the harmony's intervals, the second track getting the harmony alone, the slow bend's rise, and the wobble going both ways. Not checked here: the sound in Shreddage (your ears).
+
 ## 0.128.0
 
 **Solos, round one from your Metallica and Def Leppard files** (read for their shapes only, never copied; our own names in the app):

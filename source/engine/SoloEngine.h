@@ -39,7 +39,10 @@ namespace pr7s
                                  singingBends, shuffleConversation, slowBuildRakes, fallingMajorMelody, sungInTheGaps,
                                  rollingSequences, laidBackBends, cycleTheme, twoSpeeds, lickTwice,
                                  // (0.128.0, from the owner's Metallica and Def Leppard solos, shapes only; our names)
-                                 repeatedBendClimb, chordChasingArpeggios, pedalDyadHook, hotStartCoolDown };
+                                 repeatedBendClimb, chordChasingArpeggios, pedalDyadHook, hotStartCoolDown,
+                                 // (0.129.0, round two from the same files; our names)
+                                 unisonBendAnthem, octaveMelodyBuild, openStringPedalFire, twinLeadHarmony, easternTremoloStorm,
+                                 whammyWail, trillFallTag };
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",

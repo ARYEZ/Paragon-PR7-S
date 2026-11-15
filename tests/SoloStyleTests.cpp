@@ -46,7 +46,7 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 31);   // (0.116.0: ten more; 0.128.0: four more)
+    REQUIRE (soloStyles().size() == 38);   // (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more)
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
@@ -96,9 +96,10 @@ TEST_CASE ("0.66.0: every solo style writes a whole solo that builds and ends on
                 CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
                 CHECK (n.velocity > 0.0f);
                 CHECK_FALSE (n.keyswitch);
-                bends += n.effect == LineNote::Effect::bend ? 1 : 0;
+                bends += n.effect == LineNote::Effect::bend || n.effect == LineNote::Effect::slowBend ? 1 : 0;
                 vibratos += n.effect == LineNote::Effect::vibrato || n.effect == LineNote::Effect::slideIn
-                         || n.effect == LineNote::Effect::fallOff ? 1 : 0;   // (0.128.0: slides and fall-offs too)
+                         || n.effect == LineNote::Effect::fallOff || n.effect == LineNote::Effect::wobble
+                         || n.effect == LineNote::Effect::dive ? 1 : 0;   // (0.128.0: slides and fall-offs too; 0.129.0: the whammy's)
             }
             CHECK (bends + vibratos > 0);
             // The last note: the last chord's root (E), to the end (0.128.0: as sounded; bent up into the root or
@@ -477,7 +478,7 @@ namespace
 
 TEST_CASE ("0.116.0: the new solo styles are there, with our names", "[solo][solostyles][solo116]")
 {
-    REQUIRE (soloStyles().size() == 31);   // (0.128.0: four more)
+    REQUIRE (soloStyles().size() == 38);   // (0.128.0: four more; 0.129.0: seven more)
     for (const auto* name : { "SINGING BENDS", "SHUFFLE CONVERSATION", "SLOW BUILD WITH RAKES", "FALLING MAJOR MELODY", "SUNG IN THE GAPS",
                               "ROLLING SEQUENCES", "LAID-BACK SWEET BENDS", "THEME EVERY ROUND", "TWO SPEEDS", "LICK TWICE TO END" })
         CHECK (soloStyleNamed (name) != SoloStyle::automatic);
@@ -512,7 +513,7 @@ TEST_CASE ("0.116.0: every solo phrases as the real ones: held landings, off-bea
                 {
                     ++held;
                     const auto& c = spans[(size_t) juce::jlimit (0, 15, (int) (n.beat / 4.0))].chord;
-                    const auto sounding = n.pitch + (n.effect == LineNote::Effect::bend ? juce::roundToInt (n.amount) : 0);
+                    const auto sounding = n.pitch + (n.effect == LineNote::Effect::bend || n.effect == LineNote::Effect::slowBend ? juce::roundToInt (n.amount) : 0);
                     for (const auto pc : c.pitchClasses())
                         if (((sounding % 12) + 12) % 12 == pc)
                         {
@@ -902,4 +903,193 @@ TEST_CASE ("0.128.0: slides and fall-offs as pitch bend; a bend rises slower on 
     CHECK (riseOf (0.5) < riseOf (2.0));
     CHECK (riseOf (2.0) < riseOf (8.0));
     CHECK (riseOf (8.0) * 0.5 <= 0.7 + 1.0e-6);          // (0.7 s at most)
+}
+
+// 0.129.0: round two from the owner's Metallica and Def Leppard solos (shapes only).
+TEST_CASE ("0.129.0: UNISON BEND ANTHEM strikes a note, then bends slowly up into it", "[solo][solostyles][solo129]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    auto anthems = 0;
+    for (int variation = 0; variation < 4; ++variation)
+    {
+        const auto solo = composeSolo (SoloStyle::unisonBendAnthem, spans, 4.0, tuning, {}, variation, 0.0, 100.0);
+        for (size_t i = 1; i < solo.notes.size(); ++i)
+        {
+            const auto& n = solo.notes[i];
+            if (n.effect != LineNote::Effect::slowBend)
+                continue;
+            for (size_t k = 0; k < i; ++k)
+            {
+                const auto& before = solo.notes[k];
+                if (before.pitch == n.pitch + 2 && std::abs (before.beat + before.length + 0.02 - n.beat) < 1.0e-6)
+                    ++anthems;
+            }
+        }
+    }
+    CHECK (anthems >= 6);
+    // The slow bend rises over at least half a second (1.3 s at most).
+    LineNote n;
+    n.beat = 0.0;
+    n.length = 6.0;
+    n.pitch = 62;
+    n.effect = LineNote::Effect::slowBend;
+    n.amount = 2.0f;
+    const auto c = Studio::effectControllers ({ n }, 2, 120.0);
+    REQUIRE (c.size() == 3);
+    CHECK (c[1].value == 16383);
+    CHECK (c[1].start * 0.5 >= 0.5 - 1.0e-6);
+    CHECK (c[1].start * 0.5 <= 1.3 + 1.0e-6);
+}
+
+TEST_CASE ("0.129.0: OCTAVE MELODY BUILD doubles its notes an octave; OPEN-STRING PEDAL FIRE picks the low tonic between a climbing line",
+           "[solo][solostyles][solo129]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        const auto solo = composeSolo (SoloStyle::octaveMelodyBuild, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+        auto doubled = 0;
+        for (const auto& n : solo.notes)
+            for (const auto& m : solo.notes)
+                if (std::abs (m.beat - n.beat) < 1.0e-6 && std::abs (m.pitch - n.pitch) == 12)
+                {
+                    ++doubled;
+                    break;
+                }
+        CHECK (doubled * 10 >= (int) solo.notes.size() * 9);
+    }
+    auto pedalled = 0;
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        const auto solo = composeSolo (SoloStyle::openStringPedalFire, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+        for (size_t i = 0; i + 4 < solo.notes.size(); ++i)
+            if (solo.notes[i].pitch == solo.notes[i + 2].pitch && solo.notes[i].pitch == solo.notes[i + 4].pitch
+                && solo.notes[i + 1].pitch > solo.notes[i].pitch && solo.notes[i + 3].pitch > solo.notes[i].pitch
+                && ((solo.notes[i].pitch % 12) + 12) % 12 == 9)   // (A: the key's tonic)
+                ++pedalled;
+    }
+    CHECK (pedalled >= 10);
+}
+
+TEST_CASE ("0.129.0: TWIN-LEAD HARMONY's second voice, onto the lane's second track", "[solo][solostyles][solo129]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    const int intervals[][2] = { { 3, 4 }, { 4, 6 }, { 12, 12 } };   // thirds, fourths, octaves (from the scale)
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        INFO ("variation " << variation);
+        const auto solo = composeSolo (SoloStyle::twinLeadHarmony, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+        auto harmony = 0, inStep = 0, early = 0;
+        for (const auto& h : solo.notes)
+        {
+            if (! h.harmony)
+                continue;
+            ++harmony;
+            early += h.beat < 64.0 * 0.4 - 1.0e-6 ? 1 : 0;
+            CHECK (h.effect != LineNote::Effect::bend);
+            for (const auto& n : solo.notes)
+                if (! n.harmony && std::abs (n.beat - h.beat) < 1.0e-6)
+                {
+                    const auto gap = std::abs (h.pitch - n.pitch);
+                    inStep += gap >= intervals[variation % 3][0] && gap <= intervals[variation % 3][1] ? 1 : 0;
+                    CHECK (n.effect != LineNote::Effect::bend);
+                    break;
+                }
+        }
+        CHECK (harmony >= 10);
+        CHECK (early == 0);
+        CHECK (inStep * 10 >= harmony * 8);
+
+        // One track: both voices. Two: the lead, then the harmony alone. A third: a looser copy of the lead.
+        Studio studio (false);
+        const auto one = studio.doubledCopy (solo, 0, 0.0, 1);
+        CHECK (one.notes.size() == solo.notes.size());
+        const auto lead = studio.doubledCopy (solo, 0, 0.0, 2);
+        const auto second = studio.doubledCopy (solo, 1, 0.0, 2);
+        CHECK (std::none_of (lead.notes.begin(), lead.notes.end(), [] (const LineNote& n) { return n.harmony; }));
+        CHECK (std::all_of (second.notes.begin(), second.notes.end(), [] (const LineNote& n) { return n.harmony || n.keyswitch; }));
+        CHECK ((int) second.notes.size() == harmony);
+        CHECK (lead.notes.size() + second.notes.size() == solo.notes.size());
+        const auto third = studio.doubledCopy (solo, 2, 0.0, 3);
+        CHECK (std::none_of (third.notes.begin(), third.notes.end(), [] (const LineNote& n) { return n.harmony; }));
+    }
+}
+
+TEST_CASE ("0.129.0: EASTERN TREMOLO STORM, WHAMMY WAIL, TRILL & FALL TAG", "[solo][solostyles][solo129]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    // Eastern: the flat second (A minor: B-flat) and tremolo: repeated picks, or the tremolo articulation when the
+    // instrument plays nothing under a 16th.
+    {
+        auto flatSecond = 0, repeats = 0, articulated = 0;
+        for (int variation = 0; variation < 4; ++variation)
+        {
+            const auto solo = composeSolo (SoloStyle::easternTremoloStorm, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+            for (size_t i = 0; i < solo.notes.size(); ++i)
+            {
+                flatSecond += ((solo.notes[i].pitch % 12) + 12) % 12 == 10 ? 1 : 0;
+                if (i + 2 < solo.notes.size() && solo.notes[i].pitch == solo.notes[i + 1].pitch && solo.notes[i].pitch == solo.notes[i + 2].pitch
+                    && solo.notes[i + 2].beat - solo.notes[i].beat < 0.4)
+                    ++repeats;
+            }
+            for (const auto& n : composeSolo (SoloStyle::easternTremoloStorm, spans, 4.0, tuning, {}, variation, 0.25, 120.0).notes)
+                articulated += n.technique == LineNote::Technique::tremolo ? 1 : 0;
+        }
+        CHECK (flatSecond >= 8);
+        CHECK (repeats >= 20);
+        CHECK (articulated >= 8);
+    }
+    // Whammy: dives of 7 or more not only at the end, and wobbles; a wobble swings the wheel both ways.
+    {
+        auto dives = 0, wobbles = 0;
+        for (int variation = 0; variation < 4; ++variation)
+        {
+            const auto solo = composeSolo (SoloStyle::whammyWail, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+            for (size_t i = 0; i + 1 < solo.notes.size(); ++i)
+            {
+                dives += solo.notes[i].effect == LineNote::Effect::dive && solo.notes[i].amount >= 7.0f ? 1 : 0;
+                wobbles += solo.notes[i].effect == LineNote::Effect::wobble ? 1 : 0;
+            }
+        }
+        CHECK (dives >= 4);
+        CHECK (wobbles >= 4);
+        LineNote n;
+        n.beat = 0.0;
+        n.length = 2.0;
+        n.pitch = 64;
+        n.effect = LineNote::Effect::wobble;
+        n.amount = 1.0f;
+        const auto c = Studio::effectControllers ({ n }, 2, 120.0);
+        auto up = 0, down = 0;
+        for (const auto& x : c)
+        {
+            up += x.value > 8192 + 2000 ? 1 : 0;
+            down += x.value < 8192 - 2000 ? 1 : 0;
+        }
+        CHECK (up >= 4);
+        CHECK (down >= 4);
+        CHECK (c.back().value == 8192);
+    }
+    // Trills: a note and the one above in turn; the tag ends trilled, then fallen off.
+    {
+        auto trills = 0, tags = 0;
+        for (int variation = 0; variation < 4; ++variation)
+        {
+            const auto solo = composeSolo (SoloStyle::trillFallTag, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+            for (size_t i = 0; i + 3 < solo.notes.size(); ++i)
+                if (solo.notes[i].pitch == solo.notes[i + 2].pitch && solo.notes[i + 1].pitch == solo.notes[i + 3].pitch
+                    && solo.notes[i + 1].pitch > solo.notes[i].pitch && solo.notes[i + 1].pitch - solo.notes[i].pitch <= 3
+                    && solo.notes[i + 3].beat - solo.notes[i].beat < 1.0)
+                    ++trills;
+            const auto& last = solo.notes.back();
+            const auto& before = solo.notes[solo.notes.size() - 2];
+            tags += last.effect == LineNote::Effect::fallOff && before.beat > last.beat - 0.3 && before.length <= 0.25 + 1.0e-6 ? 1 : 0;
+        }
+        CHECK (trills >= 6);
+        CHECK (tags >= 3);
+    }
 }

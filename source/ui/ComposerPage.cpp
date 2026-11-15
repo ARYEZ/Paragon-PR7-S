@@ -982,7 +982,7 @@ ComposerPage::Placed ComposerPage::placeLanes (double originBeat, bool forHearin
             {
                 if (forHearing && tracks[i] == 0)
                     continue;
-                p.ideas.push_back (studio.doubledCopy (ideas[(size_t) l], (int) i, originBeat));
+                p.ideas.push_back (studio.doubledCopy (ideas[(size_t) l], (int) i, originBeat, (int) tracks.size()));
                 p.onto.push_back (tracks[i]);
                 p.layers.push_back ((int) l);
             }
@@ -1081,7 +1081,7 @@ int ComposerPage::useLayer (ComposerLayer l)
     std::vector<pr7s::LineIdea> list;
     const auto onto = tracksFor (l, false);
     for (size_t i = 0; i < onto.size(); ++i)
-        list.push_back (studio.doubledCopy (ideas[(size_t) l], (int) i, placed.front().start));
+        list.push_back (studio.doubledCopy (ideas[(size_t) l], (int) i, placed.front().start, (int) onto.size()));
     const auto tracks = studio.buildSection (list, placed, "Composer", onto);
     refresh (false);
     return tracks.empty() ? 0 : tracks.front();
