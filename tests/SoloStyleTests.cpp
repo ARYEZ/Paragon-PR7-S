@@ -1558,3 +1558,4 @@ TEST_CASE ("0.134.0: the rest of the Pantera ideas have their own habits", "[sol
     CHECK (rises >= 8);
     CHECK (earlyEntries >= 12);
 }
+

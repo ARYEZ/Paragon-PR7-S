@@ -108,10 +108,10 @@ namespace pr7s
             // many in 16 bars); the busy passages as blocks starting on four-bar lines; where the waves go (empty: the
             // usual places) and how many bars each lasts (0: the usual).
             // (the rest of the Pantera ideas) four bars of held notes on the key's root and flat five rising a tritone a
-            // bar; the first half one held note a chord, each in an eighth early with a rake; the restated motif an
-            // octave up from its first return; the last quarter two octaves lower; a long silence after the first
+            // bar; the first half one held note a chord, each in an eighth early with a rake; the last quarter an
+            // octave lower; a long silence after the first
             // phrase; one over-bend past halfway; a twin an octave and a third over; a scoop always this size.
-            bool tritoneOpening = false, heldChordOpening = false, restateEarly = false, lowLastQuarter = false,
+            bool tritoneOpening = false, heldChordOpening = false, lowLastQuarter = false,
                  longFirstRest = false, oneOverbend = false, twinTenth = false;
             float scoopAmount = 0.0f;
             int squeals = 0, waveBars = 0;
@@ -761,15 +761,15 @@ namespace pr7s
                                     "three-note cell bent a half step climbing a scale step each time into a long last note";
                     break;
                 case SoloStyle::statedRaisedDropped:
-                    p.restate = p.restateEarly = p.lowLastQuarter = p.longFirstRest = p.oneOverbend = p.rakes = true;
-                    p.notesPerBeat = 1.2f; p.holdMin = 1.5; p.holdMax = 3.0; p.landBeat1 = 0.5f; p.phraseBars = 2;
+                    p.repeatPair = p.lowLastQuarter = p.longFirstRest = p.oneOverbend = p.rakes = true;
+                    p.notesPerBeat = 1.4f; p.holdMin = 1.5; p.holdMax = 3.0; p.landBeat1 = 0.5f; p.phraseBars = 2;
                     p.restChance = 0.03f; p.restBeats = 0.5;
                     p.waves = 0; p.climb = 12; p.peakAt = 0.25f;
                     p.bendChance = 0.6f; p.bends = { { 2.0f, 1.0f } };
                     p.vibrato = 1.0f; p.vibratoHeld = 0.6f; p.diveShare = 0.2f; p.slideShare = 0.0f; p.fallShare = 0.0f;
                     p.endings = { { Ending::dive, 1.0f } };
-                    p.description = "A raked phrase held and bent, then a long silence; the same idea an octave higher; one "
-                                    "big over-bend past halfway; the last quarter down low, dived an octave to end";
+                    p.description = "A raked phrase held and bent, then a long silence; up an octave early, calls played "
+                                    "again, one big over-bend past halfway; the last quarter down low, dived an octave to end";
                     break;
                 case SoloStyle::automatic: break;
             }
@@ -2426,8 +2426,7 @@ namespace pr7s
                 ringOn (copyFrom->start + shift);
                 Phrase again { copyFrom->start + shift, copyFrom->end + shift, {} };
                 const auto steps = newNotes ? (r.nextBool() ? 2 : -2) : 0;
-                const auto late = (copyFrom->start + shift) >= total * 0.75 - 1.0e-6;
-                const auto octave = p.restate && (p.restateEarly || (copyFrom->start + shift) >= total * 0.5 - 1.0e-6) && ! (p.restateEarly && late) ? 12 : 0;   // (where the copy lands; 0.134.0: from the first return, not in the last quarter)
+                const auto octave = p.restate && (copyFrom->start + shift) >= total * 0.5 - 1.0e-6 ? 12 : 0;   // (where the copy lands)
                 for (auto n : copyFrom->notes)
                 {
                     const auto sourceKey = std::lround (n.beat * 960.0);
@@ -2650,19 +2649,13 @@ namespace pr7s
             }
         }
 
-        // (0.134.0) The last quarter down low: everything from three quarters of the way an octave under (where
-        // the whole passage fits).
+        // (0.134.0) The last quarter down low: everything from three quarters of the way an octave under .
         if (p.lowLastQuarter)
         {
             const auto from = total * 0.75 - 1.0e-6;
-            auto lowest = high;
-            for (const auto& n : notes)
-                if (n.beat >= from)
-                    lowest = juce::jmin (lowest, n.pitch);
-            if (lowest - 12 >= low)
-                for (auto& n : notes)
-                    if (n.beat >= from)
-                        n.pitch -= 12;
+            for (auto& n : notes)
+                if (n.beat >= from && n.pitch - 12 >= low)
+                    n.pitch -= 12;   // (each note that fits; one already low stays)
         }
         std::stable_sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
         if (notes.empty())

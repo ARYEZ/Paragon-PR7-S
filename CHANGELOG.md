@@ -42,7 +42,7 @@ It still ends on a harmonic screamed up with the bar and a dive bomb.
 - **BREAKDOWN TRILL:** for a breakdown: the minor and major third trilled in thirty-seconds under a top note that swaps between the fifth and the flat sixth each bar, harmonised a minor third under (on a LEAD lane with two tracks, the second plays the harmony).
 - **SLOW EASTERN TWINS:** slow and eastern (the flat second and the major third over the minor): long notes scooped up from a minor third under, a second guitar an octave and a third above, and a climb out to end.
 - **HELD LINE & RISING CELLS:** the first half one long note on each chord, each coming in an eighth early with a rake into it (where your instrument plays notes that short). Then a three-note cell bent a half step climbs a scale step each time into a long last note.
-- **STATED, RAISED, DROPPED:** a raked phrase held and bent, then a long silence. The same idea comes back an octave higher, then one big over-bend past halfway. The last quarter drops two octaves, dived away to end.
+- **STATED, RAISED, DROPPED:** a raked phrase held and bent, then a long silence. Up an octave early, calls played again, one big over-bend past halfway, and the last quarter dropped an octave, dived away to end.
 
 **Two new whammy shapes behind them:**
 
