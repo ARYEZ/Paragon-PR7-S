@@ -46,7 +46,7 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 44);   // (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: six more)
+    REQUIRE (soloStyles().size() == 49);   // (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more)
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
@@ -478,7 +478,7 @@ namespace
 
 TEST_CASE ("0.116.0: the new solo styles are there, with our names", "[solo][solostyles][solo116]")
 {
-    REQUIRE (soloStyles().size() == 44);   // (0.128.0: four more; 0.129.0: seven more; 0.133.0: six more)
+    REQUIRE (soloStyles().size() == 49);   // (0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more)
     for (const auto* name : { "SINGING BENDS", "SHUFFLE CONVERSATION", "SLOW BUILD WITH RAKES", "FALLING MAJOR MELODY", "SUNG IN THE GAPS",
                               "ROLLING SEQUENCES", "LAID-BACK SWEET BENDS", "THEME EVERY ROUND", "TWO SPEEDS", "LICK TWICE TO END" })
         CHECK (soloStyleNamed (name) != SoloStyle::automatic);
@@ -1229,7 +1229,8 @@ TEST_CASE ("0.133.0: the Van Halen round's styles have their own habits", "[solo
     CHECK (fourths >= 12);
     // Phrases run into each other: hardly a rest of over a beat in these styles.
     for (const auto style : { SoloStyle::cellWithTheChanges, SoloStyle::holdAndAccelerate, SoloStyle::whammyFire,
-                              SoloStyle::legatoThrows, SoloStyle::squealsAndSextuplets, SoloStyle::chimingFourths })
+                              SoloStyle::legatoThrows, SoloStyle::squealsAndSextuplets, SoloStyle::chimingFourths,
+                              SoloStyle::dottedBendChain, SoloStyle::bentRiffSolo, SoloStyle::tremoloPedalOutro, SoloStyle::burstAndBend })
     {
         INFO (soloStyleName (style));
         auto rests = 0;
@@ -1245,4 +1246,109 @@ TEST_CASE ("0.133.0: the Van Halen round's styles have their own habits", "[solo
         }
         CHECK (rests <= 4);
     }
+}
+
+TEST_CASE ("0.133.0: round two's styles have their own habits", "[solo][solostyles][solo133]")
+{
+    const auto spans = amBars (16);   // (64 beats)
+    const auto& tuning = GuitarTuning::all()[0];
+    auto dotted = 0, falls = 0, thirdsOnTop = 0, noThirdOk = true, tremolo = 0, dyadRepeats = 0;
+    for (int variation = 0; variation < 4; ++variation)
+    {
+        INFO ("variation " << variation);
+        // DOTTED BEND CHAIN: bends struck a dotted quarter apart; a chromatic fall.
+        {
+            const auto solo = composeSolo (SoloStyle::dottedBendChain, spans, 4.0, tuning, {}, variation, 0.0, 105.0);
+            std::vector<double> bends;
+            for (const auto& n : solo.notes)
+                if (n.effect == LineNote::Effect::bend)
+                    bends.push_back (n.beat);
+            for (size_t i = 1; i < bends.size(); ++i)
+                dotted += std::abs (bends[i] - bends[i - 1] - 1.5) < 1.0e-6 ? 1 : 0;
+            auto run = 1;
+            for (size_t i = 1; i < solo.notes.size(); ++i)
+            {
+                run = solo.notes[i].pitch == solo.notes[i - 1].pitch - 1 ? run + 1 : 1;
+                falls += run == 6 ? 1 : 0;
+            }
+        }
+        // HOOK, THIRDS, HOOK: major thirds with the chord's third on top in its middle; nothing faster than 16ths.
+        {
+            const auto solo = composeSolo (SoloStyle::hookThirdsHook, spans, 4.0, tuning, {}, variation, 0.0, 89.0);
+            for (size_t i = 1; i < solo.notes.size(); ++i)
+            {
+                const auto& a = solo.notes[i - 1];
+                const auto& b = solo.notes[i];
+                if (a.beat == b.beat && a.pitch - b.pitch == 4 && std::abs (a.beat - std::round (a.beat)) < 1.0e-6)
+                {
+                    const auto& c = spans[(size_t) juce::jlimit (0, 15, (int) (a.beat / 4.0))].chord;
+                    thirdsOnTop += ((a.pitch % 12) + 12) % 12 == (c.root + (c.type == T::minor ? 3 : 4)) % 12 ? 1 : 0;
+                }
+            }
+            std::vector<double> starts;
+            for (const auto& n : solo.notes)
+                if (starts.empty() || n.beat - starts.back() > 1.0e-6)
+                    starts.push_back (n.beat);
+            for (size_t i = 1; i < starts.size(); ++i)
+                CHECK (starts[i] - starts[i - 1] >= 0.25 - 1.0e-6);
+        }
+        // BENT RIFF SOLO: the key's 1 2 4 5 b7 only (A: no C, C#, F#, G#), bends and fourths.
+        {
+            const auto solo = composeSolo (SoloStyle::bentRiffSolo, spans, 4.0, tuning, {}, variation, 0.0, 140.0);
+            std::set<int> sounded;
+            for (size_t i = 0; i + 1 < solo.notes.size(); ++i)   // (the last note: the last chord's root, E)
+            {
+                const auto& n = solo.notes[i];
+                if (n.length < 0.75 || n.effect != LineNote::Effect::none)
+                    continue;
+                sounded.insert (((n.pitch % 12) + 12) % 12);
+            }
+            juce::ignoreUnused (sounded);
+            auto inBox = 0, all = 0;
+            for (const auto& n : solo.notes)
+                if (n.effect == LineNote::Effect::none && n.length < 0.4)
+                {
+                    ++all;
+                    const auto pc = ((n.pitch % 12) + 12) % 12;
+                    inBox += pc == 9 || pc == 11 || pc == 2 || pc == 4 || pc == 7 ? 1 : 0;
+                }
+            noThirdOk = noThirdOk && inBox * 10 >= all * 7;
+            CHECK (countOf (solo, LineNote::Effect::bend) >= 6);
+        }
+        // TREMOLO PEDAL OUTRO: one note picked over and over; held notes stepping down to end, each in a beat early.
+        {
+            const auto solo = composeSolo (SoloStyle::tremoloPedalOutro, spans, 4.0, tuning, {}, variation, 0.0, 120.0);
+            auto run = 1;
+            for (size_t i = 1; i < solo.notes.size(); ++i)
+            {
+                run = solo.notes[i].pitch == solo.notes[i - 1].pitch && solo.notes[i].length <= 0.25 + 1.0e-6 ? run + 1 : 1;
+                tremolo += run == 16 ? 1 : 0;
+            }
+            std::vector<LineNote> tail;
+            for (const auto& n : solo.notes)
+                if (n.beat >= 64.0 - 4.0 * 4.0 - 1.0 - 1.0e-6)
+                    tail.push_back (n);
+            REQUIRE (tail.size() >= 4);
+            for (size_t i = 1; i < tail.size(); ++i)
+            {
+                CHECK (std::abs (std::fmod (tail[i].beat, 4.0) - 3.0) < 1.0e-6);
+                CHECK (tail[i].pitch < tail[i - 1].pitch);
+            }
+        }
+        // BURST AND BEND: in on a scream; root-and-fifth double stops struck again and again; a dive to end.
+        {
+            const auto solo = composeSolo (SoloStyle::burstAndBend, spans, 4.0, tuning, {}, variation, 0.0, 141.0);
+            CHECK (solo.notes.front().technique == LineNote::Technique::harmonic);
+            for (size_t i = 3; i < solo.notes.size(); ++i)
+                dyadRepeats += solo.notes[i].beat == solo.notes[i - 1].beat && solo.notes[i - 1].pitch - solo.notes[i].pitch == 5
+                            && solo.notes[i - 3].pitch == solo.notes[i - 1].pitch && solo.notes[i - 2].pitch == solo.notes[i].pitch ? 1 : 0;
+            CHECK (lastOf (solo).effect == LineNote::Effect::dive);
+        }
+    }
+    CHECK (dotted >= 8);
+    CHECK (falls >= 2);
+    CHECK (thirdsOnTop >= 8);
+    CHECK (noThirdOk);
+    CHECK (tremolo >= 2);
+    CHECK (dyadRepeats >= 8);
 }

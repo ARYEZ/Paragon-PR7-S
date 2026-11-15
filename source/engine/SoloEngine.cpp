@@ -17,12 +17,17 @@ namespace pr7s
                            // (0.133.0, the owner's Van Halen solos) a cell moved with each chord onto its third; one note
                            // held, then struck faster and faster; a staircase of repeated notes; legato cells in the key's
                            // box; three-note cells cycled in sextuplets; a bent note and two fourths cycled in threes
-                           chordCell, accelerate, stairs, boxCells, cycledCells, fourthCycle };   // (0.129.0: the low tonic picked under a climbing line; tremolo moving along the scale)   // (0.128.0: the same bend struck again and again, climbing;
+                           chordCell, accelerate, stairs, boxCells, cycledCells, fourthCycle,
+                           // (round two) bends struck every dotted quarter, then a chromatic fall in triplets; major
+                           // thirds with the chord's third on top; a bent note and fourths in eighths; one note
+                           // tremolo-picked through the changes; repeated double stops answered by bends
+                           dottedBends, thirdDyads, bentRiff, tremoloPedal, dyadBurst };   // (0.129.0: the low tonic picked under a climbing line; tremolo moving along the scale)   // (0.128.0: the same bend struck again and again, climbing;
                                                                        // arpeggios chasing the chords; a pedal note under a moving line)
         // (0.128.0) How a solo ends: held with vibrato (as before), bent up into the root or fifth and held, a fall-off,
         // a whammy dive, dropped to the low root back into the riff, the top note repeated, a triplet climb out.
         enum class Ending { held, bendUp, fallOff, dive, dropLow, repeatedTop, tripletClimb, trillFall,
-                            harmonicDives, divedDyad };   // (0.133.0: harmonics dived stepping down; thirds climbing into a dived double stop)   // (0.129.0: trilled, then fallen off)
+                            harmonicDives, divedDyad,
+                            steppingDown };   // (0.133.0 round two: held notes stepping down the chord, each in a beat early)   // (0.133.0: harmonics dived stepping down; thirds climbing into a dived double stop)   // (0.129.0: trilled, then fallen off)
         struct Profile
         {
             bool sixth = false, ninth = false, flatFive = false, majorOnMajor = false, curls = false;
@@ -84,6 +89,9 @@ namespace pr7s
             // phrases' first notes and held notes (from 2, 3 or 12 under, in 0.06 s).
             bool screamEntry = false, throws = false;
             float scoopShare = 0.0f;
+            // (round two) the rock vamp's scale (the key's 1 2 4 5 b7: no third at all); one long busy passage a
+            // third of the solo long in its middle (the ABA solo's B part).
+            bool noThird = false, middlePart = false;
             const char* description = "";
         };
 
@@ -512,6 +520,61 @@ namespace pr7s
                     p.description = "Bright and major: bends struck and let down, fourths chiming as double stops, a bent "
                                     "note and two fourths cycled three against four, a high bend held to end";
                     break;
+                case SoloStyle::dottedBendChain:
+                    p.majorOnMajor = p.lickTwice = true;
+                    p.notesPerBeat = 1.4f; p.holdMin = 1.5; p.holdMax = 3.0; p.landBeat1 = 0.5f; p.phraseBars = 2;
+                    p.restChance = 0.05f; p.restBeats = 0.5;
+                    p.waves = 2; p.burst = Burst::dottedBends; p.climb = 9; p.peakAt = 0.5f;
+                    p.bendChance = 0.5f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.1f } }; p.releaseShare = 0.0f;
+                    p.vibrato = 1.0f; p.vibratoHeld = 1.0f;
+                    p.endings = { { Ending::held, 1.0f } };
+                    p.description = "Chains of whole-step bends struck every dotted quarter, three against four, each held "
+                                    "and shaken; between them a chromatic fall in triplets; a lick played twice to end";
+                    break;
+                case SoloStyle::hookThirdsHook:
+                    p.majorOnMajor = p.restate = p.middlePart = true;
+                    p.notesPerBeat = 2.6f; p.holdMin = 1.0; p.holdMax = 1.5; p.landBeat1 = 0.5f; p.phraseBars = 1;
+                    p.restChance = 0.2f; p.restBeats = 0.25; p.pickupMax = 1.5;
+                    p.waves = 1; p.burst = Burst::thirdDyads; p.climb = 7; p.peakAt = 0.5f;
+                    p.bendChance = 0.15f; p.bends = { { 2.0f, 1.0f } }; p.releaseShare = 0.0f;
+                    p.vibrato = 0.8f; p.vibratoHeld = 1.0f; p.noSixteenths = false;
+                    p.endings = { { Ending::held, 1.0f } };
+                    p.description = "A short hook played again and again, a middle part of major thirds moving with the "
+                                    "chords (each chord's third on top), then the hook back; nothing faster than sixteenths";
+                    break;
+                case SoloStyle::bentRiffSolo:
+                    p.noThird = p.unisonBends = true;
+                    p.notesPerBeat = 1.5f; p.holdMin = 1.0; p.holdMax = 2.25; p.landBeat1 = 0.5f; p.phraseBars = 1;
+                    p.restChance = 0.05f; p.restBeats = 0.25;
+                    p.waves = 2; p.burst = Burst::bentRiff; p.climb = 9; p.peakAt = 0.4f;
+                    p.bendChance = 0.6f; p.bends = { { 2.0f, 1.0f } }; p.releaseShare = 0.2f;
+                    p.vibrato = 0.6f; p.vibratoHeld = 0.5f;
+                    p.endings = { { Ending::dropLow, 1.0f }, { Ending::held, 0.5f } };
+                    p.description = "A riff more than a run: whole-step bends traded with fourths in eighths, the rock "
+                                    "scale with no third at all, one fast roll, falling an octave at the end";
+                    break;
+                case SoloStyle::tremoloPedalOutro:
+                    p.majorOnMajor = true;
+                    p.notesPerBeat = 1.0f; p.holdMin = 1.5; p.holdMax = 3.0; p.landBeat1 = 0.4f; p.phraseBars = 2;
+                    p.restChance = 0.05f; p.restBeats = 0.5;
+                    p.waves = 2; p.burst = Burst::tremoloPedal; p.climb = 12; p.peakAt = 0.6f;
+                    p.bendChance = 0.3f; p.bends = { { 2.0f, 1.0f } };
+                    p.vibrato = 1.0f; p.vibratoHeld = 1.0f; p.diveShare = 0.2f;
+                    p.endings = { { Ending::steppingDown, 1.0f } };
+                    p.description = "One note tremolo-picked through the moving chords, slow climbs in held notes, and to "
+                                    "end held notes stepping down the chord, each coming in a beat early";
+                    break;
+                case SoloStyle::burstAndBend:
+                    p.screamEntry = true;
+                    p.notesPerBeat = 2.4f; p.holdMin = 1.0; p.holdMax = 2.0; p.landBeat1 = 0.5f; p.phraseBars = 1;
+                    p.restChance = 0.05f; p.restBeats = 0.5;
+                    p.waves = 2; p.burst = Burst::dyadBurst; p.climb = 12; p.peakAt = 0.35f;
+                    p.bendChance = 0.5f; p.bends = { { 2.0f, 1.0f }, { 1.0f, 0.15f } };
+                    p.vibrato = 1.1f; p.vibratoHeld = 1.0f; p.wobbleShare = 0.3f; p.diveShare = 0.25f;
+                    p.endings = { { Ending::dive, 1.0f } };
+                    p.description = "In on a scream, then repeated double stops answered by single bent notes, a flurry "
+                                    "of triplet cells under a fixed top note, held notes shaken with the whammy, a dive to end";
+                    break;
                 case SoloStyle::automatic: break;
             }
             if (p.notesPerBeat <= 0.0f)
@@ -542,6 +605,13 @@ namespace pr7s
         {
             std::vector<int> out;
             const auto add = [&out] (int pc) { if (! has (out, pcOf (pc))) out.push_back (pcOf (pc)); };
+            if (p.noThird)
+            {
+                // (0.133.0) The rock vamp's: the key's tonic, 2nd, 4th, 5th and b7, whatever the chord.
+                for (const auto s : { 0, 2, 5, 7, 10 })
+                    add (span.key.pitchClass() + s);
+                return out;
+            }
             if (p.majorOnMajor && span.chord.type == Chord::Type::major)
             {
                 for (const auto s : { 0, 2, 4, 7, 9 })
@@ -664,7 +734,9 @@ namespace pr7s
                                                   SoloStyle::openStringPedalFire, SoloStyle::twinLeadHarmony, SoloStyle::easternTremoloStorm,
                                                   SoloStyle::whammyWail, SoloStyle::trillFallTag,
                                                   SoloStyle::cellWithTheChanges, SoloStyle::holdAndAccelerate, SoloStyle::whammyFire,
-                                                  SoloStyle::legatoThrows, SoloStyle::squealsAndSextuplets, SoloStyle::chimingFourths };
+                                                  SoloStyle::legatoThrows, SoloStyle::squealsAndSextuplets, SoloStyle::chimingFourths,
+                                                  SoloStyle::dottedBendChain, SoloStyle::hookThirdsHook, SoloStyle::bentRiffSolo,
+                                                  SoloStyle::tremoloPedalOutro, SoloStyle::burstAndBend };
         return all;
     }
 
@@ -716,6 +788,11 @@ namespace pr7s
             case SoloStyle::legatoThrows: return "LEGATO THROWS";
             case SoloStyle::squealsAndSextuplets: return "SQUEALS & SEXTUPLETS";
             case SoloStyle::chimingFourths: return "CHIMING FOURTHS";
+            case SoloStyle::dottedBendChain: return "DOTTED BEND CHAIN";
+            case SoloStyle::hookThirdsHook: return "HOOK, THIRDS, HOOK";
+            case SoloStyle::bentRiffSolo: return "BENT RIFF SOLO";
+            case SoloStyle::tremoloPedalOutro: return "TREMOLO PEDAL OUTRO";
+            case SoloStyle::burstAndBend: return "BURST AND BEND";
         }
         return "BY STYLE";
     }
@@ -798,6 +875,11 @@ namespace pr7s
                 case SoloStyle::legatoThrows: return "Legato Throws";
                 case SoloStyle::squealsAndSextuplets: return "Squeals & Sextuplets";
                 case SoloStyle::chimingFourths: return "Chiming Fourths";
+                case SoloStyle::dottedBendChain: return "Dotted Bend Chain";
+                case SoloStyle::hookThirdsHook: return "Hook, Thirds, Hook";
+                case SoloStyle::bentRiffSolo: return "Bent Riff Solo";
+                case SoloStyle::tremoloPedalOutro: return "Tremolo Pedal Outro";
+                case SoloStyle::burstAndBend: return "Burst And Bend";
                 case SoloStyle::automatic: break;
             }
             return "By Style";
@@ -1144,6 +1226,153 @@ namespace pr7s
                     }
                     break;
                 }
+                case Burst::dottedBends:
+                {
+                    // (0.133.0) A chain of whole-step bends struck every dotted quarter (three against four), each
+                    // into a note that sings over the chord and held with vibrato, then a chromatic fall in eighth
+                    // triplets (an octave at most) into the landing.
+                    const auto fallFrom = burstFrom + juce::jmax (1.5, std::floor ((landing - burstFrom) * 0.6 / 1.5) * 1.5);
+                    auto top = centre + 4.0;
+                    for (auto x = burstFrom; x < juce::jmin (fallFrom, landing) - 1.0e-9; x += 1.5)
+                    {
+                        const auto target = aimAt (x, centre + 4.0);
+                        top = juce::jmax (top, (double) target);
+                        const auto held = juce::jmin (1.48, landing - x - 0.02);
+                        addNote (notes, x, held, target - 2 >= low ? target - 2 : target, velocityAt (t, true));
+                        if (target - 2 >= low)
+                        {
+                            notes.back().effect = LineNote::Effect::bend;
+                            notes.back().amount = 2.0f;
+                        }
+                    }
+                    const auto g = gridFor (1.0 / 3.0);
+                    auto pitch = juce::jmin (high, (int) top + 1);
+                    for (auto x = fallFrom; x < landing - 1.0e-9 && pitch >= juce::jmax (low, (int) top - 12); x += g)
+                        addNote (notes, x, g, pitch--, velocityAt (t, std::abs (x - std::round (x)) < 1.0e-6));
+                    break;
+                }
+                case Burst::thirdDyads:
+                {
+                    // (0.133.0) Major thirds as double stops in eighths and sixteenths, the chord's third on top on each
+                    // beat (moving with the chords), the notes between a scale step either side.
+                    auto k = 0;
+                    for (auto x = burstFrom; x < landing - 1.0e-9; ++k)
+                    {
+                        const auto onBeat = std::abs (x - std::round (x)) < 1.0e-6;
+                        const auto g = gridFor (k % 4 < 2 ? 0.5 : 0.25);
+                        const auto& c = chordAt (x).chord;
+                        const auto third = pcOf (c.root + (c.type == Chord::Type::minor || c.type == Chord::Type::diminished ? 3 : 4));
+                        auto upper = nearestOf ({ third }, centre + 4.0, juce::jmin (high, low + 5), high);
+                        if (! onBeat)
+                        {
+                            const auto here = poolOf (scaleAt (x), low, high);
+                            upper = here[(size_t) juce::jlimit (0, (int) here.size() - 1, nearestIndex (here, upper) + (k % 2 == 0 ? 1 : -1))];
+                        }
+                        const auto len = juce::jmin (g, landing - x);
+                        addNote (notes, x, len, upper, velocityAt (t, onBeat));
+                        addNote (notes, x, len, juce::jmax (low, upper - 4), velocityAt (t, false));
+                        x += g;
+                    }
+                    break;
+                }
+                case Burst::bentRiff:
+                {
+                    // (0.133.0) A riff in eighths: a note bent a whole step up into one that sings over the chord,
+                    // then a fourth struck as a double stop (the chord's root on top), in turn; one fast roll inside
+                    // a box (sextuplets) in its last beat.
+                    const auto g = gridFor (0.5);
+                    const auto rollFrom = juce::jmax (burstFrom + 1.0, landing - 1.0);
+                    auto k = 0;
+                    for (auto x = burstFrom; x < rollFrom - 1.0e-9; x += g, ++k)
+                    {
+                        if (k % 2 == 0)
+                        {
+                            const auto target = aimAt (x, centre + 4.0);
+                            addNote (notes, x, g - 0.02, target - 2 >= low ? target - 2 : target, velocityAt (t, true));
+                            if (target - 2 >= low)
+                            {
+                                notes.back().effect = LineNote::Effect::bend;
+                                notes.back().amount = 2.0f;
+                            }
+                        }
+                        else
+                        {
+                            const auto top = nearestOf ({ chordAt (x).chord.root }, centre + 2.0, juce::jmin (high, low + 5), high);
+                            addNote (notes, x, g - 0.02, top, velocityAt (t, false));
+                            addNote (notes, x, g - 0.02, top - 5, velocityAt (t, false));
+                        }
+                    }
+                    const auto rg = runGrid (1.0 / 6.0);
+                    const auto base = juce::jlimit (2, juce::jmax (2, (int) pool.size() - 2), nearestIndex (pool, centre + 3.0));
+                    const int roll[] = { 0, 1, 0, -1, -2, -1 };
+                    k = 0;
+                    for (auto x = rollFrom; x < landing - 1.0e-9; x += rg, ++k)
+                        addNote (notes, x, rg, pool[(size_t) juce::jlimit (0, (int) pool.size() - 1, base + roll[k % 6])], velocityAt (t, k % 6 == 0));
+                    break;
+                }
+                case Burst::tremoloPedal:
+                {
+                    // (0.133.0) One note held through the changes, tremolo-picked (16ths where the instrument plays
+                    // them, else its tremolo articulation): the key's fifth, which most chords share or colour.
+                    const auto& first = chordAt (burstFrom);
+                    const auto pc = pcOf ((first.key.minor ? first.key.pitchClass() : first.key.pitchClass()) + 7);
+                    const auto pitch = nearestOf ({ pc }, centre + 5.0, low, high);
+                    if (shortestStep <= 0.13)
+                    {
+                        const auto g = gridFor (bpm > 0.0 ? juce::jlimit (0.125, 0.25, bpm / 60.0 / 16.0) : 0.25);
+                        auto k = 0;
+                        for (auto x = burstFrom; x < landing - 1.0e-9; x += g, ++k)
+                            addNote (notes, x, juce::jmin (g, landing - x), pitch, velocityAt (t, k % 4 == 0));
+                    }
+                    else
+                    {
+                        addNote (notes, burstFrom, landing - burstFrom - 0.02, pitch, velocityAt (t, true));
+                        notes.back().technique = LineNote::Technique::tremolo;
+                    }
+                    break;
+                }
+                case Burst::dyadBurst:
+                {
+                    // (0.133.0) Two-beat calls: the chord's root and fifth struck together again and again (an eighth,
+                    // two sixteenths, then sixteenth triplets) answered by one note bent a whole step; past halfway,
+                    // a flurry of three-note cells in sixteenth triplets under a fixed top note (the root), the two
+                    // under it walking down a half step each beat.
+                    const auto half = burstFrom + std::floor ((landing - burstFrom) * 0.5 / 2.0) * 2.0;
+                    for (auto x = burstFrom; x < half - 1.0e-9; x += 2.0)
+                    {
+                        const auto root = nearestOf ({ chordAt (x).chord.root }, centre + 5.0, juce::jmin (high, low + 7), high);
+                        std::vector<std::pair<double, double>> hits { { 0.0, 0.5 }, { 0.5, 0.25 }, { 0.75, 0.25 } };
+                        const auto tg = gridFor (1.0 / 6.0);
+                        for (auto y = 1.0; y < 1.5 - 1.0e-9; y += tg)
+                            hits.push_back ({ y, tg });
+                        for (const auto& [o, len] : hits)
+                            if (x + o < juce::jmin (half, landing) - 1.0e-9 && o < 1.5 - 1.0e-9)
+                            {
+                                addNote (notes, x + o, len, root, velocityAt (t, o == 0.0));
+                                addNote (notes, x + o, len, root - 5, velocityAt (t, false));
+                            }
+                        const auto target = aimAt (x + 1.5, centre + 4.0);
+                        if (x + 1.5 < landing - 1.0e-9)
+                        {
+                            addNote (notes, x + 1.5, juce::jmin (0.48, landing - x - 1.5), target - 2 >= low ? target - 2 : target, velocityAt (t, true));
+                            if (target - 2 >= low)
+                            {
+                                notes.back().effect = LineNote::Effect::bend;
+                                notes.back().amount = 2.0f;
+                            }
+                        }
+                    }
+                    const auto g = runGrid (1.0 / 6.0);
+                    auto k = 0;
+                    for (auto x = half; x < landing - 1.0e-9; x += g, ++k)
+                    {
+                        const auto top = nearestOf ({ chordAt (x).chord.root }, centre + 6.0, juce::jmin (high, low + 7), high);
+                        const auto walk = (int) std::floor (x - half);
+                        const int cell[] = { 0, -3, -5 };
+                        addNote (notes, x, g, k % 3 == 0 ? top : juce::jmax (low, top + cell[k % 3] - walk % 6), velocityAt (t, k % 3 == 0));
+                    }
+                    break;
+                }
                 case Burst::pedalHook:
                 {
                     // (0.128.0) A pedal note above, struck between the notes of a line walking down the scale under
@@ -1465,12 +1694,14 @@ namespace pr7s
                 waves.push_back ({ 0.0, landing, juce::jmin (total, landing + 2.0 + beatsPerBar * 0.5), true });
                 count = 0;
             }
-            if (p.twoSpeed)
+            if (p.middlePart)
+                at = { 0.5f };   // (0.133.0: the ABA solo's middle part, a third of it long)
+            else if (p.twoSpeed)
                 at = { -1.0f };
             else if (count == 1) at = { 0.72f };
             else if (count == 2) at = { 0.4f, 0.74f };
             else if (count >= 3) at = { 0.3f, 0.56f, 0.8f };
-            const auto burstBars = bars >= 16 ? 2 : 1;
+            const auto burstBars = p.middlePart ? juce::jmax (1, bars / 3) : bars >= 16 ? 2 : 1;
             for (size_t i = 0; i < at.size(); ++i)
             {
                 if (p.twoSpeed)
@@ -2351,6 +2582,39 @@ namespace pr7s
                     last = &notes.back();
                     last->effect = LineNote::Effect::dive;
                     last->amount = 12.0f;
+                    break;
+                }
+                case Ending::steppingDown:
+                {
+                    // (0.133.0) Notes held a bar each stepping down from the octave (b7, 5th, b3 in the scale there)
+                    // to the last chord's root, each coming in a beat before the bar line and tied over it.
+                    const auto m = juce::jmin (5, bars - 1);
+                    if (m < 2)
+                    {
+                        last->effect = LineNote::Effect::vibrato;
+                        last->amount = p.vibrato;
+                        break;
+                    }
+                    const auto from = total - m * beatsPerBar - 1.0;
+                    notes.erase (std::remove_if (notes.begin(), notes.end(), [from] (const LineNote& n) { return n.beat >= from - 1.0e-6; }), notes.end());
+                    for (auto& n : notes)
+                        n.length = juce::jmin (n.length, juce::jmax (0.05, from - n.beat - 0.02));
+                    const auto rootTop = nearestOf ({ lastChord.root }, (double) high - 6.0, juce::jmin (high, low + 12), high);
+                    const int steps[] = { 12, 10, 7, 3, 0 };
+                    for (auto k = 0; k < m; ++k)
+                    {
+                        const auto x = from + k * beatsPerBar;
+                        const auto pitch = k == m - 1 ? rootTop - 12 : snapToScale (rootTop - 12 + steps[k + (5 - m)], x + 1.0);
+                        addNote (notes, x, (k == m - 1 ? total - x : beatsPerBar - 0.02), juce::jlimit (low, high, pitch), velocityAt (0.8f, true));
+                        if (k < m - 1)
+                        {
+                            notes.back().effect = LineNote::Effect::vibrato;
+                            notes.back().amount = p.vibrato;
+                        }
+                    }
+                    last = &notes.back();
+                    last->effect = LineNote::Effect::vibrato;
+                    last->amount = p.vibrato;
                     break;
                 }
                 case Ending::held:
