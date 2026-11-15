@@ -1117,8 +1117,8 @@ namespace pr7s
                         const auto along = (double) b / beats;
                         const auto g = gridFor (along < 0.4 ? 0.5 : along < 0.65 ? 1.0 / 3.0 : 0.25);
                         const auto until = juce::jmin (landing, from + b + 1.0);
-                        for (auto x = from + b; x < until - 1.0e-9; x += g, ++k)
-                            addNote (notes, x, juce::jmin (g, until - x), target, velocityAt (t, k % 2 == 0));
+                        for (auto x = from + b; x + g <= until + 1.0e-9; x += g, ++k)   // (whole notes of the grid only)
+                            addNote (notes, x, g, target, velocityAt (t, k % 2 == 0));
                     }
                     break;
                 }
