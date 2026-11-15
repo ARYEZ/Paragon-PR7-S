@@ -177,6 +177,20 @@ namespace pr7s
         return p;
     }
 
+    bool giveGuitarLaneShreddage (std::vector<InstrumentProfile>& profiles, const GuitarVelocities& velocities)
+    {
+        if (std::any_of (profiles.begin(), profiles.end(), [] (const InstrumentProfile& p) { return p.forGuitar; }))
+            return false;
+        const auto noLead = std::none_of (profiles.begin(), profiles.end(), [] (const InstrumentProfile& p) { return p.forLead; });
+        auto shreddage = std::find_if (profiles.begin(), profiles.end(), [] (const InstrumentProfile& p)
+                                       { return p.kind == InstrumentProfile::Kind::guitar && p.name.startsWithIgnoreCase ("Shreddage"); });
+        if (shreddage == profiles.end())
+            shreddage = profiles.insert (profiles.end(), InstrumentProfile::shreddage ("Shreddage Jupiter", velocities));
+        shreddage->forGuitar = true;
+        shreddage->forLead = shreddage->forLead || noLead;
+        return true;
+    }
+
     InstrumentProfile InstrumentProfile::blank (Kind kind)
     {
         InstrumentProfile p;

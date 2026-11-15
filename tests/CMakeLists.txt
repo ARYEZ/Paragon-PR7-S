@@ -6,6 +6,7 @@ FetchContent_MakeAvailable(catch2)
 
 add_executable(ParagonPR7STests
     TestMain.cpp
+    PowerChordKeyTests.cpp
     ProjectTests.cpp
     EngineTests.cpp
     MixerTests.cpp

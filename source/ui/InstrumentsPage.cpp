@@ -385,6 +385,7 @@ void InstrumentsPage::addProfile (NewKind kind)
         case NewKind::djinnBass2: p = Profile::djinnBass2(); p.forBass = false; break;
         case NewKind::jupiter: p = Profile::shreddage ("Shreddage Jupiter", studio.getGuitarVelocities()); break;
         case NewKind::rogue: p = Profile::shreddage ("Shreddage Rogue", studio.getGuitarVelocities()); break;
+
         case NewKind::bass: p = Profile::blank (Profile::Kind::bass); break;
         case NewKind::guitar: p = Profile::blank (Profile::Kind::guitar); break;
         case NewKind::copy:
@@ -394,6 +395,12 @@ void InstrumentsPage::addProfile (NewKind kind)
             p.name += " copy";
             p.forBass = p.forGuitar = p.forLead = false;
             break;
+    }
+    // (0.127.0) A new Shreddage takes the guitar and lead lanes when no profile has them (its power chords by C#-1).
+    if (kind == NewKind::jupiter || kind == NewKind::rogue)
+    {
+        p.forGuitar = std::none_of (profiles.begin(), profiles.end(), [] (const Profile& o) { return o.forGuitar; });
+        p.forLead = std::none_of (profiles.begin(), profiles.end(), [] (const Profile& o) { return o.forLead; });
     }
     // A name no other has.
     const auto base = p.name;

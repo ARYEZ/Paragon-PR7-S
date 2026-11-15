@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.127.0
+
+**The rhythm guitar plays its power chords through Shreddage's power chord articulation (C#-1)** (you asked):
+- **What was going on:** the composer has done this since 0.63.0: a power chord becomes its root alone after C#-1 (Shreddage's power chord articulation, the same velocity layers), and single notes go back to C-1 (Sustain). But it only did it when a Shreddage profile in the Hub's **INSTRUMENTS** page was ticked for the **GUITAR LANE**. Only the Djinn bass was there to start with, and making a Shreddage profile with + NEW didn't tick the lane, so the composer kept writing power chords out note by note.
+- **Now:** if your guitar lane has no instrument, **Shreddage Jupiter** goes there by itself, and on the lead lane too if that has none. If you'd already made a Shreddage profile, that one gets ticked instead of a new one being added. This happens once: if you take it off the lane later, it stays off. A Shreddage made with + NEW also takes the guitar and lead lanes when they're free.
+- **Single-note riffs stay single notes:** the chugs, pedal riffs and djent-style lines (nu-metal, metalcore, modern metal) play note by note on C-1. Only a root with its fifth (and octaves) turns into the power chord key. Fuller chords with a third, tritone shapes and the high stabs are still written out, because the articulation plays only a root and fifth.
+- **Checked:** a new test runs every riff kind and every section type's guitar options, with and without humanize. No power chord is left written out, and the C#-1 key is pressed throughout. Not checked here: the sound itself in Shreddage (your ears).
+- **To check it:** HUB > INSTRUMENTS should show Shreddage Jupiter with GUITAR LANE lit. Rogue works the same way: tick it for the guitar lane instead if that's the one you use.
+
 ## 0.126.0
 
 **The composer's lanes no longer get locked to the guitar** (you found that picking certain kinds of guitar chords made every other instrument follow the guitar, with SYNC off):

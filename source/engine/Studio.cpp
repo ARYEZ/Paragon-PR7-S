@@ -11538,8 +11538,23 @@ namespace pr7s
                                                                                                  : std::nullopt)
                                                 : instrumentProfiles;
         if (! stored.has_value())
-            return { InstrumentProfile::djinnBass2() };   // (the first time: the owner's bass)
+        {
+            // The first time: the owner's bass, and (0.127.0, with a settings file: the app, not the tests) their
+            // guitar, Shreddage Jupiter, on the guitar and lead lanes (its power chords by C#-1).
+            std::vector<InstrumentProfile> first { InstrumentProfile::djinnBass2() };
+            if (settings != nullptr)
+                giveGuitarLaneShreddage (first, getGuitarVelocities());
+            return first;
+        }
         auto profiles = profilesFromText (*stored);
+        // (0.127.0, the owner: the guitar lane was built for Shreddage, its power chords by C#-1) no profile on the
+        // guitar lane: a Shreddage one there, once (the flag), so a lane emptied by hand afterwards stays empty.
+        if (settings != nullptr && ! settings->getBoolValue ("shreddageGuitar0127", false))
+        {
+            if (giveGuitarLaneShreddage (profiles, getGuitarVelocities()))
+                settings->setValue ("instrumentProfiles", profilesToText (profiles));
+            settings->setValue ("shreddageGuitar0127", true);
+        }
         // (0.82.2, the owner: their bass is drop A, A E A D G) A Djinn Bass 2 saved with 0.62.0's A D A D G gets its
         // E string, once (the flag), so a tuning set by hand afterwards stays.
         if (settings != nullptr && ! settings->getBoolValue ("djinnDropA0822", false))
