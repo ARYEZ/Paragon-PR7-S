@@ -46,7 +46,7 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 85);   // (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more; 0.135.0: twenty-one more)
+    REQUIRE (soloStyles().size() == 92);   // (0.136.0: seven more) (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more; 0.135.0: twenty-one more)
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
@@ -55,7 +55,7 @@ TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's"
         for (const auto* player : { "Gilmour", "Perry", "Van Halen", "Page", "EVH", "Zeppelin", "Floyd", "Aerosmith",
                                    "Dimebag", "Darrell", "Pantera", "Hammett", "Metallica", "Wylde", "Black Label", "Petrucci", "Dream Theater",
                                    "DeVille", "Poison", "Mick Mars", "Motley", "Slash", "Guns N", "Prince",
-                                   "Synyster", "Avenged", "Halen", "Oasis", "Gallagher", "Crue", "Feelgood", "Wonderwall", "Sixx", "Panama", "Poundcake", "Lowery", "Sevendust", "Cantrell", "Alice in Chains", "Cobain", "Nirvana" })
+                                   "Synyster", "Avenged", "Halen", "Oasis", "Gallagher", "Stone Temple", "Pilots", "DeLeo", "Weiland", "Plush", "Vasoline", "Crue", "Feelgood", "Wonderwall", "Sixx", "Panama", "Poundcake", "Lowery", "Sevendust", "Cantrell", "Alice in Chains", "Cobain", "Nirvana" })
         {
             CHECK_FALSE (soloStyleName (s).containsIgnoreCase (player));
             CHECK_FALSE (soloStyleDescription (s).containsIgnoreCase (player));
@@ -111,7 +111,7 @@ TEST_CASE ("0.66.0: every solo style writes a whole solo that builds and ends on
             for (const auto& n : solo.notes)
                 if (n.beat >= last.beat)
                     last = n;
-            const auto bent = last.effect == LineNote::Effect::bend;
+            const auto bent = last.effect == LineNote::Effect::bend || last.effect == LineNote::Effect::slowBend;   // (0.136.0: slow too)
             const auto sounding = (((last.pitch + (bent ? juce::roundToInt (last.amount) : 0)) % 12) + 12) % 12;
             CHECK ((sounding == 4 || (bent && sounding == 11)));
             const auto droppedLow = last.length <= 1.0 + 1.0e-6 && last.pitch < tuning.strings[1] + 5 + 12;
@@ -401,7 +401,7 @@ TEST_CASE ("0.69.0: round four's styles have their own habits", "[solo][solostyl
 {
     const auto spans = amBars (16);
     const auto& tuning = GuitarTuning::all()[0];
-    auto harmonised = 0, shortBends = 0, gypsyNotes = 0;
+    auto harmonised = 0, shortBends = 0, gypsyNotes = 0, grungeHalf = 0, grungeWhole = 0;
     for (int variation = 0; variation < 4; ++variation)
     {
         INFO ("variation " << variation);
@@ -431,37 +431,24 @@ TEST_CASE ("0.69.0: round four's styles have their own habits", "[solo][solostyl
         for (const auto& n : tortured.notes)
             shortBends += n.effect == LineNote::Effect::bend && std::abs (n.amount - std::round (n.amount)) > 0.1f ? 1 : 0;
 
-        // GRUNGE MELODY: no whammy at all; vibrato only on the last note; the second half the first an octave up.
+        // GRUNGE MELODY: (0.136.0, put right from the owner's Stone Temple Pilots files) no whammy dives; vibrato on
+        // held notes (not only the last); half-step bends as well as whole steps; no noise bursts (nothing busier than
+        // sixteenths).
         const auto grunge = composeSolo (SoloStyle::grungeMelody, spans, 4.0, tuning, {}, variation);
         auto vibratos = 0;
         for (const auto& n : grunge.notes)
         {
             CHECK (n.effect != LineNote::Effect::dive);
             vibratos += n.effect == LineNote::Effect::vibrato ? 1 : 0;
+            if (n.effect == LineNote::Effect::bend)
+                (n.amount < 1.5f ? grungeHalf : grungeWhole) += 1;
         }
-        CHECK (vibratos == 1);
-        if (variation % 4 != 3)
-        {
-            // (the tune's first phrase, and the same phrase in the second half an octave higher: 0.116.0, the tune
-            // comes back on its period, two bars or more, so 32 beats on it's there again)
-            auto firstNotes = 0, again = 0, higher = 0;
-            for (const auto& n : grunge.notes)
-                if (n.beat < 8.0)
-                {
-                    ++firstNotes;
-                    for (const auto& m : grunge.notes)
-                        if (std::abs (m.beat - (n.beat + 32.0)) < 1.0e-6)
-                        {
-                            ++again;
-                            higher += m.pitch > n.pitch ? 1 : 0;
-                            break;
-                        }
-                }
-            REQUIRE (firstNotes >= 2);
-            CHECK (again * 2 >= firstNotes);
-            CHECK (higher * 2 >= again);
-        }
+        CHECK (vibratos >= 3);
+        for (size_t i = 1; i < grunge.notes.size(); ++i)
+            CHECK (grunge.notes[i].beat - grunge.notes[i - 1].beat > 0.2);
     }
+    CHECK (grungeHalf > 0);
+    CHECK (grungeWhole > 0);
     CHECK (harmonised > 0);
     CHECK (shortBends > 0);
     CHECK (gypsyNotes > 0);
@@ -486,7 +473,7 @@ namespace
 
 TEST_CASE ("0.116.0: the new solo styles are there, with our names", "[solo][solostyles][solo116]")
 {
-    REQUIRE (soloStyles().size() == 85);   // (0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
+    REQUIRE (soloStyles().size() == 92);   // (0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
     for (const auto* name : { "SINGING BENDS", "SHUFFLE CONVERSATION", "SLOW BUILD WITH RAKES", "FALLING MAJOR MELODY", "SUNG IN THE GAPS",
                               "ROLLING SEQUENCES", "LAID-BACK SWEET BENDS", "THEME EVERY ROUND", "TWO SPEEDS", "LICK TWICE TO END" })
         CHECK (soloStyleNamed (name) != SoloStyle::automatic);
@@ -1855,4 +1842,98 @@ TEST_CASE ("0.135.0: the Dream Theater round's styles have their own habits", "[
         }
     }
     CHECK (halfBends > wholeBends);   // (CRYING HALF STEPS: half steps twice as often as whole steps, as the files)
+}
+
+// 0.136.0: the owner's Stone Temple Pilots files (read for their solos' shapes only; our names).
+TEST_CASE ("0.136.0: the Stone Temple Pilots round's styles have their own habits", "[solo][solostyles][solo136]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    auto minorThirdsFromFifth = 0, halfFromSixth = 0;
+    for (int variation = 0; variation < 4; ++variation)
+    {
+        INFO ("variation " << variation);
+        // HELD-BEND TALKER: bends sized by the note they start on (in A minor: the fifth E bent a minor third, the
+        // sixth F# a half step); octave double stops.
+        const auto talker = composeSolo (SoloStyle::heldBendTalker, spans, 4.0, tuning, {}, variation);
+        for (const auto& n : talker.notes)
+            if (n.effect == LineNote::Effect::bend)
+            {
+                const auto from = ((n.pitch % 12) + 12) % 12;
+                minorThirdsFromFifth += from == 4 && n.amount == 3.0f ? 1 : 0;
+                halfFromSixth += from == 6 && n.amount == 1.0f ? 1 : 0;
+            }
+
+        // SPRINT, BEND, RUN DOWN: four sixteenths leaping up into a bend struck again and again; two stabs to end.
+        const auto sprint = composeSolo (SoloStyle::sprintBendRunDown, spans, 4.0, tuning, {}, variation);
+        auto restruck = 0;
+        for (size_t i = 1; i < sprint.notes.size(); ++i)
+            restruck += sprint.notes[i].effect == LineNote::Effect::bend && sprint.notes[i - 1].effect == LineNote::Effect::bend
+                        && sprint.notes[i].pitch == sprint.notes[i - 1].pitch && std::abs (sprint.notes[i].beat - sprint.notes[i - 1].beat - 0.5) < 1.0e-6 ? 1 : 0;
+        CHECK (restruck >= 2);
+        CHECK (notesIn (sprint, 62.4, 63.1).size() == 3);
+        CHECK (sprint.notes.back().length < 0.3);
+
+        // SLIDE-IN OUTRO MELODY: a grace note under the long notes, vibrato on every long note, small dips.
+        const auto outro = composeSolo (SoloStyle::slideInOutro, spans, 4.0, tuning, {}, variation);
+        auto graces = 0, dips = 0, plainLong = 0;
+        for (size_t i = 0; i + 1 < outro.notes.size(); ++i)
+        {
+            const auto& n = outro.notes[i];
+            graces += n.length < 0.15 && outro.notes[i + 1].pitch == n.pitch + 2 ? 1 : 0;
+            dips += n.effect == LineNote::Effect::dive && n.amount == 1.0f ? 1 : 0;
+            plainLong += n.length >= 1.0 && n.effect == LineNote::Effect::none ? 1 : 0;
+        }
+        CHECK (graces >= 2);
+        CHECK (dips >= 1);
+
+        // SOUR BENDS & STABS: no third and no flat seven heard (C, G, G# over A); low stabs between phrases; the fifth
+        // held over the last bars.
+        const auto sour = composeSolo (SoloStyle::sourBendsStabs, spans, 4.0, tuning, {}, variation);
+        auto stabs = 0;
+        for (const auto& n : sour.notes)
+        {
+            stabs += n.length == 0.25 && n.pitch < tuning.strings[1] + 5 + 12 ? 1 : 0;
+            if (n.beat < 48.0 && n.length > 0.25)
+            {
+                const auto pc = ((n.pitch + (n.effect == LineNote::Effect::bend ? juce::roundToInt (n.amount) : 0)) % 12 + 12) % 12;
+                CHECK (pc != 0);    // (C: A minor's third)
+            }
+        }
+        CHECK (stabs >= 6);
+        CHECK (sour.notes.back().effect == LineNote::Effect::bend);
+
+        // VALLEY LAUNCH: one high note struck six times, bent wider each time; one low note to finish.
+        const auto valley = composeSolo (SoloStyle::valleyLaunch, spans, 4.0, tuning, {}, variation);
+        std::vector<float> widening;
+        for (size_t i = 0; i < valley.notes.size(); ++i)
+            if (valley.notes[i].effect == LineNote::Effect::bend && i > 0 && valley.notes[i - 1].pitch == valley.notes[i].pitch
+                && valley.notes[i - 1].effect == LineNote::Effect::bend && valley.notes[i].amount > valley.notes[i - 1].amount)
+                widening.push_back (valley.notes[i].amount);
+        CHECK (widening.size() >= 2);
+        CHECK (valley.notes.back().length <= 1.0 + 1.0e-6);
+
+        // CHROMATIC VAMP FLOW: sixteenth runs by step, a half step bent into the chord on each held bar.
+        const auto vamp = composeSolo (SoloStyle::chromaticVampFlow, spans, 4.0, tuning, {}, variation);
+        auto heldHalfBends = 0, steps = 0, moves = 0;
+        for (size_t i = 1; i < vamp.notes.size(); ++i)
+        {
+            const auto& n = vamp.notes[i];
+            heldHalfBends += n.effect == LineNote::Effect::bend && n.amount == 1.0f && n.length >= 2.0 ? 1 : 0;
+            if (std::abs (n.beat - vamp.notes[i - 1].beat - 0.25) < 1.0e-6)
+            {
+                ++moves;
+                steps += std::abs (n.pitch - vamp.notes[i - 1].pitch) <= 3 ? 1 : 0;
+            }
+        }
+        CHECK (heldHalfBends >= 3);
+        CHECK (steps * 10 >= moves * 8);
+
+        // RIFF-REGISTER BREAK: low; the last note the flat seven bent slowly into the root.
+        const auto riff = composeSolo (SoloStyle::riffRegisterBreak, spans, 4.0, tuning, {}, variation);
+        CHECK (riff.notes.back().effect == LineNote::Effect::slowBend);
+        CHECK (medianPitch (riff, 0.0, 64.0) < medianPitch (composeSolo (SoloStyle::soaringBends, spans, 4.0, tuning, {}, variation), 0.0, 64.0));
+    }
+    CHECK (minorThirdsFromFifth >= 2);
+    CHECK (halfFromSixth >= 1);
 }

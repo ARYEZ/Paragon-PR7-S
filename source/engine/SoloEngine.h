@@ -58,7 +58,10 @@ namespace pr7s
                                  tradedTurns, callAndChant, fixedHead, shuffleTrade, sextupletLoopsDives, pickedHymn, oneTrickABlock,
                                  turnsDownTheScale, octaveBallad, steppingBendCalls, contourCells, loopedCellsAcross,
                                  fallingPedalSextuplets, easternLegatoRuns, cryingHalfSteps, floatingLine, addNineMelody,
-                                 gearShiftStream, barOstinato, triadCellSweeps, heldOverFallingBass };
+                                 gearShiftStream, barOstinato, triadCellSweeps, heldOverFallingBass,
+                                 // (0.136.0, from the owner's Stone Temple Pilots solos, shapes only; our names)
+                                 heldBendTalker, sprintBendRunDown, slideInOutro, sourBendsStabs, valleyLaunch,
+                                 chromaticVampFlow, riffRegisterBreak };
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",
