@@ -2,6 +2,89 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.136.0
+
+**Solos from your 13 Stone Temple Pilots files**, read for their solos' shapes only, never copied; our own names. Three readers went through them.
+
+- **Only five lead passages turned up:**
+  - Meatplow: a solo.
+  - Piece of Pie: a solo and an outro lead.
+  - Silvergun Superman: an outro solo.
+  - Where the River Goes: a solo and an outro solo.
+  - Vasoline: a short lead break.
+- **No guitar solo in the files:**
+  - Crackerman: the file says its solo is missing.
+  - Dead and Bloated, Interstate Love Song, Plush, Sexy Type Thing, Still Remains, Unglued and Wicked Garden.
+- **What they share:**
+  - phrases breathe on a held bend, not on silence (one or two rests in 30 bars);
+  - bends on a quarter of the notes, in many sizes, mostly held to the note's end;
+  - half steps as common as whole steps;
+  - vibrato on every held note;
+  - no tune played back;
+  - one busy bar now and then, the biggest about three quarters of the way.
+
+**GRUNGE MELODY put right.** It was built in 0.69.0 from published lessons, and these files showed it was off on almost every point:
+
+- busier, with almost no rests;
+- vibrato on every held note (not only the last);
+- half-step bends as common as whole steps;
+- now and then a note slid off an octave;
+- phrases coming in off the beat and tied over the bar line;
+- no tune played again, no noise bursts, no random chromatic notes.
+
+**Seven new styles**, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+
+- **HELD-BEND TALKER:** for a long solo over a one-chord riff.
+  - Phrases end on a bend held to its end.
+  - Each bend is sized by the note it starts on: the 5th bends a minor third, the 6th a half step, the 4th and flat 7th a whole step, the root now and then a major third.
+  - One busy bar every few bars, each busier than the last.
+  - Octave double stops, hardly a rest.
+- **SPRINT, BEND, RUN DOWN:** for a short solo over a power-chord riff.
+  - Held bends, then four notes leaping two octaves up into a bend struck again and again, then sixteenth runs back down.
+  - One big over-bend, no vibrato.
+  - Two short chord stabs back into the riff to end.
+- **SLIDE-IN OUTRO MELODY:**
+  - a grace note sliding into each long note, held with slow vibrato;
+  - small whammy dips;
+  - the tune coming round with the chords.
+- **SOUR BENDS & STABS:**
+  - the key's 2nd, 4th and both sixths (no third, no flat seven);
+  - half-step bends as common as whole steps, shallow vibrato, notes slid off an octave;
+  - low chord stabs between the phrases (the soloist keeps playing rhythm), and one falling bar near the end;
+  - the fifth held over the last chords as they change.
+- **VALLEY LAUNCH:**
+  - a dip to the very bottom of the neck, then a chord arpeggio launched to the top;
+  - the climax: one high note struck six times, bent wider each time (a whole step up to two);
+  - one low note to finish.
+- **CHROMATIC VAMP FLOW:** for one-chord vamps.
+  - Two bars of sixteenth runs by step with half steps passing between.
+  - Then a bar on a note that rubs, a half step under a chord note, bent up into it.
+  - No rests.
+- **RIFF-REGISTER BREAK:** a short break down in the rhythm guitar's register.
+  - Mixolydian, with a three-note cell looped across the beat and quick half-step bends.
+  - The low flat seven bent slowly up into the root to end.
+
+**Honest limits:**
+
+- **Few files with solos:** only five lead passages in 13 files, two of them short, so each style rests on one or two solos.
+- **Left out:**
+  - Interstate Love Song's slide hook (it's an intro, not a solo).
+  - Piece of Pie's answers in parallel thirds.
+  - Meatplow's opening double stop bent together and its 2/4 bars (no meter changes, as you asked).
+
+**Checked:** tests cover:
+
+- the bend sizes by the note;
+- the bend struck again and the two stabs;
+- the grace notes and the dips;
+- the sour scale, the stabs and the fifth at the end;
+- the widening bends and the low last note;
+- the vamp's runs by step and its half-step bends;
+- the low register and the slow bend into the root;
+- GRUNGE MELODY's vibrato and both bend sizes.
+
+Not checked here: the sound in Shreddage (your ears).
+
 ## 0.135.0
 
 **Solos from your 24 new files** (4 Oasis, 10 Mötley Crüe, 10 Dream Theater), read for their solos' shapes only, never copied; our own names. Five readers went through them.

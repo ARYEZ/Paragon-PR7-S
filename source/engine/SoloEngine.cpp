@@ -1081,15 +1081,15 @@ namespace pr7s
                                     "vibrato, and two short chord stabs back into the riff";
                     break;
                 case SoloStyle::slideInOutro:
-                    p.restate = p.graceNotes = true;
+                    p.cycleTheme = p.graceNotes = true;
                     p.notesPerBeat = 1.0f; p.holdMin = 2.5; p.holdMax = 4.0; p.landBeat1 = 0.8f; p.phraseBars = 2;
                     p.restChance = 0.05f; p.restBeats = 0.5; p.waves = 0; p.climb = 7;
                     p.bendChance = 0.3f; p.bends = { { 2.0f, 1.0f } }; p.releaseShare = 0.3f;
                     p.vibrato = 0.7f; p.vibratoHeld = 1.0f; p.dipShare = 0.2f; p.slideShare = 0.0f; p.fallShare = 0.0f;
                     p.endings = { { Ending::held, 1.0f } };
                     p.description = "An outro melody in the top octave: a grace note sliding into each long note held with slow "
-                                    "vibrato, a short falling figure with a small whammy dip, the tune coming round again (an "
-                                    "octave up late)";
+                                    "vibrato, a short falling figure with a small whammy dip, the tune coming round again "
+                                    "with the chords";
                     break;
                 case SoloStyle::sourBendsStabs:
                     p.sourScale = p.tiedLandings = p.colourLandings = p.lowStabs = p.halfStepShortBends = true;
@@ -1105,7 +1105,7 @@ namespace pr7s
                     break;
                 case SoloStyle::valleyLaunch:
                     p.notesPerBeat = 2.2f; p.holdMin = 1.0; p.holdMax = 1.75; p.landBeat1 = 0.25f; p.phraseBars = 1;
-                    p.restChance = 0.03f; p.restBeats = 0.5; p.waves = 1; p.waveBars = 1; p.valleyAt = 0.58f;
+                    p.restChance = 0.03f; p.restBeats = 0.5; p.waves = 1; p.waveBars = 2; p.valleyAt = 0.58f;
                     p.waveAts = { 0.64f }; p.burst = Burst::launch; p.climb = 14;
                     p.bendChance = 0.4f; p.bends = { { 2.0f, 1.0f } }; p.vibrato = 1.0f; p.vibratoHeld = 0.9f;
                     p.endings = { { Ending::dropLow, 1.0f } };

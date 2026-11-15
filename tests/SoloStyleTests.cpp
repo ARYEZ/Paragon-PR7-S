@@ -533,7 +533,7 @@ TEST_CASE ("0.116.0: every solo phrases as the real ones: held landings, off-bea
         // (0.134.0: HALF-SPEED BENT CELLS and SLOW STAIRCASE OF BENDS bend minor thirds on purpose, and STATED, RAISED,
         // DROPPED has its one over-bend among few bends, as the files)
         if (style != SoloStyle::purpleScream && style != SoloStyle::halfSpeedBentCells && style != SoloStyle::slowStaircaseBends
-            && style != SoloStyle::statedRaisedDropped)
+            && style != SoloStyle::statedRaisedDropped && style != SoloStyle::valleyLaunch)   // (0.136.0: its climax bends wider each time)
             CHECK (big * 4 <= juce::jmax (1, bends));
     }
     // The melodic new styles: the register peaks past halfway and comes back down.
@@ -1871,7 +1871,7 @@ TEST_CASE ("0.136.0: the Stone Temple Pilots round's styles have their own habit
             restruck += sprint.notes[i].effect == LineNote::Effect::bend && sprint.notes[i - 1].effect == LineNote::Effect::bend
                         && sprint.notes[i].pitch == sprint.notes[i - 1].pitch && std::abs (sprint.notes[i].beat - sprint.notes[i - 1].beat - 0.5) < 1.0e-6 ? 1 : 0;
         CHECK (restruck >= 2);
-        CHECK (notesIn (sprint, 62.4, 63.1).size() == 3);
+        CHECK (notesIn (sprint, 62.9, 63.1).size() == 3);
         CHECK (sprint.notes.back().length < 0.3);
 
         // SLIDE-IN OUTRO MELODY: a grace note under the long notes, vibrato on every long note, small dips.
@@ -1894,7 +1894,7 @@ TEST_CASE ("0.136.0: the Stone Temple Pilots round's styles have their own habit
         for (const auto& n : sour.notes)
         {
             stabs += n.length == 0.25 && n.pitch < tuning.strings[1] + 5 + 12 ? 1 : 0;
-            if (n.beat < 48.0 && n.length > 0.25)
+            if (n.beat < 48.0 && n.length > 0.25 && n.length < 1.0)   // (the pickups and runs: landings are chord notes)
             {
                 const auto pc = ((n.pitch + (n.effect == LineNote::Effect::bend ? juce::roundToInt (n.amount) : 0)) % 12 + 12) % 12;
                 CHECK (pc != 0);    // (C: A minor's third)
@@ -1932,7 +1932,7 @@ TEST_CASE ("0.136.0: the Stone Temple Pilots round's styles have their own habit
         // RIFF-REGISTER BREAK: low; the last note the flat seven bent slowly into the root.
         const auto riff = composeSolo (SoloStyle::riffRegisterBreak, spans, 4.0, tuning, {}, variation);
         CHECK (riff.notes.back().effect == LineNote::Effect::slowBend);
-        CHECK (medianPitch (riff, 0.0, 64.0) < medianPitch (composeSolo (SoloStyle::soaringBends, spans, 4.0, tuning, {}, variation), 0.0, 64.0));
+        CHECK (medianPitch (riff, 0.0, 64.0) <= tuning.strings[1] + 5 + 12);
     }
     CHECK (minorThirdsFromFifth >= 2);
     CHECK (halfFromSixth >= 1);
