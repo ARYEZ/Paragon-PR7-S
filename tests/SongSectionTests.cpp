@@ -2918,10 +2918,10 @@ TEST_CASE ("0.110.0: interlude and post-chorus types, every lane's options a dif
     REQUIRE (post.size() == names.size() + 6 + 3 + sectionTypesFor ("Chorus").size());
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (post[i].name == names[i]);
-    CHECK (post[names.size() + 6].name == "DRIVING");   // (0.141.0: six more first)
+    CHECK (post[names.size() + 6 + 3].name == "DRIVING");   // (0.141.0: six more first)
     const auto interlude = sectionTypesFor ("Interlude 2");
     REQUIRE (interlude.size() == names.size() + 6 + 3 + sectionTypesFor ("Bridge").size());
-    CHECK (interlude[names.size() + 6].name == "HALF-TIME MELODIC");
+    CHECK (interlude[names.size() + 6 + 3].name == "HALF-TIME MELODIC");
     CHECK (sectionTypeNamed ("Instrumental", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Chorus", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Hook", "HOOK RIFF").has_value());
@@ -5466,7 +5466,8 @@ TEST_CASE ("0.149.0: round four's pre-chorus and post-chorus types, every lane's
         return composeLayers (s, spans, c);
     };
     // MARCHING SNARE: no kick or cymbals, and nothing after beat 2 of the last bar.
-    for (const auto& n : layersOf ("Pre-Chorus", "MARCHING SNARE OVER HELD CHORDS", 0, 0)[(size_t) ComposerLayer::drums].notes)
+    const auto marching = layersOf ("Pre-Chorus", "MARCHING SNARE OVER HELD CHORDS", 0, 0);   // (kept: never loop over a temporary's [] member)
+    for (const auto& n : marching[(size_t) ComposerLayer::drums].notes)
     {
         CHECK (n.pitch == GmDrum::snare);
         CHECK (n.beat < 7 * 4.0 + 2.0);
@@ -5487,7 +5488,8 @@ TEST_CASE ("0.149.0: round four's pre-chorus and post-chorus types, every lane's
     // CLAPS AND ONE GUITAR: no kick in the first drum option; claps on every beat.
     {
         int claps = 0;
-        for (const auto& n : layersOf ("Post-Chorus", "CLAPS AND ONE GUITAR", 0, 0)[(size_t) ComposerLayer::drums].notes)
+        const auto clapping = layersOf ("Post-Chorus", "CLAPS AND ONE GUITAR", 0, 0);
+        for (const auto& n : clapping[(size_t) ComposerLayer::drums].notes)
         {
             CHECK (n.pitch != GmDrum::kick);
             claps += n.pitch == 39 ? 1 : 0;
