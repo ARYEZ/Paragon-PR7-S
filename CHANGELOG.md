@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.138.0
+
+**IDEAS' DRUMS tab offers your Toontrack grooves, not the MediaBay's.** The FROM MY LIBRARY column on IDEAS' DRUMS tab was still using its old way from before 0.137.0: every drum MIDI file the MediaBay had scanned, ranked by its name. That's why it showed single-drum Ghosthack files (a hi-hat alone, a kick alone) when your Toontrack grooves are in PR7-D's library.
+
+- **The same pool as the composer:** the column now shows exactly the composer's drums lane pool from 0.137.0. That means PR7-D's groove library first, 66 of the 100 from your Toontrack folder, only grooves named for the section, 4 to 16 bars, none from the left-out styles, best fit to the guitar first. MORE GROOVES pages through them six at a time.
+- **The section** comes from BUILD SECTION's choice (verse, chorus...). Changing it brings that section's grooves.
+- **The MediaBay's drum MIDI** is only used when PR7-D's library has no grooves at all, as in the composer.
+
+**Why your K94 beats came back** (your screenshot, not changed in this release): the drums lane was set to SYNC TO: LEAD. Drums that follow another lane are written by the beat maker, not taken from the library, and the beat maker used your K94 drummer profile. You've since turned the sync off and deleted the profile.
+
+**Checked:** a test builds a PR7-D library and checks the IDEAS tab lists exactly the composer's verse pool, then the chorus's. Not checked here: your own library.
+
 ## 0.137.0
 
 **The composer's drums lane, rebuilt to your rules.** Before, it picked among the handful of library grooves whose file names scored best, so ROLL kept giving you about five beats, and nothing listened to the riff. Now, for each section:

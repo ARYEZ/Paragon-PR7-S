@@ -9,6 +9,7 @@
 #include "engine/DrumIdeas.h"
 #include "engine/Pr7dGrooves.h"
 #include "engine/Studio.h"
+#include "ui/LinesPage.h"
 
 #include <set>
 
@@ -241,4 +242,37 @@ TEST_CASE ("0.107.0: a new drums track: the studio's drums when found, else the 
     CHECK (track->drumMap.isNotEmpty());
     // No PR7-D library set: none read.
     CHECK_FALSE (studio.getPr7dLibrary().found);
+}
+
+TEST_CASE ("0.138.0: IDEAS' DRUMS tab offers the composer's pool (PR7-D's grooves by the owner's rules), not every MediaBay file", "[pr7d][library][drumideas]")
+{
+    Pr7dFolder folder;
+    Studio studio (false);
+    studio.setPr7dFolderForTests (folder.presets);
+    const auto spans = eightBars();
+    LinesPage page (studio, spans);
+    auto choice = page.getBuildChoice();
+    choice.section = DrumSection::verse;
+    page.setBuildChoice (choice);
+    page.setTab (LinesPage::Tab::drums);
+    // The same grooves the composer's drums lane picks from for a verse.
+    auto state = ComposerState::fromString (studio.getComposerState());
+    state.lane (ComposerLayer::drums).style = (int) DrumSection::verse;
+    const auto pool = composerGroovePool (state, spans, studio.getComposerContext (0.0));
+    REQUIRE_FALSE (pool.empty());
+    CHECK (page.getNumLibraryGrooves() == (int) pool.size());
+    for (const auto& g : pool)
+    {
+        CHECK (g.file.getFullPathName().containsIgnoreCase ("verse"));
+        CHECK_FALSE (g.fill);
+    }
+    const auto& cards = page.getIdeas (LineIdea::Part::groove);
+    REQUIRE_FALSE (cards.empty());
+    CHECK (cards.front().style == pool.front().name);
+    // A chorus: the chorus's grooves.
+    choice.section = DrumSection::chorus;
+    page.setBuildChoice (choice);
+    const auto& chorus = page.getIdeas (LineIdea::Part::groove);
+    REQUIRE_FALSE (chorus.empty());
+    CHECK (chorus.front().style == "Big 01");
 }
