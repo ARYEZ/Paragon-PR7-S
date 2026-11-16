@@ -12779,12 +12779,12 @@ namespace pr7s
                 if (n == "DOUBLE-KICK GROOVE")
                     return every ("A layered double kick (x-x---xxx-x---x-), the snare on 2 and 4, the pedal hat on the quarters, a crash every four bars", [&] (int b)
                     { kit (out, b, "x-x---xxx-x---x-", backbeat, GmDrum::pedalHat, quarters); });
-                if (n == "SNARE ON TWO, ITS A AND FOUR, CRASH EIGHTHS" || n == "STRAIGHT BACKBEAT, CRASH EIGHTHS")
-                    return every (n == "STRAIGHT BACKBEAT, CRASH EIGHTHS" ? "The kick on 1 and 3, the snare on 2 and 4, a crash on every eighth"
+                if (n == "SNARE ON TWO, ITS A AND FOUR, CRASH EIGHTHS" || n == "PUSHED KICK, CRASH EIGHTHS")
+                    return every (n == "PUSHED KICK, CRASH EIGHTHS" ? "The kick on 1, the and of 2 and 3, the snare on 2 and 4, a crash on every eighth"
                                                                           : "The kick with the hits, the snare on 2, the a of 2 and 4, a crash and a splash on every eighth", [&] (int b)
                     {
-                        if (n == "STRAIGHT BACKBEAT, CRASH EIGHTHS")
-                            kit (out, b, "x-------x-------", backbeat, GmDrum::crash, eighths, 0);
+                        if (n == "PUSHED KICK, CRASH EIGHTHS")
+                            kit (out, b, "x-----x-x-------", backbeat, GmDrum::crash, eighths, 0);
                         else
                         {
                             kit (out, b, "x--x--x---x---x-", "----x--x----x---", GmDrum::crash, eighths, 0);
