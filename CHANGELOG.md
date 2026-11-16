@@ -2,6 +2,45 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.144.0
+
+**21 new transitions from your 61 songs**, the sixth group in your order. They're on each block's INTO THE NEXT menu (the block editor and the block's right-click menu), after SHORT BAR: 3 BEATS. A transition rewrites how a block hands over to the next one, usually its last bar or two, and leaves the melody alone.
+
+- **3+3+2 PICKUP, CUT ON THREE:** the band chugs two beats with the snare on 3+3+2, hits beat 3 together, then silence. (I'm Not Okay)
+- **DOTTED-EIGHTH FILL:** the chords ring while the snare and toms hit every three sixteenths across the last bar. (Here to Stay)
+- **RIFF ALONE BAR:** the last bar the guitar's riff alone, with a kick and a snare on its last two sixteenths. (Going Under)
+- **BURST PICKUP:** everyone on four sixteenths over the last beat, a snare fill under them. (Helena)
+- **SCALE RUN UP:** the bass and the guitar run up the scale in sixteenths into the next block's first chord, the snare rolling. (Shame, So Cold)
+- **BAND EIGHTH RAMP:** the last two bars everyone on the next chord in eighths, the snare and toms on every eighth, sixteenths over the last beat. (Intolerance, Medicate)
+- **HALF-STEP PICKUP STABS:** two power chords on the last beat, the root then a half step up, a crash on the last sixteenth. (It's On)
+- **HELD BAR:** the guitars ring one chord the whole last bar, the bass out, the drums keep time. (No One, Prayer)
+- **TREMOLO HOLD:** the root tremolo-picked over a held bass note. (Part of Me, Opiate)
+- **RIFF CUT SHORT:** everyone stops after the last bar's twelfth sixteenth. (Remember, Prayer)
+- **TWO SILENT BARS:** the last two bars silent. (My Gift To You, H.)
+- **DROP TO BASS AND KICK:** the last bar only the bass and the kick. (Tourniquet, Trash, Alone I Break)
+- **TOM CASCADE:** four falling groups of tom hits across the last bar, high to floor. (Voices)
+- **STRINGS RUN, THEN HOLD:** the drums out, the keys running up in sixteenths then holding the chord with the band. (What You Want)
+- **HIT, TWO PUSHES, SILENCE:** a hit on the one, two stabs on the a of 2 and the e of 3, then silence. (Diary of Jane)
+- **SNARE BURST, HIT AND HOLD:** a burst of sixteenth snares on beat 2, then everyone hits beat 3 and holds. (Diary of Jane)
+- **LONG STOP, BELL COUNT-IN:** a chord held a bar, then a bar of silence with the ride's bell counting in. (Divine)
+- **UNISON EIGHTHS BAR:** the last bar the kick, snare and floor tom on every eighth with the band. (Sober, The Ghost of You, Ten Thousand Fists)
+- **CYMBAL ROLL BAR:** the last bar the bass alone under hats, then crashes in sixteenths. (Ten Thousand Fists)
+- **GROWING CHORD:** the last bar the guitar in sixteenths, its chord growing from two notes to five over toms. (Stinkfist)
+- **KICK & SNARE ROLL:** the last half bar the kick and the snare in turn on every sixteenth. (The Ghost of You)
+
+The song names are only here for you; the app shows our own names.
+
+**Next:** the last group, the options inside the existing types (new drum, keys, guitar and bass options from the same songs).
+
+**Checked:** a test runs all 21 over an eight-bar block and checks four things for each: the melody is untouched, the earlier bars are as they were, nothing runs past the end, and the band's lanes change. It also checks some of their shapes:
+- the two silent bars, and the cut after the twelfth sixteenth;
+- only kicks in DROP TO BASS AND KICK;
+- the dotted fill on sixteenths 4, 7, 10 and 13;
+- the tom cascade falling high to floor;
+- the scale run ending a step under the next chord's root.
+
+Not checked here: how they sound (your ears).
+
 ## 0.143.0
 
 **Eight new intro types and eight new outro types from your 61 songs**, the fifth group in your order. The intro's TYPE menu lists them after GAPPED PEDAL, BUILD INTO THE VERSE; the outro's (and the ending's, tag's and coda's) after SINGLE-NOTE BAR, CHORD BAR. Every lane has two options, and the bass three (the last LOCKED WITH THE KICK).

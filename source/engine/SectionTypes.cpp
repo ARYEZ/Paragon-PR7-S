@@ -1144,6 +1144,28 @@ namespace pr7s
             { "SHORT BAR: 1 BEAT", "The last bar one beat long, the band hitting it together", 1 },
             { "SHORT BAR: 2 BEATS", "The last bar two beats long, the band hitting each beat together", 2 },
             { "SHORT BAR: 3 BEATS", "The last bar three beats long, the band hitting each beat together", 3 },
+            // (0.144.0) From the owner's 61 song files (shapes only; our names).
+            { "3+3+2 PICKUP, CUT ON THREE", "The band chugs two beats with the snare on 3+3+2, hits beat 3 together, then silence" },
+            { "DOTTED-EIGHTH FILL", "The chords ring while the snare and toms hit every three sixteenths across the last bar" },
+            { "RIFF ALONE BAR", "The last bar the guitar's riff alone, a kick and snare on its last two sixteenths" },
+            { "BURST PICKUP", "Everyone on four sixteenths over the last beat, a snare fill under them" },
+            { "SCALE RUN UP", "The bass and guitar run up the scale in sixteenths into the next chord, the snare rolling" },
+            { "BAND EIGHTH RAMP", "The last two bars everyone on the next chord in eighths, the snare and toms on every eighth, sixteenths to end" },
+            { "HALF-STEP PICKUP STABS", "Two power chords on the last beat, the root then a half step up, a crash on the last sixteenth" },
+            { "HELD BAR", "The guitars ring one chord the whole last bar, the bass out, the drums keep time" },
+            { "TREMOLO HOLD", "The root tremolo-picked over a held bass note for the last bar" },
+            { "RIFF CUT SHORT", "Everyone stops after the last bar's twelfth sixteenth" },
+            { "TWO SILENT BARS", "The last two bars silent" },
+            { "DROP TO BASS AND KICK", "The last bar only the bass and the kick" },
+            { "TOM CASCADE", "Four falling groups of tom hits across the last bar, high to floor" },
+            { "STRINGS RUN, THEN HOLD", "The drums out, the keys running up in sixteenths then holding the chord, the band holding it" },
+            { "HIT, TWO PUSHES, SILENCE", "A hit on the one, two stabs on the a of 2 and the e of 3, then silence" },
+            { "SNARE BURST, HIT AND HOLD", "A burst of sixteenth snares on beat 2, then everyone hits beat 3 and holds" },
+            { "LONG STOP, BELL COUNT-IN", "A chord held a bar, then a bar of silence with the ride's bell counting in" },
+            { "UNISON EIGHTHS BAR", "The last bar the kick, snare and floor tom on every eighth with the band" },
+            { "CYMBAL ROLL BAR", "The last bar the bass alone under hats, then crashes in sixteenths" },
+            { "GROWING CHORD", "The last bar the guitar in sixteenths, its chord growing from two notes to five over toms" },
+            { "KICK & SNARE ROLL", "The last half bar the kick and snare in turn on every sixteenth" },
         };
         return list;
     }

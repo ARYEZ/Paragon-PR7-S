@@ -2288,7 +2288,7 @@ namespace
 TEST_CASE ("0.104.0: transitions: the last bar written for each, the melody untouched", "[sections][transitions]")
 {
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 14);
+    REQUIRE (list.size() == 14 + 21);   // (0.144.0: 21 more)
     CHECK (list.front().name == noTransition);
     CHECK_FALSE (sectionTransitionNamed ("NONE").has_value());
     CHECK_FALSE (sectionTransitionNamed ("").has_value());
@@ -4885,5 +4885,84 @@ TEST_CASE ("0.143.0: the intro and outro types' shapes", "[sections][types][roun
         CHECK (notesIn (all[(size_t) ComposerLayer::guitar], 8.0, 32.0) == 0);
         CHECK (notesIn (all[(size_t) ComposerLayer::bass], 8.0, 32.0) == 0);
         CHECK (notesIn (all[(size_t) ComposerLayer::chords], 28.0, 32.0) > 0);
+    }
+}
+
+TEST_CASE ("0.144.0: the 21 transitions from the 61 songs", "[sections][transitions][trans144]")
+{
+    const std::vector<juce::String> names { "3+3+2 PICKUP, CUT ON THREE", "DOTTED-EIGHTH FILL", "RIFF ALONE BAR", "BURST PICKUP", "SCALE RUN UP",
+                                            "BAND EIGHTH RAMP", "HALF-STEP PICKUP STABS", "HELD BAR", "TREMOLO HOLD", "RIFF CUT SHORT", "TWO SILENT BARS",
+                                            "DROP TO BASS AND KICK", "TOM CASCADE", "STRINGS RUN, THEN HOLD", "HIT, TWO PUSHES, SILENCE",
+                                            "SNARE BURST, HIT AND HOLD", "LONG STOP, BELL COUNT-IN", "UNISON EIGHTHS BAR", "CYMBAL ROLL BAR",
+                                            "GROWING CHORD", "KICK & SNARE ROLL" };
+    const auto& list = sectionTransitions();
+    for (size_t i = 0; i < names.size(); ++i)
+        CHECK (list[14 + i].name == names[i]);
+    const auto plain = withTransition (noTransition);
+    for (const auto& name : names)
+    {
+        INFO (name);
+        const auto all = withTransition (name);
+        // The melody untouched, the bars before the last two as they were, nothing past the end.
+        CHECK (sameNotes (all[(size_t) ComposerLayer::melody], plain[(size_t) ComposerLayer::melody]));
+        bool changed = false;
+        for (const auto l : bandLanes)
+        {
+            const auto& a = all[(size_t) l];
+            const auto& b = plain[(size_t) l];
+            changed = changed || ! sameNotes (a, b);
+            for (const auto& n : a.notes)
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+            std::vector<LineNote> early, earlyPlain;
+            for (const auto& n : a.notes)
+                if (n.beat + n.length <= 20.0 + 1.0e-6)
+                    early.push_back (n);
+            for (const auto& n : b.notes)
+                if (n.beat + n.length <= 20.0 + 1.0e-6)
+                    earlyPlain.push_back (n);
+            CHECK (early.size() == earlyPlain.size());
+        }
+        CHECK (changed);
+    }
+    // TWO SILENT BARS: nothing starts in the last two bars.
+    for (const auto l : bandLanes)
+        checkQuietFrom (withTransition ("TWO SILENT BARS")[(size_t) l], 24.0, -1.0, 24.0);
+    // RIFF CUT SHORT: nothing after the last bar's twelfth sixteenth.
+    for (const auto l : bandLanes)
+        checkQuietFrom (withTransition ("RIFF CUT SHORT")[(size_t) l], 31.0, -1.0, 31.0);
+    // DROP TO BASS AND KICK: only kicks in the drums' last bar, the guitar and keys silent there.
+    {
+        const auto all = withTransition ("DROP TO BASS AND KICK");
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+                CHECK (n.pitch == 36);
+        checkQuietFrom (all[(size_t) ComposerLayer::guitar], 28.0, -1.0, 28.0);
+    }
+    // DOTTED-EIGHTH FILL: the snare and toms on sixteenths 4, 7, 10 and 13 of the last bar.
+    {
+        const auto d = withTransition ("DOTTED-EIGHTH FILL")[(size_t) ComposerLayer::drums];
+        std::set<int> at;
+        for (const auto& n : d.notes)
+            if (n.beat >= 28.0 - 1.0e-6 && (n.pitch == 38 || n.pitch == 45))
+                at.insert (juce::roundToInt ((n.beat - 28.0) * 4.0));
+        CHECK (at == std::set<int> { 4, 7, 10, 13 });
+    }
+    // TOM CASCADE: sixteen tom hits falling high to floor.
+    {
+        const auto d = withTransition ("TOM CASCADE")[(size_t) ComposerLayer::drums];
+        std::vector<int> toms;
+        for (const auto& n : d.notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+                toms.push_back (n.pitch);
+        REQUIRE (toms.size() == 16u);
+        CHECK (toms.front() == 48);
+        CHECK (toms.back() == 41);
+    }
+    // SCALE RUN UP: the bass's last note a step under the next chord's root (A, the first chord, after G).
+    {
+        const auto b = withTransition ("SCALE RUN UP")[(size_t) ComposerLayer::bass];
+        REQUIRE_FALSE (b.notes.empty());
+        CHECK ((b.notes.back().pitch % 12 == 7));   // (G, a step under A)
+        CHECK (b.notes.back().beat == Catch::Approx (31.75));
     }
 }
