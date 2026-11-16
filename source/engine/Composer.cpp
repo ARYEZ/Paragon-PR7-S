@@ -391,7 +391,8 @@ namespace pr7s
         // (0.106.0) The drums lane from the owner's groove library: the section's groove (chosen by hand, else the
         // take picks one of the best few), repeated over the section, and a library fill on the last bar of every
         // phrase of DRUM SETTINGS' FILL EVERY bars and on the section's last bar. None: off or no grooves found.
-        std::optional<LineIdea> libraryDrumsOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        std::optional<LineIdea> libraryDrumsOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c,
+                                                bool fitToRiff = true)
         {
             if (! s.libraryDrums || c.libraryGrooves.empty() || spans.empty())
                 return std::nullopt;
@@ -405,7 +406,7 @@ namespace pr7s
             idea->part = LineIdea::Part::drums;
             idea->style = "My library: " + groove->name;
             // (0.137.0, the owner: "change the library groove a little to help it make more sense with the riff")
-            if (s.fitKicks && s.libraryGroove.isEmpty())
+            if (fitToRiff && s.fitKicks && s.libraryGroove.isEmpty())
                 if (const auto moved = fitKicksToRiff (*idea, composerDrumRiff (s, spans, c), c.beatsPerBar); moved > 0)
                     idea->description << "; the kick fitted to the riff (" << moved << (moved == 1 ? " change)" : " changes)");
             const auto bpb = c.beatsPerBar;
@@ -789,6 +790,42 @@ namespace pr7s
         }
 
         double sectionLength (const std::vector<ChordSpan>& spans) { return spans.back().end - spans.front().start; }
+
+        // (0.138.0) A library groove's kicks put on hits (synced drums): every kick (notes 33-36: General MIDI's and the
+        // PR7-D Map's) taken out, the groove's commonest kick note at its usual velocity on each hit inside the length.
+        // False (and the groove left alone): it has no kick, or no hits.
+        bool kicksOnHits (LineIdea& drums, const std::vector<double>& hits, double length)
+        {
+            std::map<int, int> counts;
+            auto velocity = 0.0f;
+            auto kickLength = 0.0;
+            for (const auto& n : drums.notes)
+                if (n.pitch >= 33 && n.pitch <= 36)
+                {
+                    ++counts[n.pitch];
+                    velocity += n.velocity;
+                    kickLength += n.length;
+                }
+            if (counts.empty() || hits.empty())
+                return false;
+            auto kick = counts.begin()->first;
+            auto total = 0;
+            for (const auto& [pitch, count] : counts)
+            {
+                total += count;
+                if (count > counts[kick])
+                    kick = pitch;
+            }
+            velocity /= (float) total;
+            kickLength = juce::jmin (0.25, kickLength / total);
+            drums.notes.erase (std::remove_if (drums.notes.begin(), drums.notes.end(), [] (const LineNote& n) { return n.pitch >= 33 && n.pitch <= 36; }),
+                               drums.notes.end());
+            for (const auto h : hits)
+                if (h >= 0.0 && h < length - 1.0e-6)
+                    drums.notes.push_back ({ h, kickLength, kick, velocity });
+            std::stable_sort (drums.notes.begin(), drums.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+            return true;
+        }
 
         // The scale's pitch `steps` scale steps from `pitch` (which must be in the scale; else itself).
         int scaleStep (const Key& key, int pitch, int steps)
@@ -11149,6 +11186,21 @@ namespace pr7s
             {
                 case ComposerLayer::drums:
                 {
+                    // (0.138.0, the owner: "make synced drums use toontrack too") With library grooves on, the
+                    // section's groove from the pool, its kicks put on the sync lane's hits (DOUBLE: every hit; else
+                    // the accents); snares, cymbals and fills as the groove has them.
+                    if (s.libraryDrums)
+                        if (auto library = libraryDrumsOf (s, spans, c, false))
+                        {
+                            auto beat = std::move (*library);
+                            if (kicksOnHits (beat, lane.doubleSync ? rhythm.all : rhythm.accents, sectionLength (spans)))
+                            {
+                                beat.style = (lane.doubleSync ? "Doubling: " : "Synced: ") + beat.style;
+                                beat.description = (lane.doubleSync ? "The kick on every hit of the " : "The kick on the accents of the ")
+                                                 + leaderName.toLowerCase() + ". " + beat.description;
+                                return beat;
+                            }
+                        }
                     auto beat = drumsOf (s, spans, c, lane.style, lane.doubleSync ? rhythm.all : rhythm.accents, true);
                     beat.style = (lane.doubleSync ? "Doubling: " : "Synced: ") + beat.style;
                     beat.description = (lane.doubleSync ? "The kick on every hit of the " : "The kick on the accents of the ")
@@ -11625,10 +11677,17 @@ namespace pr7s
     {
         if (spans.empty())
             return {};
-        const auto lead = c.myRiff.has_value() ? s.riffLayer() : ComposerLayer::guitar;
-        if (lead == ComposerLayer::drums || (! c.myRiff.has_value() && ! s.lane (lead).on))
+        // (0.138.0) Drums synced to another lane fit that lane; else your riff's lane, else the guitar.
+        const auto synced = s.leaderOf (ComposerLayer::drums);
+        const auto lead = synced.has_value() && *synced != ComposerLayer::drums ? *synced
+                        : c.myRiff.has_value() ? s.riffLayer() : ComposerLayer::guitar;
+        if (lead == ComposerLayer::drums || (! c.myRiff.has_value() && ! synced.has_value() && ! s.lane (lead).on))
             return {};
-        auto riff = syncRhythmOf (lead, rawLayer (lead, s, spans, c), c.beatsPerBar, 0.0);
+        auto plain = s;
+        plain.syncLane = -1;
+        for (auto& each : plain.lanes)
+            each.syncTo = -1;
+        auto riff = syncRhythmOf (lead, rawLayer (lead, plain, spans, c), c.beatsPerBar, 0.0);
         std::sort (riff.all.begin(), riff.all.end());
         std::sort (riff.accents.begin(), riff.accents.end());
         return riff;

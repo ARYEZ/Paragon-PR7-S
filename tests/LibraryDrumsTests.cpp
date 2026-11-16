@@ -166,9 +166,40 @@ TEST_CASE ("0.106.0: library grooves over a section type's drums; SYNC still mak
         for (const auto& n : bass.notes)
             CHECK (std::abs (std::fmod (n.beat, 4.0)) < 1.0e-6);
     }
-    // SYNC on the guitar: the drums follow it (generated, locked to its hits), not the library.
+    // SYNC on the guitar (0.138.0, the owner: "make synced drums use toontrack too"): the library groove still plays,
+    // its kicks on the guitar's accents (DOUBLE: on every hit); its ride and crash as written.
     s.syncLane = (int) ComposerLayer::guitar;
-    CHECK_FALSE (composeLayers (s, spans, c)[(size_t) ComposerLayer::drums].style.startsWith ("My library"));
+    {
+        const auto all = composeLayers (s, spans, c);
+        const auto& drums = all[(size_t) ComposerLayer::drums];
+        CHECK (drums.style == "Synced: My library: Chorus Groove 01");
+        CHECK (pitchesIn (drums, 0.0, 4.0).count (51) == 1);   // (the groove's ride)
+        auto accents = syncRhythmOf (ComposerLayer::guitar, all[(size_t) ComposerLayer::guitar], 4.0, 0.0).accents;
+        std::set<long> kicks, wanted;
+        for (const auto& n : drums.notes)
+            if (n.pitch == 36)
+                kicks.insert (std::lround (n.beat * 96.0));
+        for (const auto a : accents)
+            if (a < 32.0 - 1.0e-6)
+                wanted.insert (std::lround (a * 96.0));
+        REQUIRE_FALSE (wanted.empty());
+        CHECK (kicks == wanted);
+        auto doubling = s;
+        doubling.lane (ComposerLayer::drums).doubleSync = true;
+        const auto both = composeLayers (doubling, spans, c);
+        CHECK (both[(size_t) ComposerLayer::drums].style == "Doubling: My library: Chorus Groove 01");
+        auto hits = syncRhythmOf (ComposerLayer::guitar, both[(size_t) ComposerLayer::guitar], 4.0, 0.0).all;
+        auto kickCount = 0, hitCount = 0;
+        for (const auto& n : both[(size_t) ComposerLayer::drums].notes)
+            kickCount += n.pitch == 36 ? 1 : 0;
+        for (const auto h : hits)
+            hitCount += h < 32.0 - 1.0e-6 ? 1 : 0;
+        CHECK (kickCount == hitCount);
+    }
+    // Library grooves off: the beat maker locked to the guitar, as before.
+    s.libraryDrums = false;
+    CHECK_FALSE (composeLayers (s, spans, c)[(size_t) ComposerLayer::drums].style.startsWith ("Synced: My library"));
+    s.libraryDrums = true;
     // The drums leading: the library groove.
     s.syncLane = (int) ComposerLayer::drums;
     CHECK (composeLayers (s, spans, c)[(size_t) ComposerLayer::drums].style.startsWith ("My library"));

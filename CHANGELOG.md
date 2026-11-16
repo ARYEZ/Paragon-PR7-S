@@ -10,9 +10,14 @@ Each version's notes appear on its GitHub Release page.
 - **The section** comes from BUILD SECTION's choice (verse, chorus...). Changing it brings that section's grooves.
 - **The MediaBay's drum MIDI** is only used when PR7-D's library has no grooves at all, as in the composer.
 
-**Why your K94 beats came back** (your screenshot, not changed in this release): the drums lane was set to SYNC TO: LEAD. Drums that follow another lane are written by the beat maker, not taken from the library, and the beat maker used your K94 drummer profile. You've since turned the sync off and deleted the profile.
+**Synced drums play your Toontrack grooves too** (you asked). Before, drums following another lane (the SYNC key, or the drums lane's SYNC TO) skipped the library and were written by the beat maker. That's why your K94 drummer profile came back in your screenshot. Now, with library grooves on:
 
-**Checked:** a test builds a PR7-D library and checks the IDEAS tab lists exactly the composer's verse pool, then the chorus's. Not checked here: your own library.
+- **The groove:** it comes from the same 100-groove pool, ranked by how it fits the lane the drums follow.
+- **The kicks:** they're put on that lane's hits. DOUBLE THE SYNC TRACK gives a kick on every hit; without it, a kick on its accents. The groove's own kicks are taken out, so the kick plays exactly with the lane it follows.
+- **Everything else:** snares, hats, cymbals and fills stay as the groove has them.
+- **Fallback:** with library grooves off (the drums lane's menu), synced drums are written by the beat maker as before.
+
+**Checked:** a test builds a PR7-D library and checks the IDEAS tab lists exactly the composer's verse pool, then the chorus's. Another checks synced drums: the library groove plays, its kicks land exactly on the guitar's accents (or every hit with DOUBLE), and its ride is kept. Not checked here: your own library, and how it sounds (your ears).
 
 ## 0.137.0
 
