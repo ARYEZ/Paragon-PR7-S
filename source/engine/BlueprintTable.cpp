@@ -53,14 +53,15 @@ namespace pr7s
                 { "Outro", 8, 0, "INTRO RETURNS, LAST CHORD RINGS", "", "i:2 bII III:0.5 IV:0.5 i:2 bII VII:0.5 III:0.25 VI:0.25" } }),
 
             make ("Seven-Bar Cycle",
-                  "A picked riff over one pedal for the verses, against a chorus that's one seven-bar chord cycle played "
-                  "twice; a bridge strips it to the bass, then one last double cycle and a single note.",
+                  "Clean verses of a picked figure over one pedal (no heavy guitars), against a heavy chorus that's one "
+                  "seven-bar chord cycle played twice with the cymbals opening up; a bridge strips it to the bass, then "
+                  "one last double cycle and a single note.",
                   100.0, true, "A minor", {
                 { "Intro", 4, 0, "RIFF ALONE, THEN THE BAND", "", "i:4" },
-                { "Verse", 8, 1, "PICKED OSTINATO", "DRUMS BUILD", "i:8" },
+                { "Verse", 8, 1, "CLEAN VERSE", "DRUMS BUILD", "i:8" },
                 { "Chorus", 14, 2, "DRONING", "DRUMS BUILD", "i III v IV III II V i III v IV III II V" },
                 { "Break", 2, 0, "", "", "i:2" },
-                { "Verse", 8, 1, "PICKED OSTINATO", "DRUMS BUILD", "i:8" },
+                { "Verse", 8, 1, "CLEAN VERSE", "DRUMS BUILD", "i:8" },
                 { "Chorus", 14, 2, "DRONING", "DRUMS BUILD", "i III v IV III II V i III v IV III II V" },
                 { "Bridge", 7, 0, "CLEAN BRIDGE", "", "i III v IV III II V" },
                 { "Chorus", 14, 2, "DRONING", "DRUMS BUILD", "i III v IV III II V i III v IV III II V" },

@@ -2,6 +2,10 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.152.1
+
+**SEVEN-BAR CYCLE (from The Ghost Woman and the Hunter) put right** (you told us how to tell the parts apart). The verses are the clean picked figure over the low A, now with the type CLEAN VERSE, so the composer writes them without the heavy guitars. The choruses are the seven-chord cycle, heavy, typed DRONING, whose drums open up on the cymbals. Your MIDI file couldn't show this: it has one guitar on a distorted sound the whole way and the same hi-hat beat everywhere.
+
 ## 0.152.0
 
 **BLUEPRINTS: a song's whole layout as a preset to start from** (you asked: "choose specific songs and we create their section layout as a template ... like we do with expansion rigs"). BLUEPRINTS is a new key on the SECTIONS row (also in the row's right-click menu and in KEYS as Window > Blueprints).
@@ -41,7 +45,6 @@ Where the songs leave 4/4, the layouts were kept in 4/4 (your rule):
 
 Our guesses:
 - **Section types:** each block's section type is our pick for its character, and its chords are read from power chords: where a chord's third isn't played, the key decides major or minor.
-- **The Ghost Woman and the Hunter:** its verse and chorus couldn't be told apart without vocals.
 - **The C chords in Edge of the Earth** could be minor or major.
 
 ## 0.151.0
