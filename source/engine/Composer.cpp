@@ -14414,6 +14414,83 @@ namespace pr7s
                     out.description = "The kick off the one (2, 2-and, 3-and, 4-and), the snare on 1-and, 2-a, 3-and and 4-a";
                     each ([&] (int b) { r.kit (out, b, "----x-x---x---x-", "--x----x--x----x", GmDrum::closedHat, Round3::eighths); });
                 }
+                // (0.155.0) Round four's drum options.
+                else if (n == "HIP-HOP BREAK")
+                {
+                    out.description = "A hip-hop break: a busy kick, the snare on 2 and 4 with soft ghosts before them, the pedal hat on eighths";
+                    each ([&] (int b)
+                    {
+                        r.kit (out, b, "x-x-xxx-x-xx-xx-", Round3::backbeat, GmDrum::pedalHat, Round3::eighths, 0);
+                        for (const auto k : { 3, 11 })
+                            r.hit (out, b * bpb + k * s16, GmDrum::snare, 0.32f);
+                    });
+                }
+                else if (n == "SNARE ON TWO AND THE AND OF THREE")
+                {
+                    out.description = "The kick on 1, 2, 2-and, 3, 3-and and 4-and, the snare on 2 and the and of 3, hats on eighths";
+                    each ([&] (int b) { r.kit (out, b, "x---x-x-x-x---x-", "----x-----x-----", GmDrum::closedHat, Round3::eighths); });
+                }
+                else if (n == "KIT ON ONE AND THREE")
+                {
+                    out.description = "The kick and snare together on 1 and 3, a crash on every bar's one, hats on the quarters";
+                    each ([&] (int b) { r.kit (out, b, "x-------x-------", "x-------x-------", GmDrum::closedHat, Round3::quarters, 1); });
+                }
+                else if (n == "SNARE MARCH, CRASH EVERY BAR")
+                {
+                    out.description = "A marching snare figure (soft strokes around the backbeat), the kick on 1 and 3, a crash on every bar";
+                    each ([&] (int b)
+                    {
+                        r.kit (out, b, "x-------x-------", Round3::backbeat, GmDrum::crash, "x---------------", 0);
+                        for (const auto k : { 0, 2, 8, 10, 14, 15 })
+                            r.hit (out, b * bpb + k * s16, GmDrum::snare, 0.42f);
+                    });
+                }
+                else if (n == "SOFT SNARE QUARTERS")
+                {
+                    out.description = "A soft snare on every quarter, the kick on 1 and 3, no cymbals";
+                    each ([&] (int b)
+                    {
+                        r.each16 ("x-------x-------", b * bpb, [&] (double t, int) { r.hit (out, t, GmDrum::kick, 0.7f); });
+                        r.each16 (Round3::quarters, b * bpb, [&] (double t, int) { r.hit (out, t, GmDrum::snare, 0.45f); });
+                    });
+                }
+                else if (n == "CRASH QUARTERS BUILD")
+                {
+                    out.description = "The kick on every quarter, the snare on 2 and 4, a crash on every quarter; every fourth bar the snare in eighths";
+                    each ([&] (int b)
+                    {
+                        r.kit (out, b, Round3::quarters, b % 4 == 3 ? Round3::eighths : Round3::backbeat, GmDrum::crash, Round3::quarters, 0);
+                    });
+                }
+                else if (n == "OFF-SIXTEENTH SNARE")
+                {
+                    out.description = "The snare off the grid (the a of 1, the a of 3, the and of 4), the kick on 1, 2-and, 3 and 4-e, the pedal hat on eighths";
+                    each ([&] (int b) { r.kit (out, b, "x-----x-x----x--", "---x-------x--x-", GmDrum::pedalHat, Round3::eighths, 0); });
+                }
+                else if (n == "BREAKBEAT")
+                {
+                    out.description = "A classic break: the kick on 1, 1-and, 3-and and 3-a, the snare on 2, 2-a, 3-e, 4 and 4-a, hats on eighths";
+                    each ([&] (int b) { r.kit (out, b, "x-x-------xx----", "----x--x-x--x--x", GmDrum::closedHat, Round3::eighths, 2); });
+                }
+                else if (n == "FOUR ON THE FLOOR, CRASH ON TWO THREE FOUR")
+                {
+                    out.description = "The kick on every quarter, the snare on 2 and 4, a crash on beats 2, 3 and 4";
+                    each ([&] (int b) { r.kit (out, b, Round3::quarters, Round3::backbeat, GmDrum::crash, "----x---x---x---", 0); });
+                }
+                else if (n == "HIP-HOP BACKBEAT WITH A GHOST")
+                {
+                    out.description = "A laid-back beat: the kick on 1, 2-and and 3, the snare on 2 and 4 with a ghost on the a of 2, hats on eighths";
+                    each ([&] (int b)
+                    {
+                        r.kit (out, b, "x-----x-x-------", Round3::backbeat, GmDrum::closedHat, Round3::eighths);
+                        r.hit (out, b * bpb + 7 * s16, GmDrum::snare, 0.3f);
+                    });
+                }
+                else if (n == "PEDAL HAT SIXTEENTHS UNDER THE BEAT")
+                {
+                    out.description = "A rock beat (the kick on 1, 3 and 3-and, the snare on 2 and 4) over the pedal hat on every sixteenth";
+                    each ([&] (int b) { r.kit (out, b, "x-------x-x-----", Round3::backbeat, GmDrum::pedalHat, "xxxxxxxxxxxxxxxx"); });
+                }
                 else
                     return std::nullopt;
                 sortNotes (out);
@@ -14474,6 +14551,220 @@ namespace pr7s
                             const auto i = order[k];
                             const auto p = shape[(size_t) (i % (int) shape.size())] + (i >= (int) shape.size() ? 12 : 0);
                             r.add (out, b * bpb + k * e, e * 0.35, p, 0.5f);
+                        }
+                    });
+                }
+                // (0.155.0) Round four's keys options.
+                else if (n == "ONE-NOTE SIXTEENTH LOOP")
+                {
+                    out.description = "One high note of the key on every sixteenth, the beats a little louder";
+                    const auto note = r.tonicIn (72, 83);
+                    each ([&] (int b)
+                    {
+                        for (int k = 0; k < 16; ++k)
+                            r.add (out, b * bpb + k * s16, s16 * 0.7, note, k % 4 == 0 ? 0.52f : 0.38f);
+                    });
+                }
+                else if (n == "ECHOING PLUCK")
+                {
+                    out.description = "A pluck on the chord's root on 1 and 3, each echoed twice, quieter, three sixteenths apart";
+                    each ([&] (int b)
+                    {
+                        const auto note = rootNear (r.chordOfBar (b), 72, 83, false);
+                        for (const auto start : { 0, 8 })
+                            for (int k = 0; k < 3; ++k)
+                                r.add (out, b * bpb + (start + k * 3) * s16, s16 * 1.2, note, 0.56f - 0.17f * (float) k);
+                    });
+                }
+                else if (n == "DYAD PULSE IN SIXTEENTHS")
+                {
+                    out.description = "The chord's root and fifth together on every sixteenth";
+                    each ([&] (int b)
+                    {
+                        const auto& chord = r.chordOfBar (b);
+                        const auto root = rootNear (chord, 60, 71, false);
+                        const auto fifth = chord.type == Chord::Type::diminished ? 6 : chord.type == Chord::Type::augmented ? 8 : 7;
+                        for (int k = 0; k < 16; ++k)
+                        {
+                            r.add (out, b * bpb + k * s16, s16 * 0.75, root, k % 4 == 0 ? 0.5f : 0.38f);
+                            r.add (out, b * bpb + k * s16, s16 * 0.75, root + fifth, k % 4 == 0 ? 0.5f : 0.38f);
+                        }
+                    });
+                }
+                else if (n == "RIGHT HAND AFTER THE DOWNBEAT")
+                {
+                    out.description = "The left hand's root on 1 and 3, the right hand's chord a sixteenth after each, held to the next beat";
+                    each ([&] (int b)
+                    {
+                        const auto& chord = r.chordOfBar (b);
+                        const auto voicings = voicingsFor (chord, 60);
+                        const auto low = rootNear (chord, 36, 47, false);
+                        for (const auto start : { 0, 8 })
+                        {
+                            r.add (out, b * bpb + start * s16, q * 1.9, low, 0.5f);
+                            if (! voicings.empty())
+                                for (const auto p : voicings.front())
+                                    r.add (out, b * bpb + (start + 1) * s16, q * 0.7, p, 0.44f);
+                        }
+                    });
+                }
+                else if (n == "LEFT HAND ON TWO AND FOUR")
+                {
+                    out.description = "The right hand holds the chord the bar, the left hand's root in octaves on 2 and 4";
+                    each ([&] (int b)
+                    {
+                        const auto& chord = r.chordOfBar (b);
+                        const auto voicings = voicingsFor (chord, 60);
+                        if (! voicings.empty())
+                            for (const auto p : voicings.front())
+                                r.add (out, b * bpb, bpb * 0.96, p, 0.4f);
+                        const auto low = rootNear (chord, 36, 47, false);
+                        for (const auto k : { 4, 12 })
+                        {
+                            r.add (out, b * bpb + k * s16, q * 0.8, low, 0.52f);
+                            r.add (out, b * bpb + k * s16, q * 0.8, low + 12, 0.48f);
+                        }
+                    });
+                }
+                else if (n == "HALF-BAR BROKEN CHORD")
+                {
+                    out.description = "The chord's notes low to high in eighths, starting again each half bar, every note left to ring";
+                    each ([&] (int b)
+                    {
+                        const auto voicings = voicingsFor (r.chordOfBar (b), 55);
+                        if (voicings.empty())
+                            return;
+                        auto shape = voicings.front();
+                        shape.push_back (shape.front() + 12);
+                        for (int k = 0; k < 8; ++k)
+                        {
+                            const auto at = b * bpb + k * e;
+                            r.add (out, at, (4 - k % 4) * e * 0.96, shape[(size_t) (k % 4) % shape.size()], 0.46f);
+                        }
+                    });
+                }
+                else if (n == "SYNCOPATED PIANO FIGURE")
+                {
+                    out.description = "The chord on 1, the a of 1, the and of 2, the and of 3 and the a of 3, the root under the first";
+                    each ([&] (int b)
+                    {
+                        const auto& chord = r.chordOfBar (b);
+                        const auto voicings = voicingsFor (chord, 60);
+                        r.add (out, b * bpb, q * 1.4, rootNear (chord, 36, 47, false), 0.5f);
+                        if (! voicings.empty())
+                            r.each16 ("x--x--x---x--x--", b * bpb, [&] (double t, int)
+                            {
+                                for (const auto p : voicings.front())
+                                    r.add (out, t, s16 * 2.4, p, 0.46f);
+                            });
+                    });
+                }
+                else if (n == "STRINGS EIGHTHS OVER A HELD PAD")
+                {
+                    out.description = "A pad holding the chord the bar, the strings' top note of it on every eighth above";
+                    each ([&] (int b)
+                    {
+                        const auto& chord = r.chordOfBar (b);
+                        const auto voicings = voicingsFor (chord, 52);
+                        if (voicings.empty())
+                            return;
+                        for (const auto p : voicings.front())
+                            r.add (out, b * bpb, bpb * 0.96, p, 0.32f);
+                        const auto top = voicings.front().back() + 12;
+                        for (int k = 0; k < 8; ++k)
+                            r.add (out, b * bpb + k * e, e * 0.85, top, k % 2 == 0 ? 0.46f : 0.36f);
+                    });
+                }
+                else if (n == "TWO SYNTHS IN CALL AND ANSWER")
+                {
+                    out.description = "A high synth plays the chord's notes up in eighths in the first half of one bar; a lower one answers them down in the second half of the next";
+                    each ([&] (int b)
+                    {
+                        const auto voicings = voicingsFor (r.chordOfBar (b), b % 2 == 0 ? 72 : 60);
+                        if (voicings.empty())
+                            return;
+                        const auto& shape = voicings.front();
+                        const auto start = b % 2 == 0 ? 0 : 4;
+                        for (int k = 0; k < 4; ++k)
+                        {
+                            const auto i = b % 2 == 0 ? k : 3 - k;
+                            r.add (out, b * bpb + (start + k) * e, e * 0.9, shape[(size_t) (i % (int) shape.size())] + (i >= (int) shape.size() ? 12 : 0), 0.5f);
+                        }
+                    });
+                }
+                else if (n == "OFF-BEAT SYNTH STABS")
+                {
+                    out.description = "Short synth chords on every off-beat eighth";
+                    each ([&] (int b)
+                    {
+                        const auto voicings = voicingsFor (r.chordOfBar (b), 62);
+                        if (! voicings.empty())
+                            r.each16 (Round3::offEighths, b * bpb, [&] (double t, int)
+                            {
+                                for (const auto p : voicings.front())
+                                    r.add (out, t, e * 0.35, p, 0.48f);
+                            });
+                    });
+                }
+                else if (n == "STRINGS SIXTEENTH PEDAL IN THREES")
+                {
+                    out.description = "Strings on the key's note in sixteenths, every third one leaning in";
+                    const auto note = r.tonicIn (60, 71);
+                    each ([&] (int b)
+                    {
+                        for (int k = 0; k < 16; ++k)
+                        {
+                            const auto at = b * bpb + k * s16;
+                            r.add (out, at, s16 * 0.85, note, ((b * 16 + k) % 3) == 0 ? 0.56f : 0.34f);
+                        }
+                    });
+                }
+                else if (n == "CHOIR STABS ON THE DOTTED GRID")
+                {
+                    out.description = "A choir's chord on every dotted eighth (every three sixteenths), the last a quarter";
+                    each ([&] (int b)
+                    {
+                        const auto voicings = voicingsFor (r.chordOfBar (b), 57);
+                        if (voicings.empty())
+                            return;
+                        for (const auto k : { 0, 3, 6, 9, 12 })
+                            for (const auto p : voicings.front())
+                                r.add (out, b * bpb + k * s16, (k == 12 ? 4 : 2) * s16 * 0.9, p, 0.42f);
+                    });
+                }
+                else if (n == "TRIAD ARPEGGIO IN SIXTEENTHS")
+                {
+                    out.description = "The key's own triad up and down in sixteenths, the same notes over every chord";
+                    const auto root = r.tonicIn (64, 75);
+                    const int triad[] { root, root + (r.key.minor ? 3 : 4), root + 7, root + (r.key.minor ? 3 : 4) };
+                    each ([&] (int b)
+                    {
+                        for (int k = 0; k < 16; ++k)
+                            r.add (out, b * bpb + k * s16, s16 * 0.8, triad[k % 4], k % 4 == 0 ? 0.48f : 0.38f);
+                    });
+                }
+                else if (n == "HIGH STAB ON TWO AND FOUR")
+                {
+                    out.description = "A short high chord on 2 and 4";
+                    each ([&] (int b)
+                    {
+                        const auto voicings = voicingsFor (r.chordOfBar (b), 72);
+                        if (! voicings.empty())
+                            for (const auto k : { 4, 12 })
+                                for (const auto p : voicings.front())
+                                    r.add (out, b * bpb + k * s16, e * 0.5, p, 0.5f);
+                    });
+                }
+                else if (n == "FIXED HIGH DYAD IN SIXTEENTHS")
+                {
+                    out.description = "The key's note and its fifth high, together on every sixteenth, the same over every chord";
+                    const auto note = r.tonicIn (72, 83);
+                    each ([&] (int b)
+                    {
+                        for (int k = 0; k < 16; ++k)
+                        {
+                            r.add (out, b * bpb + k * s16, s16 * 0.7, note, k % 4 == 0 ? 0.46f : 0.34f);
+                            r.add (out, b * bpb + k * s16, s16 * 0.7, note + 7, k % 4 == 0 ? 0.46f : 0.34f);
                         }
                     });
                 }

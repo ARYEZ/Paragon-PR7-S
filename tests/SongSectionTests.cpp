@@ -1258,8 +1258,9 @@ TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, ea
     // The other types: SPLIT CHUG's and STACCATO CHUG's bass and drums, CLEAN VERSE's guitar.
     ComposerState split;
     applySectionType (split, "Verse", "SPLIT CHUG");
-    CHECK (composerChoices (ComposerLayer::drums, split, spans, c).size() == 11);   // (0.145.0: 2 + the 9 extras)
-    CHECK (distinct (composerChoices (ComposerLayer::drums, split, spans, c)) == 11);
+    const auto splitDrums = 2u + (size_t) extraApproaches (ComposerLayer::drums).size();   // (0.145.0: 2 + the extras)
+    CHECK (composerChoices (ComposerLayer::drums, split, spans, c).size() == splitDrums);
+    CHECK (distinct (composerChoices (ComposerLayer::drums, split, spans, c)) == (int) splitDrums);
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::guitar, split, c));   // (its guitar has its riff kinds and styles)
     const auto clean = cleanState (-1);
     CHECK (distinct (composerChoices (ComposerLayer::guitar, clean, spans, c)) == 10);   // (0.100.0: seven; 0.101.0: ten)
@@ -5092,8 +5093,8 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const auto drums = extraApproaches (ComposerLayer::drums);
     const auto keys = extraApproaches (ComposerLayer::chords);
-    CHECK (drums.size() == 9);
-    CHECK (keys.size() == 5);
+    CHECK (drums.size() == 9 + 11);   // (0.155.0: eleven more drums, fifteen more keys)
+    CHECK (keys.size() == 5 + 15);
     CHECK (extraApproaches (ComposerLayer::guitar).isEmpty());
     CHECK (extraApproaches (ComposerLayer::bass).isEmpty());
 
@@ -5121,18 +5122,22 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
             const auto base = baseSectionApproaches (s, l);
             const auto all = sectionApproaches (s, l);
             REQUIRE (! base.isEmpty());
-            CHECK (all.size() == base.size() + (l == ComposerLayer::drums ? 9 : 5));
+            const auto& extras = l == ComposerLayer::drums ? drums : keys;
+            int added = 0;
+            for (const auto& x : extras)
+                added += base.contains (x) ? 0 : 1;   // (one the type already has stays its own)
+            CHECK (all.size() == base.size() + added);
             for (int i = 0; i < base.size(); ++i)
                 CHECK (all[i] == base[i]);   // (the type's own first: songs keep their choices)
-            const auto& extras = l == ComposerLayer::drums ? drums : keys;
             std::set<juce::String> seen;
-            for (int i = 0; i < extras.size(); ++i)
+            for (int i = base.size(); i < all.size(); ++i)
             {
                 auto t = s;
-                t.lane (l).approach = base.size() + i;
+                t.lane (l).approach = i;
                 const auto idea = composeLayers (t, spans, c)[(size_t) l];
-                INFO (type << " " << extras[i]);
-                CHECK (idea.style == extras[i].toLowerCase());
+                INFO (type << " " << all[i]);
+                CHECK (extras.contains (all[i]));
+                CHECK (idea.style == all[i].toLowerCase());
                 CHECK (! idea.notes.empty());
                 CHECK (seen.insert (key (idea)).second);
                 for (const auto& n : idea.notes)
@@ -5163,6 +5168,67 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     REQUIRE (! bass.notes.empty());
     for (const auto& n : bass.notes)
         CHECK (kicks.count (juce::roundToInt (n.beat * 4.0)) == 1);
+}
+
+TEST_CASE ("0.155.0: round four's drums and keys options", "[sections][types][extras155]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    ComposerState s;
+    applySectionType (s, "Chorus", "DRIVING");
+    const auto play = [&] (ComposerLayer l, const juce::String& name)
+    {
+        auto t = s;
+        const auto all = sectionApproaches (t, l);
+        REQUIRE (all.contains (name));
+        t.lane (l).approach = all.indexOf (name);
+        return composeLayers (t, spans, c)[(size_t) l];
+    };
+    const auto stepsOf = [] (const LineIdea& idea, int pitch, int bar)
+    {
+        std::set<int> at;
+        for (const auto& n : idea.notes)
+            if (n.pitch == pitch && n.beat >= bar * 4.0 - 1.0e-6 && n.beat < bar * 4.0 + 4.0 - 1.0e-6)
+                at.insert (juce::roundToInt ((n.beat - bar * 4.0) * 4.0));
+        return at;
+    };
+    // FOUR ON THE FLOOR, CRASH ON TWO THREE FOUR.
+    {
+        const auto d = play (ComposerLayer::drums, "FOUR ON THE FLOOR, CRASH ON TWO THREE FOUR");
+        CHECK (stepsOf (d, GmDrum::kick, 1) == std::set<int> { 0, 4, 8, 12 });
+        CHECK (stepsOf (d, GmDrum::crash, 1) == std::set<int> { 4, 8, 12 });
+    }
+    // OFF-SIXTEENTH SNARE: the snare on 3, 11 and 14.
+    CHECK (stepsOf (play (ComposerLayer::drums, "OFF-SIXTEENTH SNARE"), GmDrum::snare, 2) == std::set<int> { 3, 11, 14 });
+    // CRASH QUARTERS BUILD: every fourth bar the snare on every eighth.
+    {
+        const auto d = play (ComposerLayer::drums, "CRASH QUARTERS BUILD");
+        CHECK (stepsOf (d, GmDrum::snare, 3) == std::set<int> { 0, 2, 4, 6, 8, 10, 12, 14 });
+        CHECK (stepsOf (d, GmDrum::snare, 2) == std::set<int> { 4, 12 });
+    }
+    // SOFT SNARE QUARTERS: no cymbals.
+    for (const auto& n : play (ComposerLayer::drums, "SOFT SNARE QUARTERS").notes)
+        CHECK ((n.pitch == GmDrum::kick || n.pitch == GmDrum::snare));
+    // FIXED HIGH DYAD / TRIAD ARPEGGIO: the same notes over every chord.
+    for (const auto* name : { "FIXED HIGH DYAD IN SIXTEENTHS", "TRIAD ARPEGGIO IN SIXTEENTHS", "ONE-NOTE SIXTEENTH LOOP" })
+    {
+        INFO (name);
+        std::set<int> pitches;
+        for (const auto& n : play (ComposerLayer::chords, name).notes)
+            pitches.insert (n.pitch);
+        CHECK (pitches.size() <= 3u);
+        for (const auto p : pitches)
+            CHECK ((p % 12 == 9 || p % 12 == 0 || p % 12 == 4));   // (A minor's triad)
+    }
+    // HIGH STAB ON TWO AND FOUR: only on 2 and 4.
+    for (const auto& n : play (ComposerLayer::chords, "HIGH STAB ON TWO AND FOUR").notes)
+    {
+        const auto step = juce::roundToInt (std::fmod (n.beat, 4.0) * 4.0);
+        CHECK ((step == 4 || step == 12));
+    }
+    // CHOIR STABS ON THE DOTTED GRID: every three sixteenths.
+    for (const auto& n : play (ComposerLayer::chords, "CHOIR STABS ON THE DOTTED GRID").notes)
+        CHECK (juce::roundToInt (std::fmod (n.beat, 4.0) * 4.0) % 3 == 0);
 }
 
 TEST_CASE ("0.146.0: the guitar ideas as verse types, every lane's options a different part", "[sections][types][guitar146]")

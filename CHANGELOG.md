@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.155.0
+
+**Eleven more drum options and fifteen more keys options from your 54 song files** (round four, shapes only; our own names). Like 0.145.0's, they're offered under every named section type, after that type's own options, so the songs you've built keep their choices. Pick one from the drums or keys lane's style menu in ARCHITECT.
+
+- **Drums:** HIP-HOP BREAK, SNARE ON TWO AND THE AND OF THREE, KIT ON ONE AND THREE, SNARE MARCH, CRASH EVERY BAR, SOFT SNARE QUARTERS, CRASH QUARTERS BUILD, OFF-SIXTEENTH SNARE, BREAKBEAT, FOUR ON THE FLOOR, CRASH ON TWO THREE FOUR, HIP-HOP BACKBEAT WITH A GHOST, PEDAL HAT SIXTEENTHS UNDER THE BEAT.
+- **Keys:** ONE-NOTE SIXTEENTH LOOP, ECHOING PLUCK, DYAD PULSE IN SIXTEENTHS, RIGHT HAND AFTER THE DOWNBEAT, LEFT HAND ON TWO AND FOUR, HALF-BAR BROKEN CHORD, SYNCOPATED PIANO FIGURE, STRINGS EIGHTHS OVER A HELD PAD, TWO SYNTHS IN CALL AND ANSWER, OFF-BEAT SYNTH STABS, STRINGS SIXTEENTH PEDAL IN THREES, CHOIR STABS ON THE DOTTED GRID, TRIAD ARPEGGIO IN SIXTEENTHS, HIGH STAB ON TWO AND FOUR, FIXED HIGH DYAD IN SIXTEENTHS.
+
+Four of these were already options inside one or two of 0.147.0's verse types (HIP-HOP BREAK, SNARE ON TWO AND THE AND OF THREE, SOFT SNARE QUARTERS, ONE-NOTE SIXTEENTH LOOP); now every type has them. BREAKBEAT here is a classic break, not the beat of 0.148.0's BREAKBEAT UNDER HELD CHORDS (that one stays with its chorus type). Two ideas were left out: the twelve-eight ballad beat (it needs a triplet feel, and you'd rather keep everything in straight 4/4), and "the kit only on the band's hits" (an option on the shared list can't see what the guitar plays, so it would be guessing).
+
 ## 0.154.0
 
 **27 more transitions from your 54 song files** (round four, read for their shapes only; our own names). They're in INTO THE NEXT on every block of the SECTIONS row (right-click a block, or its editor), after the ones from 0.144.0. Each one only changes the end of its block, and the melody is never touched:
