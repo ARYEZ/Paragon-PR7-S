@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.147.0
+
+**Eleven verse types from your 54 new songs** (round four, the first group: verses, then choruses, pre/post-choruses, bridges and breakdowns, intros and outros, transitions, then the options and new versions of styles we have). They're in the verse's TYPE menu after MUTED PEDAL, ACCENTS IN THREES (and in the pre-chorus's, after its own). Each writes the guitar, bass, keys and drums together, with two or three options a lane; the bass's last is always LOCKED WITH THE KICK. Shapes only, our names; the songs are named here as where each came from.
+
+- **HOOK OVER THE BEAT, GUITARS OUT:** the guitars out (or only a pickup chord every fourth bar), a keys hook fixed over every chord (the key's root and fifth in eighths, or the key's triad stabbed on 4+2+4+2+4), whole-note bass or pickups only, a sparse backbeat or the snare on 2 and the and of 3. (Heavy Is the Crown, What I've Done, By Myself)
+- **SEQUENCER VERSE, NO KIT:** one chord held three bars, an arpeggiator, whole-note bass, only clicks for drums (or the kick on the quarters with toms, no snare). (New Divide)
+- **HALF-STEP DROP PAIRS:** two-sixteenth stabs on 1, the a of 2 and 4, the chord a half step above dropping onto the root, the bass on its own sixteenth riff; or power chords on the 3+3+2 anchors with a flat-two burst. (Denial, Figure.09)
+- **TOM BURST WITH THE CELL, THEN SILENCE:** three hits a dotted eighth apart with the toms rolling under them, then a silent bar. (Awake)
+- **TWO-NOTE SEESAW IN EIGHTHS:** a high chord tone and the fifth under it in turn, climbing each half bar, over a two-bar bass and kick riff, the snare on 3 (or a side stick and hats on the riff). (Part of Me)
+- **OFF-BEAT STABS WITH THE SNARE:** short chords on every off-eighth, the snare with them, a keys ostinato over; or a hip-hop break. (In Pieces)
+- **TRILL HOOK OVER HATS:** a high two-note trill alone over a hats-only groove, or over a low chug cell. (Beautiful)
+- **HELD CHORD A BAR, TWO HITS EVERY FOURTH:** a chord rung each bar over a double-kick groove; every fourth bar two hits and a snare and tom fill. (Whatever)
+- **STRINGS ALONE VERSE:** the band out, strings over a pad walking down a step a bar; a kick and tom on 3 at the end. (Forsaken)
+- **TREMOLO LINE IN GROUPS:** a single-note line, each note a sixteenth burst in groups of 4, 3, 3 and 6, over root sixteenths. (Wasteland)
+- **RIFF BARS AND THIN BARS IN TURN:** two bars of a chug cell, two thin bars, a tom rumble every fourth pair. (The Howling, its 6/8 riff as straight 4/4)
+
+The 12/8 ballad feel two songs have is left out, as you chose: everything stays in straight 4/4.
+
 ## 0.146.0
 
 **The five guitar ideas from your 61 songs as verse types of their own** (you asked, after 0.145.0 left them out of the option lists). They're in the verse's TYPE menu after BASS GROOVE, GUITAR SQUEALS (and so in the pre-chorus's too, which takes the verse's types after its own). Each writes the guitar, bass, keys and drums together, so the bass's DOUBLES THE GUITAR always doubles the riff you hear.
