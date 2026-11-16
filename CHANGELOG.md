@@ -2,6 +2,31 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.139.0
+
+**Twelve new verse types from your 61 songs.** You uploaded 61 more song files and asked for every section to be built out except solos. Six readers went through every song, every section and every part (shapes only: rhythms, registers, how the parts lock together, never notes copied). That gave about 80 new section types, 21 transitions and about 40 options. You chose to build it all, verses first. This release is the verses: twelve new types on the verse's TYPE menu, after TRESILLO RIFF and before DRONING and SPARSE. A pre-chorus lists them too, after its own.
+
+Each type sets what the guitar, bass, keys and drums do, and each lane has two or three options. The bass always ends with LOCKED WITH THE KICK. The lead plays its own styles, as with the other verse types.
+
+- **BASS RIFF, HIGH NOTES RUNG:** the bass carries the riff in sixteenths (its root, a flick to the b7 under it, its octave and its fifth). The guitar only rings high notes over it: octaves, one held note a bar, or a high sus chord. The kick plays on the bass's hits. (From Awaken, BBK, Ball Tongue, Crawl Away.)
+- **RIFF BAR, HOOK BAR:** one bar the bass and the kick play a 3+3+2 figure (the root three times, the fifth three times). The next bar only a keys hook plays. The guitar is out, doubles the riff bars, or comes in halfway. (From Let's Get This Party Started, My Gift To You.)
+- **DRUMS, BASS, GUITAR IN TURN:** the verse builds in quarters. First the drums alone (toms on a 3+3+2 cell, or hats), then the bass, then the guitar's chugs, then a falling single-note line, with the snare's backbeat in the last quarter. (From Lateralus, It's On, No One.)
+- **TOMS AND OCTAVE BASS:** no snare. The toms step down the kit in sixteenths, the kick is on the quarters, and the bass jumps the octave every other eighth. The guitar rings one chord every two bars, or is out. A snare fill closes the verse. (From Shame.)
+- **TOM FIGURE VERSE:** a two-bar figure on the toms with the snare on 3. The guitars are out the first half, then palm-mute the low root on every tom hit, with the bass on the same hits. (From Farther Away.)
+- **SIX-SIXTEENTH CELLS:** cells six sixteenths long, laid 6+6+4 in each bar. The low root plays twice, then the root with its tritone (or fifth). The kick plays in pairs on each cell's start, or the toms take the cell. (From Divine.)
+- **HOLED SIXTEENTH PEDAL:** the muted low root on a sixteenth stream with two holes. The kick, with the floor tom if you like, plays the same stream under a snare on 2 and 4. There's an option with a high two-note siren over it. (From Down With the Sickness.)
+- **GUITAR CALLS, BASS ANSWERS:** the guitar plays its riff for three beats (or two) and stops. The bass answers alone in the gap with two notes ending on the root. The kick is on the call and the snare on the answer, with a tom fill every fourth bar. (From Undertow.)
+- **THREE-BAR CYCLE:** a cell of nine chugs and three rests, twelve sixteenths long, so it runs across the bar lines and comes round every three bars, all in 4/4. There's no backbeat: the snare plays every six sixteenths and a crash marks each time the cycle comes round. (From Aenima.)
+- **THREE-BAR RIFF, KICK AND BASS ON THE BEATS:** a guitar riff three bars long, so each time it starts on a different bar of the four. Under it the kick and the bass play beats 1 to 3 and the snare only beat 3. (From Coming Undone.)
+- **KICK AND BASS IN UNISON:** the guitars are out. The kick and the bass play one syncopated sixteenth line, hit for hit, with no snare for three bars. Strings hold the root, or a high bell note rings now and then. The guitars come in halfway with bursts after 2 and 4. (From Tourniquet.)
+- **BASS GROOVE, GUITAR SQUEALS:** the bass plays a sixteenth groove with a rest after beats 1 and 3, over a funk kick with ghost snares. The guitar plays only a high held squeal with vibrato in one bar and a six-note burst at the next bar's end. (From Got the Life.)
+
+The song names are only here for you; the app shows our own names.
+
+**Next, in the order you chose:** the choruses (23 types), then the pre-choruses and post-choruses, then the bridges and breakdowns, then the intros and outros, then the 21 transitions and the options inside the existing types.
+
+**Checked:** a test makes every option of every lane in all twelve types and checks each is a different part. Another checks each type's shape: the bass and the kick together where they should be, the guitar silent where it should be, the three-bar cycle coming round every twelve sixteenths, the stream's two holes, and the snare only where each type puts it. Not checked here: how they sound (your ears).
+
 ## 0.138.0
 
 **IDEAS' DRUMS tab offers your Toontrack grooves, not the MediaBay's.** The FROM MY LIBRARY column on IDEAS' DRUMS tab was still using its old way from before 0.137.0: every drum MIDI file the MediaBay had scanned, ranked by its name. That's why it showed single-drum Ghosthack files (a hi-hat alone, a kick alone) when your Toontrack grooves are in PR7-D's library.

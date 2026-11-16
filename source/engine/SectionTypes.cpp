@@ -124,6 +124,19 @@ namespace pr7s
                          { "CHUGS, THEN DOTTED HITS", "Sixteenth chugs with holes for three bars, then dotted-quarter hits, the kick displaced under them", r, {}, v },
                          { "PEDAL RIFF IN SIXTEENTHS", "One guitar's sixteenth riff on a low pedal climbing the minor pentatonic, a plain rock beat under it", r, {}, v },
                          { "TRESILLO RIFF", "Power chords on a 3+3+2 figure in the first half bar, a high ostinato over it, hats and a sparse kick", r, {}, v },
+                         // (0.139.0) Twelve more from the owner's 61 song files (shapes only, all in 4/4; our names).
+                         { "BASS RIFF, HIGH NOTES RUNG", "The bass carries the riff in sixteenths, the guitar only rings high notes over it", r, {}, v },
+                         { "RIFF BAR, HOOK BAR", "One bar the bass and the kick on a 3+3+2 figure, the next bar only a keys hook", r, {}, v },
+                         { "DRUMS, BASS, GUITAR IN TURN", "The drums alone, then the bass, then the guitar's chugs, then a line: each a quarter of the verse", r, {}, v },
+                         { "TOMS AND OCTAVE BASS", "No snare: the toms stepping down the kit, the bass jumping the octave, the guitar one rung chord", r, {}, v },
+                         { "TOM FIGURE VERSE", "A two-bar figure on the toms with the snare on 3, the guitars out, then chugging on the tom hits", r, {}, v },
+                         { "SIX-SIXTEENTH CELLS", "Root-and-tritone cells of six sixteenths laid 6+6+4 in each bar, the bass with them, the kick in pairs", r, {}, v },
+                         { "HOLED SIXTEENTH PEDAL", "The muted root on a sixteenth stream with two holes, the kick (and toms) on the same stream", r, {}, v },
+                         { "GUITAR CALLS, BASS ANSWERS", "The guitar's riff for three beats, then the bass answers alone in the gap", r, {}, v },
+                         { "THREE-BAR CYCLE", "Nine chugs and three rests in a cell that runs across the bar lines, coming round every three bars, no backbeat", r, {}, v },
+                         { "THREE-BAR RIFF, KICK AND BASS ON THE BEATS", "A guitar riff three bars long over the kick and the bass on beats 1 to 3, the snare only on 3", r, {}, v },
+                         { "KICK AND BASS IN UNISON", "The guitars out: the kick and the bass on one syncopated line, the guitars coming in with bursts after 2 and 4", r, {}, v },
+                         { "BASS GROOVE, GUITAR SQUEALS", "The bass's sixteenth groove over a funk kick, the guitar only a high squeal one bar and a burst the next", r, {}, v },
                          droning, sparse };
             }
             case 2:
@@ -445,6 +458,31 @@ namespace pr7s
               { "SILENT", "HELD PADS" }, { "PLAIN ROCK BEAT", "KICK WITH THE RIFF" } },
             { "TRESILLO RIFF", { "TRESILLO, THEN REST", "RIFF, THEN PULSE" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
               { "HIGH FIFTH OSTINATO", "SILENT" }, { "HATS AND SPARSE KICK", "SNARE ON THE RIFF" } },
+            // (0.139.0)
+            { "BASS RIFF, HIGH NOTES RUNG", { "HIGH OCTAVES RUNG", "ONE HIGH NOTE A BAR", "HIGH SUS CHORD RUNG" }, { "SIXTEENTH RIFF", "RIFF WITH GAPS", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "KICK WITH THE BASS", "PLAIN BACKBEAT" } },
+            { "RIFF BAR, HOOK BAR", { "OUT", "DOUBLES THE RIFF BAR", "OUT, THEN DOUBLES THE RIFF BAR" }, { "RIFF BAR, SILENT BAR", "RIFF EVERY BAR", "LOCKED WITH THE KICK" },
+              { "HOOK IN THE GAP BARS", "HOOK EVERY BAR" }, { "KICK WITH THE RIFF BAR, TOMS IN THE GAP", "HATS IN THE GAP" } },
+            { "DRUMS, BASS, GUITAR IN TURN", { "CHUGS, THEN A LINE", "CHUGS TO THE END" }, { "RIFF FROM THE SECOND QUARTER", "ROOTS FROM THE SECOND QUARTER", "LOCKED WITH THE KICK" },
+              { "SILENT", "PADS IN THE LAST QUARTER" }, { "TOMS, THEN THE BEAT", "HATS, THEN THE BEAT" } },
+            { "TOMS AND OCTAVE BASS", { "ONE CHORD RUNG EVERY TWO BARS", "OUT" }, { "OCTAVE EIGHTHS", "ROOT EIGHTHS", "LOCKED WITH THE KICK" },
+              { "HELD PADS", "SILENT" }, { "TOMS DOWN THE KIT", "TOMS AND HATS" } },
+            { "TOM FIGURE VERSE", { "OUT, THEN CHUGS ON THE TOMS", "CHUGS ON THE TOMS" }, { "WITH THE CHUGS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "TWO-BAR TOM FIGURE", "TOM FIGURE WITH HATS" } },
+            { "SIX-SIXTEENTH CELLS", { "ROOT AND TRITONE CELLS", "ROOT AND FIFTH CELLS" }, { "DOUBLES THE GUITAR", "ROOTS ON THE CELLS", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "KICK PAIRS ON THE CELLS", "TOMS ON THE CELL" } },
+            { "HOLED SIXTEENTH PEDAL", { "MUTED ROOT ON THE STREAM", "STREAM WITH A HIGH SIREN" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HALF-STEP SIREN" }, { "KICK AND TOMS ON THE STREAM", "KICK ON THE STREAM, BACKBEAT" } },
+            { "GUITAR CALLS, BASS ANSWERS", { "THREE-BEAT CALL", "TWO-BEAT CALL" }, { "ANSWERS IN THE GAP", "ANSWERS AND DOUBLES", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "KICK ON THE CALL, SNARE ON THE ANSWER", "PLAIN BACKBEAT" } },
+            { "THREE-BAR CYCLE", { "MUTED CYCLE", "POWER CHORD CYCLE" }, { "THE CYCLE, AN OCTAVE DOWN", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "SNARE EVERY SIX, NO BACKBEAT", "PLAIN BACKBEAT" } },
+            { "THREE-BAR RIFF, KICK AND BASS ON THE BEATS", { "THREE-BAR RIFF", "THREE-BAR RIFF, CHORDS" }, { "BEATS ONE TO THREE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+              { "SILENT", "HIT ON THREE" }, { "KICK ON ONE TO THREE, SNARE ON THREE", "PLAIN BACKBEAT" } },
+            { "KICK AND BASS IN UNISON", { "OUT, THEN BURSTS AFTER TWO AND FOUR", "OUT" }, { "SYNCOPATED LINE WITH THE KICK", "ROOT ON ONE, THEN THE LINE", "LOCKED WITH THE KICK" },
+              { "STRINGS HOLD THE ROOT", "HIGH BELL NOTES" }, { "KICK WITH THE BASS, SNARE LATE", "KICK WITH THE BASS, RIDE" } },
+            { "BASS GROOVE, GUITAR SQUEALS", { "SQUEAL BAR, BURST BAR", "BURSTS ONLY" }, { "SIXTEENTH GROOVE", "ROOT EIGHTHS", "LOCKED WITH THE KICK" },
+              { "SILENT", "HELD PADS" }, { "FUNK KICK", "PLAIN BACKBEAT" } },
         };
         const auto t = type.trim().toUpperCase();
         for (const auto& list : lists)
