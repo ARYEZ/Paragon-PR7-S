@@ -3193,6 +3193,24 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
         }
         return stretches;
     };
+    // (0.153.0, the owner: "make the automation lines glow like the lines in this pic", PR7-K's
+    // envelopes) A neon line: two soft halos under it, the line, and a hot thin core nearer
+    // white; the fill under it a wash of the colour fading to nothing at the lane's foot. The
+    // halos reach 8 px, well inside curveMargin, so a strip redraw draws the same pixels.
+    const auto neon = [&] (const juce::Path& path, juce::Colour c, float width)
+    {
+        const auto curved = juce::PathStrokeType (1.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded);
+        auto pass = [&] (juce::Colour col, float w)
+        {
+            g.setColour (col);
+            g.strokePath (path, juce::PathStrokeType (w, curved.getJointStyle(), curved.getEndStyle()));
+        };
+        pass (c.withAlpha (0.10f), width + 14.0f);
+        pass (c.withAlpha (0.20f), width + 8.0f);
+        pass (c.withAlpha (0.42f), width + 4.0f);
+        pass (c.brighter (0.35f), width + 0.6f);
+        pass (c.interpolatedWith (juce::Colour (0xfff4eeea), 0.6f), juce::jmax (0.8f, width * 0.5f));
+    };
     const auto stroke = [&] (const std::vector<Stretch>& stretches, juce::Colour c, float width, bool filled)
     {
         for (const auto& st : stretches)
@@ -3203,11 +3221,20 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
                 fill.lineTo (st.x1, area.getBottom());
                 fill.lineTo (st.x0, area.getBottom());
                 fill.closeSubPath();
-                g.setColour (c.withAlpha (0.12f));
+                if (active)
+                    g.setGradientFill (juce::ColourGradient (c.withAlpha (0.36f), 0.0f, area.getY(),
+                                                             c.withAlpha (0.02f), 0.0f, area.getBottom(), false));
+                else
+                    g.setColour (c.withAlpha (0.12f));
                 g.fillPath (fill);
             }
-            g.setColour (c);
-            g.strokePath (st.path, juce::PathStrokeType (width));
+            if (filled && active)
+                neon (st.path, c, width);
+            else
+            {
+                g.setColour (c);
+                g.strokePath (st.path, juce::PathStrokeType (width));
+            }
         }
     };
 
@@ -3238,8 +3265,13 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
                 if (x > right)
                     break;
             }
-        g.setColour (colour);
-        g.strokePath (played, juce::PathStrokeType (2.0f));
+        if (active)
+            neon (played, colour, 2.0f);
+        else
+        {
+            g.setColour (colour);
+            g.strokePath (played, juce::PathStrokeType (2.0f));
+        }
         if (points.empty())
         {
             dotted (yForValue (area, 0.5f), juce::Colour (0xfff4eeea).withAlpha (0.8f));
@@ -3279,6 +3311,17 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
             g.fillEllipse (lit);
             g.setColour (juce::Colour (0xff050405));
             g.drawEllipse (lit, 1.0f);
+            continue;
+        }
+        if (active)
+        {
+            // (0.153.0) A glowing dot on the neon line: a halo, the colour, a pale core.
+            g.setColour (colour.withAlpha (0.22f));
+            g.fillEllipse (box.expanded (3.0f));
+            g.setColour (colour.brighter (0.2f));
+            g.fillEllipse (box);
+            g.setColour (colour.interpolatedWith (juce::Colour (0xfff4eeea), 0.6f));
+            g.fillEllipse (box.reduced (box.getWidth() * 0.3f));
             continue;
         }
         g.setColour (colour);

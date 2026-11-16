@@ -2,6 +2,10 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.153.0
+
+**Automation lines glow** (you asked, from PR7-K's envelopes). A lane that's playing back draws its line as neon in the track's colour: soft halos around a bright line, with a hot, paler core. Under the line, a wash of the colour fades to nothing at the lane's foot. The points are glowing dots on the line. Selected points stay pearl white circles, so you can still tell them apart. In Trim, the curve that plays glows too. A lane that isn't playing back (R off, or the lane muted) stays plain grey, so you can see at a glance what's heard.
+
 ## 0.152.1
 
 **THE COMPOSER is now ARCHITECT, and F7 opens it** (you asked). Every place the name showed is renamed: the window's title, the key on the chord pads and in IDEAS, OPEN IN THE ARCHITECT in a block's editor and menu, ARCHITECT TRACKS in the Hub, and the tooltips. **F7** opens ARCHITECT straight away (it was free); pressed again it brings the window to the front. It's also in KEYS as Window > Open Architect, so you can move it to another key or a Stream Deck button. Your settings and songs carry over: only the names on screen changed.
