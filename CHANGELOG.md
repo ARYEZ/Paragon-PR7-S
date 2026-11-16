@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.145.0
+
+**More drums and keys options inside every section type**, the last group in your order: the smaller ideas from your 61 songs that weren't whole sections. Under any named section type (not STANDARD), the drums and keys lanes' style menus list these after the type's own options, so songs you've built keep their choices.
+
+- **Drums:** DOUBLE-TIME PUNK BEAT (the snare and an open hat on every off-beat eighth), SNARE ON EVERY BEAT, KICKS BETWEEN, CRASH EIGHTHS, FULL TIME, PHRASE-END SNARE RUN (every fourth bar the snare runs sixteenths through the second half), ELECTRONIC HALF-TIME LOOP (the pedal hat and a tom on 3), TOM RUN EVERY BAR, TOM ROLL CARPET (no kick or cymbals), INDUSTRIAL BROKEN BEAT (with a china), DISPLACED BACKBEAT.
+- **Keys:** SYNTH BASS SIXTEENTHS, STRINGS ON THE QUARTERS (in octaves), PIANO ARPEGGIO IN 3+3+2, PIZZICATO ARPEGGIO, TIMPANI ROLL RISER (the key's note low, a roll swelling every fourth bar).
+- The bass's LOCKED WITH THE KICK follows these drums too.
+- **Not added: the guitar ideas** (an octave-jump pedal, a 7+3+3+3 pedal, a driven arpeggio, chug pairs with high pings, accents in threes). The bass's DOUBLES THE GUITAR options read each section type's own guitar part, so a new guitar option there would leave the bass doubling a riff you don't hear. They'd fit as their own section types instead: say if you want them.
+
+That finishes your list from the 61 songs (everything but the solos).
+
 ## 0.144.0
 
 **21 new transitions from your 61 songs**, the sixth group in your order. They're on each block's INTO THE NEXT menu (the block editor and the block's right-click menu), after SHORT BAR: 3 BEATS. A transition rewrites how a block hands over to the next one, usually its last bar or two, and leaves the melody alone.

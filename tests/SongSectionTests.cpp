@@ -1233,7 +1233,7 @@ TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, ea
     for (const auto l : { ComposerLayer::chords, ComposerLayer::drums })   // (0.97.2: seven each)
     {
         const auto ideas = composerChoices (l, droning, spans, c);
-        const auto n = l == ComposerLayer::drums ? 8u : 7u;   // (0.116.0: THE GROOVE CARRIES ON)
+        const auto n = (l == ComposerLayer::drums ? 8u : 7u) + (size_t) extraApproaches (l).size();   // (0.116.0: THE GROOVE CARRIES ON; 0.145.0: the extras)
         CHECK (ideas.size() == n);
         CHECK (distinct (ideas) == n);   // (the keys' SILENT is the one with no notes)
     }
@@ -1258,8 +1258,8 @@ TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, ea
     // The other types: SPLIT CHUG's and STACCATO CHUG's bass and drums, CLEAN VERSE's guitar.
     ComposerState split;
     applySectionType (split, "Verse", "SPLIT CHUG");
-    CHECK (composerChoices (ComposerLayer::drums, split, spans, c).size() == 2);
-    CHECK (distinct (composerChoices (ComposerLayer::drums, split, spans, c)) == 2);
+    CHECK (composerChoices (ComposerLayer::drums, split, spans, c).size() == 11);   // (0.145.0: 2 + the 9 extras)
+    CHECK (distinct (composerChoices (ComposerLayer::drums, split, spans, c)) == 11);
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::guitar, split, c));   // (its guitar has its riff kinds and styles)
     const auto clean = cleanState (-1);
     CHECK (distinct (composerChoices (ComposerLayer::guitar, clean, spans, c)) == 10);   // (0.100.0: seven; 0.101.0: ten)
@@ -1708,7 +1708,7 @@ TEST_CASE ("0.100.0: STACCATO CHUG's GALLOP & SQUEAL and the double-kick carpet"
     const auto guitar = sectionApproaches (s, ComposerLayer::guitar);
     REQUIRE (guitar.size() == 7);
     CHECK (guitar[6] == "GALLOP & SQUEAL");
-    const auto drums = sectionApproaches (s, ComposerLayer::drums);
+    const auto drums = baseSectionApproaches (s, ComposerLayer::drums);
     REQUIRE (drums.size() == 3);
     CHECK (drums[2] == "DOUBLE-KICK CARPET");
     RiffRecipe r;
