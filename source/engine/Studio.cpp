@@ -7931,7 +7931,7 @@ namespace pr7s
             error = "Couldn't write " + written.getFullPathName();
             return {};
         }
-        SessionLog::note ("Composer drag out: " + written.getFileName());
+        SessionLog::note ("Architect drag out: " + written.getFileName());
         return written;
     }
 

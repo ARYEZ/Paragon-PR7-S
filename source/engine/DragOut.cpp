@@ -93,7 +93,7 @@ namespace pr7s
 
     juce::File composerDragFolder()
     {
-        return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Paragon PR7-S Composer");
+        return juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("Paragon PR7-S Architect");
     }
 
     void clearDragOutFolder()

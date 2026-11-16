@@ -58,7 +58,7 @@ private:
                 transitionLabel { {}, "INTO THE NEXT" };
     juce::ComboBox nameBox, typeBox, lengthBox, keyBox, transitionBox;
     std::unique_ptr<Strip> strip;
-    juce::TextButton addKey { "+ CHORD" }, clearKey { "CLEAR CHORDS" }, openKey { "OPEN IN THE COMPOSER" }, moreKey { "MORE..." };
+    juce::TextButton addKey { "+ CHORD" }, clearKey { "CLEAR CHORDS" }, openKey { "OPEN IN THE ARCHITECT" }, moreKey { "MORE..." };
     bool refreshing = false;
 
     double beatsPerBar() const;

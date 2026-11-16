@@ -1182,6 +1182,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::F4Key && ! mods.isAltDown()) { toggleZone (padsZone); return true; }
     if (key.getKeyCode() == juce::KeyPress::F5Key && ! mods.isAltDown()) { toggleMediaBay(); return true; }   // (the manual's MediaBay key)
     if (key.getKeyCode() == juce::KeyPress::F6Key && ! mods.isAltDown()) { toggleAutomationPanel(); return true; }   // (the manual's: 0.28.0)
+    if (key.getKeyCode() == juce::KeyPress::F7Key && ! mods.isAltDown()) { openComposer(); return true; }   // (0.152.1, the owner: F7 straight into ARCHITECT)
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key.getKeyCode() == juce::KeyPress::spaceKey && mods.isShiftDown() && ! mods.isCommandDown() && ! mods.isAltDown())

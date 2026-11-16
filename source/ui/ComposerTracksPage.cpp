@@ -148,10 +148,10 @@ void ComposerTracksPage::paint (juce::Graphics& g)
 {
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (22.0f));
-    g.drawText ("COMPOSER TRACKS", titleArea, juce::Justification::centredLeft, false);
+    g.drawText ("ARCHITECT TRACKS", titleArea, juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (ParagonLookAndFeel::textFont (13.0f));
-    g.drawFittedText ("The tracks each composer lane plays on when its TRACK menu is on automatic: an instrument track with one of these names "
+    g.drawFittedText ("The tracks each Architect lane plays on when its TRACK menu is on automatic: an instrument track with one of these names "
                       "(several by commas; upper or lower case alike). The first name is what a new one is called. EVERY MATCHING TRACK plays "
                       "the lane on all of them, a guitar left and a guitar right.", noteArea, juce::Justification::topLeft, 3);
     g.setFont (ParagonLookAndFeel::textFont (12.0f));

@@ -313,7 +313,7 @@ void ArrangeView::showSectionMenu (int index)
     {
         const auto& b = blocks[(size_t) index];
         menu.addSectionHeader (pr7s::sectionLabel (blocks, index).toUpperCase() + ": " + juce::String (b.bars) + " BARS");
-        menu.addItem (1, "Open in the Composer (double-click)", onOpenSection != nullptr);
+        menu.addItem (1, "Open in the Architect (double-click)", onOpenSection != nullptr);
         // (0.94.0, the owner's section types) What kind of section it is: sets what every instrument does.
         juce::PopupMenu types;
         types.addItem (4000, juce::String (pr7s::standardSectionType) + "  (every lane its own styles)", true, b.type.isEmpty());

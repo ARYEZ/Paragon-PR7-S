@@ -118,7 +118,7 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     pasteKey.onClick = [this] { showPasteMenu(); };
     addAndMakeVisible (pasteKey);
     pedal (mixerKey);
-    mixerKey.setTooltip ("The mixer in its own window over the composer: faders, inserts, EQ while you hear the layers (they keep playing)");
+    mixerKey.setTooltip ("The mixer in its own window over the Architect: faders, inserts, EQ while you hear the layers (they keep playing)");
     mixerKey.onClick = [this] { if (onOpenMixer) onOpenMixer(); };
     addAndMakeVisible (mixerKey);
     // (0.86.0) SYNC.
@@ -1076,7 +1076,7 @@ std::vector<int> ComposerPage::useAll()
     const auto placed = spansAt (placeStart());
     const auto lanesPlaced = placeLanes (placed.front().start, false);
     writeChordsAt (placed);
-    const auto tracks = studio.buildSection (lanesPlaced.ideas, placed, "Composer", lanesPlaced.onto);
+    const auto tracks = studio.buildSection (lanesPlaced.ideas, placed, "Architect", lanesPlaced.onto);
     juce::StringArray names;
     for (const auto id : tracks)
         if (const auto* t = studio.getProject().findTrack (id))
@@ -1098,7 +1098,7 @@ int ComposerPage::useLayer (ComposerLayer l)
     const auto onto = tracksFor (l, false);
     for (size_t i = 0; i < onto.size(); ++i)
         list.push_back (studio.doubledCopy (ideas[(size_t) l], (int) i, placed.front().start, (int) onto.size()));
-    const auto tracks = studio.buildSection (list, placed, "Composer", onto);
+    const auto tracks = studio.buildSection (list, placed, "Architect", onto);
     refresh (false);
     return tracks.empty() ? 0 : tracks.front();
 }
@@ -2071,7 +2071,7 @@ void ComposerPage::showTrackMenu (ComposerLayer l)
     const auto tracks = studio.getComposerTracks (pr7s::composerPartOf (l));
     const auto names = "\"" + tracks.names.joinIntoString ("\", \"") + "\"";
     menu.addItem (1, juce::String ("Automatic: ") + (tracks.every ? "every track called " : "the track called ") + names
-                         + ", else a new \"" + name + "\" one when used (Hub > COMPOSER TRACKS)", true, trackChoice[(size_t) l] == 0);
+                         + ", else a new \"" + name + "\" one when used (Hub > ARCHITECT TRACKS)", true, trackChoice[(size_t) l] == 0);
     if (studio.findIdeaTrack (pr7s::composerPartOf (l)) == 0)
         menu.addItem (2, "Make the \"" + name + "\" track now (to hear it on its own instrument)");
     menu.addSeparator();
@@ -2241,7 +2241,7 @@ juce::File ComposerPage::dragLaneOut (ComposerLayer l)
     // Where it would be placed (the tempo there goes in the file), on its track's channel; the drums on 10.
     const auto* track = studio.getProject().findTrack (trackFor (l, false));
     const auto channel = l == ComposerLayer::drums ? 10 : track != nullptr ? track->midiChannel : 1;
-    const auto name = juce::String ("Composer ") + pr7s::composerLayerName (l).toLowerCase() + " - " + idea.style;   // ("Composer bass - Walking")
+    const auto name = juce::String ("Architect ") + pr7s::composerLayerName (l).toLowerCase() + " - " + idea.style;   // ("Architect bass - Walking")
     juce::String error;
     const auto file = studio.writeLineForDrag (idea, placedSpans(), channel, name, error);
     if (file == juce::File())
@@ -2324,7 +2324,7 @@ void ComposerPage::paint (juce::Graphics& g)
     auto head = getLocalBounds().removeFromTop (headerHeight).reduced (gap, 8);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (20.0f));
-    g.drawText ("COMPOSER", head.removeFromTop (26), juce::Justification::centredLeft, false);
+    g.drawText ("ARCHITECT", head.removeFromTop (26), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (interFont (12.5f));
     g.drawText (status.isNotEmpty() ? summary() + "     " + status : summary(), head.withTrimmedRight (1100), juce::Justification::centredLeft, true);
@@ -2723,9 +2723,9 @@ ComposerSuite::ComposerSuite (pr7s::Studio& s) : studio (s), composer (s)
         key->setWantsKeyboardFocus (false);
         addAndMakeVisible (*key);
     }
-    composeTab.setTooltip ("The composer: every layer stacked over the chords, SECTION and BUILD, the song so far");
-    ideasTab.setTooltip ("Every IDEAS card and setting (piano, guitar, bass, patterns, melody, drums) for the composer's chords. "
-                         "A card's USE IT menu puts it into its composer lane");
+    composeTab.setTooltip ("The Architect: every layer stacked over the chords, SECTION and BUILD, the song so far");
+    ideasTab.setTooltip ("Every IDEAS card and setting (piano, guitar, bass, patterns, melody, drums) for the Architect's chords. "
+                         "A card's USE IT menu puts it into its Architect lane");
     composeTab.onClick = [this] { showTab (Tab::compose); };
     ideasTab.onClick = [this] { showTab (Tab::ideas); };
     if (auto* settings = studio.getSettings())
@@ -2832,7 +2832,7 @@ void ComposerSuite::resized()
 
 //==============================================================================
 ComposerWindow::ComposerWindow (pr7s::Studio& studio)
-    : juce::DocumentWindow ("Paragon PR7-S: Composer", juce::Colour (0xff0c0a0d), juce::DocumentWindow::closeButton)
+    : juce::DocumentWindow ("Paragon PR7-S: Architect", juce::Colour (0xff0c0a0d), juce::DocumentWindow::closeButton)
 {
     suite = new ComposerSuite (studio);
     setContentOwned (suite, true);

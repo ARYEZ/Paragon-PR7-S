@@ -4,6 +4,8 @@ Each version's notes appear on its GitHub Release page.
 
 ## 0.152.1
 
+**THE COMPOSER is now ARCHITECT, and F7 opens it** (you asked). Every place the name showed is renamed: the window's title, the key on the chord pads and in IDEAS, OPEN IN THE ARCHITECT in a block's editor and menu, ARCHITECT TRACKS in the Hub, and the tooltips. **F7** opens ARCHITECT straight away (it was free); pressed again it brings the window to the front. It's also in KEYS as Window > Open Architect, so you can move it to another key or a Stream Deck button. Your settings and songs carry over: only the names on screen changed.
+
 **SEVEN-BAR CYCLE (from The Ghost Woman and the Hunter) put right** (you told us how to tell the parts apart). The verses are the clean picked figure over the low A, now with the type CLEAN VERSE, so the composer writes them without the heavy guitars. The choruses are the seven-chord cycle, heavy, typed DRONING, whose drums open up on the cymbals. Your MIDI file couldn't show this: it has one guitar on a distorted sound the whole way and the same hi-hat beat everywhere.
 
 ## 0.152.0

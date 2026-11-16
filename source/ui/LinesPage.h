@@ -294,7 +294,7 @@ private:
     bool writtenBeats = false;
     juce::TextButton drummerKey;                        // DRUMMER (the drums tab's generated column)
     juce::TextButton buildKey { "BUILD SECTION" };
-    juce::TextButton composerKey { "COMPOSER" };
+    juce::TextButton composerKey { "ARCHITECT" };
     BuildChoice buildChoice;
     std::array<int, 10> chosen {};                       // the card last played or used, per part
     std::optional<pr7s::DrumProfile> drummer;

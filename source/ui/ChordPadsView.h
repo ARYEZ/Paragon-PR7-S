@@ -133,7 +133,7 @@ private:
     juce::TextButton rootKey, presetsKey { "PRESETS" }, previousPreset { "<" }, nextPreset { ">" }, saveKey { "SAVE" },
                      playerKey { "PLAYER: BASIC" }, modeKey { "PLAIN CHORDS" }, displayKey { "DISPLAY" }, remoteKey { "REMOTE" },
                      editorKey { "EDITOR" }, circleKey { "CIRCLE OF 5THS" }, windowKey { "WINDOW" }, closeKey { "CLOSE" },
-                     ideasKey { "IDEAS" }, progressionsKey { "PROGRESSIONS" }, composerKey { "COMPOSER" };   // (0.20.2: the IDEAS window from the pads)
+                     ideasKey { "IDEAS" }, progressionsKey { "PROGRESSIONS" }, composerKey { "ARCHITECT" };   // (0.20.2: the IDEAS window from the pads)
     juce::TextButton selectAllKey { "SELECT ALL" }, editKey { "EDIT CHORD" }, fromMidiKey { "FROM MIDI" }, removeKey { "REMOVE" },
                      transposeDown { "TRANSPOSE -" }, transposeUp { "+" }, tensionsDown { "TENSIONS -" }, tensionsUp { "+" },
                      voicingPrevious { "VOICING <" }, voicingNext { ">" }, lockKey { "LOCK" }, adaptiveKey { "ADAPTIVE" }, referenceKey { "REFERENCE" },

@@ -305,13 +305,13 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     instrumentsTab.setClickingTogglesState (false);
     projectsTab.onClick = [this] { showSettingsPage (false); };
     settingsTab.onClick = [this] { showSettingsPage (true); };
-    instrumentsTab.setTooltip ("Each instrument's range, tuning, velocity layers and keyswitches (the composer writes for them)");
+    instrumentsTab.setTooltip ("Each instrument's range, tuning, velocity layers and keyswitches (the Architect writes for them)");
     instrumentsTab.onClick = [this] { showInstrumentsPage(); };
     coloursTab.setClickingTogglesState (false);
     coloursTab.setTooltip ("The colour each type of new track starts with, and its colour in the track list");
     coloursTab.onClick = [this] { showColoursPage(); };
     composerTracksTab.setClickingTogglesState (false);
-    composerTracksTab.setTooltip ("The tracks each composer lane plays on: their names, and a lane on every matching track (guitar left and right)");
+    composerTracksTab.setTooltip ("The tracks each Architect lane plays on: their names, and a lane on every matching track (guitar left and right)");
     composerTracksTab.onClick = [this] { showComposerTracksPage(); };
     createEmpty.setTooltip ("Create Empty: a new song, in a folder of its own at the project location");
     createEmpty.onClick = [this]

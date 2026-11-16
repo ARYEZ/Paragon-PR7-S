@@ -201,3 +201,20 @@ TEST_CASE ("BLUEPRINTS 0.152.0: the window uses the chosen one, asks before repl
     CHECK (studio.getSongSections().blocks.size() == factoryBlueprints()[0].blocks.size());
     CHECK (studio.getProject().chordTrack.events == chordsBefore);
 }
+
+#include "ui/MainView.h"
+
+TEST_CASE ("ARCHITECT 0.152.1: F7 opens the ARCHITECT (the composer, renamed) straight away", "[architect]")
+{
+    Studio studio { false };
+    MainView view (studio);
+    view.setSize (1600, 1000);
+    REQUIRE (view.getComposerWindow() == nullptr);
+    CHECK (view.keyPressed (juce::KeyPress (juce::KeyPress::F7Key)));
+    REQUIRE (view.getComposerWindow() != nullptr);
+    CHECK (view.getComposerWindow()->getName().contains ("Architect"));
+    // Pressed again: the same window to the front, not a second one.
+    auto* first = view.getComposerWindow();
+    view.keyPressed (juce::KeyPress (juce::KeyPress::F7Key));
+    CHECK (view.getComposerWindow() == first);
+}

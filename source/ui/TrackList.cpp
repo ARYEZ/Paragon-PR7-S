@@ -880,7 +880,7 @@ public:
         key.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
         key.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
         key.setWantsKeyboardFocus (false);
-        key.setTooltip ("The song's key: every part moves into it (chords, notes, what the composer built). "
+        key.setTooltip ("The song's key: every part moves into it (chords, notes, what the Architect built). "
                         "ALL SECTIONS SYNCED TO ONE KEY (on to start with): untick it for key changes, then each block's own key in its editor (right-click a block)");
         key.onClick = [this] { showKeyMenu(); };
         addAndMakeVisible (key);
@@ -890,7 +890,7 @@ public:
         blueprints.setTooltip ("Blueprints: a song's whole layout to start from (sections, linked copies, types, chords, tempo), or this song's saved as your own");
         blueprints.onClick = [this] { if (owner.onBlueprints) owner.onBlueprints(); };
         addAndMakeVisible (blueprints);
-        setTooltip ("The song's sections: drag a block to rearrange (its music goes with it), double-click one to open the composer on it, right-click for its menu");
+        setTooltip ("The song's sections: drag a block to rearrange (its music goes with it), double-click one to open the Architect on it, right-click for its menu");
         refresh();
     }
 

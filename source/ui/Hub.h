@@ -74,7 +74,7 @@ private:
     std::unique_ptr<ComposerTracksPage> composerTracks;
     juce::Image satin;
 
-    juce::TextButton projectsTab { "PROJECTS" }, settingsTab { "HUB SETTINGS" }, instrumentsTab { "INSTRUMENTS" }, coloursTab { "TRACK COLOURS" }, composerTracksTab { "COMPOSER TRACKS" },
+    juce::TextButton projectsTab { "PROJECTS" }, settingsTab { "HUB SETTINGS" }, instrumentsTab { "INSTRUMENTS" }, coloursTab { "TRACK COLOURS" }, composerTracksTab { "ARCHITECT TRACKS" },
                      createEmpty { "+  CREATE EMPTY" }, chooseFile { "CHOOSE FILE..." }, open { "OPEN" },
                      driverPanel { "DRIVER PANEL" }, audioSettings { "SETTINGS" },
                      chooseLocation { "CHOOSE..." }, addLocation { "ADD A FOLDER..." }, removeLocation { "REMOVE THE FOLDER" };

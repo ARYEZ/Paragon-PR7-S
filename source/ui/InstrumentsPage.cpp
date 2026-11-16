@@ -154,7 +154,7 @@ public:
         key ("GUITAR LANE", { 266, y, 140, rowHeight }, profile->forGuitar, [this, on = ! profile->forGuitar] { page.setUse (pr7s::Studio::ProfileUse::guitar, on); });
         key ("LEAD LANE", { 412, y, 140, rowHeight }, profile->forLead, [this, on = ! profile->forLead] { page.setUse (pr7s::Studio::ProfileUse::lead, on); });
         y += rowHeight + 4;
-        label ("(THE COMPOSER'S LANES: ONE INSTRUMENT EACH)", { 120, y, 500, 18 });
+        label ("(THE ARCHITECT'S LANES: ONE INSTRUMENT EACH)", { 120, y, 500, 18 });
         y += 26;
 
         // STRINGS, FRETS.
@@ -679,7 +679,7 @@ void InstrumentsPage::paint (juce::Graphics& g)
     g.drawText ("INSTRUMENTS", getLocalBounds().removeFromTop (26).toFloat(), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (12.0f));
-    g.drawText ("EACH SAMPLE LIBRARY'S RANGE, TUNING, VELOCITY LAYERS AND KEYSWITCHES: WHAT THE COMPOSER WRITES FOR IT",
+    g.drawText ("EACH SAMPLE LIBRARY'S RANGE, TUNING, VELOCITY LAYERS AND KEYSWITCHES: WHAT THE ARCHITECT WRITES FOR IT",
                 getLocalBounds().withTrimmedLeft (160).removeFromTop (26).toFloat(), juce::Justification::centredLeft, true);
     if (profiles.empty())
         g.drawText ("NO INSTRUMENTS YET: + NEW", editorView.getBounds().toFloat(), juce::Justification::centred, false);

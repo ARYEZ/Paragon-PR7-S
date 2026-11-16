@@ -425,7 +425,7 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     addAndMakeVisible (buildKey);
     composerKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     composerKey.setWantsKeyboardFocus (false);
-    composerKey.setTooltip ("The composer: every layer stacked, each locked or rolled, one GENERATE");
+    composerKey.setTooltip ("The Architect: every layer stacked, each locked or rolled, one GENERATE");
     composerKey.onClick = [this] { if (onComposer) onComposer(); };
     addAndMakeVisible (composerKey);
 
@@ -1364,7 +1364,7 @@ void LinesPage::showUseMenu (pr7s::LineIdea::Part part, int index, Card& card)
     }
     juce::PopupMenu menu;
     if (lane.isNotEmpty())   // (0.74.0) first: the composer is where a song is put together
-        menu.addItem (3, "Into the Composer's " + lane + " lane (kept and locked there)");
+        menu.addItem (3, "Into the Architect's " + lane + " lane (kept and locked there)");
     if (studio.canTakeMidi (selected))
         menu.addItem (1, "Onto " + studio.getProject().findTrack (selected)->name + " (the selected track)");
     menu.addItem (2, "Onto a new track (" + pr7s::Studio::linePartName (part) + ")");
