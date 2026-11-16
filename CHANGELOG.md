@@ -2,6 +2,32 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.150.0
+
+**Fourteen bridge types and four breakdown types from your 54 new songs** (round four, the fourth group). The bridges are in the bridge's TYPE menu (and the middle 8's, break's, instrumental's) after DRUMS DROP OUT, THE BAND CARRIES; the breakdowns after KEYS ALONE, THEN RINGING HITS. Each writes the guitar, bass, keys and drums, two options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.
+
+Bridges:
+- **PARALLEL CLASH OVER THE BASS:** the bass alone round its root in eighths, then a three-note clash a half step over it on every eighth, over half time with crash eighths and a snare roll to end. (Given Up)
+- **ORCHESTRA ALONE, THEN THE WALL:** strings and choir alone for the first half, then root sixteenths on guitar, bass and keys with kick pairs in threes. (The Heart of Everything)
+- **SNARE CARPET OVER THE FLOOR:** the guitars and bass out, a one-note keys loop, the snare on every sixteenth but one over four on the floor, piano from halfway, kick eighths at the end. (In My Remains)
+- **LONG PULSE BUILD:** the kick on every beat, the snare coming in by stages (a pickup, eighths, sixteenths), a high dyad in eighths with the key's fifth fixed on top. (Iridescent)
+- **PAIRS EVERY THREE UNDER A HELD CHORD:** low pairs every three sixteenths under a high chord held, the kick on the pairs, a tom fill to end. (Forsaken)
+- **THE HOOK'S RHYTHM ON LOW CHORDS:** power chords on the hook's rhythm, two bars on the key's root and two on the half step over it, then the chords in eighths. (Heavy Is the Crown)
+- **DOUBLED HITS ON ONE AND TWO, THEN HOLD:** doubled hits on 1 and 2 with the fifth under, then the chord held; bars 5 and 6 without the snare. (Somewhere I Belong)
+- **BURSTS OF FIVE, LAYERED:** bursts of five sixteenths, then fours, then a 3+3+3+3+4 strum laid over them, the backbeat coming in with it. (Keep Away)
+- **BELL GROOVE UNDER A TWO-CHORD DRONE:** root, fifth and ninth rung on the key's root and its flat third in turn over a ride bell groove. (I Stand Alone)
+- **HIGH CHROMATIC FALL OVER THE CHUG CELL:** the bass alone on a chug cell, then two high notes falling a half step each half bar, the snare only mid-bar. (The Howling)
+- **TRIBAL TOMS, DOTTED OCTAVES:** no snare or cymbals, tribal toms over the kick, root octaves on two figures in turn, high tones on the dotted quarters. (Denial)
+- **UNISON STABS OVER HATS ONLY:** everyone stabbing root octaves together over only the hats, three hits to end. (New Divide)
+- **EIGHTHS WITH AIR AT BOTH ENDS:** bars in pairs, power chords in eighths, then eighths from beat 2 to the and of 3 only. (Faint)
+- **ARPEGGIO UP AN OCTAVE, BASS STEPPING DOWN:** the drums out, an arpeggio an octave up, the bass falling a scale step a bar, a snare pickup to end. (All I Need)
+
+Breakdowns:
+- **HALF-BAR CHUGS, HALF STEP EVERY FOURTH:** low chugs in the first half bar, every fourth bar a half step up, the kick doubling them, crashes after. (From the Inside)
+- **PAIR STABS, THEN THE THREES:** pair stabs on 1 and 3, then tremolo chords with the snare and kick in threes against each other, an octave tremolo on top. (Wasteland)
+- **QUIET FALLING CELL OVER A LAMENT BASS:** the drums out, a quiet three-note cell falling a step a bar over a lament bass (root, flat seven, flat six, five). (The Howling)
+- **HIGH NOTE TREMOLO OVER A HALF-TIME CHUG:** a low unison chug over half time, a high ninth tremolo-picked over it, tom pickups. (Enemy)
+
 ## 0.149.0
 
 **Six pre-chorus types and three post-chorus / interlude types from your 54 new songs** (round four, the third group). The pre-choruses are in the pre-chorus's TYPE menu after OCTAVES ROCKING TO THE TRITONE; the post-choruses are in the post-chorus's and interlude's after SNARE ONLY ON FOUR AND FOUR-AND. Each writes the guitar, bass, keys and drums, two to four options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.

@@ -2547,10 +2547,10 @@ TEST_CASE ("0.105.0: a bridge's own types, every lane's options a different part
     const std::vector<juce::String> names { "HALF-TIME MELODIC", "HEAVY BUILD", "LATE-CHANGE CLIMB", "CLEAN BRIDGE",
                                             "SLIDING CHORDS", "GUITARS OUT, THEN BACK", "SLIDE OVER A HELD ROOT" };
     const auto bridge = sectionTypesFor ("Bridge");
-    REQUIRE (bridge.size() == names.size() + 9 + 11 + 3);   // (0.142.0: eleven more)   // (0.122.0: nine more after them)
+    REQUIRE (bridge.size() == names.size() + 9 + 11 + 14 + 3);   // (0.142.0: eleven more)   // (0.122.0: nine more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (bridge[i].name == names[i]);
-    CHECK (bridge[names.size() + 20].name == "CREEP");   // (the old three kept after them)
+    CHECK (bridge[names.size() + 20 + 14].name == "CREEP");   // (the old three kept after them)
     CHECK (sectionTypeNamed ("Middle 8", "CLEAN BRIDGE").has_value());
     CHECK_FALSE (sectionTypeNamed ("Verse", "HEAVY BUILD").has_value());
     CHECK (sectionTypeCalled ("SLIDING CHORDS")->band == SectionType::Band::bridge);
@@ -2725,11 +2725,11 @@ TEST_CASE ("0.109.0: a breakdown's own types, every lane's options a different p
     const std::vector<juce::String> names { "CHROMATIC CRAWL", "HIT & HOLD, THEN CARPET", "CHUG & SQUEAL", "DOTTED TRITONE PUSH", "TRIPLET CLUSTER",
                                             "GAPPED SIXTEENTHS", "THREES & TWOS", "CALL & CHUG", "HALF-TIME OPEN CHORDS", "OFF-BEAT GALLOPS" };
     const auto breakdown = sectionTypesFor ("Breakdown");
-    REQUIRE (breakdown.size() == names.size() + 4 + 5 + 2);   // (0.142.0: five more)   // (0.122.0: four more after them)
+    REQUIRE (breakdown.size() == names.size() + 4 + 5 + 4 + 2);   // (0.142.0: five more)   // (0.122.0: four more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (breakdown[i].name == names[i]);
-    CHECK (breakdown[names.size() + 9].name == "HEAVY CHUG");   // (the old two kept after them)
-    CHECK (breakdown[names.size() + 10].name == "STACCATO CHUG");
+    CHECK (breakdown[names.size() + 9 + 4].name == "HEAVY CHUG");   // (the old two kept after them)
+    CHECK (breakdown[names.size() + 10 + 4].name == "STACCATO CHUG");
     CHECK_FALSE (sectionTypeNamed ("Verse", "CALL & CHUG").has_value());
     for (const auto& name : names)
         CHECK (sectionTypeCalled (name)->band == SectionType::Band::breakdown);
@@ -5496,4 +5496,102 @@ TEST_CASE ("0.149.0: round four's pre-chorus and post-chorus types, every lane's
         }
         CHECK (claps == 32);
     }
+}
+
+TEST_CASE ("0.150.0: round four's bridge and breakdown types, every lane's options a different part", "[sections][types][bridge150]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars; the guitar's low A 33)
+    const std::vector<juce::String> bridges { "PARALLEL CLASH OVER THE BASS", "ORCHESTRA ALONE, THEN THE WALL", "SNARE CARPET OVER THE FLOOR", "LONG PULSE BUILD",
+                                              "PAIRS EVERY THREE UNDER A HELD CHORD", "THE HOOK'S RHYTHM ON LOW CHORDS", "DOUBLED HITS ON ONE AND TWO, THEN HOLD",
+                                              "BURSTS OF FIVE, LAYERED", "BELL GROOVE UNDER A TWO-CHORD DRONE", "HIGH CHROMATIC FALL OVER THE CHUG CELL",
+                                              "TRIBAL TOMS, DOTTED OCTAVES", "UNISON STABS OVER HATS ONLY", "EIGHTHS WITH AIR AT BOTH ENDS",
+                                              "ARPEGGIO UP AN OCTAVE, BASS STEPPING DOWN" };
+    const std::vector<juce::String> breakdowns { "HALF-BAR CHUGS, HALF STEP EVERY FOURTH", "PAIR STABS, THEN THE THREES",
+                                                 "QUIET FALLING CELL OVER A LAMENT BASS", "HIGH NOTE TREMOLO OVER A HALF-TIME CHUG" };
+    const auto bridge = sectionTypesFor ("Bridge");
+    const auto breakdown = sectionTypesFor ("Breakdown");
+    for (size_t i = 0; i < bridges.size(); ++i)
+    {
+        CHECK (bridge[27 + i].name == bridges[i]);   // (after 0.142.0's)
+        CHECK (sectionTypeCalled (bridges[i])->band == SectionType::Band::bridge);
+    }
+    for (size_t i = 0; i < breakdowns.size(); ++i)
+    {
+        CHECK (breakdown[19 + i].name == breakdowns[i]);
+        CHECK (sectionTypeCalled (breakdowns[i])->band == SectionType::Band::breakdown);
+    }
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    auto all = bridges;
+    all.insert (all.end(), breakdowns.begin(), breakdowns.end());
+    for (const auto& name : all)
+    {
+        INFO (name);
+        ComposerState s;
+        applySectionType (s, std::find (bridges.begin(), bridges.end(), name) != bridges.end() ? "Bridge" : "Breakdown", name);
+        REQUIRE (s.sectionType == name);
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && ! options.isEmpty()));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                const auto option = sectionApproaches (s, l)[(int) o];
+                INFO (composerLayerName (l) << " " << option);
+                CHECK (seen.insert (key (choices[o])).second);
+                if (option != "OUT" && option != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                {
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+                    if (l == ComposerLayer::guitar && ! n.keyswitch)
+                        CHECK (n.pitch >= 33);   // (never under the 7-string's low A)
+                }
+            }
+        }
+    }
+    const auto layersOf = [&] (const juce::String& section, const juce::String& type, int guitar, int drums)
+    {
+        ComposerState s;
+        applySectionType (s, section, type);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::drums).approach = drums;
+        return composeLayers (s, spans, c);
+    };
+    // TRIBAL TOMS ONLY: no kick, snare or cymbals.
+    {
+        const auto tribal = layersOf ("Bridge", "TRIBAL TOMS, DOTTED OCTAVES", 0, 1);   // (kept: never loop over a temporary's [] member)
+        REQUIRE (! tribal[(size_t) ComposerLayer::drums].notes.empty());
+        for (const auto& n : tribal[(size_t) ComposerLayer::drums].notes)
+            CHECK ((n.pitch == GmDrum::tomFloor || n.pitch == GmDrum::tomLow));
+    }
+    // HALF-BAR CHUGS: every fourth bar a half step over the others.
+    {
+        const auto chugs = layersOf ("Breakdown", "HALF-BAR CHUGS, HALF STEP EVERY FOURTH", 0, 0);
+        int bar0 = -1, bar3 = -1;
+        for (const auto& n : chugs[(size_t) ComposerLayer::guitar].notes)
+        {
+            if (n.keyswitch)
+                continue;
+            if (std::abs (n.beat) < 1.0e-6 && bar0 < 0) bar0 = n.pitch;
+            if (std::abs (n.beat - 12.0) < 1.0e-6 && bar3 < 0) bar3 = n.pitch;
+        }
+        CHECK (bar0 == 33);   // (bar 1 is Am: the low A)
+        CHECK (bar3 == 43 + 1);   // (bar 4 is G: the low G 43, a half step up)
+    }
+    // QUIET FALLING CELL: the drums out in the first option.
+    CHECK (layersOf ("Breakdown", "QUIET FALLING CELL OVER A LAMENT BASS", 0, 0)[(size_t) ComposerLayer::drums].notes.empty());
 }
