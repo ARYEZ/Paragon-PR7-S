@@ -12131,6 +12131,190 @@ namespace pr7s
             return idea;
         }
 
+        //======================================================================
+        // (0.145.0) The options from the owner's 61 song files added to every section type's keys and drums lists
+        // (`extraApproaches`, after each type's own; the bass and guitar lists left as they were: the bass doubles each
+        // type's own guitar, and LOCKED WITH THE KICK stays the bass's last). Written here with Round3's helpers.
+        std::optional<LineIdea> extraOptionLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (spans.empty() || (l != ComposerLayer::drums && l != ComposerLayer::chords))
+                return std::nullopt;
+            const auto a = s.lane (l).approach;
+            const auto base = baseSectionApproaches (s, l).size();
+            const auto names = sectionApproaches (s, l);
+            if (a < base || a >= names.size() || base == 0)
+                return std::nullopt;
+            const auto n = names[a];
+            const Round3 r (s, spans, c);
+            const auto bpb = r.bpb, s16 = r.s16, e = r.e, q = r.q;
+            juce::ignoreUnused (e);
+            const auto bars = r.bars;
+            LineIdea out { composerPartOf (l), n.toLowerCase(), {}, {} };
+            auto each = [&] (auto&& bar) { for (int b = 0; b < bars; ++b) bar (b); };
+            if (l == ComposerLayer::drums)
+            {
+                if (n == "DOUBLE-TIME PUNK BEAT")
+                {
+                    out.description = "A punk beat: the kick on 1, 2, 2-and, 3-and and 4, the snare and an open hat on every off-beat eighth";
+                    each ([&] (int b) { r.kit (out, b, "x---x-x---x-x---", "--x---x---x---x-", GmDrum::openHat, "--x---x---x---x-"); });
+                }
+                else if (n == "SNARE ON EVERY BEAT, KICKS BETWEEN")
+                {
+                    out.description = "The snare on all four beats, the kick on the three sixteenths between, the ride on every eighth";
+                    each ([&] (int b) { r.kit (out, b, "-xxx-xxx-xxx-xxx", "x---x---x---x---", GmDrum::ride, Round3::eighths); });
+                }
+                else if (n == "CRASH EIGHTHS, FULL TIME")
+                {
+                    out.description = "The kick on 1 and 3, the snare on 2 and 4, a crash on every eighth";
+                    each ([&] (int b) { r.kit (out, b, "x-------x-------", Round3::backbeat, GmDrum::crash, Round3::eighths, 0); });
+                }
+                else if (n == "PHRASE-END SNARE RUN")
+                {
+                    out.description = "A rock beat; every fourth bar the kick stops after beat 2 and the snare runs sixteenths through the second half";
+                    each ([&] (int b)
+                    {
+                        if (b % 4 == 3)
+                        {
+                            r.kit (out, b, "x-x-------------", "----x-----------", GmDrum::closedHat, "x-x-x-x---------", 0);
+                            for (int k = 8; k < 16; ++k)
+                                r.hit (out, b * bpb + k * s16, GmDrum::snare, 0.6f + 0.04f * (float) (k - 8));
+                            return;
+                        }
+                        r.kit (out, b, "x-x-----x-------", Round3::backbeat, GmDrum::closedHat, Round3::eighths);
+                    });
+                }
+                else if (n == "ELECTRONIC HALF-TIME LOOP")
+                {
+                    out.description = "A machine loop in half time: the pedal hat on a broken eighth figure, a two-bar kick, a tom on 3 for the backbeat";
+                    each ([&] (int b)
+                    {
+                        r.kit (out, b, b % 2 == 0 ? "x---x---x-x-x-x-" : "--x-x---x-x-x---", nullptr, GmDrum::pedalHat, "x-x---x-x-x-x-x-", 0);
+                        r.hit (out, b * bpb + 2 * q, GmDrum::tomMid, 0.88f);
+                    });
+                }
+                else if (n == "TOM RUN EVERY BAR")
+                {
+                    out.description = "The kick on 1, 2 and 4, the snare on 2 and 4, a tom run in sixteenths through the second half of every bar";
+                    each ([&] (int b)
+                    {
+                        r.kit (out, b, "x---x-------x---", Round3::backbeat, GmDrum::closedHat, "x-x-x-x---------");
+                        const int toms[] { GmDrum::tomHigh, GmDrum::tomMid, GmDrum::tomLow, GmDrum::tomFloor };
+                        for (int k = 8; k < 16; ++k)
+                            if (k != 12)
+                                r.hit (out, b * bpb + k * s16, toms[(k - 8) / 2], 0.72f);
+                    });
+                }
+                else if (n == "TOM ROLL CARPET")
+                {
+                    out.description = "No kick or cymbals: the snare on 1 and 3, the toms on every sixteenth";
+                    each ([&] (int b)
+                    {
+                        const int toms[] { GmDrum::tomHigh, GmDrum::tomMid, GmDrum::tomLow, GmDrum::tomFloor };
+                        for (int k = 0; k < 16; ++k)
+                            r.hit (out, b * bpb + k * s16, toms[k % 4], k % 4 == 0 ? 0.74f : 0.6f);
+                        for (const auto k : { 0, 8 })
+                            r.hit (out, b * bpb + k * s16, GmDrum::snare, 0.9f);
+                    });
+                }
+                else if (n == "INDUSTRIAL BROKEN BEAT")
+                {
+                    out.description = "A broken beat: the kick on 1, 2-and, 3 and 4, the snare on 2 (a ghost before it), 2-a, 3-and and 4-and, a china on 2 and the and of 3";
+                    each ([&] (int b)
+                    {
+                        r.kit (out, b, "x-----x-x---x---", "---xx--x--x---x-", GmDrum::closedHat, "x-xx--x-x---x-xx", 0);
+                        for (const auto k : { 4, 10 })
+                            r.hit (out, b * bpb + k * s16, GmDrum::china, 0.66f);
+                    });
+                }
+                else if (n == "DISPLACED BACKBEAT")
+                {
+                    out.description = "The kick off the one (2, 2-and, 3-and, 4-and), the snare on 1-and, 2-a, 3-and and 4-a";
+                    each ([&] (int b) { r.kit (out, b, "----x-x---x---x-", "--x----x--x----x", GmDrum::closedHat, Round3::eighths); });
+                }
+                else
+                    return std::nullopt;
+                sortNotes (out);
+                return out;
+            }
+            if (l == ComposerLayer::chords)
+            {
+                if (n == "SYNTH BASS SIXTEENTHS")
+                {
+                    out.description = "A synth bass on every sixteenth: the root with its step neighbours under and over it";
+                    const int moves[] { 0, 0, 0, 2, 0, 0, -2, 0, 0, 0, 0, 2, 0, 3, 0, -2 };
+                    each ([&] (int b)
+                    {
+                        const auto root = rootNear (r.chordOfBar (b), 36, 47, false);
+                        for (int k = 0; k < 16; ++k)
+                            r.add (out, b * bpb + k * s16, s16 * 0.8, moves[k] == 0 ? root : scaleStep (r.key, root, moves[k] > 0 ? 1 : -1), 0.5f);
+                    });
+                }
+                else if (n == "STRINGS ON THE QUARTERS")
+                {
+                    out.description = "Strings in octaves on every quarter, the chord's notes moving by step";
+                    each ([&] (int b)
+                    {
+                        const auto pcs = r.chordOfBar (b).pitchClasses();
+                        for (int k = 0; k < 4; ++k)
+                        {
+                            const auto p = pitchOfClassIn (pcs[(size_t) (k % juce::jmax (1, (int) pcs.size()))], 64, 75);
+                            r.add (out, b * bpb + k * q, q * 0.9, p, 0.42f);
+                            r.add (out, b * bpb + k * q, q * 0.9, p + 12, 0.42f);
+                        }
+                    });
+                }
+                else if (n == "PIANO ARPEGGIO IN 3+3+2")
+                {
+                    out.description = "The chord's notes on a 3+3+2 figure in each half bar, the piano";
+                    each ([&] (int b)
+                    {
+                        const auto voicings = voicingsFor (r.chordOfBar (b), 60);
+                        if (voicings.empty())
+                            return;
+                        const auto& shape = voicings.front();
+                        auto i = 0;
+                        r.each16 ("x--x--x-x--x--x-", b * bpb, [&] (double t, int k) { r.add (out, t, (k % 8 == 6 ? 2 : 3) * s16 * 0.9, shape[(size_t) (i++ % (int) shape.size())], 0.46f); });
+                    });
+                }
+                else if (n == "PIZZICATO ARPEGGIO")
+                {
+                    out.description = "Plucked strings: the chord's notes up and down in short eighths";
+                    each ([&] (int b)
+                    {
+                        const auto voicings = voicingsFor (r.chordOfBar (b), 55);
+                        if (voicings.empty())
+                            return;
+                        const auto& shape = voicings.front();
+                        const int order[] { 0, 1, 2, 3, 2, 1, 0, 1 };
+                        for (int k = 0; k < 8; ++k)
+                        {
+                            const auto i = order[k];
+                            const auto p = shape[(size_t) (i % (int) shape.size())] + (i >= (int) shape.size() ? 12 : 0);
+                            r.add (out, b * bpb + k * e, e * 0.35, p, 0.5f);
+                        }
+                    });
+                }
+                else if (n == "TIMPANI ROLL RISER")
+                {
+                    out.description = "The key's note low as a timpani: a hit on each phrase's one, a sixteenth roll swelling through every fourth bar";
+                    const auto low = r.tonicIn (36, 47);
+                    each ([&] (int b)
+                    {
+                        if (b % 4 == 0)
+                            r.add (out, b * bpb, q, low, 0.7f);
+                        if (b % 4 == 3 || b == bars - 1)
+                            for (int k = 0; k < 16; ++k)
+                                r.add (out, b * bpb + k * s16, s16 * 0.9, low, 0.3f + 0.04f * (float) k);
+                    });
+                }
+                else
+                    return std::nullopt;
+                sortNotes (out);
+                return out;
+            }
+            return std::nullopt;
+        }
+
         std::optional<LineIdea> chorusLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             if (spans.empty() || sectionBand (s) != SectionType::Band::chorus || l == ComposerLayer::melody)
@@ -14634,6 +14818,10 @@ namespace pr7s
             // (0.126.0) OWN STYLES: the section type leaves this lane alone.
             if (! leaderLayer.has_value() && s.lane (l).ownStyles)
                 return rawLayer (l, s, spans, c);
+            // (0.145.0) The options added to every type's drums and keys lists.
+            if (! leaderLayer.has_value())
+                if (auto extra = extraOptionLayer (l, s, spans, c))
+                    return std::move (*extra);
             // (0.97.0, CLEAN VERSE's band) with SYNC off, every lane but the melody and the lead plays its clean part.
             if (! leaderLayer.has_value())
                 if (auto clean = cleanLayer (l, s, spans, c))

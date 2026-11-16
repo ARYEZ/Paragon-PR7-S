@@ -1036,7 +1036,7 @@ namespace pr7s
         return sectionBand (s) == SectionType::Band::staccato;
     }
 
-    juce::StringArray sectionApproaches (const ComposerState& s, ComposerLayer layer)
+    juce::StringArray baseSectionApproaches (const ComposerState& s, ComposerLayer layer)
     {
         if (s.writtenRiffs)
             return {};
@@ -1096,6 +1096,28 @@ namespace pr7s
             }
         const auto& flavours = riffFlavours();
         return sectionApproaches (flavours[(size_t) juce::jlimit (0, (int) flavours.size() - 1, s.riffFlavour)], layer);
+    }
+
+    juce::StringArray extraApproaches (ComposerLayer layer)
+    {
+        // (0.145.0) From the owner's 61 song files (shapes only, our names), offered under every named section type after
+        // its own options.
+        if (layer == ComposerLayer::drums)
+            return { "DOUBLE-TIME PUNK BEAT", "SNARE ON EVERY BEAT, KICKS BETWEEN", "CRASH EIGHTHS, FULL TIME", "PHRASE-END SNARE RUN",
+                     "ELECTRONIC HALF-TIME LOOP", "TOM RUN EVERY BAR", "TOM ROLL CARPET", "INDUSTRIAL BROKEN BEAT", "DISPLACED BACKBEAT" };
+        if (layer == ComposerLayer::chords)
+            return { "SYNTH BASS SIXTEENTHS", "STRINGS ON THE QUARTERS", "PIANO ARPEGGIO IN 3+3+2", "PIZZICATO ARPEGGIO", "TIMPANI ROLL RISER" };
+        return {};
+    }
+
+    juce::StringArray sectionApproaches (const ComposerState& s, ComposerLayer layer)
+    {
+        auto names = baseSectionApproaches (s, layer);
+        if (names.isEmpty() || ! sectionTypeCalled (s.sectionType).has_value())
+            return names;
+        for (const auto& n : extraApproaches (layer))
+            names.addIfNotAlreadyThere (n);
+        return names;
     }
 
     juce::String approachName (const ComposerState& s, ComposerLayer layer)

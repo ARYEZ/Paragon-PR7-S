@@ -1079,8 +1079,8 @@ TEST_CASE ("0.97.0: CLEAN VERSE: a verse type with five clean guitar parts and t
     CHECK (guitar[3] == "GUITARS OUT");
     CHECK (guitar[4] == "HELD CHORD & PULSE");
     CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 6);   // (0.97.2: LOCKED WITH THE KICK; 0.100.0: OUT, THEN IN HALFWAY)
-    CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 6);   // (0.100.0: OUT, THEN IN HALFWAY; 0.101.0: HALF-TIME HATS, TOM GROOVE)
-    CHECK (sectionApproaches (s, ComposerLayer::chords).size() == 5);   // (0.100.0: OCTAVE DRONE)
+    CHECK (baseSectionApproaches (s, ComposerLayer::drums).size() == 6);   // (0.100.0: OUT, THEN IN HALFWAY; 0.101.0: HALF-TIME HATS, TOM GROOVE)
+    CHECK (baseSectionApproaches (s, ComposerLayer::chords).size() == 5);   // (0.100.0: OCTAVE DRONE)
     CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 2);   // (0.101.0: the swells; automatic: the lead's own style)
     CHECK (sectionApproaches (s, ComposerLayer::melody).isEmpty());
     CHECK_FALSE (typedGuitarFlavour (s).has_value());   // (clean parts, not riff kinds)
@@ -1326,8 +1326,8 @@ TEST_CASE ("0.98.0: the DRIVING chorus's options for every lane", "[sections][ty
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, s, c));
     CHECK (sectionApproaches (s, ComposerLayer::guitar).size() == 7);   // (0.117.0: the turnaround)
     CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 6);   // (0.117.0: the dominant pedal)
-    CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 7);   // (0.116.0: two more)
-    CHECK (sectionApproaches (s, ComposerLayer::chords).size() == 4);
+    CHECK (baseSectionApproaches (s, ComposerLayer::drums).size() == 7);   // (0.116.0: two more)
+    CHECK (baseSectionApproaches (s, ComposerLayer::chords).size() == 4);
     CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 4);   // (0.117.0: the falling octaves)
     // Every option of every lane a different part.
     s.lane (ComposerLayer::lead).on = true;
@@ -1497,8 +1497,8 @@ TEST_CASE ("0.99.0: SYNCOPATED DRIVE: a chorus type with its options", "[section
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, s, c));
     CHECK (sectionApproaches (s, ComposerLayer::guitar).size() == 5);   // (0.117.0: the turnaround)
     CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 5);   // (0.117.0: the dominant pedal)
-    CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 4);
-    CHECK (sectionApproaches (s, ComposerLayer::chords).size() == 3);
+    CHECK (baseSectionApproaches (s, ComposerLayer::drums).size() == 4);
+    CHECK (baseSectionApproaches (s, ComposerLayer::chords).size() == 3);
     CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 3);
     s.lane (ComposerLayer::lead).on = true;
     const auto spans = cleanSpans();
@@ -1659,7 +1659,7 @@ TEST_CASE ("0.100.0: MUTED DRIVE: a verse type of palm-muted eighths with its ba
         CHECK (sectionTypeWritesLane (l, s, c));
     CHECK (sectionApproaches (s, ComposerLayer::guitar).size() == 3);
     CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 4);
-    CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 4);   // (0.118.0: FOUR ON THE FLOOR)
+    CHECK (baseSectionApproaches (s, ComposerLayer::drums).size() == 4);   // (0.118.0: FOUR ON THE FLOOR)
     const auto struck = [] (const std::string& bar) { int n = 0; for (int i = 0; i < 16; i += 2) n += bar[(size_t) i] != '=' && bar[(size_t) i] != '-'; return n; };
     for (juce::uint32 seed = 1; seed < 30; ++seed)
     {
@@ -3373,10 +3373,10 @@ TEST_CASE ("0.116.0: the new chorus types' shapes; DRIVING's and DRONING's new d
     {
         ComposerState s;
         applySectionType (s, "Chorus", "DRIVING");
-        CHECK (sectionApproaches (s, ComposerLayer::drums).size() == 7);
+        CHECK (baseSectionApproaches (s, ComposerLayer::drums).size() == 7);
         ComposerState d;
         applySectionType (d, "Chorus", "DRONING");
-        CHECK (sectionApproaches (d, ComposerLayer::drums).size() == 8);
+        CHECK (baseSectionApproaches (d, ComposerLayer::drums).size() == 8);
     }
 }
 
@@ -4965,4 +4965,83 @@ TEST_CASE ("0.144.0: the 21 transitions from the 61 songs", "[sections][transiti
         CHECK ((b.notes.back().pitch % 12 == 7));   // (G, a step under A)
         CHECK (b.notes.back().beat == Catch::Approx (31.75));
     }
+}
+
+TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every named section type", "[sections][types][extras145]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const auto drums = extraApproaches (ComposerLayer::drums);
+    const auto keys = extraApproaches (ComposerLayer::chords);
+    CHECK (drums.size() == 9);
+    CHECK (keys.size() == 5);
+    CHECK (extraApproaches (ComposerLayer::guitar).isEmpty());
+    CHECK (extraApproaches (ComposerLayer::bass).isEmpty());
+
+    // Under STANDARD (no named type) nothing is added.
+    {
+        ComposerState s;
+        CHECK (sectionApproaches (s, ComposerLayer::drums) == baseSectionApproaches (s, ComposerLayer::drums));
+    }
+
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << ";";
+        return k;
+    };
+    for (const auto& [section, type] : std::vector<std::pair<juce::String, juce::String>> { { "Chorus", "DRIVING" }, { "Verse", "CLEAN VERSE" },
+                                                                                            { "Bridge", "HALF-TIME MELODIC" } })
+    {
+        ComposerState s;
+        applySectionType (s, section, type);
+        REQUIRE (s.sectionType == type);
+        for (const auto l : { ComposerLayer::drums, ComposerLayer::chords })
+        {
+            const auto base = baseSectionApproaches (s, l);
+            const auto all = sectionApproaches (s, l);
+            REQUIRE (! base.isEmpty());
+            CHECK (all.size() == base.size() + (l == ComposerLayer::drums ? 9 : 5));
+            for (int i = 0; i < base.size(); ++i)
+                CHECK (all[i] == base[i]);   // (the type's own first: songs keep their choices)
+            const auto& extras = l == ComposerLayer::drums ? drums : keys;
+            std::set<juce::String> seen;
+            for (int i = 0; i < extras.size(); ++i)
+            {
+                auto t = s;
+                t.lane (l).approach = base.size() + i;
+                const auto idea = composeLayers (t, spans, c)[(size_t) l];
+                INFO (type << " " << extras[i]);
+                CHECK (idea.style == extras[i].toLowerCase());
+                CHECK (! idea.notes.empty());
+                CHECK (seen.insert (key (idea)).second);
+                for (const auto& n : idea.notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+    }
+
+    // The punk beat: the snare on every off-beat eighth; the bass LOCKED WITH THE KICK follows the new drums.
+    ComposerState s;
+    applySectionType (s, "Chorus", "DRIVING");
+    const auto base = baseSectionApproaches (s, ComposerLayer::drums);
+    s.lane (ComposerLayer::drums).approach = base.size();   // DOUBLE-TIME PUNK BEAT
+    s.lane (ComposerLayer::bass).approach = sectionApproaches (s, ComposerLayer::bass).size() - 1;
+    const auto layers = composeLayers (s, spans, c);
+    const auto& beat = layers[(size_t) ComposerLayer::drums];
+    std::set<int> snares, kicks;
+    for (const auto& n : beat.notes)
+    {
+        const auto step = juce::roundToInt (std::fmod (n.beat, 4.0) * 4.0);
+        if (n.pitch == GmDrum::snare)
+            snares.insert (step);
+        if (n.pitch == GmDrum::kick)
+            kicks.insert (juce::roundToInt (n.beat * 4.0));
+    }
+    CHECK (snares == std::set<int> { 2, 6, 10, 14 });
+    const auto& bass = layers[(size_t) ComposerLayer::bass];
+    REQUIRE (! bass.notes.empty());
+    for (const auto& n : bass.notes)
+        CHECK (kicks.count (juce::roundToInt (n.beat * 4.0)) == 1);
 }

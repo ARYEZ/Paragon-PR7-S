@@ -66,6 +66,8 @@ namespace pr7s
     // / on the roots / a muted pedal in threes; the drums open hats / half time / locked to the pushes. Our names.
     juce::StringArray sectionApproaches (RiffFlavour, ComposerLayer);
     juce::StringArray sectionApproaches (const ComposerState&, ComposerLayer);   // by the state's flavour
+    juce::StringArray baseSectionApproaches (const ComposerState&, ComposerLayer);   // (0.145.0) without the extras
+    juce::StringArray extraApproaches (ComposerLayer);   // (0.145.0) drums and keys options under every named type
     juce::StringArray preChorusApproaches (const juce::String& type, ComposerLayer);   // (0.102.0)
     juce::StringArray bridgeApproaches (const juce::String& type, ComposerLayer);      // (0.105.0)
     juce::StringArray breakdownApproaches (const juce::String& type, ComposerLayer);   // (0.109.0)
