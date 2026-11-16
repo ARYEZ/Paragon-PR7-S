@@ -2,6 +2,23 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.149.0
+
+**Six pre-chorus types and three post-chorus / interlude types from your 54 new songs** (round four, the third group). The pre-choruses are in the pre-chorus's TYPE menu after OCTAVES ROCKING TO THE TRITONE; the post-choruses are in the post-chorus's and interlude's after SNARE ONLY ON FOUR AND FOUR-AND. Each writes the guitar, bass, keys and drums, two to four options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.
+
+Pre-choruses:
+- **STOP BARS IN TURN WITH THE RIFF:** a bar of the riff, then a bar stopped on one hit, in turn. (Forsaken)
+- **MARCHING SNARE OVER HELD CHORDS:** no kick or cymbals, a soft snare figure under whole-note chords rising, stopping halfway through the last bar. (Heavy Is the Crown)
+- **DRUMS OUT, KEYS PULSE AND PUSHES:** the kit out, the keys pulsing eighths with the guitar pushing into each change. (The Emptiness Machine)
+- **SIXTEENTH ROOTS STEPPING DOWN:** one root a bar in sixteenths, falling down the scale, then bursts of six and five, then high clashing stabs. (Trust)
+- **SIDESTICK DROP:** the kick on the 3+3+2 anchors with a side stick, everything stopping after the and of 2 in the last bar. (Figure.09)
+- **HIGH PEDAL IN 3+3+2 OVER A MOVING BASS:** a high note picked in 3+3+2 while the bass moves under it. (P5hng Me A*wy)
+
+Post-choruses / interludes:
+- **OFF-BEAT LOW DYADS UNDER A HIGH DRONE:** low root-and-fifth dyads on the off-beats, a high note held over them. (Denial)
+- **CLAPS AND ONE GUITAR:** claps on every beat, no kick, one guitar playing the riff. (Bleed It Out)
+- **BASS RIFF ALONE UNDER A HELD HIGH NOTE:** the bass's riff alone with one high note held over it. (Moon Baby)
+
 ## 0.148.0
 
 **Eleven chorus types from your 54 new songs** (round four, the second group). They're in the chorus's TYPE menu after FOUR EIGHTHS, THEN A PUSH. Each writes the guitar, bass, keys and drums, two to four options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.

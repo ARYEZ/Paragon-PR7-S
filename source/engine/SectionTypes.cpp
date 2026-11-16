@@ -63,7 +63,14 @@ namespace pr7s
                      { "UNISON EIGHTHS BUILD", "Everyone on every eighth, the kick, snare and floor tom together, then hits and a roll into the chorus", RiffFlavour::openChords, {}, pre },
                      { "TREMOLO PEDAL, THEN OCTAVE PUMP", "The root tremolo-picked under held chords, then the root and its octave pumped in eighths", RiffFlavour::openChords, {}, pre },
                      { "PAIRS IN 3+3+2, RING BAR", "Pairs of sixteenths on 3+3+2, every fourth bar a chord rung", RiffFlavour::openChords, {}, pre },
-                     { "OCTAVES ROCKING TO THE TRITONE", "Low octaves rocking between the root and its tritone, the bass with them", RiffFlavour::openChords, {}, pre } };
+                     { "OCTAVES ROCKING TO THE TRITONE", "Low octaves rocking between the root and its tritone, the bass with them", RiffFlavour::openChords, {}, pre },
+                     // (0.149.0) Round four (shapes only, our names).
+                     { "STOP BARS IN TURN WITH THE RIFF", "Two bars of three dotted stabs, two bars of the riff, again, then a build of pushes", RiffFlavour::openChords, {}, pre },
+                     { "MARCHING SNARE OVER HELD CHORDS", "No kick or cymbals: a soft marching snare under whole-note chords, stopping after beat 2", RiffFlavour::openChords, {}, pre },
+                     { "DRUMS OUT, KEYS PULSE AND PUSHES", "Piano chords in halves, guitar pushes in each bar's second half, the drums back halfway", RiffFlavour::openChords, {}, pre },
+                     { "SIXTEENTH ROOTS STEPPING DOWN", "A root stream one root a bar falling, then bursts of six and five, then high clashing stabs", RiffFlavour::openChords, {}, pre },
+                     { "SIDESTICK DROP", "Only a kick on the 3+3+2 anchors and a side stick, root octaves on the anchors, a stop after the and of 2", RiffFlavour::openChords, {}, pre },
+                     { "HIGH PEDAL IN 3+3+2 OVER A MOVING BASS", "High picked eighths on 3+3+2 over bass sixteenths on each new root", RiffFlavour::openChords, {}, pre } };
             for (auto& t : sectionTypesFor ("Verse"))   // (0.118.0: the whole verse list, its new types too)
                 types.push_back (std::move (t));
             return types;
@@ -92,7 +99,11 @@ namespace pr7s
                 { "HITS ON FOUR", "The band hits once a bar, on beat 4, and lets it ring into the next", r, {}, i },
                 { "UNISON CHROMATIC RUNS", "Everyone on sixteenth runs climbing a half step at a time in odd groups, closed by quarter-note hits", r, {}, i },
                 { "DOTTED NOTE OVER THE RIFF", "One high note every three sixteenths over the bass's sixteenth pedal riff", r, {}, i },
-                { "SNARE ONLY ON FOUR AND FOUR-AND", "Chords held two bars with high stabs answering, the snare only on beat 4 and its and", r, {}, i } };
+                { "SNARE ONLY ON FOUR AND FOUR-AND", "Chords held two bars with high stabs answering, the snare only on beat 4 and its and", r, {}, i },
+                // (0.149.0) Round four (shapes only, our names).
+                { "OFF-BEAT LOW DYADS UNDER A HIGH DRONE", "Muted low dyads on off-beat sixteenths, the root rung high, the bass busy round the root and flat seven", r, {}, i },
+                { "CLAPS AND ONE GUITAR", "No kick: the snare and claps on every beat with a tambourine, one guitar's hook figure; keys and bass come in late", r, {}, i },
+                { "BASS RIFF ALONE UNDER A HELD HIGH NOTE", "The bass's riff alone under one held high note, then the guitar joins", r, {}, i } };
             const auto before = sectionTypesFor (base == "Post-Chorus" ? juce::String ("Chorus") : juce::String ("Bridge"));
             types.insert (types.end(), before.begin(), before.end());
             return types;
@@ -928,6 +939,25 @@ namespace pr7s
                   { "STRINGS PULSE AND HIGH PIANO", "PADS ALONE" }, { "A SPLASH, THEN OUT", "OUT" }, {} },
                 { "TOM WALL UNDER THE LAST CHORD", { "RIFF, THEN THE LAST CHORD HELD", "LAST CHORD HELD ALL THROUGH" }, { "RIFF, THEN HELD", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK AND FLOOR TOM ON EVERY SIXTEENTH", "TOM WALL ALL THROUGH" }, {} },
+                // (0.149.0) Round four's pre-choruses and post-choruses.
+                { "STOP BARS IN TURN WITH THE RIFF", { "STOP BARS AND THE RIFF", "STOP BARS ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "STOPS, RIFF, BUILD", "STOPS AND A BACKBEAT" }, {} },
+                { "MARCHING SNARE OVER HELD CHORDS", { "OUT", "HELD CHORDS" }, { "WHOLE NOTES", "OUT", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "MARCHING SNARE", "MARCHING SNARE WITH A KICK ON ONE" }, {} },
+                { "DRUMS OUT, KEYS PULSE AND PUSHES", { "PUSHES IN THE SECOND HALF", "OUT" }, { "ROOTS HELD", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+                  { "CHORDS IN HALVES", "HELD PADS" }, { "OUT, THEN BACK HALFWAY", "OUT, A HIT TO END" }, {} },
+                { "SIXTEENTH ROOTS STEPPING DOWN", { "STREAM, BURSTS, CLASHES", "STREAM ALL THROUGH" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ON THE BEATS, CRASH EACH STAGE", "HALF TIME" }, {} },
+                { "SIDESTICK DROP", { "ROOT OCTAVES ON THE ANCHORS", "ANCHORS, THEN A STOP" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "TWO HIGH NOTES, A STEP APART", "HELD PADS" }, { "KICK AND SIDE STICK", "SIDE STICK ONLY" }, {} },
+                { "HIGH PEDAL IN 3+3+2 OVER A MOVING BASS", { "HIGH PEDAL IN 3+3+2", "HIGH PEDAL, TOP STEPPING EACH BAR" }, { "SIXTEENTHS ON EACH ROOT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD ROOT", "HELD PADS" }, { "VERSE GROOVE, SNARE TRIPLE TO END", "HIP-HOP BREAK" }, {} },
+                { "OFF-BEAT LOW DYADS UNDER A HIGH DRONE", { "OFF-BEAT DYADS, HIGH ROOT RUNG", "OFF-BEAT DYADS ONLY" }, { "BUSY ROOT AND FLAT SEVEN", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "PEDAL HAT QUARTERS, SYNCOPATED KICK", "KICK WITH THE DYADS" }, {} },
+                { "CLAPS AND ONE GUITAR", { "THE HOOK FIGURE ALONE", "HOOK FIGURE AND CHORDS" }, { "OUT, THEN HELD ROOTS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "OUT, THEN TRIADS HALFWAY", "HELD PADS" }, { "SNARE AND CLAPS ON EVERY BEAT", "CLAPS, TAMBOURINE AND A KICK" }, {} },
+                { "BASS RIFF ALONE UNDER A HELD HIGH NOTE", { "HELD HIGH NOTE, THEN THE RIFF", "HELD NOTE, THEN TREMOLO IN TURN" }, { "THE RIFF ALONE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT, THEN THE RIDE", "RIDE ONLY" }, {} },
                 // (0.148.0) Round four's choruses.
                 { "ACOUSTIC STRUM CHORUS", { "SIXTEENTH STRUMS", "STRUMS WITH POWER CHORDS ON THE ACCENTS" }, { "WHOLE NOTES", "DOTTED WITH THE KICK", "LOCKED WITH THE KICK" },
                   { "STRINGS ON THE ROOT", "HELD PADS" }, { "NO DRUMS", "TOMS ALONE IN 3+3+3+3+4", "TOMS OVER FOUR ON THE FLOOR", "DOTTED KICK, BACKBEAT" }, {} },

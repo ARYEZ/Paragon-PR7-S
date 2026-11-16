@@ -1943,7 +1943,7 @@ TEST_CASE ("0.102.0: a pre-chorus's own types, every lane's options a different 
                                             "CHUGS UNDER THE SHAPE", "STABS & GAPS", "RISING BASS" };
     // A pre-chorus lists them first, then the verse's types (a block typed as a verse keeps its type); a verse hasn't them.
     const auto pre = sectionTypesFor ("Pre-Chorus 2");
-    REQUIRE (pre.size() == names.size() + 6 + 7 + sectionTypesFor ("Verse").size());   // (0.123.0: six more after them)
+    REQUIRE (pre.size() == names.size() + 6 + 7 + 6 + sectionTypesFor ("Verse").size());   // (0.123.0: six more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (pre[i].name == names[i]);
     CHECK (sectionTypeNamed ("Pre-Chorus", "STACCATO CHUG").has_value());
@@ -2915,12 +2915,12 @@ TEST_CASE ("0.110.0: interlude and post-chorus types, every lane's options a dif
                                             "STAB & ANSWER", "TREMOLO OVER CHUGS", "CLEAN BREATH", "TRITONE AIR & BUILD", "CHROMATIC WOBBLE" };
     // A post-chorus: these, then the chorus's; an interlude or instrumental: these, then the bridge's.
     const auto post = sectionTypesFor ("Post-Chorus");
-    REQUIRE (post.size() == names.size() + 6 + sectionTypesFor ("Chorus").size());
+    REQUIRE (post.size() == names.size() + 6 + 3 + sectionTypesFor ("Chorus").size());
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (post[i].name == names[i]);
     CHECK (post[names.size() + 6].name == "DRIVING");   // (0.141.0: six more first)
     const auto interlude = sectionTypesFor ("Interlude 2");
-    REQUIRE (interlude.size() == names.size() + 6 + sectionTypesFor ("Bridge").size());
+    REQUIRE (interlude.size() == names.size() + 6 + 3 + sectionTypesFor ("Bridge").size());
     CHECK (interlude[names.size() + 6].name == "HALF-TIME MELODIC");
     CHECK (sectionTypeNamed ("Instrumental", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Chorus", "HOOK RIFF").has_value());
@@ -5397,4 +5397,101 @@ TEST_CASE ("0.148.0: round four's chorus types, every lane's options a different
     }
     // ACOUSTIC STRUM CHORUS with NO DRUMS: no drum notes at all.
     CHECK (layersOf ("ACOUSTIC STRUM CHORUS", 0, 0)[(size_t) ComposerLayer::drums].notes.empty());
+}
+
+TEST_CASE ("0.149.0: round four's pre-chorus and post-chorus types, every lane's options a different part", "[sections][types][pre149]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars; the guitar's low A 33)
+    const std::vector<juce::String> pres { "STOP BARS IN TURN WITH THE RIFF", "MARCHING SNARE OVER HELD CHORDS", "DRUMS OUT, KEYS PULSE AND PUSHES",
+                                           "SIXTEENTH ROOTS STEPPING DOWN", "SIDESTICK DROP", "HIGH PEDAL IN 3+3+2 OVER A MOVING BASS" };
+    const std::vector<juce::String> posts { "OFF-BEAT LOW DYADS UNDER A HIGH DRONE", "CLAPS AND ONE GUITAR", "BASS RIFF ALONE UNDER A HELD HIGH NOTE" };
+    const auto pre = sectionTypesFor ("Pre-Chorus");
+    const auto post = sectionTypesFor ("Post-Chorus");
+    for (size_t i = 0; i < pres.size(); ++i)
+    {
+        CHECK (pre[19 + i].name == pres[i]);
+        CHECK (sectionTypeCalled (pres[i])->band == SectionType::Band::preChorus);
+    }
+    for (size_t i = 0; i < posts.size(); ++i)
+    {
+        CHECK (post[17 + i].name == posts[i]);
+        CHECK (sectionTypeCalled (posts[i])->band == SectionType::Band::interlude);
+        CHECK (isSectionTypeOf ("Interlude", posts[i]));
+    }
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    auto all = pres;
+    all.insert (all.end(), posts.begin(), posts.end());
+    for (const auto& name : all)
+    {
+        INFO (name);
+        ComposerState s;
+        applySectionType (s, std::find (pres.begin(), pres.end(), name) != pres.end() ? "Pre-Chorus" : "Post-Chorus", name);
+        REQUIRE (s.sectionType == name);
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && ! options.isEmpty()));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                const auto option = sectionApproaches (s, l)[(int) o];
+                INFO (composerLayerName (l) << " " << option);
+                CHECK (seen.insert (key (choices[o])).second);
+                if (option != "OUT" && option != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+    }
+    const auto layersOf = [&] (const juce::String& section, const juce::String& type, int guitar, int drums)
+    {
+        ComposerState s;
+        applySectionType (s, section, type);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::drums).approach = drums;
+        return composeLayers (s, spans, c);
+    };
+    // MARCHING SNARE: no kick or cymbals, and nothing after beat 2 of the last bar.
+    for (const auto& n : layersOf ("Pre-Chorus", "MARCHING SNARE OVER HELD CHORDS", 0, 0)[(size_t) ComposerLayer::drums].notes)
+    {
+        CHECK (n.pitch == GmDrum::snare);
+        CHECK (n.beat < 7 * 4.0 + 2.0);
+    }
+    // SIXTEENTH ROOTS STEPPING DOWN: one root a bar, falling (A, then F, then E...), never under the low string.
+    {
+        const auto layers = layersOf ("Pre-Chorus", "SIXTEENTH ROOTS STEPPING DOWN", 1, 0);
+        std::vector<int> firsts;
+        for (int bar = 0; bar < 4; ++bar)
+            for (const auto& n : layers[(size_t) ComposerLayer::guitar].notes)
+                if (std::abs (n.beat - bar * 4.0) < 1.0e-6)
+                {
+                    firsts.push_back (n.pitch);
+                    break;
+                }
+        CHECK (firsts == std::vector<int> { 45, 41, 40, 39 });
+    }
+    // CLAPS AND ONE GUITAR: no kick in the first drum option; claps on every beat.
+    {
+        int claps = 0;
+        for (const auto& n : layersOf ("Post-Chorus", "CLAPS AND ONE GUITAR", 0, 0)[(size_t) ComposerLayer::drums].notes)
+        {
+            CHECK (n.pitch != GmDrum::kick);
+            claps += n.pitch == 39 ? 1 : 0;
+        }
+        CHECK (claps == 32);
+    }
 }
