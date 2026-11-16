@@ -4144,7 +4144,7 @@ TEST_CASE ("0.139.0: the twelve verse types from the 61 songs, every lane's opti
                                             "TOM FIGURE VERSE", "SIX-SIXTEENTH CELLS", "HOLED SIXTEENTH PEDAL", "GUITAR CALLS, BASS ANSWERS",
                                             "THREE-BAR CYCLE", "THREE-BAR RIFF, KICK AND BASS ON THE BEATS", "KICK AND BASS IN UNISON", "BASS GROOVE, GUITAR SQUEALS" };
     const auto verse = sectionTypesFor ("Verse");
-    REQUIRE (verse.size() == 28u);
+    REQUIRE (verse.size() == 33u);   // (0.146.0: five more after them)
     for (size_t i = 0; i < names.size(); ++i)
     {
         CHECK (verse[14 + i].name == names[i]);
@@ -5044,4 +5044,147 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     REQUIRE (! bass.notes.empty());
     for (const auto& n : bass.notes)
         CHECK (kicks.count (juce::roundToInt (n.beat * 4.0)) == 1);
+}
+
+TEST_CASE ("0.146.0: the guitar ideas as verse types, every lane's options a different part", "[sections][types][guitar146]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars; the guitar's low A 33)
+    const std::vector<juce::String> names { "OCTAVE-JUMP PEDAL", "PEDAL 7+3+3+3", "DRIVEN ARPEGGIO", "CHUG PAIRS, HIGH PINGS", "MUTED PEDAL, ACCENTS IN THREES" };
+    const auto verse = sectionTypesFor ("Verse");
+    REQUIRE (verse.size() == 33u);
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        INFO (names[i]);
+        CHECK (verse[26 + i].name == names[i]);
+        CHECK (sectionTypeCalled (names[i])->band == SectionType::Band::verse);
+        ComposerState s;
+        applySectionType (s, "Verse", names[i]);
+        REQUIRE (s.sectionType == names[i]);
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                INFO (composerLayerName (l) << " " << o);
+                CHECK (seen.insert (key (choices[o])).second);
+                if (! (l == ComposerLayer::chords && o == 0))
+                    CHECK (! choices[o].notes.empty());
+            }
+        }
+    }
+
+    const auto layersOf = [&] (const juce::String& type, int guitar, int bass, int drums)
+    {
+        ComposerState s;
+        applySectionType (s, "Verse", type);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::bass).approach = bass;
+        s.lane (ComposerLayer::drums).approach = drums;
+        return composeLayers (s, spans, c);
+    };
+    const auto at = [] (const LineIdea& idea, double beat)
+    {
+        std::vector<int> pitches;
+        for (const auto& n : idea.notes)
+            if (std::abs (n.beat - beat) < 1.0e-6 && ! n.keyswitch)
+                pitches.push_back (n.pitch);
+        std::sort (pitches.begin(), pitches.end());
+        return pitches;
+    };
+    // OCTAVE-JUMP PEDAL: the root, its octave on the 4th and 11th sixteenths, the half step over it on the 6th; nothing on the 7th.
+    {
+        const auto layers = layersOf ("OCTAVE-JUMP PEDAL", 0, 0, 0);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        CHECK (at (g, 0.0) == std::vector<int> { 33 });
+        CHECK (at (g, 0.75) == std::vector<int> { 45 });
+        CHECK (at (g, 1.25) == std::vector<int> { 46 });
+        CHECK (at (g, 1.5).empty());
+        CHECK (at (g, 2.5) == std::vector<int> { 45 });
+    }
+    // PEDAL 7+3+3+3: a power chord opening each group, moving a scale step each time; the muted root between.
+    {
+        const auto layers = layersOf ("PEDAL 7+3+3+3", 0, 0, 0);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        CHECK (at (g, 0.0) == std::vector<int> { 33, 40 });
+        CHECK (at (g, 0.25) == std::vector<int> { 33 });
+        CHECK (at (g, 2.0) == std::vector<int> { 35, 42 });   // (B: A minor's next scale step)
+        CHECK (at (g, 2.75) == std::vector<int> { 36, 43 });
+        CHECK (at (g, 3.5) == std::vector<int> { 38, 45 });
+        CHECK (at (g, 1.75).empty());
+        const auto one = layersOf ("PEDAL 7+3+3+3", 1, 0, 0);
+        CHECK (at (one[(size_t) ComposerLayer::guitar], 2.0) == std::vector<int> { 33, 40 });
+    }
+    // DRIVEN ARPEGGIO: one note an eighth, root fifth octave tenth twelfth tenth octave fifth (minor: b3); the bass on 3+3+2.
+    {
+        const auto layers = layersOf ("DRIVEN ARPEGGIO", 0, 0, 0);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        const int order[] { 0, 7, 12, 15, 19, 15, 12, 7 };
+        for (int k = 0; k < 8; ++k)
+            CHECK (at (g, k * 0.5) == std::vector<int> { 33 + order[k] });
+        const auto& b = layers[(size_t) ComposerLayer::bass];
+        std::set<int> starts;
+        for (const auto& n : b.notes)
+            if (n.beat < 4.0)
+                starts.insert (juce::roundToInt (n.beat * 4.0));
+        CHECK (starts == std::set<int> { 0, 6, 12 });
+    }
+    // CHUG PAIRS, HIGH PINGS: the pairs low, the pings three octaves up; CHUG PAIRS ONLY without them.
+    {
+        const auto layers = layersOf ("CHUG PAIRS, HIGH PINGS", 0, 0, 0);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        CHECK (at (g, 0.0) == std::vector<int> { 33 });
+        CHECK (at (g, 0.25) == std::vector<int> { 33 });
+        CHECK (at (g, 0.5).empty());
+        CHECK (at (g, 2.5) == std::vector<int> { 69 });
+        CHECK (at (g, 3.5) == std::vector<int> { 76 });
+        const auto only = layersOf ("CHUG PAIRS, HIGH PINGS", 1, 0, 0);
+        for (const auto& n : only[(size_t) ComposerLayer::guitar].notes)
+            CHECK (n.pitch < 60);
+    }
+    // MUTED PEDAL, ACCENTS IN THREES: six dyads a bar on 3+3+2+3+3+2, the muted pedal between.
+    {
+        const auto layers = layersOf ("MUTED PEDAL, ACCENTS IN THREES", 0, 0, 0);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        for (const auto k : { 0, 3, 6, 8, 11, 14 })
+            CHECK (at (g, k * 0.25) == std::vector<int> { 33, 40 });
+        for (const auto k : { 1, 2, 4, 5, 7, 9 })
+            CHECK (at (g, k * 0.25) == std::vector<int> { 33 });
+        // over the key's root: in the F bar the pedal stays on A, the accents on F
+        const auto onKey = layersOf ("MUTED PEDAL, ACCENTS IN THREES", 1, 0, 0);
+        CHECK (at (onKey[(size_t) ComposerLayer::guitar], 4.25) == std::vector<int> { 33 });
+        CHECK (at (onKey[(size_t) ComposerLayer::guitar], 4.0) == std::vector<int> { 41, 48 });
+    }
+    // The bass LOCKED WITH THE KICK follows KICK WITH THE CHUG PAIRS.
+    {
+        ComposerState s;
+        applySectionType (s, "Verse", "CHUG PAIRS, HIGH PINGS");
+        s.lane (ComposerLayer::drums).approach = 0;
+        s.lane (ComposerLayer::bass).approach = sectionApproaches (s, ComposerLayer::bass).size() - 1;
+        const auto layers = composeLayers (s, spans, c);
+        std::set<int> kicks;
+        for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
+            if (n.pitch == GmDrum::kick)
+                kicks.insert (juce::roundToInt (n.beat * 4.0));
+        CHECK (kicks.count (1) == 1);   // (the pair's second chug)
+        const auto& bass = layers[(size_t) ComposerLayer::bass];
+        REQUIRE (! bass.notes.empty());
+        for (const auto& n : bass.notes)
+            CHECK (kicks.count (juce::roundToInt (n.beat * 4.0)) == 1);
+    }
 }

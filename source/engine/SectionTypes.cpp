@@ -161,6 +161,12 @@ namespace pr7s
                          { "THREE-BAR RIFF, KICK AND BASS ON THE BEATS", "A guitar riff three bars long over the kick and the bass on beats 1 to 3, the snare only on 3", r, {}, v },
                          { "KICK AND BASS IN UNISON", "The guitars out: the kick and the bass on one syncopated line, the guitars coming in with bursts after 2 and 4", r, {}, v },
                          { "BASS GROOVE, GUITAR SQUEALS", "The bass's sixteenth groove over a funk kick, the guitar only a high squeal one bar and a burst the next", r, {}, v },
+                         // (0.146.0) The guitar ideas from the owner's 61 songs as types of their own (shapes only; our names).
+                         { "OCTAVE-JUMP PEDAL", "The low root in sixteenths jumping to its octave and the half step over it, hats on every sixteenth", r, {}, v },
+                         { "PEDAL 7+3+3+3", "The low root on seven sixteenths, then three groups of three, a power chord opening each group and moving with it", r, {}, v },
+                         { "DRIVEN ARPEGGIO", "A distorted broken chord in eighths over two octaves, the bass on 3+3+2 eighths, ride quarters", r, {}, v },
+                         { "CHUG PAIRS, HIGH PINGS", "Low muted chug pairs, two short high notes in the gaps of beats 3 and 4", r, {}, v },
+                         { "MUTED PEDAL, ACCENTS IN THREES", "A muted root pedal in sixteenths, accented fifth dyads every three (3+3+2+3+3+2)", r, {}, v },
                          droning, sparse };
             }
             case 2:
@@ -510,6 +516,8 @@ namespace pr7s
     // DOWNBEAT HITS UNDER A LEAD has a lead list).
     juce::StringArray verseApproaches (const juce::String& type, ComposerLayer layer)
     {
+        if (isRound3Type (type))   // (0.146.0)
+            return round3Approaches (type, layer);
         // (0.118.0) The verse types' options (the bass's last always LOCKED WITH THE KICK; no lead lists: the lead plays
         // its own styles; the keys and the drums their own).
         using L = ComposerLayer;
@@ -894,6 +902,17 @@ namespace pr7s
                   { "STRINGS PULSE AND HIGH PIANO", "PADS ALONE" }, { "A SPLASH, THEN OUT", "OUT" }, {} },
                 { "TOM WALL UNDER THE LAST CHORD", { "RIFF, THEN THE LAST CHORD HELD", "LAST CHORD HELD ALL THROUGH" }, { "RIFF, THEN HELD", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK AND FLOOR TOM ON EVERY SIXTEENTH", "TOM WALL ALL THROUGH" }, {} },
+                // (0.146.0) Verses: the guitar ideas as types of their own.
+                { "OCTAVE-JUMP PEDAL", { "OCTAVE-JUMP PEDAL", "OCTAVE-JUMP PEDAL, HIGH HELD LINE" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SIXTEENTH HATS, KICK WITH THE PEDAL", "HALF TIME, SIXTEENTH HATS" }, {} },
+                { "PEDAL 7+3+3+3", { "PEDAL 7+3+3+3, MOVING CHORDS", "PEDAL 7+3+3+3, ONE CHORD" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK WITH THE GROUPS", "ROCK BEAT, CLOSED HATS" }, {} },
+                { "DRIVEN ARPEGGIO", { "DRIVEN ARPEGGIO", "DRIVEN ARPEGGIO, LAST BAR RUNG" }, { "3+3+2 EIGHTHS", "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE QUARTERS, BACKBEAT", "HALF-TIME RIDE" }, {} },
+                { "CHUG PAIRS, HIGH PINGS", { "CHUG PAIRS, HIGH PINGS", "CHUG PAIRS ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK WITH THE CHUG PAIRS", "BACKBEAT, CLOSED HATS" }, {} },
+                { "MUTED PEDAL, ACCENTS IN THREES", { "ACCENTS IN THREES", "ACCENTS IN THREES OVER THE KEY'S ROOT" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ON THE ACCENTS", "DRIVING EIGHTHS BEAT" }, {} },
             };
             return lists;
         }

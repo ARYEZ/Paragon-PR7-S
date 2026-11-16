@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.146.0
+
+**The five guitar ideas from your 61 songs as verse types of their own** (you asked, after 0.145.0 left them out of the option lists). They're in the verse's TYPE menu after BASS GROOVE, GUITAR SQUEALS (and so in the pre-chorus's too, which takes the verse's types after its own). Each writes the guitar, bass, keys and drums together, so the bass's DOUBLES THE GUITAR always doubles the riff you hear.
+
+- **OCTAVE-JUMP PEDAL:** the low root in sixteenths jumping to its octave and the half step over it (xxxxxx-x-xxxxx--). Guitar: the pedal, or the pedal with a high note held a bar over it, stepping down the key. Drums: sixteenth hats with the kick on the pedal's notes, or half time with sixteenth hats. (It's On)
+- **PEDAL 7+3+3+3:** the low root on seven sixteenths, then three groups of three, a power chord opening each group. Guitar: the chords moving a scale step each group, or one chord. Drums: the kick with the groups, or a rock beat. (Opiate)
+- **DRIVEN ARPEGGIO:** a distorted broken chord in eighths over two octaves. Guitar: all through, or with the last bar's chord rung. The bass's first option is the root on 3+3+2 eighths. Drums: the ride on the quarters with a backbeat, or a half-time ride. (Medicate)
+- **CHUG PAIRS, HIGH PINGS:** low muted chug pairs with two short high notes in the gaps of beats 3 and 4. Guitar: with the pings, or the pairs only. Drums: the kick on every chug, or a plain backbeat.
+- **MUTED PEDAL, ACCENTS IN THREES:** a muted root pedal in sixteenths, accented root-fifth dyads on 3+3+2+3+3+2. Guitar: on each chord's root, or the pedal staying on the key's root while the accents follow the chords. Drums: the kick on the accents, or a driving eighths beat.
+
+The bass under each: DOUBLES THE GUITAR, ROOTS HELD, LOCKED WITH THE KICK; the keys SILENT or HELD PADS, plus 0.145.0's keys and drums options after them. Shapes only, our names; the songs are named here as where each came from.
+
 ## 0.145.0
 
 **More drums and keys options inside every section type**, the last group in your order: the smaller ideas from your 61 songs that weren't whole sections. Under any named section type (not STANDARD), the drums and keys lanes' style menus list these after the type's own options, so songs you've built keep their choices.
