@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.141.0
+
+**Seven new pre-chorus types and six new post-chorus / interlude types from your 61 songs**, the third group in your order. The pre-chorus TYPE menu lists them after THREES ACROSS THE BAR. The post-chorus and interlude menus list them after CHROMATIC WOBBLE. Each type sets every lane: two options for the guitar, the keys and the drums, and three for the bass, whose last is always LOCKED WITH THE KICK. Only RING & STAB UNDER CYMBAL EIGHTHS gives the lead a part of its own; the others leave the lead on its own styles.
+
+**Pre-choruses:**
+- **KICK OUT, LOW TREMOLO:** the kick drops out. Low dyads are tremolo-picked, rocking a beat at a time between the root and the half step over it. Hats (or the ride) and the snare carry the time, with a fill to end. (Got the Life)
+- **UNISON ROCKING RIFF:** the guitars and the bass in unison on a riff rocking between the root and the step under it, with a rock beat and open hats. (Trash)
+- **RING & STAB UNDER CYMBAL EIGHTHS:** each half bar a chord rung, then a high stab. A cymbal plays every eighth (crash and splash in turn), with a sparse kick. The lead can hold one high bent note a bar. (Stinkfist)
+- **UNISON EIGHTHS BUILD:** everyone on every eighth, the kick, the snare and the floor tom together. The last bar hits only on 1, 1-and, 4 and 4-and, with a roll into the chorus. (Sober, The Ghost of You, Ten Thousand Fists)
+- **TREMOLO PEDAL, THEN OCTAVE PUMP:** in thirds. First the root tremolo-picked under a chord held every two bars, then under chords on 1 and 3. Then the root and its octave pumped in eighths, with the kick on every eighth and a crash on every beat. (Opiate)
+- **PAIRS IN 3+3+2, RING BAR:** pairs of sixteenths on 3+3+2, with every fourth bar a chord rung. (Coming Undone)
+- **OCTAVES ROCKING TO THE TRITONE:** low octaves rocking between the root and its tritone, the bass with them, over a pushed kick. (Falling Away From Me)
+
+**Post-choruses and interludes:**
+- **DOWN TO THE LOOP:** the band drops to a loop. A one-note synth arpeggio with a rising tag at the end of each bar (or a sequenced synth bass), high muted guitar bursts, a tresillo bass and a broken industrial beat, or closed hats only. (Save Yourself)
+- **HATS AND ROOTS:** only busy closed hats and the chorus's roots in halves, with two high notes a bar over them. (Here to Stay)
+- **HITS ON FOUR:** the band hits once a bar, on beat 4, with the next chord, and lets it ring. (BBK)
+- **UNISON CHROMATIC RUNS:** everyone on sixteenth runs climbing a half step at a time in odd groups (3+4+3+3+3), closed by a bar of quarter-note hits. (Undertow, Vicarious)
+- **DOTTED NOTE OVER THE RIFF:** one high note every three sixteenths over the bass's sixteenth pedal riff. (46&2)
+- **SNARE ONLY ON FOUR AND FOUR-AND:** chords held two bars with high stabs answering. The snare plays only on beat 4 and its and. (Sober)
+
+The song names are only here for you; the app shows our own names.
+
+**Next:** the bridges and breakdowns (16 types).
+
+**Checked:** a test makes every option of every lane in all 13 types and checks each is a different part. Another checks their shapes: no kick in KICK OUT, the build's eighths and its last bar, the hits only on beat 4 with the next chord, the snare only on 4 and its and, a note every three sixteenths, and the loop's twelve sixteenths and rising tag. Not checked here: how they sound (your ears).
+
 ## 0.140.0
 
 **23 new chorus types from your 61 songs**, the second group in the order you chose. They're on the chorus's TYPE menu after CHUG BAR, CHORD BAR, and a post-chorus lists them too. Each sets what the guitar, bass, keys and drums do, with two options per lane (the bass three, the last always LOCKED WITH THE KICK). Ten of them also give the lead lane two options of its own; the others leave the lead on its own styles.

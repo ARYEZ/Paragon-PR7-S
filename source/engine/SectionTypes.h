@@ -72,7 +72,12 @@ namespace pr7s
     juce::StringArray interludeApproaches (const juce::String& type, ComposerLayer);   // (0.110.0)
     juce::StringArray bookendApproaches (const juce::String& type, ComposerLayer);     // (0.111.0: intros and outros)
     juce::StringArray chorusApproaches (const juce::String& type, ComposerLayer);
-    juce::StringArray verseApproaches (const juce::String& type, ComposerLayer);       // (0.118.0: the verse types from the owner's songs)      // (0.115.0: the four choruses from the owner's songs)
+    juce::StringArray verseApproaches (const juce::String& type, ComposerLayer);
+    // (0.141.0) The types from the owner's 61 song files past the verses and choruses (pre-choruses, post-choruses and
+    // interludes; later the bridges, breakdowns, intros and outros): every lane's options in one table. Empty for a lane
+    // the type leaves alone (the lead often).
+    juce::StringArray round3Approaches (const juce::String& type, ComposerLayer);
+    bool isRound3Type (const juce::String& type);       // (0.118.0: the verse types from the owner's songs)      // (0.115.0: the four choruses from the owner's songs)
     // The lane's approach as shown ("AUTOMATIC" when none is chosen; empty when the flavour has none).
     juce::String approachName (const ComposerState&, ComposerLayer);
 

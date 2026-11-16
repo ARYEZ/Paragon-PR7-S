@@ -55,7 +55,15 @@ namespace pr7s
                      { "PEDAL WITH OPEN-HAT BEATS", "The low root on every sixteenth but the downbeat, climbing into the next bar, with open hats on the beats", RiffFlavour::openChords, {}, pre },
                      { "CHROMATIC CHUG, TREMOLO TRIAD", "A chug rocking between the root and the half step above, a high triad tremolo picked over it, into a snare roll", RiffFlavour::openChords, {}, pre },
                      { "OFF-BEAT SNARE, LOW BURSTS", "The snare and an open hat on every off eighth, no backbeat, under low muted bursts", RiffFlavour::openChords, {}, pre },
-                     { "THREES ACROSS THE BAR", "A waltz feel kept in 4/4: three-beat cells that run across the bar lines, straight eighths from halfway", RiffFlavour::openChords, {}, pre } };
+                     { "THREES ACROSS THE BAR", "A waltz feel kept in 4/4: three-beat cells that run across the bar lines, straight eighths from halfway", RiffFlavour::openChords, {}, pre  },
+                     // (0.141.0) From the owner's 61 song files (shapes only; our names).
+                     { "KICK OUT, LOW TREMOLO", "The kick out: low dyads tremolo-picked rocking a half step, hats and the snare only", RiffFlavour::openChords, {}, pre },
+                     { "UNISON ROCKING RIFF", "The guitars and the bass in unison on a riff rocking between the root and the step under it", RiffFlavour::openChords, {}, pre },
+                     { "RING & STAB UNDER CYMBAL EIGHTHS", "A chord rung each half bar and a high stab, a cymbal on every eighth, a high bent note over it", RiffFlavour::openChords, {}, pre },
+                     { "UNISON EIGHTHS BUILD", "Everyone on every eighth, the kick, snare and floor tom together, then hits and a roll into the chorus", RiffFlavour::openChords, {}, pre },
+                     { "TREMOLO PEDAL, THEN OCTAVE PUMP", "The root tremolo-picked under held chords, then the root and its octave pumped in eighths", RiffFlavour::openChords, {}, pre },
+                     { "PAIRS IN 3+3+2, RING BAR", "Pairs of sixteenths on 3+3+2, every fourth bar a chord rung", RiffFlavour::openChords, {}, pre },
+                     { "OCTAVES ROCKING TO THE TRITONE", "Low octaves rocking between the root and its tritone, the bass with them", RiffFlavour::openChords, {}, pre } };
             for (auto& t : sectionTypesFor ("Verse"))   // (0.118.0: the whole verse list, its new types too)
                 types.push_back (std::move (t));
             return types;
@@ -77,7 +85,14 @@ namespace pr7s
                 { "TREMOLO OVER CHUGS", "Root chugs in threes under double kick, long tremolo-picked octaves falling over them", r, {}, i },
                 { "CLEAN BREATH", "A clean arpeggio or a falling top note over toms, the band climbing back in", r, {}, i },
                 { "TRITONE AIR & BUILD", "A slide up and a fall to the tritone, the tritone held, the guitar out, scratches building back", r, {}, i },
-                { "CHROMATIC WOBBLE", "Muted low sixteenths wobbling a half step in odd groups across the bar line", r, {}, i } };
+                { "CHROMATIC WOBBLE", "Muted low sixteenths wobbling a half step in odd groups across the bar line", r, {}, i  },
+                // (0.141.0) From the owner's 61 song files (shapes only; our names).
+                { "DOWN TO THE LOOP", "Down to a loop: a one-note synth arpeggio, a sequenced synth bass, high guitar bursts, a broken beat", r, {}, i },
+                { "HATS AND ROOTS", "Only busy closed hats and the chorus's roots in halves, two high notes a bar over them", r, {}, i },
+                { "HITS ON FOUR", "The band hits once a bar, on beat 4, and lets it ring into the next", r, {}, i },
+                { "UNISON CHROMATIC RUNS", "Everyone on sixteenth runs climbing a half step at a time in odd groups, closed by quarter-note hits", r, {}, i },
+                { "DOTTED NOTE OVER THE RIFF", "One high note every three sixteenths over the bass's sixteenth pedal riff", r, {}, i },
+                { "SNARE ONLY ON FOUR AND FOUR-AND", "Chords held two bars with high stabs answering, the snare only on beat 4 and its and", r, {}, i } };
             const auto before = sectionTypesFor (base == "Post-Chorus" ? juce::String ("Chorus") : juce::String ("Bridge"));
             types.insert (types.end(), before.begin(), before.end());
             return types;
@@ -576,6 +591,8 @@ namespace pr7s
     // empty lead list: the lead plays its own styles).
     juce::StringArray interludeApproaches (const juce::String& type, ComposerLayer layer)
     {
+        if (isRound3Type (type))
+            return round3Approaches (type, layer);
         using L = ComposerLayer;
         const auto t = type.trim().toUpperCase();
         struct Lists { const char* name; juce::StringArray guitar, keys, drums, lead; };
@@ -733,8 +750,76 @@ namespace pr7s
 
     // (0.102.0) The pre-chorus types' options, lane by lane (the bass's last always LOCKED WITH THE KICK; none: the
     // lane plays its own styles).
+    namespace
+    {
+        struct Round3Lists { const char* name; juce::StringArray guitar, bass, keys, drums, lead; };
+        const std::vector<Round3Lists>& round3Lists()
+        {
+            static const std::vector<Round3Lists> lists {
+                // (0.141.0) Pre-choruses.
+                { "KICK OUT, LOW TREMOLO", { "LOW TREMOLO, ROCKING HALF STEP", "LOW TREMOLO ON THE ROOT" }, { "TWO HELD ROOTS A BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "NO KICK, HATS AND SNARE", "NO KICK, RIDE AND SNARE" }, {} },
+                { "UNISON ROCKING RIFF", { "ROCKING RIFF", "ROCKING RIFF IN OCTAVES" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "ROCK BEAT, OPEN HATS", "STRAIGHT ROCK, CLOSED HATS" }, {} },
+                { "RING & STAB UNDER CYMBAL EIGHTHS", { "RING AND STAB", "RING ONLY" }, { "ROOTS HELD", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CYMBAL EIGHTHS, SPARSE KICK", "RIDE EIGHTHS, SPARSE KICK" }, { "HIGH BENT NOTE", "SILENT" } },
+                { "UNISON EIGHTHS BUILD", { "FULL CHORDS IN EIGHTHS", "CHORDS IN EIGHTHS, HIGH DYADS AT THE END" }, { "ROOT EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK, SNARE AND FLOOR TOM ON EVERY EIGHTH", "SNARE EIGHTHS, THEN SIXTEENTHS" }, {} },
+                { "TREMOLO PEDAL, THEN OCTAVE PUMP", { "TREMOLO, CHORDS, THEN THE PUMP", "OCTAVE PUMP ONLY" }, { "HELD, THEN THE PUMP", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SWELLS, TOMS, THEN THE PUMP", "PUMP ALL THROUGH" }, {} },
+                { "PAIRS IN 3+3+2, RING BAR", { "PAIRS IN 3+3+2, THEN A RING BAR", "PAIRS EVERY BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ON THE PAIRS", "HALF TIME, SNARE ON THREE" }, {} },
+                { "OCTAVES ROCKING TO THE TRITONE", { "OCTAVES TO THE TRITONE", "OCTAVES ON THE ROOT" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "PUSHED KICK, OPEN HAT EIGHTHS", "CRASH ON ONE, OPEN HATS" }, {} },
+                // (0.141.0) Post-choruses and interludes.
+                { "DOWN TO THE LOOP", { "HIGH OCTAVE BURSTS", "OUT" }, { "TRESILLO ROOTS", "OUT", "LOCKED WITH THE KICK" },
+                  { "ONE-NOTE ARPEGGIO WITH A RISING TAG", "SEQUENCED SYNTH BASS" }, { "INDUSTRIAL BROKEN BEAT", "CLOSED HATS ONLY" }, {} },
+                { "HATS AND ROOTS", { "TWO HIGH NOTES A BAR", "OUT" }, { "CHORUS ROOTS IN HALVES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BUSY CLOSED HATS ONLY", "HATS AND A KICK ON ONE" }, {} },
+                { "HITS ON FOUR", { "HIT ON FOUR, RING", "HIT ON ONE AND FOUR" }, { "WITH THE HITS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND CRASH ON FOUR, HATS", "KICK AND CRASH ON FOUR, RIDE" }, {} },
+                { "UNISON CHROMATIC RUNS", { "CHROMATIC SIXTEENTH RUNS", "RUNS, THEN QUARTER HITS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK PAIRS, DOTTED SNARE", "KICK WITH THE RUNS" }, {} },
+                { "DOTTED NOTE OVER THE RIFF", { "HIGH NOTE EVERY DOTTED EIGHTH", "DOTTED HIGH DYADS" }, { "SIXTEENTH PEDAL RIFF", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE BELL, BACKBEAT", "CHINA AND SPLASH" }, {} },
+                { "SNARE ONLY ON FOUR AND FOUR-AND", { "HELD TWO BARS, HIGH STABS ANSWER", "HELD TWO BARS" }, { "EIGHTHS WITH A SKIP", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE ON FOUR AND FOUR-AND", "SNARE ON FOUR, CRASH ON ONE" }, {} },
+            };
+            return lists;
+        }
+    }
+
+    bool isRound3Type (const juce::String& type)
+    {
+        const auto t = type.trim().toUpperCase();
+        for (const auto& list : round3Lists())
+            if (t == list.name)
+                return true;
+        return false;
+    }
+
+    juce::StringArray round3Approaches (const juce::String& type, ComposerLayer layer)
+    {
+        using L = ComposerLayer;
+        const auto t = type.trim().toUpperCase();
+        for (const auto& list : round3Lists())
+            if (t == list.name)
+                switch (layer)
+                {
+                    case L::guitar: return list.guitar;
+                    case L::bass: return list.bass;
+                    case L::chords: return list.keys;
+                    case L::drums: return list.drums;
+                    case L::lead: return list.lead;
+                    default: return {};
+                }
+        return {};
+    }
+
     juce::StringArray preChorusApproaches (const juce::String& type, ComposerLayer layer)
     {
+        if (isRound3Type (type))
+            return round3Approaches (type, layer);
         using L = ComposerLayer;
         if (type == "BUILD & STOP")
             switch (layer)

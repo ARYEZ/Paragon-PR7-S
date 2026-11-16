@@ -1943,7 +1943,7 @@ TEST_CASE ("0.102.0: a pre-chorus's own types, every lane's options a different 
                                             "CHUGS UNDER THE SHAPE", "STABS & GAPS", "RISING BASS" };
     // A pre-chorus lists them first, then the verse's types (a block typed as a verse keeps its type); a verse hasn't them.
     const auto pre = sectionTypesFor ("Pre-Chorus 2");
-    REQUIRE (pre.size() == names.size() + 6 + sectionTypesFor ("Verse").size());   // (0.123.0: six more after them)
+    REQUIRE (pre.size() == names.size() + 6 + 7 + sectionTypesFor ("Verse").size());   // (0.123.0: six more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (pre[i].name == names[i]);
     CHECK (sectionTypeNamed ("Pre-Chorus", "STACCATO CHUG").has_value());
@@ -2915,13 +2915,13 @@ TEST_CASE ("0.110.0: interlude and post-chorus types, every lane's options a dif
                                             "STAB & ANSWER", "TREMOLO OVER CHUGS", "CLEAN BREATH", "TRITONE AIR & BUILD", "CHROMATIC WOBBLE" };
     // A post-chorus: these, then the chorus's; an interlude or instrumental: these, then the bridge's.
     const auto post = sectionTypesFor ("Post-Chorus");
-    REQUIRE (post.size() == names.size() + sectionTypesFor ("Chorus").size());
+    REQUIRE (post.size() == names.size() + 6 + sectionTypesFor ("Chorus").size());
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (post[i].name == names[i]);
-    CHECK (post[names.size()].name == "DRIVING");
+    CHECK (post[names.size() + 6].name == "DRIVING");   // (0.141.0: six more first)
     const auto interlude = sectionTypesFor ("Interlude 2");
-    REQUIRE (interlude.size() == names.size() + sectionTypesFor ("Bridge").size());
-    CHECK (interlude[names.size()].name == "HALF-TIME MELODIC");
+    REQUIRE (interlude.size() == names.size() + 6 + sectionTypesFor ("Bridge").size());
+    CHECK (interlude[names.size() + 6].name == "HALF-TIME MELODIC");
     CHECK (sectionTypeNamed ("Instrumental", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Chorus", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Hook", "HOOK RIFF").has_value());
@@ -4480,5 +4480,139 @@ TEST_CASE ("0.140.0: the chorus types' shapes", "[sections][types][chorus140]")
         }
         CHECK (tops.size() == 3u);
         CHECK (roots.size() == 4u);   // (Am F C G)
+    }
+}
+
+TEST_CASE ("0.141.0: the pre-chorus and post-chorus types from the 61 songs, every lane's options a different part", "[sections][types][round141]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> pres { "KICK OUT, LOW TREMOLO", "UNISON ROCKING RIFF", "RING & STAB UNDER CYMBAL EIGHTHS", "UNISON EIGHTHS BUILD",
+                                           "TREMOLO PEDAL, THEN OCTAVE PUMP", "PAIRS IN 3+3+2, RING BAR", "OCTAVES ROCKING TO THE TRITONE" };
+    const std::vector<juce::String> posts { "DOWN TO THE LOOP", "HATS AND ROOTS", "HITS ON FOUR", "UNISON CHROMATIC RUNS", "DOTTED NOTE OVER THE RIFF",
+                                            "SNARE ONLY ON FOUR AND FOUR-AND" };
+    const auto pre = sectionTypesFor ("Pre-Chorus");
+    const auto post = sectionTypesFor ("Post-Chorus");
+    for (size_t i = 0; i < pres.size(); ++i)
+    {
+        CHECK (pre[12 + i].name == pres[i]);
+        CHECK (sectionTypeCalled (pres[i])->band == SectionType::Band::preChorus);
+        CHECK_FALSE (isSectionTypeOf ("Verse", pres[i]));
+    }
+    for (size_t i = 0; i < posts.size(); ++i)
+    {
+        CHECK (post[11 + i].name == posts[i]);
+        CHECK (sectionTypeCalled (posts[i])->band == SectionType::Band::interlude);
+        CHECK (isSectionTypeOf ("Interlude", posts[i]));
+    }
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    auto all = pres;
+    all.insert (all.end(), posts.begin(), posts.end());
+    for (const auto& name : all)
+    {
+        ComposerState s;
+        applySectionType (s, std::find (pres.begin(), pres.end(), name) != pres.end() ? "Pre-Chorus" : "Post-Chorus", name);
+        REQUIRE (s.sectionType == name);
+        for (const auto l : composerLayers())
+        {
+            const auto options = sectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && ! options.isEmpty()));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) options.size());
+            std::set<juce::String> seen;
+            for (const auto& idea : choices)
+            {
+                INFO (name << " " << composerLayerName (l) << " " << idea.style);
+                CHECK (idea.notes.size() + (idea.style.containsIgnoreCase ("out") ? 1 : 0) > 0);
+                seen.insert (key (idea));
+            }
+            INFO (name << " " << composerLayerName (l));
+            CHECK (seen.size() == choices.size());
+        }
+        for (const auto& idea : composeLayers (s, spans, c))
+            for (const auto& n : idea.notes)
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+    }
+}
+
+TEST_CASE ("0.141.0: the pre-chorus and post-chorus types' shapes", "[sections][types][round141]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();
+    const auto typed = [] (const juce::String& section, const juce::String& name)
+    {
+        ComposerState s;
+        applySectionType (s, section, name);
+        for (const auto l : composerLayers())
+            s.lane (l).approach = 0;
+        return s;
+    };
+    const auto has = [] (const LineIdea& idea, double beat, int pitch)
+    {
+        return std::any_of (idea.notes.begin(), idea.notes.end(), [&] (const LineNote& n) { return std::abs (n.beat - beat) < 1.0e-6 && n.pitch == pitch; });
+    };
+    const auto count = [] (const LineIdea& idea, int pitch)
+    {
+        return std::count_if (idea.notes.begin(), idea.notes.end(), [&] (const LineNote& n) { return n.pitch == pitch; });
+    };
+    // KICK OUT, LOW TREMOLO: no kick at all; the guitar on every sixteenth.
+    {
+        const auto all = composeLayers (typed ("Pre-Chorus", "KICK OUT, LOW TREMOLO"), spans, c);
+        CHECK (count (all[(size_t) ComposerLayer::drums], GmDrum::kick) == 0);
+        CHECK (has (all[(size_t) ComposerLayer::guitar], 0.25, 33));
+        CHECK (has (all[(size_t) ComposerLayer::guitar], 1.25, 34));   // (beat 2: a half step up)
+    }
+    // UNISON EIGHTHS BUILD: the kick, the snare and the floor tom on every eighth but in the last bar.
+    {
+        const auto d = composeLayers (typed ("Pre-Chorus", "UNISON EIGHTHS BUILD"), spans, c)[(size_t) ComposerLayer::drums];
+        for (int k = 0; k < 8; ++k)
+            for (const auto note : { GmDrum::kick, GmDrum::snare, GmDrum::tomFloor })
+                CHECK (has (d, k * 0.5, note));
+        CHECK_FALSE (has (d, 29.0, GmDrum::kick));   // (the last bar only on 1, 1-and, 4 and 4-and)
+        CHECK (has (d, 30.0, GmDrum::kick) == false);
+        CHECK (has (d, 31.0, GmDrum::kick));
+    }
+    // HITS ON FOUR: the guitar only on beat 4, the next chord (F after Am).
+    {
+        const auto g = composeLayers (typed ("Post-Chorus", "HITS ON FOUR"), spans, c)[(size_t) ComposerLayer::guitar];
+        for (const auto& n : g.notes)
+            CHECK (std::fmod (n.beat, 4.0) == Catch::Approx (3.0));
+        CHECK (has (g, 3.0, 41));
+    }
+    // SNARE ONLY ON FOUR AND FOUR-AND: no snare but on beat 4 and its and.
+    {
+        const auto d = composeLayers (typed ("Post-Chorus", "SNARE ONLY ON FOUR AND FOUR-AND"), spans, c)[(size_t) ComposerLayer::drums];
+        for (const auto& n : d.notes)
+            if (n.pitch == GmDrum::snare)
+            {
+                const auto inBar = std::fmod (n.beat, 4.0);
+                CHECK ((std::abs (inBar - 3.0) < 1.0e-6 || std::abs (inBar - 3.5) < 1.0e-6));
+            }
+        CHECK (count (d, GmDrum::snare) == 16);
+    }
+    // DOTTED NOTE OVER THE RIFF: the guitar every three sixteenths.
+    {
+        const auto g = composeLayers (typed ("Post-Chorus", "DOTTED NOTE OVER THE RIFF"), spans, c)[(size_t) ComposerLayer::guitar];
+        REQUIRE (g.notes.size() > 4);
+        for (size_t i = 0; i < g.notes.size(); ++i)
+            CHECK (g.notes[i].beat == Catch::Approx (0.75 * (double) i));
+    }
+    // DOWN TO THE LOOP: the keys' one note on twelve sixteenths, then three rising.
+    {
+        const auto k = composeLayers (typed ("Post-Chorus", "DOWN TO THE LOOP"), spans, c)[(size_t) ComposerLayer::chords];
+        REQUIRE (k.notes.size() >= 15);
+        for (int i = 0; i < 12; ++i)
+            CHECK (k.notes[(size_t) i].pitch == k.notes[0].pitch);
+        CHECK (k.notes[12].pitch > k.notes[0].pitch);
     }
 }
