@@ -28,6 +28,8 @@ Breakdowns:
 - **QUIET FALLING CELL OVER A LAMENT BASS:** the drums out, a quiet three-note cell falling a step a bar over a lament bass (root, flat seven, flat six, five). (The Howling)
 - **HIGH NOTE TREMOLO OVER A HALF-TIME CHUG:** a low unison chug over half time, a high ninth tremolo-picked over it, tom pickups. (Enemy)
 
+**Fixed:** 0.147.0's HELD CHORD A BAR, TWO HITS EVERY FOURTH had a guitar option named like an older type's (HELD TWO BARS), so the older one's part played in its place: it's RUNG TWO BARS AT A TIME now and plays its own (one power chord rung two bars at a time). Songs keep their choice.
+
 ## 0.149.0
 
 **Six pre-chorus types and three post-chorus / interlude types from your 54 new songs** (round four, the third group). The pre-choruses are in the pre-chorus's TYPE menu after OCTAVES ROCKING TO THE TRITONE; the post-choruses are in the post-chorus's and interlude's after SNARE ONLY ON FOUR AND FOUR-AND. Each writes the guitar, bass, keys and drums, two to four options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.

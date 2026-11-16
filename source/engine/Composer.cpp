@@ -11809,13 +11809,13 @@ namespace pr7s
                     }
                     return out;
                 }
-                if (n == "HELD A BAR, HITS EVERY FOURTH" || n == "HELD TWO BARS")
+                if (n == "HELD A BAR, HITS EVERY FOURTH" || n == "RUNG TWO BARS AT A TIME")
                 {
-                    text (n == "HELD TWO BARS" ? "One power chord rung two bars at a time" : "One power chord rung a bar; every fourth bar two hits on 1 and its and, then silence");
+                    text (n == "RUNG TWO BARS AT A TIME" ? "One power chord rung two bars at a time" : "One power chord rung a bar; every fourth bar two hits on 1 and its and, then silence");
                     for (int bar = 0; bar < bars; ++bar)
                     {
                         const auto root = barRoot (bar);
-                        if (n == "HELD TWO BARS")
+                        if (n == "RUNG TWO BARS AT A TIME")
                         {
                             if (bar % 2 == 0)
                                 power (out, bar * bpb, juce::jmin (2, bars - bar) * bpb * 0.97, root, open());
@@ -13364,13 +13364,13 @@ namespace pr7s
                     });
 
                 // (0.150.0) Round four's bridges and breakdowns.
-                if (n == "HALF TIME, CRASH EIGHTHS" || n == "HALF TIME, RIDE")
-                    return every (n == "HALF TIME, RIDE" ? "Half time: the kick on 1 and its pushes, the snare on 3, the ride on the eighths"
+                if (n == "HALF TIME, PUSHED KICK, CRASH EIGHTHS" || n == "HALF TIME, PUSHED KICK, RIDE")
+                    return every (n == "HALF TIME, PUSHED KICK, RIDE" ? "Half time: the kick on 1 and its pushes, the snare on 3, the ride on the eighths"
                                                          : "Half time: the kick on 1 and its pushes, the snare on 3, a crash on every eighth, a china every two bars, the last bar a sixteenth snare roll", [&] (int b)
                     {
-                        const auto last = b == bars - 1 && bars > 1 && n == "HALF TIME, CRASH EIGHTHS";
-                        kit (out, b, "x-----x---x-----", last ? "xxxxxxxxxxxxxxxx" : "--------x-------", n == "HALF TIME, RIDE" ? GmDrum::ride : GmDrum::crash, eighths, 0);
-                        if (n == "HALF TIME, CRASH EIGHTHS" && b % 2 == 0)
+                        const auto last = b == bars - 1 && bars > 1 && n == "HALF TIME, PUSHED KICK, CRASH EIGHTHS";
+                        kit (out, b, "x-----x---x-----", last ? "xxxxxxxxxxxxxxxx" : "--------x-------", n == "HALF TIME, PUSHED KICK, RIDE" ? GmDrum::ride : GmDrum::crash, eighths, 0);
+                        if (n == "HALF TIME, PUSHED KICK, CRASH EIGHTHS" && b % 2 == 0)
                             hit (out, b * bpb, GmDrum::china, 0.8f);
                     });
                 if (n == "OUT, THEN KICK PAIRS IN THREES" || n == "KICK PAIRS IN THREES")
@@ -13461,11 +13461,11 @@ namespace pr7s
                         auto i = 0;
                         each16 ("x--xx-x--x---x--", b * bpb, [&] (double t, int) { hit (out, t, (i++ % 3 == 0) ? GmDrum::tomFloor : GmDrum::tomLow, 0.8f); });
                     });
-                if (n == "HATS ONLY, THREE HITS TO END" || n == "HATS ONLY")
-                    return every (n == "HATS ONLY" ? "Only the hats: the pedal on the beats, closed on the off-beats"
+                if (n == "HATS ONLY, THREE HITS TO END" || n == "PEDAL AND CLOSED HATS ONLY")
+                    return every (n == "PEDAL AND CLOSED HATS ONLY" ? "Only the hats: the pedal on the beats, closed on the off-beats"
                                                    : "Only the hats (the pedal on the beats, closed on the off-beats), the last bar three hits with the band", [&] (int b)
                     {
-                        if (n != "HATS ONLY" && b == bars - 1 && bars > 1)
+                        if (n != "PEDAL AND CLOSED HATS ONLY" && b == bars - 1 && bars > 1)
                         {
                             kit (out, b, "x-x-x-----------", "x-x-x-----------", GmDrum::crash, "x---------------", 0);
                             return;
