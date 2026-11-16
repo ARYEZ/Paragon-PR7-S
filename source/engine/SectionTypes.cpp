@@ -120,6 +120,15 @@ namespace pr7s
                          { "TWO CELLS IN THREES", "A three-note cell in sixteenths on the guitar following the chords, a stepping keys cell over it that doesn't", r, {}, b },
                          { "KIT HITS IN PAIRS", "The kit and the guitars together in pairs of sixteenths on the dotted grid, then a bar of space", r, {}, b },
                          { "GAPPED PEDAL, BUILD INTO THE VERSE", "The low root in sixteenths with gaps on 2 and 4, the kick on every chug, a two-bar build into the verse", r, {}, b },
+                         // (0.143.0) From the owner's 61 song files (shapes only; our names).
+                         { "HOOK KEPT, BAND BUILT UNDER IT", "A hook alone that carries on unchanged while the drums, then the bass, then the riff come in under it", r, {}, b },
+                         { "RIFF GROWS FROM THE RIDE", "The ride alone in sixteenths, then a high stab, then half the riff, then all of it with the kit", r, {}, b },
+                         { "TOM GROOVE ALONE, THEN THE RIFF", "The toms and the kick in 3+3+2 with high stabs after the beat, then the band on the riff", r, {}, b },
+                         { "TOMS ON THE CELL", "A six-sixteenth cell laid 6+6+4: the toms on its first two, the kick, snare and the guitar's dyad on the rest", r, {}, b },
+                         { "PADS, THEN THE MACHINE LOOP", "Pads alone, then a piano ostinato and a machine loop with the pedal hat on every sixteenth", r, {}, b },
+                         { "HEARTBEAT KICK", "The kick alone like a heartbeat, a soft tremolo note coming in, then the toms building", r, {}, b },
+                         { "DRONE, DRUMS, THEN THE RIFF", "One clashing note held alone, then the drums alone, then the riff with the band", r, {}, b },
+                         { "KEYS ALONE, THEN THE RIFF", "A sixteenth keys figure alone, then the riff and the band come in under it", r, {}, b },
                          droning, open };
             }
             case 1:
@@ -276,6 +285,15 @@ namespace pr7s
                          // (0.124.0) From the owner's rock songs (shapes only; our names).
                          { "EVERY OTHER BAR EMPTY", "The chorus thinned: a chord a bar and a bar of space in turn, a high arpeggio over it, the last chord held", r, {}, b },
                          { "SINGLE-NOTE BAR, CHORD BAR", "A bar of low single notes, then a bar of power chords, in turn over half time with crash quarters", r, {}, b },
+                         // (0.143.0) From the owner's 61 song files (shapes only; our names).
+                         { "UNISON LINE TO THE END", "A single-note line on every eighth answered by held chords, power chords to end on one held", r, {}, b },
+                         { "DOTTED-EIGHTH HIT CHAIN", "The band hits on the one, then every three sixteenths across the bar lines, the last chord held", r, {}, b },
+                         { "UNISON CLIMB TO THE END", "Everyone climbing in sixteenths a step a beat, the kick filling in to every sixteenth, a hit to end", r, {}, b },
+                         { "THREE DOTTED PUSHES, THEN RING", "Chords in eighths, then three pushes on 1, the a of 1 and the and of 2, the last chord rung", r, {}, b },
+                         { "HITS AT BOTH ENDS", "The band only on 1, 1-and, 4 and 4-and, the last bar one hit", r, {}, b },
+                         { "CHANT OVER A PEDAL BURST", "A low pedal burst a bar, a choir climbing a note a bar over it, crashes on the dotted eighths to end", r, {}, b },
+                         { "BAND DROPS TO PADS AND PIANO", "The band stops on a splash, the key's note held, then strings pulsing and high piano to the end", r, {}, b },
+                         { "TOM WALL UNDER THE LAST CHORD", "The riff, then the last chord held over the kick and floor tom on every sixteenth", r, {}, b },
                          droning, stabs };
             }
             case 6: return { driving, droning };
@@ -559,6 +577,8 @@ namespace pr7s
 
     juce::StringArray bookendApproaches (const juce::String& type, ComposerLayer layer)
     {
+        if (isRound3Type (type))
+            return round3Approaches (type, layer);
         using L = ComposerLayer;
         const auto t = type.trim().toUpperCase();
         struct Lists { const char* name; juce::StringArray guitar, bass, keys, drums, lead; };
@@ -840,6 +860,40 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "STEADY BACKBEAT UNDER IT", "KICK WITH THE RIFF" }, {} },
                 { "KEYS ALONE, THEN RINGING HITS", { "OUT, THEN CHORDS RUNG TWO BARS", "CHORDS RUNG FROM THE START" }, { "OUT, THEN ROOTS HELD", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "KEYS ALONE, THEN UNDER THE BAND", "KEYS ALONE, THEN OUT" }, { "A HIT, THEN HALF TIME", "HALF TIME FROM THE START" }, {} },
+                // (0.143.0) Intros.
+                { "HOOK KEPT, BAND BUILT UNDER IT", { "OUT, THEN THE RIFF AT THE LANDING", "LOW PEDAL, THEN THE RIFF" }, { "WHOLE NOTES, THEN A SIXTEENTH PEDAL", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HOOK ALONE, KEPT ON TOP", "HIGH EIGHTHS HOOK" }, { "IN BEFORE THE BASS, THEN 3+3+2", "HATS FIRST, THEN THE GROOVE" }, {} },
+                { "RIFF GROWS FROM THE RIDE", { "STAB, HALF THE RIFF, THEN ALL OF IT", "RIFF FROM HALFWAY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE SIXTEENTHS, THEN THE KIT", "RIDE SIXTEENTHS ONLY" }, {} },
+                { "TOM GROOVE ALONE, THEN THE RIFF", { "STABS AFTER THE BEAT, THEN THE RIFF", "RIFF FROM THE START" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "TOMS AND KICK IN 3+3+2, THEN THE BEAT", "TOMS ALL THROUGH" }, {} },
+                { "TOMS ON THE CELL", { "ROOT AND DYAD ON THE CELL", "DYADS ONLY ON THE CELL" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "TOMS ON THE CELL", "TOMS ON THE CELL, THEN THE BEAT" }, {} },
+                { "PADS, THEN THE MACHINE LOOP", { "OUT", "ONE SWELLED CHORD AT THE END" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "PADS, THEN A PIANO OSTINATO", "PADS ALL THROUGH" }, { "OUT, THEN THE LOOP", "OUT, THE LOOP IN THE LAST BAR" }, {} },
+                { "HEARTBEAT KICK", { "QUIET SWELLS", "OUT" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "TREMOLO NOTE FROM A QUARTER IN", "LOW DRONE" }, { "HEARTBEAT, THEN TOMS", "HEARTBEAT ONLY" }, {} },
+                { "DRONE, DRUMS, THEN THE RIFF", { "HELD CLASH, THEN THE RIFF", "RIFF FROM HALFWAY" }, { "OUT, THEN WITH THE RIFF", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT, HATS IN SIXTEENTHS, THEN THE BEAT", "HATS, THEN THE BEAT" }, {} },
+                { "KEYS ALONE, THEN THE RIFF", { "OUT, THEN THE RIFF", "OUT, THEN RUNG CHORDS" }, { "OUT, THEN ROOTS HELD", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SIXTEENTH KEYS FIGURE, THEN UNDER THE BAND", "SIXTEENTH KEYS FIGURE, THEN OUT" }, { "OUT, THEN RIDE AND HATS", "OUT, THEN THE BEAT" }, {} },
+                // (0.143.0) Outros.
+                { "UNISON LINE TO THE END", { "UNISON LINE, ANSWERED BY CHORDS", "LINE ALL THROUGH" }, { "DOUBLES, THEN HELD ROOTS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BACKBEAT, CRASHES ON THE ANSWERS", "BACKBEAT, TOM FILL TO END" }, {} },
+                { "DOTTED-EIGHTH HIT CHAIN", { "HITS EVERY THREE SIXTEENTHS", "CHAIN IN THE LAST BARS ONLY" }, { "WITH THE PUSHES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND CRASH ON EVERY HIT", "KICK ON THE HITS, TOMS BETWEEN" }, {} },
+                { "UNISON CLIMB TO THE END", { "CLIMB IN SIXTEENTHS", "CLIMB IN EIGHTHS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ON EVERY SIXTEENTH BY THE END", "KICK EIGHTHS, CRASHES ON THE BEATS" }, {} },
+                { "THREE DOTTED PUSHES, THEN RING", { "RIFF, THEN THREE PUSHES AND RING", "TWO PUSHES, THEN RING" }, { "WITH THE PUSHES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "STRINGS HOLD THE LAST CHORD", "SILENT" }, { "CRASH ON EACH PUSH", "RIDE, THEN CRASH ON EACH PUSH" }, {} },
+                { "HITS AT BOTH ENDS", { "HITS ON 1, 1-AND, 4, 4-AND", "HITS, THEN A HELD CHORD" }, { "WITH THE HITS AT BOTH ENDS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND SNARE WITH THE HITS", "KICK WITH THE HITS, SNARE ON THREE" }, {} },
+                { "CHANT OVER A PEDAL BURST", { "PEDAL BURST", "PEDAL BURST, OCTAVES" }, { "WITH THE BURST", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "CHOIR CLIMBS A NOTE A BAR", "SILENT" }, { "SAMPLE HITS ON 1 AND 3, CRASH FILL", "BACKBEAT UNDER THE BURST" }, {} },
+                { "BAND DROPS TO PADS AND PIANO", { "STOP ON A SPLASH, THEN THE TONIC HELD", "OUT" }, { "TONIC HELD, THEN OUT", "OUT", "LOCKED WITH THE KICK" },
+                  { "STRINGS PULSE AND HIGH PIANO", "PADS ALONE" }, { "A SPLASH, THEN OUT", "OUT" }, {} },
+                { "TOM WALL UNDER THE LAST CHORD", { "RIFF, THEN THE LAST CHORD HELD", "LAST CHORD HELD ALL THROUGH" }, { "RIFF, THEN HELD", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND FLOOR TOM ON EVERY SIXTEENTH", "TOM WALL ALL THROUGH" }, {} },
             };
             return lists;
         }

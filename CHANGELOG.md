@@ -2,6 +2,39 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.143.0
+
+**Eight new intro types and eight new outro types from your 61 songs**, the fifth group in your order. The intro's TYPE menu lists them after GAPPED PEDAL, BUILD INTO THE VERSE; the outro's (and the ending's, tag's and coda's) after SINGLE-NOTE BAR, CHORD BAR. Every lane has two options, and the bass three (the last LOCKED WITH THE KICK).
+
+**Intros:**
+- **HOOK KEPT, BAND BUILT UNDER IT:** a hook on the keys alone (the chord's root and fifth rocking in sixteenths, or high eighths), carrying on unchanged while the band builds under it. The drums come in a quarter of the way, before the bass (whole notes, then a sixteenth pedal). The guitar's riff arrives at the landing, with the kick on 3+3+2 and a crash on every eighth. (Diary of Jane, Farther Away, Falling Away From Me, Everybody's Fool, Ghost of You)
+- **RIFF GROWS FROM THE RIDE:** the ride alone in sixteenths, then a high tritone stab, then half the riff, then all of it with the kit. (Blind)
+- **TOM GROOVE ALONE, THEN THE RIFF:** the toms and the kick in 3+3+2 with no cymbals, high stabs just after the beat, then the band on a sixteenth chug riff. (What You Want)
+- **TOMS ON THE CELL:** a six-sixteenth cell laid 6+6+4. The toms play its first two, and the kick, the snare and the guitar's root-and-tritone dyad its third and fifth. (Divine)
+- **PADS, THEN THE MACHINE LOOP:** pads alone, then a piano ostinato and a machine loop with the pedal hat on every sixteenth and no snare. (Haunted, Imaginary)
+- **HEARTBEAT KICK:** the kick alone like a heartbeat, a soft tremolo note coming in, quiet swelled chords, then the toms building. (Third Eye)
+- **DRONE, DRUMS, THEN THE RIFF:** one clashing note held alone, then the drums alone in sixteenth hats, then the riff with the band. (It's On)
+- **KEYS ALONE, THEN THE RIFF:** a sixteenth keys figure alone, then the riff and the band come in under it. (My Last Breath)
+
+**Outros:**
+- **UNISON LINE TO THE END:** a single-note line on every eighth answered by held chords, then power chords on every eighth to end on one held. (Intolerance, Lateralus)
+- **DOTTED-EIGHTH HIT CHAIN:** the band hits on the one, then every three sixteenths across the bar lines, the last chord held. The kick and a crash come with every hit. (46&2, Undertow, Whisper)
+- **UNISON CLIMB TO THE END:** everyone climbing in sixteenths a scale step a beat. The kick fills in from quarters to every sixteenth, then a hit to end. (Vicarious)
+- **THREE DOTTED PUSHES, THEN RING:** chords in eighths, then three pushes on 1, the a of 1 and the and of 2, with a crash on each and the last chord rung. (Taking Over Me, So Cold)
+- **HITS AT BOTH ENDS:** the band only on 1, 1-and, 4 and 4-and, the last bar one hit. (Sober)
+- **CHANT OVER A PEDAL BURST:** a low pedal burst a bar with a choir climbing a note a bar over it, and crashes on the dotted eighths to end. (Whisper)
+- **BAND DROPS TO PADS AND PIANO:** the band stops on a splash with the key's note held, then strings pulse and a high piano plays to the end. (Imaginary)
+- **TOM WALL UNDER THE LAST CHORD:** the riff, then the last chord held over the kick and the floor tom on every sixteenth. (Aenima)
+
+The song names are only here for you; the app shows our own names.
+
+**Next:** the 21 transitions (INTO THE NEXT), then the options inside the existing types.
+
+**Checked:**
+- A test makes every option of every lane in all 16 types and checks each is a different part.
+- Another checks their shapes: the hook from the start with the drums a quarter in and the guitar at the landing; the heartbeat's kicks; no drums before the loop and the pedal hat on every sixteenth; the hit chain every three sixteenths; the hits only at both ends; the tom wall's 64 sixteenths; the band dropping out after two bars.
+- Not checked here: how they sound (your ears).
+
 ## 0.142.0
 
 **Eleven new bridge types and five new breakdown types from your 61 songs**, the fourth group in your order. The bridge's TYPE menu lists them after KEYS CARRY THE CHORUS ALONE (before CREEP, OPEN CHORDS and DRONING). The breakdown's lists them after ARPEGGIO, THEN THE RIFF UNDER IT (before HEAVY CHUG and STACCATO CHUG). Every lane has two options, the bass three (the last LOCKED WITH THE KICK). Only TREMOLO CLUSTER OVER OPEN CHORDS gives the lead a part of its own.
