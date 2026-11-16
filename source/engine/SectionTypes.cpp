@@ -219,7 +219,19 @@ namespace pr7s
                          { "SHRINKING GROUPS", "Four bars of eighths in groups of 9, 8, 7 and 8, each a held chord and sixteenth pairs, the accents crossing the bar lines", r, {}, c },
                          { "HELD ROOTS CLIMBING, PUSHED LATE", "One chord a bar struck late and held into the next, a kick and a crash with each, the toms rolling", r, {}, c },
                          { "FALLING CELLS IN SIXES", "Three-note cells falling a half step at a time into the root, every six sixteenths, low", r, {}, c },
-                         { "FOUR EIGHTHS, THEN A PUSH", "Four eighth-note chords, a gap, then pushes into the next bar, a high piano pulse over it", r, {}, c } };
+                         { "FOUR EIGHTHS, THEN A PUSH", "Four eighth-note chords, a gap, then pushes into the next bar, a high piano pulse over it", r, {}, c },
+                         // (0.148.0) Round four (shapes only, our names).
+                         { "ACOUSTIC STRUM CHORUS", "Full chords strummed in sixteenths, whole-note bass, strings holding; the drums out, toms alone, toms over four on the floor, or a dotted kick", r, {}, c },
+                         { "BURST & HOLD, THEN A CARPET IN 3+2+3", "A unison burst into a held chord, then kick sixteenths under 3+2+3 chords, then a half-time riff", r, {}, c },
+                         { "BREAKBEAT UNDER HELD CHORDS", "A double-time broken beat under a fixed keys ostinato and a clean 3+3+2 figure, whole-note bass", r, {}, c },
+                         { "STOMP IN 3+3+2", "Every lane on 3+3+2 over a kick and floor tom stomp, a soft snare on 2 and 4", r, {}, c },
+                         { "FALLING PUSHED CHORDS", "Two root chugs on 1, then three chords pushed onto the ands, each a step lower", r, {}, c },
+                         { "HITS, THEN A WALL THE BASS LEAVES", "Two stabs, then a sixteenth wall; the bass only on the stabs; crash and splash eighths", r, {}, c },
+                         { "RING THE ONE, RUN THE REST", "An open chord rung on 1, power chords running down the scale through the bar, a china on the quarters", r, {}, c },
+                         { "BASS SIXTEENTHS, GUITARS OUT", "The bass on root sixteenths under a keys ostinato and a hip-hop break; the guitars out, stabbing or in a wall", r, {}, c },
+                         { "THREE CHORDS, THEN A HELD BAR", "Three chords on 1, the and of 2 and 4, the next bar holding the last; the snare on 3 only", r, {}, c },
+                         { "HELD CHORD WITH A RINGING TOP, BUSY KICK", "A chord struck and held with its ninth ringing on top, pushed into the next, over a busy sixteenth kick", r, {}, c },
+                         { "CHANGES ON THREE", "Open eighths with each chord arriving on beat 3 over four on the floor", r, {}, c } };
             }
             case 3:
             {
@@ -688,6 +700,8 @@ namespace pr7s
     // list: the lead plays its own styles).
     juce::StringArray chorusApproaches (const juce::String& type, ComposerLayer layer)
     {
+        if (isRound3Type (type))   // (0.148.0)
+            return round3Approaches (type, layer);
         using L = ComposerLayer;
         const auto t = type.trim().toUpperCase();
         struct Lists { const char* name; juce::StringArray guitar, bass, keys, drums, lead; };
@@ -914,6 +928,29 @@ namespace pr7s
                   { "STRINGS PULSE AND HIGH PIANO", "PADS ALONE" }, { "A SPLASH, THEN OUT", "OUT" }, {} },
                 { "TOM WALL UNDER THE LAST CHORD", { "RIFF, THEN THE LAST CHORD HELD", "LAST CHORD HELD ALL THROUGH" }, { "RIFF, THEN HELD", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK AND FLOOR TOM ON EVERY SIXTEENTH", "TOM WALL ALL THROUGH" }, {} },
+                // (0.148.0) Round four's choruses.
+                { "ACOUSTIC STRUM CHORUS", { "SIXTEENTH STRUMS", "STRUMS WITH POWER CHORDS ON THE ACCENTS" }, { "WHOLE NOTES", "DOTTED WITH THE KICK", "LOCKED WITH THE KICK" },
+                  { "STRINGS ON THE ROOT", "HELD PADS" }, { "NO DRUMS", "TOMS ALONE IN 3+3+3+3+4", "TOMS OVER FOUR ON THE FLOOR", "DOTTED KICK, BACKBEAT" }, {} },
+                { "BURST & HOLD, THEN A CARPET IN 3+2+3", { "BURST, CARPET, RIFF", "BURST AND HOLD ALL THROUGH" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BURST, CARPET, HALF TIME", "BURST AND HOLD DRUMS" }, {} },
+                { "BREAKBEAT UNDER HELD CHORDS", { "CLEAN 3+3+2 FIGURE", "OUT" }, { "WHOLE NOTES", "EIGHTHS", "LOCKED WITH THE KICK" },
+                  { "FIXED FOUR-NOTE OSTINATO", "HELD PADS" }, { "DOUBLE-TIME BREAKBEAT", "BREAKBEAT, KICK ON ONE" }, {} },
+                { "STOMP IN 3+3+2", { "3+3+2 STOMP", "OCTAVE WALL OVER THE 3+3+2" }, { "ON THE 3+3+2", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "THE GRID AN OCTAVE UP", "HELD PADS" }, { "KICK AND FLOOR TOM STOMP", "STOMP WITH CRASH EIGHTHS" }, {} },
+                { "FALLING PUSHED CHORDS", { "FALLING PUSHES", "FALLING PUSHES IN OCTAVES" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "DOUBLE-KICK GROOVE", "BACKBEAT, CLOSED HATS" }, {} },
+                { "HITS, THEN A WALL THE BASS LEAVES", { "TWO HITS, THEN A SIXTEENTH WALL", "WALL ALL THROUGH" }, { "ON THE HITS ONLY", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE ON TWO, ITS A AND FOUR, CRASH EIGHTHS", "STRAIGHT BACKBEAT, CRASH EIGHTHS" }, {} },
+                { "RING THE ONE, RUN THE REST", { "RING AND RUN", "RING AND PUSH" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CHINA QUARTERS, TOMS IN THE BACK HALF", "CHINA QUARTERS, PLAIN" }, {} },
+                { "BASS SIXTEENTHS, GUITARS OUT", { "OUT", "OFF-BEAT STABS", "SIXTEENTH WALL" }, { "ROOT SIXTEENTHS", "EIGHTHS", "LOCKED WITH THE KICK" },
+                  { "FIXED-TOP OSTINATO", "PAD DOUBLING THE BASS" }, { "HIP-HOP BREAK", "HIP-HOP BREAK, CRASH EVERY TWO BARS" }, {} },
+                { "THREE CHORDS, THEN A HELD BAR", { "ON THE HITS", "HITS, THEN EIGHTHS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "STABS ON THE HITS", "HELD PADS" }, { "SNARE ON THREE, KICK INTO THE NEXT", "SNARE ON THREE, SHAKER EIGHTHS" }, {} },
+                { "HELD CHORD WITH A RINGING TOP, BUSY KICK", { "STRUCK, RINGING TOP, PICKUP", "STRUCK, RINGING TOP, TONIC BARS IN EIGHTHS" }, { "ROOTS HELD", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BUSY KICK, RIDE BELL, CHINA ON FOUR", "BUSY KICK, CRASH EVERY BAR" }, {} },
+                { "CHANGES ON THREE", { "OPEN EIGHTHS, CHANGING ON THREE", "WITH A PASSING CHORD ON TWO" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "FOUR ON THE FLOOR, BACKBEAT", "FOUR ON THE FLOOR, PICKUP SIXTEENTH" }, {} },
                 // (0.147.0) Round four's verses.
                 { "HOOK OVER THE BEAT, GUITARS OUT", { "OUT", "PICKUP CHORD EVERY FOURTH BAR" }, { "WHOLE NOTES", "PICKUPS ONLY", "LOCKED WITH THE KICK" },
                   { "TWO-NOTE EIGHTH OSTINATO", "STAB HOOK ON 4+2+4+2+4", "HELD PADS" }, { "SPARSE KICK BACKBEAT", "SNARE ON TWO AND THE AND OF THREE" }, {} },

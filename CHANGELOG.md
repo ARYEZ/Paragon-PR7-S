@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.148.0
+
+**Eleven chorus types from your 54 new songs** (round four, the second group). They're in the chorus's TYPE menu after FOUR EIGHTHS, THEN A PUSH. Each writes the guitar, bass, keys and drums, two to four options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.
+
+- **ACOUSTIC STRUM CHORUS:** full chords strummed in sixteenths (x==x-xx==x-xxxxx), whole-note bass, strings on the root. Its drums are the song's escalation: none, toms alone on 3+3+3+3+4, toms over four on the floor, then a dotted kick with a backbeat. (Angel's Son)
+- **BURST & HOLD, THEN A CARPET IN 3+2+3:** four bars of a sixteenth burst into a held chord (the snare and crash only on 4), two bars of 3+2+3 chords over kick sixteenths, two bars of a half-time riff. (Forsaken)
+- **BREAKBEAT UNDER HELD CHORDS:** a double-time broken beat (or its thinned form, the kick only on 1) under a fixed four-note keys ostinato and a clean 3+3+2 figure. (Breaking the Habit)
+- **STOMP IN 3+3+2:** every lane on 3+3+2 over a kick and floor tom stomp with a soft snare on 2 and 4; or an octave wall over it. (Castle of Glass)
+- **FALLING PUSHED CHORDS:** two root chugs on 1, then power chords pushed onto the ands of 2, 3 and 4, each a scale step lower. (Whatever)
+- **HITS, THEN A WALL THE BASS LEAVES:** two stabs, then a sixteenth wall; the bass only on the stabs; a crash and splash on the eighths. (Lying From You)
+- **RING THE ONE, RUN THE REST:** an open chord rung on 1, chords running down the scale through the bar, the half step under the root pushed on the and of 4, a china on the quarters. (Greed)
+- **BASS SIXTEENTHS, GUITARS OUT:** root sixteenths on the bass, a fixed-top keys ostinato, a hip-hop break; the guitars out, stabbing the off-beats or in a wall (use them in that order, one per chorus, to make the choruses grow). (In Pieces)
+- **THREE CHORDS, THEN A HELD BAR:** three chords on 1, the and of 2 and 4, the next bar holding the last; the snare only on 3, two kicks into the next pair. (Heavy)
+- **HELD CHORD WITH A RINGING TOP, BUSY KICK:** the chord struck and held with its ninth ringing on top, pushed into the next on the and of 4, over a busy kick, ride bell and a china on 4. For slow songs. (Wasteland)
+- **CHANGES ON THREE:** open eighths with each chord arriving on beat 3 (a passing chord on beat 2 every other bar) over four on the floor. (Burn It Down)
+
+Where a chord moves down a step from the low string's root, it's written from the octave: the 7-string's low A has nothing under it.
+
 ## 0.147.0
 
 **Eleven verse types from your 54 new songs** (round four, the first group: verses, then choruses, pre/post-choruses, bridges and breakdowns, intros and outros, transitions, then the options and new versions of styles we have). They're in the verse's TYPE menu after MUTED PEDAL, ACCENTS IN THREES (and in the pre-chorus's, after its own). Each writes the guitar, bass, keys and drums together, with two or three options a lane; the bass's last is always LOCKED WITH THE KICK. Shapes only, our names; the songs are named here as where each came from.

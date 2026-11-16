@@ -603,7 +603,7 @@ TEST_CASE ("0.93.0: the composer block by block: aimed at the first block, BUILD
 TEST_CASE ("0.94.0: the types a section can have; STANDARD is none; a type sets the guitar's flavour", "[sections][types]")
 {
     const auto chorus = sectionTypesFor ("Chorus");
-    REQUIRE (chorus.size() == 11 + 23);   // (0.140.0: 23 more after them) (0.99.0: SYNCOPATED DRIVE between them; 0.115.0 and 0.116.0: four more each after them)
+    REQUIRE (chorus.size() == 11 + 23 + 11);   // (0.140.0: 23 more after them) (0.99.0: SYNCOPATED DRIVE between them; 0.115.0 and 0.116.0: four more each after them)
     CHECK (chorus[0].name == "DRIVING");
     CHECK (chorus[0].flavour == RiffFlavour::drivingEighths);
     CHECK (chorus[2].name == "DRONING");
@@ -3211,7 +3211,7 @@ TEST_CASE ("0.116.0: the other four chorus types, every lane's options a differe
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const std::vector<juce::String> names { "TOM GROOVE RIFF", "RING, THEN ANSWER", "HALF-TIME CHORDS WITH AN OCTAVE PEDAL", "CHUG BAR, CHORD BAR" };
     const auto chorus = sectionTypesFor ("Chorus");
-    REQUIRE (chorus.size() == 7 + names.size() + 23);   // (0.140.0: 23 more after them)
+    REQUIRE (chorus.size() == 7 + names.size() + 23 + 11);   // (0.140.0: 23 more after them)
     CHECK (chorus[3].name == "PUSHED CHORDS UNDER A FIXED HOOK");   // (0.115.0's kept in their places)
     for (size_t i = 0; i < names.size(); ++i)
     {
@@ -3263,7 +3263,7 @@ TEST_CASE ("0.115.0: the four chorus types from the owner's songs, every lane's 
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const std::vector<juce::String> names { "PUSHED CHORDS UNDER A FIXED HOOK", "TWIN HARMONY, HALF TIME", "SIXTEENTH WALL, HALF-TIME KIT", "GROUPED STREAM" };
     const auto chorus = sectionTypesFor ("Chorus");
-    REQUIRE (chorus.size() == 3 + names.size() + 4 + 23);   // (0.116.0: four more after them; 0.140.0: 23 more)
+    REQUIRE (chorus.size() == 3 + names.size() + 4 + 23 + 11);   // (0.116.0: four more after them; 0.140.0: 23 more)
     CHECK (chorus[0].name == "DRIVING");   // (the first three kept in their places)
     for (size_t i = 0; i < names.size(); ++i)
     {
@@ -4338,7 +4338,7 @@ TEST_CASE ("0.140.0: the 23 chorus types from the 61 songs, every lane's options
                                             "PUSH BAR, CELL BAR", "SYNCOPATED CHORDS WITH A PUSH BAR", "THREE-SIXTEENTH CELLS AFTER A HELD ONE", "SHRINKING GROUPS",
                                             "HELD ROOTS CLIMBING, PUSHED LATE", "FALLING CELLS IN SIXES", "FOUR EIGHTHS, THEN A PUSH" };
     const auto chorus = sectionTypesFor ("Chorus");
-    REQUIRE (chorus.size() == 11 + names.size());
+    REQUIRE (chorus.size() == 11 + names.size() + 11);   // (0.148.0: eleven more)
     for (size_t i = 0; i < names.size(); ++i)
     {
         CHECK (chorus[11 + i].name == names[i]);
@@ -5298,4 +5298,103 @@ TEST_CASE ("0.147.0: round four's verse types, every lane's options a different 
         for (const auto& n : layers[(size_t) ComposerLayer::guitar].notes)
             CHECK (std::fmod (n.beat, 8.0) < 4.0);
     }
+}
+
+TEST_CASE ("0.148.0: round four's chorus types, every lane's options a different part", "[sections][types][chorus148]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars; the guitar's low A 33)
+    const std::vector<juce::String> names { "ACOUSTIC STRUM CHORUS", "BURST & HOLD, THEN A CARPET IN 3+2+3", "BREAKBEAT UNDER HELD CHORDS", "STOMP IN 3+3+2",
+                                            "FALLING PUSHED CHORDS", "HITS, THEN A WALL THE BASS LEAVES", "RING THE ONE, RUN THE REST",
+                                            "BASS SIXTEENTHS, GUITARS OUT", "THREE CHORDS, THEN A HELD BAR", "HELD CHORD WITH A RINGING TOP, BUSY KICK",
+                                            "CHANGES ON THREE" };
+    const auto chorus = sectionTypesFor ("Chorus");
+    REQUIRE (chorus.size() == 45u);
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        INFO (names[i]);
+        CHECK (chorus[34 + i].name == names[i]);
+        CHECK (sectionTypeCalled (names[i])->band == SectionType::Band::chorus);
+        ComposerState s;
+        applySectionType (s, "Chorus", names[i]);
+        REQUIRE (s.sectionType == names[i]);
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                const auto name = sectionApproaches (s, l)[(int) o];
+                INFO (composerLayerName (l) << " " << name);
+                CHECK (seen.insert (key (choices[o])).second);
+                if (name != "OUT" && name != "SILENT" && name != "NO DRUMS")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+    }
+    const auto layersOf = [&] (const juce::String& type, int guitar, int drums)
+    {
+        ComposerState s;
+        applySectionType (s, "Chorus", type);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::drums).approach = drums;
+        return composeLayers (s, spans, c);
+    };
+    const auto at = [] (const LineIdea& idea, double beat)
+    {
+        std::vector<int> pitches;
+        for (const auto& n : idea.notes)
+            if (std::abs (n.beat - beat) < 1.0e-6 && ! n.keyswitch)
+                pitches.push_back (n.pitch);
+        std::sort (pitches.begin(), pitches.end());
+        return pitches;
+    };
+    // FALLING PUSHED CHORDS: two root chugs, then G, F, E on the ands of 2, 3 and 4 (A minor's steps down).
+    {
+        const auto layers = layersOf ("FALLING PUSHED CHORDS", 0, 0);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        CHECK (at (g, 0.0) == std::vector<int> { 33 });
+        CHECK (at (g, 0.5) == std::vector<int> { 33 });
+        CHECK (at (g, 1.5) == std::vector<int> { 43, 50 });
+        CHECK (at (g, 2.5) == std::vector<int> { 41, 48 });
+        CHECK (at (g, 3.5) == std::vector<int> { 40, 47 });
+    }
+    // STOMP IN 3+3+2: the kick and floor tom together on 1, the a of 1, 3 and the a of 3.
+    {
+        const auto layers = layersOf ("STOMP IN 3+3+2", 0, 0);
+        std::set<int> kicks, toms;
+        for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
+            if (n.beat < 4.0)
+            {
+                if (n.pitch == GmDrum::kick) kicks.insert (juce::roundToInt (n.beat * 4.0));
+                if (n.pitch == GmDrum::tomFloor) toms.insert (juce::roundToInt (n.beat * 4.0));
+            }
+        CHECK (kicks == std::set<int> { 0, 3, 8, 11 });
+        CHECK (toms == kicks);
+    }
+    // CHANGES ON THREE: the second bar's first half still the first bar's chord, its second half F.
+    {
+        const auto layers = layersOf ("CHANGES ON THREE", 0, 0);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        CHECK (at (g, 4.0) == std::vector<int> { 33, 40 });
+        CHECK (at (g, 6.0) == std::vector<int> { 41, 48 });
+    }
+    // ACOUSTIC STRUM CHORUS with NO DRUMS: no drum notes at all.
+    CHECK (layersOf ("ACOUSTIC STRUM CHORUS", 0, 0)[(size_t) ComposerLayer::drums].notes.empty());
 }
