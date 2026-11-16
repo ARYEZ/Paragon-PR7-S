@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.151.0
+
+**Eight intro types and four outro types from your 54 new songs** (round four, the fifth group). The intros are in the intro's TYPE menu after KEYS ALONE, THEN THE RIFF; the outros in the outro's (and ending's, tag's, coda's) after TOM WALL UNDER THE LAST CHORD. Each writes the guitar, bass, keys and drums, two options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.
+
+Intros:
+- **SNARE-ROLL GROOVE, THE BAND JOINS:** the drums alone with the snare on every sixteenth, then the riff, then octaves in sixteenths over it, a stop halfway through the last bar. (Don't Stay)
+- **HYMN, THEN DOUBLE KICK UNDER IT:** organ chords alone with a timpani roll (the floor tom) at their end, then a hit on each one and a four-sixteenth pickup over the kick on every sixteenth. (The Heart of Everything)
+- **QUARTER STRUMS OVER AN OFF-SIXTEENTH SNARE:** full chords strummed on the beats with a high tone on 2, the snare off the sixteenths over the pedal hat, the bass out. (Denial)
+- **SIDE STICK AND HATS ON THE RIFF:** no kick or snare, the side stick and closed hats exactly on the riff, a shaker in sixteenths. (Part of Me)
+- **HAND PERCUSSION ALONE, THEN THE RIFF:** claps, tambourine and cowbell alone, then the muted riff, then the kit and the bass. (Given Up)
+- **ONE CHORD STRUMMED 3+3+3+3+4, RIFF JOINS:** the key's chord strummed on 3+3+3+3+4 alone, then the low riff and the bass under it. (Keep Away)
+- **RIFF ALONE, SIXTEENTH ROOT PEDAL JOINS:** the riff alone, then the bass's root in sixteenths, then the hats with the snare on 4, then the kick. (One Step Closer)
+- **SWELLS, THEN A FIXED HIGH FIGURE, THE KIT LAST:** clean chords held three beats, then a fixed high three-note figure with bass eighths, the hats from a quarter in, the kit last. (Somewhere I Belong)
+
+Outros:
+- **BURSTS OFF THE BEAT TO THE END:** bursts of five sixteenths off the beat with high octave stabs between them, ending on one burst held, the kick and a crash on the bursts. (Trust)
+- **BASS RIFF ALONE TO THE END:** the bass alone on its riff, everyone else out (or one chord held over it, a kick on each one). (Keep Away)
+- **CALL BAR, ANSWER BAR, CUT:** a bar of doubled hits answered by a bar of eighths, the last bar cut after beat 2. (Somewhere I Belong)
+- **OSTINATO AND BEAT TO THE END:** a two-note keys figure on every eighth and a plain beat to the end, the band out; or the figure alone for the last quarter. (What I've Done)
+
+Left out: the readers' FADE BY VELOCITY (a fade every lane would get, not a type of its own).
+
 ## 0.150.0
 
 **Fourteen bridge types and four breakdown types from your 54 new songs** (round four, the fourth group). The bridges are in the bridge's TYPE menu (and the middle 8's, break's, instrumental's) after DRUMS DROP OUT, THE BAND CARRIES; the breakdowns after KEYS ALONE, THEN RINGING HITS. Each writes the guitar, bass, keys and drums, two options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.

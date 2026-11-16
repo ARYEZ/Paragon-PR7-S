@@ -140,6 +140,15 @@ namespace pr7s
                          { "HEARTBEAT KICK", "The kick alone like a heartbeat, a soft tremolo note coming in, then the toms building", r, {}, b },
                          { "DRONE, DRUMS, THEN THE RIFF", "One clashing note held alone, then the drums alone, then the riff with the band", r, {}, b },
                          { "KEYS ALONE, THEN THE RIFF", "A sixteenth keys figure alone, then the riff and the band come in under it", r, {}, b },
+                         // (0.151.0) From the owner's 54 new song files (round four; shapes only, our names).
+                         { "SNARE-ROLL GROOVE, THE BAND JOINS", "The drums alone with the snare on every sixteenth, then the riff, then octaves in sixteenths over it, a stop to end", r, {}, b },
+                         { "HYMN, THEN DOUBLE KICK UNDER IT", "Organ chords alone with a timpani roll, then hits and pickups over the kick on every sixteenth", r, {}, b },
+                         { "QUARTER STRUMS OVER AN OFF-SIXTEENTH SNARE", "Full chords strummed on the beats, a high tone on 2, the snare off the sixteenths over the pedal hat", r, {}, b },
+                         { "SIDE STICK AND HATS ON THE RIFF", "No kick or snare: the side stick and closed hats exactly on the riff, a shaker in sixteenths", r, {}, b },
+                         { "HAND PERCUSSION ALONE, THEN THE RIFF", "Claps, tambourine and cowbell alone, then the muted riff, then the kit and the bass", r, {}, b },
+                         { "ONE CHORD STRUMMED 3+3+3+3+4, RIFF JOINS", "The key's chord strummed on 3+3+3+3+4 alone, then the low riff and the bass under it", r, {}, b },
+                         { "RIFF ALONE, SIXTEENTH ROOT PEDAL JOINS", "The riff alone, then the bass's root in sixteenths, then the hats, then the kick", r, {}, b },
+                         { "SWELLS, THEN A FIXED HIGH FIGURE, THE KIT LAST", "Clean chords swelling, then a fixed high three-note figure with bass eighths, the hats, the kit last", r, {}, b },
                          droning, open };
             }
             case 1:
@@ -355,6 +364,11 @@ namespace pr7s
                          { "CHANT OVER A PEDAL BURST", "A low pedal burst a bar, a choir climbing a note a bar over it, crashes on the dotted eighths to end", r, {}, b },
                          { "BAND DROPS TO PADS AND PIANO", "The band stops on a splash, the key's note held, then strings pulsing and high piano to the end", r, {}, b },
                          { "TOM WALL UNDER THE LAST CHORD", "The riff, then the last chord held over the kick and floor tom on every sixteenth", r, {}, b },
+                         // (0.151.0) From the owner's 54 new song files (round four; shapes only, our names).
+                         { "BURSTS OFF THE BEAT TO THE END", "Bursts of five sixteenths off the beat with octave stabs between them, ending on one burst held", r, {}, b },
+                         { "BASS RIFF ALONE TO THE END", "The bass alone on its riff to the end, everyone else out", r, {}, b },
+                         { "CALL BAR, ANSWER BAR, CUT", "A bar of doubled hits answered by a bar of eighths, the last bar cut after beat 2", r, {}, b },
+                         { "OSTINATO AND BEAT TO THE END", "A two-note keys figure and a plain beat to the end, the band out", r, {}, b },
                          droning, stabs };
             }
             case 6: return { driving, droning };
@@ -959,6 +973,31 @@ namespace pr7s
                   { "STRINGS PULSE AND HIGH PIANO", "PADS ALONE" }, { "A SPLASH, THEN OUT", "OUT" }, {} },
                 { "TOM WALL UNDER THE LAST CHORD", { "RIFF, THEN THE LAST CHORD HELD", "LAST CHORD HELD ALL THROUGH" }, { "RIFF, THEN HELD", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK AND FLOOR TOM ON EVERY SIXTEENTH", "TOM WALL ALL THROUGH" }, {} },
+                // (0.151.0) Round four's intros and outros.
+                { "SNARE-ROLL GROOVE, THE BAND JOINS", { "RIFF, THEN OCTAVE SIXTEENTHS", "RIFF FROM A QUARTER IN" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE SIXTEENTHS, THEN THE GROOVE", "SNARE SIXTEENTHS ALL THROUGH" }, {} },
+                { "HYMN, THEN DOUBLE KICK UNDER IT", { "OUT, THEN HITS AND PICKUPS", "HITS AND PICKUPS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HYMN CHORDS", "HELD PADS" }, { "TIMPANI, THEN DOUBLE KICK", "DOUBLE KICK ALL THROUGH" }, {} },
+                { "QUARTER STRUMS OVER AN OFF-SIXTEENTH SNARE", { "QUARTER STRUMS, A HIGH TONE ON TWO", "QUARTER STRUMS" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OFF-SIXTEENTH SNARE, PEDAL HAT", "OFF-SIXTEENTH SNARE, RIDE" }, {} },
+                { "SIDE STICK AND HATS ON THE RIFF", { "THE RIFF ON THE ROOT", "THE RIFF IN OCTAVES" }, { "OUT", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SIDESTICK AND CLOSED HATS ON THE RIFF, SHAKER", "SIDESTICK AND CLOSED HATS ON THE RIFF" }, {} },
+                { "HAND PERCUSSION ALONE, THEN THE RIFF", { "OUT, THEN THE MUTED RIFF", "THE MUTED RIFF" }, { "OUT, THEN WITH THE KIT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HAND PERCUSSION, THEN THE KIT", "HAND PERCUSSION ONLY" }, {} },
+                { "ONE CHORD STRUMMED 3+3+3+3+4, RIFF JOINS", { "STRUM, THEN THE RIFF UNDER IT", "STRUM ALL THROUGH" }, { "BASS OUT, THEN THE RIFF", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT, THEN THE GROOVE", "STRUM ACCENTS ON THE KICK" }, {} },
+                { "RIFF ALONE, SIXTEENTH ROOT PEDAL JOINS", { "THE RIFF, ALONE AT FIRST", "THE RIFF, AN OCTAVE ADDED LATE" }, { "BASS OUT, THEN SIXTEENTH ROOTS", "ROOT SIXTEENTHS FROM THE START", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HATS, THEN THE KICK", "HATS AND SNARE ON FOUR" }, {} },
+                { "SWELLS, THEN A FIXED HIGH FIGURE, THE KIT LAST", { "SWELLS, THEN THE HIGH FIGURE", "HIGH FIGURE ALL THROUGH" }, { "OUT, THEN EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HATS, THEN THE KIT LAST", "HATS FROM A QUARTER IN" }, {} },
+                { "BURSTS OFF THE BEAT TO THE END", { "BURSTS OFF THE BEAT, OCTAVE STABS", "BURSTS OFF THE BEAT" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND CRASH ON THE BURSTS", "KICK ON THE BURSTS, BACKBEAT" }, {} },
+                { "BASS RIFF ALONE TO THE END", { "OUT", "ONE CHORD HELD OVER IT" }, { "THE BASS RIFF", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT", "A KICK ON EACH ONE" }, {} },
+                { "CALL BAR, ANSWER BAR, CUT", { "CALL AND ANSWER, CUT", "CALL BARS, CUT" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CALL, ANSWER, SNARE EIGHTHS", "CALL AND ANSWER, CRASH" }, {} },
+                { "OSTINATO AND BEAT TO THE END", { "OUT", "CHORDS ON ONE" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "TWO-NOTE EIGHTHS TO THE END", "TWO-NOTE EIGHTHS, ALONE AT THE END" }, { "THE GROOVE TO THE END", "THE GROOVE, OUT AT THE END" }, {} },
                 // (0.150.0) Round four's bridges and breakdowns.
                 { "PARALLEL CLASH OVER THE BASS", { "CLASH SHAPE A HALF STEP OVER THE BASS", "CLASH SHAPE ON THE BEATS" }, { "CHROMATIC EIGHTHS ROUND THE ROOT", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "HALF TIME, PUSHED KICK, CRASH EIGHTHS", "HALF TIME, PUSHED KICK, RIDE" }, {} },
