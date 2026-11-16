@@ -4144,7 +4144,7 @@ TEST_CASE ("0.139.0: the twelve verse types from the 61 songs, every lane's opti
                                             "TOM FIGURE VERSE", "SIX-SIXTEENTH CELLS", "HOLED SIXTEENTH PEDAL", "GUITAR CALLS, BASS ANSWERS",
                                             "THREE-BAR CYCLE", "THREE-BAR RIFF, KICK AND BASS ON THE BEATS", "KICK AND BASS IN UNISON", "BASS GROOVE, GUITAR SQUEALS" };
     const auto verse = sectionTypesFor ("Verse");
-    REQUIRE (verse.size() == 26u);
+    REQUIRE (verse.size() == 28u);
     for (size_t i = 0; i < names.size(); ++i)
     {
         CHECK (verse[14 + i].name == names[i]);
