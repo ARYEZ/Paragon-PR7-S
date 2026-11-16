@@ -2,6 +2,48 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.152.0
+
+**BLUEPRINTS: a song's whole layout as a preset to start from** (you asked: "choose specific songs and we create their section layout as a template ... like we do with expansion rigs"). BLUEPRINTS is a new key on the SECTIONS row (also in the row's right-click menu and in KEYS as Window > Blueprints).
+
+The window lists our ten on the left. Pick one and you see:
+- its blocks drawn as the SECTIONS row would show them;
+- its description, tempo and length;
+- each block's type, the transition into the next block, and its chords in the key you pick.
+
+The controls:
+- **KEY:** starts on the blueprint's own key; change it and the chords move with it.
+- **CHORDS:** on, the blueprint's chords go onto the chord track inside the row; off, the chord track is left alone (your choice: "carry chords but give the option to turn the chords off").
+- **TEMPO:** on, the song takes the blueprint's tempo.
+- **USE IT:** lays out the SECTIONS row from bar 1: names, lengths, linked copies (edit one chorus and the other choruses change), section types and transitions, with the song's key set. If the row already has blocks, it asks before replacing them. The music already in the song isn't moved. One undo step.
+- **SAVE THIS SONG'S SECTIONS AS A BLUEPRINT...:** keeps your own row as a blueprint, saved as a .pr7blueprint file in Documents/Paragon PR7-S/Blueprints. Your blueprints are listed after ours, and DELETE removes them (ours can't be deleted).
+
+**Our ten, from the songs you chose.** Each form was read from your files for its layout only: sections, bars, repeats, chords as steps of the key, tempo. No notes were taken. The names are ours:
+
+| Blueprint | Song | Tempo, key | Bars |
+|---|---|---|---|
+| STADIUM BUILD | Edge of the Earth | 110, F minor | 122 |
+| SEVEN-BAR CYCLE | The Ghost Woman and the Hunter | 100, A minor | 72 |
+| RAP VERSE, SUNG HOOK | Papercut | 75, C# minor | 58 |
+| QUIET VERSE, LOUD RETURN | The Emptiness Machine | 91, D minor | 74 |
+| RIFF BOOKENDS | Remember | 82, C# minor | 84 |
+| PIANO HOOK FIRST | Call Me When You're Sober | 93, E minor | 82 |
+| CLEAN INTRO, LONG CLIMB | Enter Sandman | 120, E minor | 169 |
+| CLEAN VERSE, HEAVY CHORUS | Until It Sleeps | 115, G# minor | 126 |
+| RIFF-LED LIFT | At the End of August | 99, A minor | 91 |
+| STILL VERSE, HUGE CHORUS | Circle With Me (from the tabs) | 103, Ab minor | 100 |
+
+Where the songs leave 4/4, the layouts were kept in 4/4 (your rule):
+- Remember's odd-metre verse bars count as whole bars.
+- Until It Sleeps' 6-beat refrain phrases are laid out as 12 bars.
+- At the End of August's 2/4 stops are a STOP into each chorus.
+- Circle With Me is written at 206 in half time, so it's laid out at 103 with half the bars.
+
+Our guesses:
+- **Section types:** each block's section type is our pick for its character, and its chords are read from power chords: where a chord's third isn't played, the key decides major or minor.
+- **The Ghost Woman and the Hunter:** its verse and chorus couldn't be told apart without vocals.
+- **The C chords in Edge of the Earth** could be minor or major.
+
 ## 0.151.0
 
 **Eight intro types and four outro types from your 54 new songs** (round four, the fifth group). The intros are in the intro's TYPE menu after KEYS ALONE, THEN THE RIFF; the outros in the outro's (and ending's, tag's, coda's) after TOM WALL UNDER THE LAST CHORD. Each writes the guitar, bass, keys and drums, two options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.

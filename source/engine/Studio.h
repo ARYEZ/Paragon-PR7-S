@@ -29,6 +29,7 @@
 #include "MediaBay.h"
 #include "Composer.h"
 #include "SoloEngine.h"
+#include "Blueprints.h"
 
 #include <optional>
 #include <mutex>
@@ -1278,6 +1279,22 @@ namespace pr7s
         std::vector<SectionChord> getSectionChords (int index) const;
         bool setSectionChords (int index, const std::vector<SectionChord>&);
 
+        // BLUEPRINTS (0.152.0, engine/Blueprints.h): a song's section layout as a preset. Using one replaces the
+        // SECTIONS row with its blocks (names, lengths, linked copies, types, transitions) from bar 1, sets the song's
+        // key, and, each a choice, the chords inside the row (the chord track's events there replaced; off: the chord
+        // track untouched) and the tempo (the fixed tempo, or a tempo track with one event). The music already in the
+        // song stays where it is (nothing is moved). One undo step (a SHORT BAR transition adds one each).
+        bool applyBlueprint (const Blueprint&, const Key&, bool withChords, bool withTempo);
+        // This song's row as a blueprint (its chords from the chord track, in the song's key; the tempo at bar 1).
+        Blueprint makeBlueprint (const juce::String& name) const;
+        // Ours, then the owner's (from the folder, A to Z).
+        std::vector<Blueprint> getBlueprints() const;
+        juce::File getBlueprintFolder() const;
+        void setBlueprintFolderForTests (const juce::File& f) { blueprintFolder = f; }
+        // This song's row saved as the owner's own (a file named after it; a taken name gets " 2"...). Its file.
+        juce::File saveSongAsBlueprint (const juce::String& name, juce::String& error);
+        bool deleteBlueprint (const Blueprint&);   // the owner's only
+
         //======================================================================
         // Tap tempo (0.45.0, the manual's Tap Tempo Modes): each tap's time in seconds (the
         // transport's TAP, Shift+Space). From the second tap the tempo is the average step of
@@ -1637,6 +1654,7 @@ namespace pr7s
         // (0.92.0) Each block's chords (relative, with lengths) and length as last seen, by block id.
         std::map<int, std::pair<int, std::vector<ChordEvent>>> chordSnapshots;
         bool chordsReset = false;
+        juce::File blueprintFolder;   // (tests; else defaultBlueprintFolder())
         std::vector<ChordEvent> sectionChords (const SectionPlace&) const;
         juce::int64 trackMark (const SectionPlace&, int trackId) const;
         void rewriteChangedSections();     // before syncLinkedSections in changed()

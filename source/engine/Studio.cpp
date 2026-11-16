@@ -14790,4 +14790,165 @@ namespace pr7s
         changed();
         return true;
     }
+
+    //==========================================================================
+    // Blueprints (0.152.0)
+    juce::File Studio::getBlueprintFolder() const
+    {
+        return blueprintFolder != juce::File() ? blueprintFolder : defaultBlueprintFolder();
+    }
+
+    std::vector<Blueprint> Studio::getBlueprints() const
+    {
+        auto all = factoryBlueprints();
+        for (auto& b : userBlueprints (getBlueprintFolder()))
+            all.push_back (std::move (b));
+        return all;
+    }
+
+    bool Studio::applyBlueprint (const Blueprint& bp, const Key& key, bool withChords, bool withTempo)
+    {
+        if (bp.blocks.empty() || keyIndexOf (key) < 0)
+            return false;
+        auto& sections = project.songSections;
+        sections.blocks.clear();
+        std::map<int, int> links;   // the blueprint's link numbers -> the song's
+        std::vector<int> shortened;
+        for (const auto& b : bp.blocks)
+        {
+            SongSection s;
+            s.id = sections.nextId();
+            s.name = sectionBaseOf (b.name).isNotEmpty() ? sectionBaseOf (b.name) : juce::String ("Verse");
+            s.bars = juce::jlimit (leastSectionBars, mostSectionBars, b.bars);
+            if (b.link > 0)
+            {
+                if (links.count (b.link) == 0)
+                    links[b.link] = sections.nextLink();
+                s.link = links[b.link];
+            }
+            if (b.type.isNotEmpty())
+                if (const auto t = sectionTypeNamed (s.name, b.type))
+                    s.type = t->name;
+            if (const auto t = sectionTransitionNamed (b.transition))
+            {
+                SongSection probe;
+                probe.transition = t->name;
+                if (probe.shortBeats() > 0)
+                    shortened.push_back ((int) sections.blocks.size());   // (set after: it changes the signatures)
+                else
+                    s.transition = t->name;
+            }
+            sections.blocks.push_back (std::move (s));
+        }
+        // A linked copy alone (its partners left out): its own.
+        for (auto& s : sections.blocks)
+            if (s.link > 0 && sections.linkedWith (sections.indexOf (s.id)).size() < 2)
+                s.link = 0;
+        sections.shown = true;
+        sections.oneKey = true;
+        for (auto& s : sections.blocks)
+            s.key = -1;
+        sections.songKey = keyIndexOf (key);
+        if (withChords && bp.hasChords())
+        {
+            const auto places = getSongSectionPlaces();
+            const auto rowEnd = places.empty() ? 0.0 : places.back().end;
+            std::vector<ChordEvent> events;
+            for (const auto& e : withLengths (project.chordTrack, project.beatsPerBarAt (0.0)))
+            {
+                if (e.beat >= rowEnd - 1.0e-6)
+                    events.push_back (e);
+            }
+            for (size_t i = 0; i < places.size() && i < bp.blocks.size(); ++i)
+            {
+                auto t = places[i].start;
+                for (const auto& [chord, bars] : bp.chordsIn (key, (int) i))
+                {
+                    const auto length = juce::jmin (bars * project.beatsPerBarAt (t), places[i].end - t);
+                    if (length <= 1.0e-6)
+                        break;
+                    events.push_back ({ t, chord, length });
+                    t += length;
+                }
+            }
+            std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+            project.chordTrack.events = std::move (events);
+            project.chordTrack.shown = true;
+        }
+        if (withTempo && bp.bpm > 0.0)
+        {
+            const auto bpm = juce::jlimit (Project::minBpm, Project::maxBpm, bp.bpm);
+            project.bpm = bpm;
+            if (project.tempoTrackOn && project.tempoEvents.size() <= 1)
+                project.tempoEvents = { { 0.0, bpm, false } };
+        }
+        layOutSectionKeys();
+        linksReset = true;    // (the new blocks hold what the song holds there: nothing to copy)
+        chordsReset = true;   // (nor anything to rewrite)
+        chordTrackChanged();
+        for (const auto i : shortened)
+            setSongSectionTransition (i, bp.blocks[(size_t) i].transition);
+        return true;
+    }
+
+    Blueprint Studio::makeBlueprint (const juce::String& name) const
+    {
+        Blueprint bp;
+        bp.name = name.trim().isNotEmpty() ? name.trim() : juce::String ("My Blueprint");
+        bp.bpm = project.bpmAt (0.0);
+        const auto key = getSongKey();
+        bp.minor = key.minor;
+        bp.keyIndex = keyIndexOf (key);
+        const auto& blocks = project.songSections.blocks;
+        const auto places = getSongSectionPlaces();
+        for (size_t i = 0; i < blocks.size(); ++i)
+        {
+            const auto& s = blocks[i];
+            BlueprintBlock b;
+            b.name = s.name;
+            b.bars = s.bars;
+            b.link = s.link;
+            b.type = s.type;
+            b.transition = s.transition;
+            if (i < places.size())
+            {
+                // Its chords from its own key's tonic, as the song's key's mode reads them.
+                const auto blockKey = getSongSectionKey ((int) i);
+                const auto tonic = blockKey.minor == key.minor ? blockKey.pitchClass()
+                                                               : (blockKey.pitchClass() + (blockKey.minor ? 3 : 9)) % 12;
+                for (const auto& c : getSectionChords ((int) i))
+                    b.chords.push_back ({ c.chord.transposed (-tonic), c.beats / juce::jmax (1.0, project.beatsPerBarAt (places[i].start)) });
+            }
+            bp.blocks.push_back (std::move (b));
+        }
+        return bp;
+    }
+
+    juce::File Studio::saveSongAsBlueprint (const juce::String& name, juce::String& error)
+    {
+        if (project.songSections.blocks.empty())
+        {
+            error = "The SECTIONS row is empty: lay the song out as blocks first.";
+            return {};
+        }
+        auto bp = makeBlueprint (name);
+        const auto folder = getBlueprintFolder();
+        const auto base = juce::File::createLegalFileName (bp.name);
+        auto file = folder.getChildFile (base + blueprintExtension);
+        for (int n = 2; file.exists(); ++n)
+            file = folder.getChildFile (base + " " + juce::String (n) + blueprintExtension);
+        if (! saveBlueprint (bp, file))
+        {
+            error = "Couldn't write " + file.getFullPathName();
+            return {};
+        }
+        return file;
+    }
+
+    bool Studio::deleteBlueprint (const Blueprint& bp)
+    {
+        if (bp.factory || ! bp.file.existsAsFile())
+            return false;
+        return bp.file.deleteFile();
+    }
 }

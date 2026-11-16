@@ -3,6 +3,7 @@
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
 #include "ui/KeyCheckPage.h"
+#include "ui/BlueprintsPage.h"
 #include "ui/ComposerPage.h"
 #include "ui/BandRecordPage.h"
 #include "ui/MediaBayPage.h"
@@ -112,6 +113,8 @@ public:
     // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
     void openLineIdeas (std::vector<int> chordEvents = {}, bool buildSection = false);   // (0.57.0: with BUILD SECTION open)
     void openProgressions();
+    void openBlueprints();   // (0.152.0) BLUEPRINTS: song layouts as presets
+    BlueprintsWindow* getBlueprintsWindow() noexcept { return blueprintsWindow.get(); }
     void openKeyCheck();   // (0.84.0) KEY CHECK: notes and chords outside the key
     KeyCheckWindow* getKeyCheckWindow() noexcept { return keyCheckWindow.get(); }
     void openEq (int busId);   // (0.43.0) the EQ window on a channel (one window: moved to another channel)
@@ -328,6 +331,7 @@ private:
     double trackListRowZoom = 1.0;
     std::unique_ptr<ProgressionsWindow> progressionsWindow;
     std::unique_ptr<KeyCheckWindow> keyCheckWindow;
+    std::unique_ptr<BlueprintsWindow> blueprintsWindow;
     std::unique_ptr<ComposerWindow> composerWindow;
     std::unique_ptr<BandRecordWindow> bandRecordWindow;
     std::unique_ptr<EqWindow> eqWindow;

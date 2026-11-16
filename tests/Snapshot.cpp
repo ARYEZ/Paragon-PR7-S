@@ -2126,3 +2126,21 @@ TEST_CASE ("Snapshot: KEY CHECK and the MIDI editor's rings (0.84.0; PARAGON_SNA
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+TEST_CASE ("Snapshot: BLUEPRINTS (0.152.0; PARAGON_SNAPSHOT_BLUEPRINT: which, from 0)", "[.][snapshot-blueprints]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "blueprints.png");
+    const auto which = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_BLUEPRINT", "0").getIntValue();
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        BlueprintsPage page (studio);
+        page.setSize (BlueprintsPage::preferredWidth, BlueprintsPage::preferredHeight);
+        page.choose (which);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f), out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

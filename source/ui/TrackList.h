@@ -38,6 +38,7 @@ public:
     std::function<void()> onSignatureMenu;   // (0.45.0) the signature row's right-click (the arrangement's signature menu)
     std::function<void()> onInsertSignature;   // (0.45.0) its double-click: the Insert Signature box
     std::function<void()> onMarkerMenu;           // (0.49.0) the marker row's right-click (the arrangement's marker menu)
+    std::function<void()> onBlueprints;          // (0.152.0) the SECTIONS row's BLUEPRINTS key
     std::function<void()> onSectionsMenu;         // (0.90.0) the SECTIONS row's right-click (the arrangement's section menu)
     std::function<void()> onAddSection;           // (0.90.0) its + SECTION (the arrangement's add menu)
     std::function<void (int index)> onMarkerZoom; // its GO TO menu's Zoom: the arrangement to that cycle marker

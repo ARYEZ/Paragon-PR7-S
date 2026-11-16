@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.151.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.152.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -54,6 +54,8 @@ add_library(PR7SCore STATIC
     source/engine/KeyCheck.cpp
     source/engine/Patterns.cpp
     source/engine/Progressions.cpp
+    source/engine/Blueprints.cpp
+    source/engine/BlueprintTable.cpp
     source/engine/Melody.cpp
     source/engine/ChordDetect.cpp
     source/engine/Eq.cpp
@@ -139,6 +141,7 @@ add_library(PR7SCore STATIC
     source/ui/ComposerTracksPage.cpp
     source/ui/ProgressionsPage.cpp
     source/ui/KeyCheckPage.cpp
+    source/ui/BlueprintsPage.cpp
     source/ui/DrumLearnPage.cpp
     source/ui/BandRecordPage.cpp
     source/ui/EqEditor.cpp

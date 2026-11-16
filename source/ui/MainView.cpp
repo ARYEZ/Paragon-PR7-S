@@ -432,10 +432,12 @@ MainView::MainView (pr7s::Studio& studioToUse)
     // (0.45.0) Signatures, tap tempo, tempo detection.
     arrange.onTempoDetection = [this] (int partId) { openTempoDetection (partId); };
     arrange.onKeyCheck = [this] { openKeyCheck(); };
+    arrange.onBlueprints = [this] { openBlueprints(); };
     arrange.onOpenMarkers = [this] { toggleMarkersWindow (true); };
     trackList.onMarkerMenu = [this] { arrange.showMarkerMenu (-1); };
     // (0.90.0) The SECTIONS row: a block double-clicked opens the composer on it.
     trackList.onSectionsMenu = [this] { arrange.showSectionMenu (-1); };
+    trackList.onBlueprints = [this] { openBlueprints(); };
     trackList.onAddSection = [this] { arrange.showAddSectionMenu (-1); };
     arrange.onOpenSection = [this] (int index) { openSectionInComposer (index); };
     trackList.onMarkerZoom = [this] (int index)
@@ -2511,6 +2513,27 @@ void MainView::openEq (int busId)
     eqWindow->setVisible (true);
 }
 
+void MainView::openBlueprints()
+{
+    if (blueprintsWindow != nullptr)
+    {
+        blueprintsWindow->getPage().refreshList();
+        blueprintsWindow->toFront (true);
+        return;
+    }
+    blueprintsWindow = std::make_unique<BlueprintsWindow> (studio);
+    blueprintsWindow->onClose = [this]
+    {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)]
+        {
+            if (safe != nullptr)
+                safe->blueprintsWindow.reset();
+        });
+    };
+    blueprintsWindow->centreAroundComponent (this, blueprintsWindow->getWidth(), blueprintsWindow->getHeight());
+    blueprintsWindow->setVisible (true);
+}
+
 void MainView::openKeyCheck()
 {
     if (keyCheckWindow != nullptr)
@@ -2917,6 +2940,7 @@ void MainView::showHubAlone()
         w->reset();
     progressionsWindow.reset();
     keyCheckWindow.reset();
+    blueprintsWindow.reset();
     composerWindow.reset();
     bandRecordWindow.reset();
     eqWindow.reset();

@@ -884,6 +884,12 @@ public:
                         "ALL SECTIONS SYNCED TO ONE KEY (on to start with): untick it for key changes, then each block's own key in its editor (right-click a block)");
         key.onClick = [this] { showKeyMenu(); };
         addAndMakeVisible (key);
+        // (0.152.0) BLUEPRINTS: a song's layout to start from.
+        blueprints.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        blueprints.setWantsKeyboardFocus (false);
+        blueprints.setTooltip ("Blueprints: a song's whole layout to start from (sections, linked copies, types, chords, tempo), or this song's saved as your own");
+        blueprints.onClick = [this] { if (owner.onBlueprints) owner.onBlueprints(); };
+        addAndMakeVisible (blueprints);
         setTooltip ("The song's sections: drag a block to rearrange (its music goes with it), double-click one to open the composer on it, right-click for its menu");
         refresh();
     }
@@ -947,6 +953,11 @@ public:
         area.removeFromRight (6);
         add.setBounds (area.removeFromRight (92).withSizeKeepingCentre (92, juce::jmin (24, area.getHeight())));
         area.removeFromRight (4);
+        const auto blueprintWidth = area.getWidth() >= 92 + 190 + 80 ? 92 : 0;
+        blueprints.setVisible (blueprintWidth > 0);
+        blueprints.setBounds (area.removeFromRight (blueprintWidth).withSizeKeepingCentre (blueprintWidth, juce::jmin (24, area.getHeight())));
+        if (blueprintWidth > 0)
+            area.removeFromRight (4);
         const auto keyWidth = juce::jmin (190, juce::jmax (0, area.getWidth() - 80));
         key.setBounds (area.removeFromRight (keyWidth).withSizeKeepingCentre (keyWidth, juce::jmin (24, area.getHeight())));
         area.removeFromRight (4);
@@ -961,7 +972,7 @@ public:
 
 private:
     TrackList& owner;
-    juce::TextButton add { "+ SECTION" }, key;
+    juce::TextButton add { "+ SECTION" }, key, blueprints { "BLUEPRINTS" };
     juce::Rectangle<float> nameArea;
 };
 

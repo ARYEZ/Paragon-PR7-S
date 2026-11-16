@@ -357,6 +357,7 @@ void ArrangeView::showSectionMenu (int index)
     for (int i = 0; i < names.size(); ++i)
         atEnd.addItem (3000 + i, names[i]);
     menu.addSubMenu ("Add a Section at the End", atEnd);
+    menu.addItem (9, "Blueprints... (a song's layout to start from)", onBlueprints != nullptr);
     menu.addItem (6, "Hide the Sections Row (its blocks stay)");
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ArrangeView> (this), index] (int chosen)
     {
@@ -366,6 +367,8 @@ void ArrangeView::showSectionMenu (int index)
         const auto& names = pr7s::songSectionNames();
         if (chosen == 1 && safe->onOpenSection)
             safe->onOpenSection (index);
+        else if (chosen == 9 && safe->onBlueprints)
+            safe->onBlueprints();
         else if (chosen == 2)
         {
             if (studio.duplicateSongSection (index))
