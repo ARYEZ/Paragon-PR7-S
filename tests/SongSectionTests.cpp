@@ -609,7 +609,7 @@ TEST_CASE ("0.94.0: the types a section can have; STANDARD is none; a type sets 
     CHECK (chorus[2].name == "DRONING");
     CHECK (chorus[2].flavour == RiffFlavour::droning);
     // A name plays as its kind: a Hook as a chorus, a Pre-Chorus as a verse (0.102.0: after its own types).
-    CHECK (sectionTypesFor ("Hook").size() == 11);
+    CHECK (sectionTypesFor ("Hook").size() == sectionTypesFor ("Chorus").size());
     CHECK (sectionTypesFor ("Pre-Chorus").back().name == sectionTypesFor ("Verse").back().name);
     for (const auto& name : songSectionNames())
         CHECK_FALSE (sectionTypesFor (name).empty());   // (every section seeded with suggestions)

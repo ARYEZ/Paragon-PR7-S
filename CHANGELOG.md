@@ -2,6 +2,40 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.140.0
+
+**23 new chorus types from your 61 songs**, the second group in the order you chose. They're on the chorus's TYPE menu after CHUG BAR, CHORD BAR, and a post-chorus lists them too. Each sets what the guitar, bass, keys and drums do, with two options per lane (the bass three, the last always LOCKED WITH THE KICK). Ten of them also give the lead lane two options of its own; the others leave the lead on its own styles.
+
+- **DOTTED STREAM:** power chords on 3+3+3+3+2+2 every bar, each ringing into the next. The bass and the kick are on the dotted hits, with open hats on the eighths. A lead line can ride the same grid. (Prayer, Remember)
+- **NEIGHBOUR TRILL WALL:** the full chord on every sixteenth. The bass trills its root with the scale note under it, over a plain backbeat. A sixteenth run up the scale leads into the next part. (Shame, So Cold, Stinkfist)
+- **TWO RUNG CHORDS A BAR:** a chord struck on the one and again on the and of 2 (or a chord a third up), both rung, with a crash on each. (Somebody Someone, Taking Over Me, Stinkfist)
+- **THREE DOTTED PUSHES:** one bar a rung chord, the next three chords pushed on 1, the a of 1 and the and of 2, the last held. The strings double them high. (Taking Over Me, So Cold)
+- **FOUR ON THE FLOOR, DYAD RIFF:** a high sixteenth dyad riff over four on the floor, with the open hat on every off-beat. Every other bar the changes fall on 3+3+2. (Got the Life)
+- **SPLIT ON THE AND OF THREE:** two chords a bar, the next bar's chord pushed in from the and of 3. The kick is on the accents and the ride on the eighths. (Going Under)
+- **TREMOLO DYADS OVER RUNG CHORDS:** chords rung in halves under high tremolo-picked dyads. The floor tom plays 1, 1-and, 3 and 3-and, with a dotted fill to end. (Here to Stay)
+- **DOTTED CHORDS, HIGH TREMOLO NOTE:** full chords on a dotted grid under one high chord note tremolo-picked, with a crash on every eighth. (Diary of Jane)
+- **THE RIFF IS THE CHORUS:** every guitar and the bass in unison on a low chromatic riff. The kick is on its hits and a china on the beats. (Blind, Awaken, BBK)
+- **HIGH TREMOLO DYAD OVER THE RIFF:** the low root and its tritone on a gapped grid, under a high dissonant dyad that stays the same over every chord. The hi-hat's foot can double the kick. (BBK)
+- **HELD CHORDS IN 3+3+2:** three long chords rung across each bar, the third the next chord pushed in. (Blow Me Away, Crawl Away)
+- **DOTTED PEDAL CELL:** a six-sixteenth cell running 3 over 4. Only its low root follows the chords; its top notes stay fixed. (Tourniquet)
+- **FIXED SHAPE, CREEPING ROOT:** a ringing arpeggio whose three upper notes never change while its root follows the chords, with a high two-note hook. (Trash)
+- **CHROMATIC CHORDS UNDER A FIXED TREMOLO:** power chords struck for half a bar and silent for the other half, under a high chord tremolo-picked the whole time. The tremolo is in sixteenths, your shortest note. (Thoughtless)
+- **HALF-NOTE CHORDS, OFF-BEAT OPEN HATS:** chords held in halves, the open hat only on the off-beats. The fourth bar's changes are pushed, with a tom fill. (Whisper)
+- **HIT, HOLD, BURST INTO THE NEXT:** a chord struck and held, then three sixteenths of the next chord bursting into its bar. (Haunted)
+- **PUSH BAR, CELL BAR:** one bar a held chord with sixteenths pushing into the next, the next bar sixteenth pairs. (So Cold)
+- **SYNCOPATED CHORDS WITH A PUSH BAR:** syncopated chords, then a bar that rings and pushes up three chords over the toms, with a breath bar every eighth bar. (Stinkfist; its odd meter played in 4/4)
+- **THREE-SIXTEENTH CELLS AFTER A HELD ONE:** a chord held a beat, then three sixteenths on each other beat, rocking the root and the half step. (Down With the Sickness)
+- **SHRINKING GROUPS:** four bars of eighths grouped 9, 8, 7 and 8, so the accents cross the bar lines, with a crash on each group, all in 4/4. (Lateralus)
+- **HELD ROOTS CLIMBING, PUSHED LATE:** one chord a bar struck late (on 3, or the and of 2) and held into the next, with a kick and a crash on each. (Let's Get This Party Started)
+- **FALLING CELLS IN SIXES:** three-note cells falling a half step at a time into the root, every six sixteenths. (Divine)
+- **FOUR EIGHTHS, THEN A PUSH:** four eighth-note chords, a gap, then pushes into the next bar, with a high piano pulse or strings in 3+3+2. (Imaginary)
+
+The song names are only here for you; the app shows our own names.
+
+**Next:** the pre-choruses and post-choruses (13 types).
+
+**Checked:** a test makes every option of every lane in all 23 types and checks each is a different part. Another checks their shapes: the dotted grid's hits, the trill, the pushed chord on the and of 3, four on the floor with off-beat hats, the shrinking groups' crashes on eighths 0, 9, 17 and 24, the fixed tremolo's two notes, the burst's three sixteenths, and the fixed arpeggio top. Not checked here: how they sound (your ears).
+
 ## 0.139.0
 
 **Twelve new verse types from your 61 songs.** You uploaded 61 more song files and asked for every section to be built out except solos. Six readers went through every song, every section and every part (shapes only: rhythms, registers, how the parts lock together, never notes copied). That gave about 80 new section types, 21 transitions and about 40 options. You chose to build it all, verses first. This release is the verses: twelve new types on the verse's TYPE menu, after TRESILLO RIFF and before DRONING and SPARSE. A pre-chorus lists them too, after its own.

@@ -9101,7 +9101,13 @@ namespace pr7s
                 }
                 if (n == "DOTTED QUARTERS") return pattern ("x--x--x--x--x-x-", 99, "The root on the dotted quarters");
                 if (n == "WITH THE CHORDS") return pattern ("x-----x-----x---", 12, "The roots with the three held chords, the last pushed in");
-                if (n == "ROOT PAIRS") return pattern ("xx----xx----xx--", 99, "The root in pairs of sixteenths every six");
+                if (n == "ROOT PAIRS")
+                {
+                    out.description = "The root in pairs of sixteenths every six, the second an octave up";
+                    for (int bar = 0; bar < bars; ++bar)
+                        each16 ("xx----xx----xx--", bar * bpb, [&] (double t, int k) { add (out, t, s16 * 0.85, bassRoot (bar * bpb) + (k % 6 == 1 ? 12 : 0), 0.84f); });
+                    return out;
+                }
                 if (n == "WHOLE-BAR ROOTS") return pattern ("x---------------", 99, "Each bar's root held the whole bar");
                 if (n == "WITH THE HITS") return pattern ("xxxxxxxx--------", 99, "The root on the guitar's eight sixteenths, then silence");
                 if (n == "HALVES") return pattern ("x-------x-------", 99, "The root on 1 and 3, held");
