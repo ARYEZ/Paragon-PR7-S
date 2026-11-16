@@ -216,6 +216,18 @@ namespace pr7s
                          { "CHROMATIC CREEP, NO BACKBEAT", "The low root creeping to its two half steps above, a flick at the bar's end, sparse kicks and no backbeat", r, {}, b },
                          { "CLIMB UNDER A TRILL", "The chords voiced higher bar by bar, the bass walking chromatically into them, the lead trilling two notes", r, {}, b },
                          { "KEYS CARRY THE CHORUS ALONE", "Everyone out but the keys: the chords with their pushes low and a high pedal stepping on top", r, {}, b },
+                         // (0.142.0) From the owner's 61 song files (shapes only; our names).
+                         { "CLEAN FIGURE, THEN DISTORTED", "A clean figure over the kick alone, then the distorted guitars take the same figure, hats in, a roll into the chorus", r, {}, b },
+                         { "TOM OSTINATO, BAND THIN", "No cymbals: two toms in an eighth ostinato, the bass coming in by stages, a high held note over it", r, {}, b },
+                         { "TOMS DOUBLE THE PEDAL", "Muted pedal bursts with the toms exactly on them, no kick or cymbals, a slow line falling in later", r, {}, b },
+                         { "DOMINANT PEDAL BUILD", "The whole bridge on the key's fifth, building in three stages: quiet, sixteenths, then a carpet and a roll", r, {}, b },
+                         { "TREMOLO CLUSTER OVER OPEN CHORDS", "An unbroken high half-step cluster tremolo over open ninth chords, the bass up high, a broken beat", r, {}, b },
+                         { "PIANO AND CHOIR ALONE", "Everyone out but the piano's rising quarters and the choir holding the chord, a snare roll back in", r, {}, b },
+                         { "TRESILLO BOTH HALVES", "Chords on a 3+3+2 figure in each half bar, the kick on the first half, the snare and a crash on the second", r, {}, b },
+                         { "BASS ALONE, DOTTED", "The bass alone in double stops on a dotted hemiola, the drums coming in tribal", r, {}, b },
+                         { "RIFF ON THE FOUR, NO BACKBEAT, THEN HOME", "The riff on the key's fourth with the kick and the ride, no snare, then on the tonic with the backbeat", r, {}, b },
+                         { "BASS HOLDS THE GRID, THE BAND CARVES IT", "The bass keeps every pair of sixteenths while the band plays only a few of them", r, {}, b },
+                         { "DRUMS DROP OUT, THE BAND CARRIES", "Chords in eighths growing every four bars, the drums stopping and the band carrying it alone", r, {}, b },
                          creep, open, droning };
             }
             case 4:
@@ -238,6 +250,12 @@ namespace pr7s
                          { "CHUGS UNDER SPARSE HITS", "Unbroken low eighths with their half-step neighbours under one or two big drum hits a bar, building at the end", r, {}, d },
                          { "DOUBLE-HIT UNISON RIFF", "The guitars and bass in unison: double hits, held notes and sixteenth runs, the kick on every double hit", r, {}, d },
                          { "ARPEGGIO, THEN THE RIFF UNDER IT", "The drums and guitars out under a keys arpeggio, then the riff and the band come back under it halfway", r, {}, d },
+                         // (0.142.0) From the owner's 61 song files (shapes only; our names).
+                         { "FOUR ON THE FLOOR, NO SNARE", "The kick on every beat and no snare, the guitars nearly out, the bass's 3+3+2, a build with open hats and a roll", r, {}, d },
+                         { "OCTAVE PUMP WALL", "The root and its octave pumped in eighths, the kick on every eighth, the snare and a crash on every beat", r, {}, d },
+                         { "BASS RIFF ALONE, GHOST GROOVE JOINS", "The bass alone on a 3+3+2 riff, a ghost-note groove without a backbeat joining, high pings on 3", r, {}, d },
+                         { "SEVEN-BEAT RIFF ACROSS THE BAR", "A riff seven beats long running across the 4/4 bar lines over a steady backbeat", r, {}, d },
+                         { "KEYS ALONE, THEN RINGING HITS", "The keys alone, then chords rung two bars each over half time, a 3+3+2 pickup to end", r, {}, d },
                          heavy, staccato };
             }
             case 5:
@@ -366,6 +384,8 @@ namespace pr7s
     // list: the lead plays its own styles: in these bridges it carries the hook).
     juce::StringArray bridgeApproaches (const juce::String& type, ComposerLayer layer)
     {
+        if (isRound3Type (type))
+            return round3Approaches (type, layer);
         using L = ComposerLayer;
         const auto t = type.trim().toUpperCase();
         if (t == "HALF-TIME MELODIC")
@@ -714,6 +734,8 @@ namespace pr7s
     // THE KICK; only HALF-TIME OPEN CHORDS has a lead list: the others' lead plays its own styles).
     juce::StringArray breakdownApproaches (const juce::String& type, ComposerLayer layer)
     {
+        if (isRound3Type (type))
+            return round3Approaches (type, layer);
         using L = ComposerLayer;
         const auto t = type.trim().toUpperCase();
         struct Lists { const char* name; juce::StringArray guitar, keys, drums, lead; };
@@ -784,6 +806,40 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "RIDE BELL, BACKBEAT", "CHINA AND SPLASH" }, {} },
                 { "SNARE ONLY ON FOUR AND FOUR-AND", { "HELD TWO BARS, HIGH STABS ANSWER", "HELD TWO BARS" }, { "EIGHTHS WITH A SKIP", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "SNARE ON FOUR AND FOUR-AND", "SNARE ON FOUR, CRASH ON ONE" }, {} },
+                // (0.142.0) Bridges.
+                { "CLEAN FIGURE, THEN DISTORTED", { "CLEAN FIGURE, THEN DISTORTED", "DISTORTED FROM THE START" }, { "ROOT EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "CLEAN FIGURE ON THE KEYS", "SILENT" }, { "KICK ALONE, THEN HATS, THEN A ROLL", "FOUR ON THE FLOOR, HATS" }, {} },
+                { "TOM OSTINATO, BAND THIN", { "HIGH HELD NOTE, LOW STAB EVERY FOUR", "OUT" }, { "IN THREE STAGES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SLOW TWO-NOTE LINE", "SILENT" }, { "TWO-TOM OSTINATO", "TOMS AND KICK ONLY" }, {} },
+                { "TOMS DOUBLE THE PEDAL", { "MUTED PEDAL BURSTS", "BURSTS, SLOW LINE FROM HALFWAY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "TOMS ON THE BURSTS, THEN THE KIT", "TOMS ON THE BURSTS ONLY" }, {} },
+                { "DOMINANT PEDAL BUILD", { "PEDAL ON FIVE IN THREE STAGES", "PEDAL ON FIVE IN SIXTEENTHS" }, { "FIVE HELD, THEN SIXTEENTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SOFT HIGH TRILL IN THE MIDDLE", "SILENT" }, { "HALF TIME, SIXTEENTHS, THEN CARPET AND ROLL", "BUILDING SNARE" }, {} },
+                { "TREMOLO CLUSTER OVER OPEN CHORDS", { "OPEN ADD-NINE CHORDS RUNG", "SUS CHORDS RUNG" }, { "HIGH BASS IN QUARTERS AND EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BROKEN BEAT, OUT IN THE SECOND HALF", "BROKEN BEAT ALL THROUGH" }, { "HIGH HALF-STEP CLUSTER TREMOLO", "SILENT" } },
+                { "PIANO AND CHOIR ALONE", { "OUT", "ONE CHORD TO END" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "PIANO QUARTERS, THEN A REST", "CHOIR HOLDS THE CHORD" }, { "OUT, A SNARE ROLL TO END", "OUT" }, {} },
+                { "TRESILLO BOTH HALVES", { "TRESILLO BOTH HALVES", "TRESILLO, NEXT CHORD IN THE SECOND HALF" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ON THE FIRST HALF, SNARE AND CRASH ON THE SECOND", "HALF TIME, RIDE" }, {} },
+                { "BASS ALONE, DOTTED", { "OUT", "CHORD ON THE ONE EVERY FOUR" }, { "DOTTED DOUBLE STOPS", "PAIRS IN 3+3+2", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT, THEN TRIBAL", "TRIBAL ALL THROUGH" }, {} },
+                { "RIFF ON THE FOUR, NO BACKBEAT, THEN HOME", { "RIFF ON THE FOUR, THEN HOME", "RIFF ON THE BAR'S CHORD" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ON THE RIFF, RIDE, THEN THE BACKBEAT", "BACKBEAT ALL THROUGH" }, {} },
+                { "BASS HOLDS THE GRID, THE BAND CARVES IT", { "PAIRS, THEN CARVED", "CARVED ALL THROUGH" }, { "PAIRS ALL THROUGH", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE WITH THE GUITAR, KICK IN THE HOLES", "KICK WITH THE GUITAR" }, {} },
+                { "DRUMS DROP OUT, THE BAND CARRIES", { "CHORDS IN EIGHTHS, GROWING", "CHORDS IN EIGHTHS" }, { "ROOT EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BEAT, THEN OUT AFTER TWO AND A HALF BARS", "BEAT ALL THROUGH, OUT IN THE LAST BAR" }, {} },
+                // (0.142.0) Breakdowns.
+                { "FOUR ON THE FLOOR, NO SNARE", { "NEARLY OUT: HELD NOTE, THEN A MUTED PULSE", "HELD HIGH NOTES ONLY" }, { "WHOLE NOTE, THEN 3+3+2", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "FOUR ON THE FLOOR, NO SNARE", "FOUR ON THE FLOOR, HATS ONLY" }, {} },
+                { "OCTAVE PUMP WALL", { "OCTAVE PUMP", "OCTAVE PUMP IN SIXTEENTHS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK EIGHTHS, SNARE AND CRASH ON EVERY BEAT", "KICK SIXTEENTHS, CRASH QUARTERS" }, {} },
+                { "BASS RIFF ALONE, GHOST GROOVE JOINS", { "OUT, HIGH PINGS ON THREE", "OUT" }, { "3+3+2 RIFF ALONE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT, THEN A GHOST GROOVE", "GHOST GROOVE ALL THROUGH" }, {} },
+                { "SEVEN-BEAT RIFF ACROSS THE BAR", { "SEVEN-BEAT RIFF", "FOUR AND THREE" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "STEADY BACKBEAT UNDER IT", "KICK WITH THE RIFF" }, {} },
+                { "KEYS ALONE, THEN RINGING HITS", { "OUT, THEN CHORDS RUNG TWO BARS", "CHORDS RUNG FROM THE START" }, { "OUT, THEN ROOTS HELD", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "KEYS ALONE, THEN UNDER THE BAND", "KEYS ALONE, THEN OUT" }, { "A HIT, THEN HALF TIME", "HALF TIME FROM THE START" }, {} },
             };
             return lists;
         }

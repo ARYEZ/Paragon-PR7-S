@@ -2,6 +2,45 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.142.0
+
+**Eleven new bridge types and five new breakdown types from your 61 songs**, the fourth group in your order. The bridge's TYPE menu lists them after KEYS CARRY THE CHORUS ALONE (before CREEP, OPEN CHORDS and DRONING). The breakdown's lists them after ARPEGGIO, THEN THE RIFF UNDER IT (before HEAVY CHUG and STACCATO CHUG). Every lane has two options, the bass three (the last LOCKED WITH THE KICK). Only TREMOLO CLUSTER OVER OPEN CHORDS gives the lead a part of its own.
+
+**Bridges:**
+- **CLEAN FIGURE, THEN DISTORTED:** a clean figure over the kick alone for the first half. Then the distorted guitars take the same figure, hats come in, and a snare roll leads into the chorus. (No One)
+- **TOM OSTINATO, BAND THIN:** no cymbals at all. Two toms play an eighth-note ostinato, and the bass comes in by stages: a root every two bars, then root-and-fifth, then eighths. A very high held note rings over it, with a low stab every fourth bar. (Intolerance, Lateralus)
+- **TOMS DOUBLE THE PEDAL:** muted pedal bursts with the toms exactly on them and no kick or cymbals. From halfway a slow line falls a step a bar and the kit comes back quietly. (Vicarious)
+- **DOMINANT PEDAL BUILD:** the whole bridge on the key's fifth, building in three stages: quiet neighbour notes in half time, then muted sixteenths with a soft high trill, then power chords over a double-kick carpet and a roll into the chorus. (Believe)
+- **TREMOLO CLUSTER OVER OPEN CHORDS:** open ninth (or sus) chords rung under an unbroken high half-step cluster, tremolo-picked on the lead. The bass plays up high over a broken beat that drops out halfway. (Falling Away From Me)
+- **PIANO AND CHOIR ALONE:** everyone out but the piano's rising quarter notes and the choir holding the chord, then a snare roll brings the band back. (Everybody's Fool)
+- **TRESILLO BOTH HALVES:** chords on 3+3+2 in each half bar, the kick on the first half and the snare with a crash on the second. (Voices)
+- **BASS ALONE, DOTTED:** the bass alone in double stops on a dotted hemiola across two bars, or pairs in 3+3+2. The drums come in tribal halfway: kick pairs with the floor tom, pedal hat. (Sober, Stinkfist)
+- **RIFF ON THE FOUR, NO BACKBEAT, THEN HOME:** the riff on the key's fourth with the kick on it and the ride, no snare. Then on the tonic with the backbeat and open hats. (Here to Stay)
+- **BASS HOLDS THE GRID, THE BAND CARVES IT:** the bass keeps every pair of sixteenths, while the band plays only a few of them in the second half. The snare doubles the guitar, with the kick in the holes. (Divine)
+- **DRUMS DROP OUT, THE BAND CARRIES:** chords in eighths growing every four bars. The drums stop two and a half bars in and the band carries it alone. (Save Yourself)
+
+**Breakdowns:**
+- **FOUR ON THE FLOOR, NO SNARE:** the kick on every beat and no snare. The guitars are nearly out (a high held note, then a muted pulse), and the bass alternates a whole note with a 3+3+2 bar. The last two bars build with open hats and a snare roll. (Got the Life)
+- **OCTAVE PUMP WALL:** the root and its octave pumped in eighths, the kick on every eighth, the snare and a crash on every beat. (Medicate)
+- **BASS RIFF ALONE, GHOST GROOVE JOINS:** the bass alone on a 3+3+2 riff. A ghost-note groove with no backbeat joins halfway, with high pings on beat 3. (Blind)
+- **SEVEN-BEAT RIFF ACROSS THE BAR:** a riff seven beats long running across the 4/4 bar lines, so it starts a beat earlier each time. A steady backbeat plays under it. The other option plays it a bar plus three beats with beat 4 rung. (Down With the Sickness)
+- **KEYS ALONE, THEN RINGING HITS:** the keys alone, then chords rung two bars each over half time, ending in a 3+3+2 pickup. (I'm Not Okay, Going Under)
+
+The song names are only here for you; the app shows our own names.
+
+**Next:** the intros and outros (16 types).
+
+**Checked:** a test makes every option of every lane in all 16 types and checks each is a different part. Another checks their shapes:
+- no cymbals in the tom ostinato, and the bass's three stages;
+- only the kick in the clean figure's first half, then hats;
+- the dominant pedal on the key's fifth;
+- the pump's kick on every eighth and a crash on every beat;
+- no snare in FOUR ON THE FLOOR until its build;
+- the seven-beat riff coming round every seven beats;
+- nothing but the keys in PIANO AND CHOIR ALONE.
+
+Not checked here: how they sound (your ears).
+
 ## 0.141.0
 
 **Seven new pre-chorus types and six new post-chorus / interlude types from your 61 songs**, the third group in your order. The pre-chorus TYPE menu lists them after THREES ACROSS THE BAR. The post-chorus and interlude menus list them after CHROMATIC WOBBLE. Each type sets every lane: two options for the guitar, the keys and the drums, and three for the bass, whose last is always LOCKED WITH THE KICK. Only RING & STAB UNDER CYMBAL EIGHTHS gives the lead a part of its own; the others leave the lead on its own styles.
