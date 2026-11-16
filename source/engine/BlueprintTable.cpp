@@ -50,7 +50,7 @@ namespace pr7s
                 { "Riff", 4, 2, "", "DRUMS BUILD", "i III VII VI" },
                 { "Build-Up", 4, 0, "", "DRUMS BUILD", "i III VII VI:0.5 V:0.5" },
                 { "Chorus", 16, 3, "DRIVING", "DRUMS BUILD", "i III V VII i III v iv:0.5 V:0.5 i III v VII i III iv VI:0.5 V:0.5" },
-                { "Outro", 8, 0, "INTRO RETURNS", "", "i:2 bII III:0.5 IV:0.5 i:2 bII VII:0.5 III:0.25 VI:0.25" } }),
+                { "Outro", 8, 0, "INTRO RETURNS, LAST CHORD RINGS", "", "i:2 bII III:0.5 IV:0.5 i:2 bII VII:0.5 III:0.25 VI:0.25" } }),
 
             make ("Seven-Bar Cycle",
                   "A picked riff over one pedal for the verses, against a chorus that's one seven-bar chord cycle played "
@@ -64,7 +64,7 @@ namespace pr7s
                 { "Chorus", 14, 2, "DRONING", "DRUMS BUILD", "i III v IV III II V i III v IV III II V" },
                 { "Bridge", 7, 0, "CLEAN BRIDGE", "", "i III v IV III II V" },
                 { "Chorus", 14, 2, "DRONING", "DRUMS BUILD", "i III v IV III II V i III v IV III II V" },
-                { "Ending", 1, 0, "LAST CHORD RINGS", "", "i" } }),
+                { "Ending", 1, 0, "", "", "i" } }),
 
             make ("Rap Verse, Sung Hook",
                   "Short, slow and heavy: chugged verses on one chord under a rap, a four-bar sung chorus then a double one, "
@@ -98,7 +98,7 @@ namespace pr7s
                 { "Build-Up", 8, 0, "", "DRUMS BUILD", "I iv VI:0.5 III:0.5 VII I iv VI:0.5 III:0.5 VII" },
                 { "Chorus", 8, 3, "DRONING", "DRUMS BUILD", "I iv VI:0.5 III:0.5 VII I iv VI:0.5 III:0.5 VII" },
                 { "Outro", 4, 0, "WINDING DOWN", "", "I iv VI:0.5 III:0.5 VII" },
-                { "Ending", 3, 0, "LAST CHORD RINGS", "", "i:3" } }),
+                { "Ending", 3, 0, "WINDING DOWN", "", "i:3" } }),
 
             make ("Riff Bookends",
                   "A heavy intro riff that comes back as the outro, verses of a single-note riff locked to the kick, "
@@ -113,7 +113,7 @@ namespace pr7s
                 { "Breakdown", 8, 0, "HEAVY CHUG", "DRUMS BUILD", "i:8" },
                 { "Chorus", 8, 1, "DRONING", "DRUMS BUILD", "VI i III i VI i iv V" },
                 { "Chorus", 8, 1, "DRONING", "DRUMS BUILD", "VI i III i VI i iv V" },
-                { "Outro", 8, 0, "INTRO RETURNS", "", "i:8" } }),
+                { "Outro", 8, 0, "INTRO RETURNS, LAST CHORD RINGS", "", "i:8" } }),
 
             make ("Piano Hook First",
                   "Opens with the chorus sung over piano alone, then the band's riff, driving verses, a two-bar lift into "
@@ -134,7 +134,7 @@ namespace pr7s
                 { "Bridge", 10, 0, "CLEAN BRIDGE", "", "VI vi III:2 VI vi III bV III bV" },
                 { "Middle 8", 8, 0, "HEAVY BUILD", "", "iv:0.5 VII:0.5 i VI:0.5 V:0.5 i iv:0.5 VII:0.5 i VI V" },
                 { "Chorus", 8, 0, "DRIVING", "", "i VI i bI III bI VI III" },
-                { "Ending", 1, 0, "LAST CHORD RINGS", "", "III" } }),
+                { "Ending", 1, 0, "", "", "III" } }),
 
             make ("Clean Intro, Long Climb",
                   "A clean figure alone, a slow distorted build and a snare roll into the main riff; chugged verses, a "
@@ -156,7 +156,7 @@ namespace pr7s
                 { "Build-Up", 8, 0, "", "SNARE ROLL", "II:8" },
                 { "Chorus", 14, 0, "DRIVING", "STOP", "II:3 i II i II:3 i II i III:0.5 i:0.5 i" },
                 { "Riff", 8, 1, "", "", "i:3 III:0.5 i:0.25 II:0.25 i:3 III:0.5 i:0.25 II:0.25" },
-                { "Outro", 25, 0, "INTRO RETURNS", "", "i:25" } }),
+                { "Outro", 25, 0, "INTRO RETURNS, LAST CHORD RINGS", "", "i:25" } }),
 
             make ("Clean Verse, Heavy Chorus",
                   "A clean bass-and-drums groove for the verses and a short clean interlude, against heavy riffed "
@@ -178,7 +178,7 @@ namespace pr7s
                 { "Chorus", 8, 2, "DRIVING", "DRUMS BUILD", "i VII:0.5 VI:0.5 i VII:0.5 III:0.5 i VII:0.5 VI:0.5 i VII:0.5 II:0.5" },
                 { "Chorus", 8, 2, "DRIVING", "DRUMS BUILD", "i VII:0.5 VI:0.5 i VII:0.5 III:0.5 i VII:0.5 VI:0.5 i VII:0.5 II:0.5" },
                 { "Interlude", 4, 3, "HOOK RIFF", "", "i III:0.5 II:0.25 V:0.25 i III:0.5 II:0.25 V:0.25" },
-                { "Outro", 5, 0, "LAST CHORD RINGS", "", "i:5" } }),
+                { "Outro", 5, 0, "WINDING DOWN", "", "i:5" } }),
 
             make ("Riff-Led Lift",
                   "Two guitars alone, then the band; the verse riff alone before every verse, a climbing pre-chorus that "
@@ -215,7 +215,7 @@ namespace pr7s
                 { "Chorus", 8, 3, "DRONING", "STOP", "i VII iv VI i VII iv VI" },
                 { "Break", 8, 0, "GUITARS OUT, THEN BACK", "", "bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5" },
                 { "Breakdown", 9, 0, "HEAVY CHUG", "SILENT BAR", "bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5" },
-                { "Chorus", 8, 0, "DRONING", "STOP", "VI iv i III VI:0.75 III:0.75 iv i:0.75 VII:1.25" },
+                { "Chorus", 8, 0, "DRONING", "STOP", "VI iv i III VI:0.75 III:0.75 iv i:0.75 VII:0.75" },
                 { "Post-Chorus", 8, 0, "HOOK RIFF", "", "i:8" },
                 { "Breakdown", 4, 0, "HEAVY CHUG", "", "bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5 bII:0.5 i:0.5" } }),
         };
