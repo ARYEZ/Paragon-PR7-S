@@ -20,7 +20,7 @@ namespace
     LibraryGroove groove (const juce::String& path, int bars, std::vector<float> kicks = { 0.0f, 2.0f }, std::vector<float> snares = { 1.0f, 3.0f })
     {
         LibraryGroove g;
-        g.file = juce::File ("/grooves").getChildFile (path);
+        g.file = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("grooves").getChildFile (path);   // (an absolute path on every system)
         g.name = g.file.getFileNameWithoutExtension();
         g.folder = g.file.getParentDirectory().getFileName();
         g.bpm = 120.0;
@@ -110,7 +110,7 @@ TEST_CASE ("0.137.0: the drums lane's pool: 100, two thirds Toontrack, the secti
     auto tVerse = 0, tOther = 0, oVerse = 0;
     for (const auto& g : filled)
     {
-        if (g.toontrack && g.file.getFullPathName().contains ("/Verse/"))
+        if (g.toontrack && g.file.getParentDirectory().getFileName() == "Verse")   // (not "/Verse/": Windows writes backslashes)
             ++tVerse;
         else if (g.toontrack)
             ++tOther;
