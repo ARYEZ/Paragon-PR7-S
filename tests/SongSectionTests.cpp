@@ -2288,7 +2288,7 @@ namespace
 TEST_CASE ("0.104.0: transitions: the last bar written for each, the melody untouched", "[sections][transitions]")
 {
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 14 + 21);   // (0.144.0: 21 more)
+    REQUIRE (list.size() == 14 + 21 + 27);   // (0.144.0: 21 more; 0.154.0: 27 more)
     CHECK (list.front().name == noTransition);
     CHECK_FALSE (sectionTransitionNamed ("NONE").has_value());
     CHECK_FALSE (sectionTransitionNamed ("").has_value());
@@ -4964,6 +4964,125 @@ TEST_CASE ("0.144.0: the 21 transitions from the 61 songs", "[sections][transiti
         REQUIRE_FALSE (b.notes.empty());
         CHECK ((b.notes.back().pitch % 12 == 7));   // (G, a step under A)
         CHECK (b.notes.back().beat == Catch::Approx (31.75));
+    }
+}
+
+TEST_CASE ("0.154.0: round four's 27 transitions", "[sections][transitions][trans154]")
+{
+    const std::vector<juce::String> names { "RISER INTO THE NEXT", "UNISON SYNCOPATED BAR", "CLAP BREAK", "DOTTED HITS, THEN A SILENT BAR",
+                                            "THREE STABS AND A HOLD, TWICE", "TIMPANI ROLL", "HIT ON ONE, BASS FIGURE", "THREE BEATS OF SILENCE",
+                                            "TRITONE HIT, RUNG BAR", "CHORD ON ONE, SNARE PICKUP", "GALLOP BAR, SNARE ON THE ANDS", "TWO HITS AND TOMS",
+                                            "PUSHED STOP", "HELD BAR, DRUMS PICK UP", "STRINGS CLIMB, TOM ROLL", "HIT, THEN MUTED EIGHTHS IN",
+                                            "DROP TO CLEAN, SNARE BUILD", "STOP, THREE-SNARE PICKUP", "HITS ON TWO AND THREE, TOMS UNDER",
+                                            "TOM RUMBLE BARS", "HALF-STEP BURST BAR", "RIFF ALONE, TWO BARS", "UNISON SIXTEENTHS BAR",
+                                            "SIXTEENTH SWELL, CUT SHORT", "SIX-SIXTEENTH TURNAROUND", "DROP TO KEYS AND LEAD", "CUT AT THE HALF BAR" };
+    const auto& list = sectionTransitions();
+    REQUIRE (list.size() == 35 + names.size());
+    for (size_t i = 0; i < names.size(); ++i)
+        CHECK (list[35 + i].name == names[i]);
+    const auto plain = withTransition (noTransition);
+    for (const auto& name : names)
+    {
+        INFO (name);
+        const auto all = withTransition (name);
+        CHECK (sameNotes (all[(size_t) ComposerLayer::melody], plain[(size_t) ComposerLayer::melody]));
+        bool changed = false;
+        for (const auto l : bandLanes)
+        {
+            const auto& a = all[(size_t) l];
+            const auto& b = plain[(size_t) l];
+            changed = changed || ! sameNotes (a, b);
+            for (const auto& n : a.notes)
+            {
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+                CHECK (n.beat >= 0.0);
+                CHECK (n.length > 0.0);
+            }
+            std::vector<LineNote> early, earlyPlain;
+            for (const auto& n : a.notes)
+                if (n.beat + n.length <= 20.0 + 1.0e-6)
+                    early.push_back (n);
+            for (const auto& n : b.notes)
+                if (n.beat + n.length <= 20.0 + 1.0e-6)
+                    earlyPlain.push_back (n);
+            CHECK (early.size() == earlyPlain.size());
+        }
+        CHECK (changed);
+    }
+    const auto lastBarOf = [] (const LineIdea& idea, int pitch)
+    {
+        std::set<int> at;
+        for (const auto& n : idea.notes)
+            if (! n.keyswitch && n.beat >= 28.0 - 1.0e-6 && (pitch < 0 || n.pitch == pitch))
+                at.insert (juce::roundToInt ((n.beat - 28.0) * 4.0));
+        return at;
+    };
+    // THREE BEATS OF SILENCE / CUT AT THE HALF BAR: nothing starts in the cut.
+    for (const auto l : bandLanes)
+    {
+        checkQuietFrom (withTransition ("THREE BEATS OF SILENCE")[(size_t) l], 29.0, -1.0, 29.0);
+        checkQuietFrom (withTransition ("CUT AT THE HALF BAR")[(size_t) l], 30.0, -1.0, 30.0);
+    }
+    // CLAP BREAK: only claps on the beats in the last bar, the band out.
+    {
+        const auto all = withTransition ("CLAP BREAK");
+        CHECK (lastBarOf (all[(size_t) ComposerLayer::drums], -1) == std::set<int> { 0, 4, 8, 12 });
+        CHECK (lastBarOf (all[(size_t) ComposerLayer::drums], 39) == std::set<int> { 0, 4, 8, 12 });
+        checkQuietFrom (all[(size_t) ComposerLayer::guitar], 28.0, -1.0, 28.0);
+    }
+    // UNISON SYNCOPATED BAR: the guitar on 0, 3, 6, 10 and 13.
+    CHECK (lastBarOf (withTransition ("UNISON SYNCOPATED BAR")[(size_t) ComposerLayer::guitar], -1) == std::set<int> { 0, 3, 6, 10, 13 });
+    // GALLOP BAR: the snare on every and.
+    CHECK (lastBarOf (withTransition ("GALLOP BAR, SNARE ON THE ANDS")[(size_t) ComposerLayer::drums], 38) == std::set<int> { 2, 6, 10, 14 });
+    // STOP, THREE-SNARE PICKUP: the snares on the last three sixteenths.
+    CHECK (lastBarOf (withTransition ("STOP, THREE-SNARE PICKUP")[(size_t) ComposerLayer::drums], 38) == std::set<int> { 13, 14, 15 });
+    // TRITONE HIT: the guitar's chord holds the tritone over its root.
+    {
+        const auto g = withTransition ("TRITONE HIT, RUNG BAR")[(size_t) ComposerLayer::guitar];
+        std::set<int> intervals;
+        int low = 127;
+        for (const auto& n : g.notes)
+            if (! n.keyswitch && n.beat >= 28.0 - 1.0e-6)
+                low = juce::jmin (low, n.pitch);
+        for (const auto& n : g.notes)
+            if (! n.keyswitch && n.beat >= 28.0 - 1.0e-6)
+                intervals.insert (n.pitch - low);
+        CHECK (intervals == std::set<int> { 0, 6, 12 });
+    }
+    // PUSHED STOP: everyone's hit on the and of 4 of the bar before, nothing starting after it.
+    {
+        const auto g = withTransition ("PUSHED STOP")[(size_t) ComposerLayer::guitar];
+        REQUIRE_FALSE (g.notes.empty());
+        CHECK (g.notes.back().beat == Catch::Approx (27.5));
+    }
+    // HIT ON ONE, BASS FIGURE: the bass's last note a step under the next chord's root (A after G).
+    {
+        const auto b = withTransition ("HIT ON ONE, BASS FIGURE")[(size_t) ComposerLayer::bass];
+        REQUIRE_FALSE (b.notes.empty());
+        CHECK (b.notes.back().pitch % 12 == 7);
+    }
+    // DROP TO KEYS AND LEAD: the keys as they were, the guitar, bass and drums out in the last bar.
+    {
+        const auto all = withTransition ("DROP TO KEYS AND LEAD");
+        const auto sorted = [] (LineIdea idea)   // (every transition sorts its lanes by time: the order can differ)
+        {
+            std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b)
+                              { return std::tie (a.beat, a.pitch) < std::tie (b.beat, b.pitch); });
+            return idea;
+        };
+        CHECK (sameNotes (sorted (all[(size_t) ComposerLayer::chords]), sorted (plain[(size_t) ComposerLayer::chords])));
+        for (const auto l : { ComposerLayer::guitar, ComposerLayer::bass, ComposerLayer::drums })
+            checkQuietFrom (all[(size_t) l], 28.0, -1.0, 28.0);
+    }
+    // RIFF ALONE, TWO BARS: the guitar as it was, the rest quiet for two bars.
+    {
+        const auto all = withTransition ("RIFF ALONE, TWO BARS");
+        auto a = all[(size_t) ComposerLayer::guitar], b = plain[(size_t) ComposerLayer::guitar];
+        for (auto* idea : { &a, &b })
+            std::stable_sort (idea->notes.begin(), idea->notes.end(), [] (const LineNote& x, const LineNote& y)
+                              { return std::tie (x.beat, x.pitch) < std::tie (y.beat, y.pitch); });
+        CHECK (sameNotes (a, b));
+        checkQuietFrom (all[(size_t) ComposerLayer::bass], 24.0, -1.0, 24.0);
     }
 }
 

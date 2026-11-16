@@ -17829,6 +17829,432 @@ namespace pr7s
                     for (int k = 0; half + k * bar / 16.0 < end - 1.0e-6; ++k)
                         add (idea, half + k * bar / 16.0, 0.2, k % 2 == 0 ? 36 : 38, 0.7f + 0.03f * (float) k);
                 }
+                // (0.154.0) Round four's transitions (the owner's 54 more song files; shapes only, our names).
+                else if (name == "RISER INTO THE NEXT")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    const auto target = next();
+                    for (int k = 0; k < 16; ++k)
+                    {
+                        const auto at = lastBar + k * s16;
+                        const auto rise = 0.3f + 0.65f * (float) k / 15.0f;
+                        if (l == ComposerLayer::guitar)
+                            add (idea, at, s16 * 0.85, guitarRoot (target.root) + 12, rise);
+                        else if (l == ComposerLayer::drums)
+                            add (idea, at, s16, 49, rise);
+                    }
+                    if (l == ComposerLayer::bass)
+                        add (idea, lastBar, end - lastBar, bassRoot (target.root), 0.8f);
+                    else if (l == ComposerLayer::chords)
+                        hit (l, idea, target, lastBar, end - lastBar, false);
+                }
+                else if (name == "UNISON SYNCOPATED BAR")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    const int at[] { 0, 3, 6, 10, 13 };
+                    for (int k = 0; k < 5; ++k)
+                    {
+                        const auto length = (k < 4 ? at[k + 1] - at[k] : 16 - at[k]) * s16 * 0.8;
+                        hit (l, idea, chordAt (lastBar), lastBar + at[k] * s16, length, k == 0);
+                    }
+                }
+                else if (name == "CLAP BREAK")
+                {
+                    cutAt (idea, lastBar);
+                    if (l != ComposerLayer::drums || ! playing)
+                        return;
+                    for (auto at = lastBar; at < end - 1.0e-6; at += 1.0)
+                        add (idea, at, 0.25, 39, 0.85f);
+                }
+                else if (name == "DOTTED HITS, THEN A SILENT BAR")
+                {
+                    const auto from = juce::jmax (0.0, lastBar - bar);
+                    cutAt (idea, from);
+                    if (! playing || from >= lastBar)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    for (const auto k : { 0, 3, 6, 9, 12 })
+                        hit (l, idea, chordAt (from), from + k * s16, s16 * 2.0, k == 0);
+                }
+                else if (name == "THREE STABS AND A HOLD, TWICE")
+                {
+                    const auto from = juce::jmax (0.0, lastBar - bar);
+                    cutAt (idea, from);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    for (auto b0 = from; b0 < end - 1.0e-6; b0 += bar)
+                    {
+                        const auto& chord = chordAt (b0);
+                        for (const auto k : { 0, 2, 4 })
+                            hit (l, idea, chord, b0 + k * s16, s16 * 1.5, k == 0);
+                        if (l != ComposerLayer::drums)
+                            hit (l, idea, chord, b0 + 6 * s16, juce::jmin (end, b0 + bar) - b0 - 6 * s16, false);
+                        else
+                            add (idea, b0 + 6 * s16, s16, 49, 0.8f);
+                    }
+                }
+                else if (name == "TIMPANI ROLL")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    if (l == ComposerLayer::drums)
+                    {
+                        const auto s16 = bar / 16.0;
+                        for (int k = 0; k < 16; ++k)
+                            add (idea, lastBar + k * s16, s16, 41, 0.35f + 0.6f * (float) k / 15.0f);
+                    }
+                    else
+                        hit (l, idea, chordAt (lastBar), lastBar, end - lastBar, false);
+                }
+                else if (name == "HIT ON ONE, BASS FIGURE")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    hit (l, idea, chordAt (lastBar), lastBar, 0.9, true);
+                    if (l != ComposerLayer::bass)
+                        return;
+                    const auto& key = spans.back().key;
+                    const auto steps = juce::jmax (1, juce::roundToInt ((end - lastBar - 1.0) / 0.5));
+                    auto p = scaleStep (key, bassRoot (next().root), -steps);
+                    if (p < bassLow())
+                        p += 12;
+                    for (int k = 0; k < steps; ++k)
+                    {
+                        add (idea, lastBar + 1.0 + k * 0.5, 0.45, p, 0.84f);
+                        p = scaleStep (key, p, 1);
+                    }
+                }
+                else if (name == "THREE BEATS OF SILENCE")
+                    cutAt (idea, juce::jmax (0.0, end - juce::jmin (3.0, bar * 0.75)));
+                else if (name == "TRITONE HIT, RUNG BAR")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto& chord = chordAt (lastBar);
+                    if (l == ComposerLayer::guitar)
+                        for (const auto o : { 0, 6, 12 })
+                            add (idea, lastBar, end - lastBar, guitarRoot (chord.root) + o, open());
+                    else if (l == ComposerLayer::bass)
+                        add (idea, lastBar, end - lastBar, bassRoot (chord.root), 0.85f);
+                    else if (l == ComposerLayer::drums)
+                    {
+                        add (idea, lastBar, 0.25, 36, 0.95f);
+                        add (idea, lastBar, 0.25, 49, 0.9f);
+                    }
+                }
+                else if (name == "CHORD ON ONE, SNARE PICKUP")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto pickup = end - juce::jmin (1.0, bar * 0.25);
+                    if (l == ComposerLayer::drums)
+                    {
+                        hit (l, idea, chordAt (lastBar), lastBar, 0.25, true);
+                        for (int k = 0; pickup + k * 0.25 < end - 1.0e-6; ++k)
+                            add (idea, pickup + k * 0.25, 0.25, 38, 0.65f + 0.1f * (float) k);
+                    }
+                    else
+                        hit (l, idea, chordAt (lastBar), lastBar, (pickup - lastBar) * 0.96, false);
+                }
+                else if (name == "GALLOP BAR, SNARE ON THE ANDS")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    for (int k = 0; k < 16; ++k)
+                    {
+                        if (k % 4 == 1)
+                            continue;   // (x-xx: the gallop)
+                        const auto at = lastBar + k * s16;
+                        const auto& chord = chordAt (at);
+                        if (l == ComposerLayer::guitar)
+                            for (const auto o : { 0, 7 })
+                                add (idea, at, s16 * 0.8, guitarRoot (chord.root) + o, GuitarVelocity::of (c.velocities.muteLoose));
+                        else if (l == ComposerLayer::bass)
+                            add (idea, at, s16 * 0.8, bassRoot (chord.root), 0.8f);
+                        else if (l == ComposerLayer::drums)
+                            add (idea, at, s16, 36, 0.85f);
+                    }
+                    if (l == ComposerLayer::drums)
+                        for (const auto k : { 2, 6, 10, 14 })
+                            add (idea, lastBar + k * s16, s16, 38, 0.86f);
+                }
+                else if (name == "TWO HITS AND TOMS")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    hit (l, idea, chordAt (lastBar), lastBar, s16 * 1.5, true);
+                    hit (l, idea, chordAt (lastBar), lastBar + 2 * s16, s16 * 1.5, false);
+                    if (l == ComposerLayer::drums)
+                    {
+                        const int toms[] { 48, 45, 43, 41 };
+                        for (int k = 4; k < 16; ++k)
+                            add (idea, lastBar + k * s16, s16, toms[(k - 4) / 3], 0.85f);
+                    }
+                }
+                else if (name == "PUSHED STOP")
+                {
+                    const auto push = juce::jmax (0.0, lastBar - 0.5);
+                    cutAt (idea, push);
+                    if (! playing)
+                        return;
+                    hit (l, idea, chordAt (lastBar), push, juce::jmin (1.5, end - push), true);
+                }
+                else if (name == "HELD BAR, DRUMS PICK UP")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    if (l == ComposerLayer::drums)
+                    {
+                        const auto from = lastBar + bar * 0.5;
+                        for (int k = 0; from + k * bar / 16.0 < end - 1.0e-6; ++k)
+                            add (idea, from + k * bar / 16.0, 0.2, k < 4 ? 38 : (k < 6 ? 45 : 41), 0.6f + 0.05f * (float) k);
+                    }
+                    else if (l != ComposerLayer::lead)
+                        hit (l, idea, chordAt (lastBar), lastBar, end - lastBar, false);
+                }
+                else if (name == "STRINGS CLIMB, TOM ROLL")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto& chord = chordAt (lastBar);
+                    if (l == ComposerLayer::drums)
+                    {
+                        const auto s16 = bar / 16.0;
+                        for (int k = 0; k < 16; ++k)
+                            add (idea, lastBar + k * s16, s16, 41, 0.4f + 0.5f * (float) k / 15.0f);
+                    }
+                    else if (l == ComposerLayer::chords)
+                    {
+                        auto tones = chord.pitchClasses();
+                        std::vector<int> climb;
+                        for (int p = 60; p < 90 && climb.size() < 8; ++p)
+                            if (std::find (tones.begin(), tones.end(), p % 12) != tones.end())
+                                climb.push_back (p);
+                        for (size_t k = 0; k < climb.size(); ++k)
+                        {
+                            const auto at = lastBar + (double) k * bar / 8.0;
+                            if (at < end - 1.0e-6)
+                                add (idea, at, juce::jmin (bar / 8.0 * 0.95, end - at), climb[k], 0.55f + 0.04f * (float) k);
+                        }
+                    }
+                    else if (l != ComposerLayer::lead)
+                        hit (l, idea, chord, lastBar, end - lastBar, false);
+                }
+                else if (name == "HIT, THEN MUTED EIGHTHS IN")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto half = lastBar + bar * 0.5;
+                    hit (l, idea, chordAt (lastBar), lastBar, (half - lastBar) * 0.96, true);
+                    const auto target = next();
+                    for (auto at = half; at < end - 1.0e-6; at += bar / 8.0)
+                    {
+                        if (l == ComposerLayer::guitar)
+                            add (idea, at, bar / 8.0 * 0.8, guitarRoot (target.root), GuitarVelocity::of (c.velocities.muteMid));
+                        else if (l == ComposerLayer::bass)
+                            add (idea, at, bar / 8.0 * 0.8, bassRoot (target.root), 0.8f);
+                        else if (l == ComposerLayer::drums)
+                        {
+                            add (idea, at, 0.2, 42, 0.6f);
+                            add (idea, at, 0.2, 36, 0.75f);
+                        }
+                    }
+                }
+                else if (name == "DROP TO CLEAN, SNARE BUILD")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto& chord = chordAt (lastBar);
+                    if (l == ComposerLayer::guitar)
+                    {
+                        auto v = voicingsFor (chord, 55);
+                        if (! v.empty())
+                        {
+                            const auto& shape = v.front();
+                            for (int k = 0; k < 8; ++k)
+                            {
+                                const auto at = lastBar + k * bar / 8.0;
+                                add (idea, at, juce::jmin (bar / 8.0 * 1.5, end - at), shape[(size_t) k % shape.size()], GuitarVelocity::of (c.velocities.sustainSoft));
+                            }
+                        }
+                    }
+                    else if (l == ComposerLayer::drums)
+                    {
+                        const auto half = lastBar + bar * 0.5;
+                        std::vector<double> hits;
+                        for (auto at = lastBar; at < half - 1.0e-6; at += bar / 8.0)
+                            hits.push_back (at);
+                        for (auto at = half; at < end - 1.0e-6; at += bar / 16.0)
+                            hits.push_back (at);
+                        for (size_t k = 0; k < hits.size(); ++k)
+                            add (idea, hits[k], 0.2, 38, 0.4f + 0.55f * (float) k / (float) juce::jmax<size_t> (1, hits.size() - 1));
+                    }
+                }
+                else if (name == "STOP, THREE-SNARE PICKUP")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    hit (l, idea, chordAt (lastBar), lastBar, juce::jmin (1.0, bar * 0.25), true);
+                    if (l == ComposerLayer::drums)
+                        for (const auto k : { 13, 14, 15 })
+                            add (idea, lastBar + k * s16, s16, 38, 0.8f + 0.05f * (float) (k - 13));
+                }
+                else if (name == "HITS ON TWO AND THREE, TOMS UNDER")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    for (const auto k : { 4, 8 })
+                        hit (l, idea, chordAt (lastBar), lastBar + k * s16, s16 * 3.0, k == 4);
+                    if (l == ComposerLayer::drums)
+                    {
+                        const int toms[] { 48, 45, 43, 41 };
+                        for (int k = 0; k < 16; ++k)
+                            if (k != 4 && k != 8)
+                                add (idea, lastBar + k * s16, s16, toms[k / 4], 0.7f);
+                    }
+                }
+                else if (name == "TOM RUMBLE BARS")
+                {
+                    const auto from = juce::jmax (0.0, lastBar - bar);
+                    cutAt (idea, from);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    for (auto b0 = from; b0 < end - 1.0e-6; b0 += bar)
+                    {
+                        if (l == ComposerLayer::drums)
+                        {
+                            for (int k = 0; k < 16 && b0 + k * s16 < end - 1.0e-6; ++k)
+                                add (idea, b0 + k * s16, s16, k % 2 == 0 ? 43 : 41, k % 4 == 0 ? 0.85f : 0.4f);
+                            add (idea, b0, 0.25, 36, 0.9f);
+                        }
+                        else if (l != ComposerLayer::lead)
+                            hit (l, idea, chordAt (b0), b0, juce::jmin (end, b0 + bar) - b0, false);
+                    }
+                }
+                else if (name == "HALF-STEP BURST BAR")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    const auto& chord = chordAt (lastBar);
+                    for (int k = 0; k < 16; ++k)
+                    {
+                        const auto at = lastBar + k * s16;
+                        const auto up = (k / 4) % 2;
+                        if (l == ComposerLayer::guitar)
+                            for (const auto o : { 0, 7 })
+                                add (idea, at, s16 * 0.8, guitarRoot (chord.root) + up + o, GuitarVelocity::of (c.velocities.muteLoose));
+                        else if (l == ComposerLayer::bass)
+                            add (idea, at, s16 * 0.8, bassRoot (chord.root) + up, 0.8f);
+                        else if (l == ComposerLayer::drums)
+                        {
+                            add (idea, at, s16, 36, 0.8f);
+                            if (k == 4 || k == 12)
+                                add (idea, at, s16, 38, 0.9f);
+                        }
+                    }
+                }
+                else if (name == "RIFF ALONE, TWO BARS")
+                {
+                    if (l != ComposerLayer::guitar)
+                        cutAt (idea, juce::jmax (0.0, end - 2.0 * bar));
+                }
+                else if (name == "UNISON SIXTEENTHS BAR")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    for (int k = 0; k < 16; ++k)
+                    {
+                        const auto at = lastBar + k * s16;
+                        const auto& chord = chordAt (at);
+                        if (l == ComposerLayer::guitar)
+                            for (const auto o : { 0, 7 })
+                                add (idea, at, s16 * 0.8, guitarRoot (chord.root) + o, GuitarVelocity::of (c.velocities.muteLoose));
+                        else if (l == ComposerLayer::bass)
+                            add (idea, at, s16 * 0.8, bassRoot (chord.root), 0.8f);
+                        else if (l == ComposerLayer::drums)
+                        {
+                            add (idea, at, s16, 36, 0.8f);
+                            if (k % 4 == 0)
+                                add (idea, at, s16, 38, 0.86f);
+                        }
+                    }
+                }
+                else if (name == "SIXTEENTH SWELL, CUT SHORT")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    for (int k = 0; k < 12; ++k)
+                    {
+                        const auto at = lastBar + k * s16;
+                        const auto& chord = chordAt (at);
+                        const auto swell = 0.35f + 0.6f * (float) k / 11.0f;
+                        if (l == ComposerLayer::guitar)
+                            for (const auto o : { 0, 7 })
+                                add (idea, at, s16 * 0.8, guitarRoot (chord.root) + o, swell);
+                        else if (l == ComposerLayer::bass)
+                            add (idea, at, s16 * 0.8, bassRoot (chord.root), swell);
+                        else if (l == ComposerLayer::drums)
+                            add (idea, at, s16, 38, swell);
+                    }
+                }
+                else if (name == "SIX-SIXTEENTH TURNAROUND")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    const auto& chord = chordAt (lastBar);
+                    for (const auto cell : { 0, 6 })
+                        for (const auto k : { 0, 2, 3, 5 })   // (x-xx-x)
+                        {
+                            const auto at = lastBar + (cell + k) * s16;
+                            if (l == ComposerLayer::guitar)
+                                for (const auto o : { 0, 7 })
+                                    add (idea, at, s16 * 0.8, guitarRoot (chord.root) + o, GuitarVelocity::of (c.velocities.muteLoose));
+                            else if (l == ComposerLayer::bass)
+                                add (idea, at, s16 * 0.8, bassRoot (chord.root), 0.8f);
+                            else if (l == ComposerLayer::drums)
+                                add (idea, at, s16, k == 0 ? 38 : 36, 0.85f);
+                        }
+                    hit (l, idea, chord, lastBar + 12 * s16, end - lastBar - 12 * s16, true);
+                }
+                else if (name == "DROP TO KEYS AND LEAD")
+                {
+                    if (l != ComposerLayer::chords && l != ComposerLayer::lead)
+                        cutAt (idea, lastBar);
+                }
+                else if (name == "CUT AT THE HALF BAR")
+                    cutAt (idea, lastBar + bar * 0.5);
                 std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
             }
         };

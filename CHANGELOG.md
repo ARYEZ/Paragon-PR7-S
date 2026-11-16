@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.154.0
+
+**27 more transitions from your 54 song files** (round four, read for their shapes only; our own names). They're in INTO THE NEXT on every block of the SECTIONS row (right-click a block, or its editor), after the ones from 0.144.0. Each one only changes the end of its block, and the melody is never touched:
+
+- **Stops and silences:** THREE BEATS OF SILENCE, CUT AT THE HALF BAR, PUSHED STOP (the next bar's hit pushed onto the and of 4 and held), STOP, THREE-SNARE PICKUP, DOTTED HITS, THEN A SILENT BAR.
+- **Hits together:** UNISON SYNCOPATED BAR, UNISON SIXTEENTHS BAR, THREE STABS AND A HOLD, TWICE, TWO HITS AND TOMS, HITS ON TWO AND THREE, TOMS UNDER, SIX-SIXTEENTH TURNAROUND, HALF-STEP BURST BAR, GALLOP BAR, SNARE ON THE ANDS, SIXTEENTH SWELL, CUT SHORT.
+- **Held chords:** CHORD ON ONE, SNARE PICKUP, TRITONE HIT, RUNG BAR, HELD BAR, DRUMS PICK UP, TIMPANI ROLL (the floor tom rolling under the held chord), TOM RUMBLE BARS, STRINGS CLIMB, TOM ROLL.
+- **Drop-outs:** CLAP BREAK, RIFF ALONE, TWO BARS, DROP TO KEYS AND LEAD, DROP TO CLEAN, SNARE BUILD, HIT ON ONE, BASS FIGURE (the bass alone walking up into the next chord), HIT, THEN MUTED EIGHTHS IN, RISER INTO THE NEXT (the guitar tremolos the next chord's root while the crashes swell).
+
+Two of your songs' transitions were left out because we already have them: BREATH (two beats) is our BREATH, and the riff cut at the half bar became CUT AT THE HALF BAR beside our RIFF CUT SHORT.
+
 ## 0.153.0
 
 **Automation lines glow** (you asked, from PR7-K's envelopes). A lane that's playing back draws its line as neon in the track's colour: soft halos around a bright line, with a hot, paler core. Under the line, a wash of the colour fades to nothing at the lane's foot. The points are glowing dots on the line. Selected points stay pearl white circles, so you can still tell them apart. In Trim, the curve that plays glows too. A lane that isn't playing back (R off, or the lane muted) stays plain grey, so you can see at a glance what's heard.
