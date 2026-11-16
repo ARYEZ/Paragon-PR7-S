@@ -127,7 +127,8 @@ public:
     void setSectionType (const juce::String& type);
     void setLibraryDrums (bool on);                        // (0.106.0) the drums lane from the groove library
     bool isUsingLibraryDrums() const { return state.libraryDrums; }
-    void setLibraryGroove (const juce::String& path);      // (empty: by the section and the take)
+    void setLibraryGroove (const juce::String& path);   // (empty: by the section and the take)
+    void setFitKicks (bool on);   // (0.137.0)
     juce::String getSectionType() const { return state.sectionType; }
     juce::String typeSectionName() const;   // the name the types are for: the block's, else the SECTION's
     void setApproach (pr7s::ComposerLayer, int approach);

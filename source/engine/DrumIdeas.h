@@ -58,7 +58,17 @@ namespace pr7s
         // per section; -1: not worked out yet) and whether it's a fill.
         int sectionMask = -1;
         bool fill = false;
+        // (0.137.0, the owner's rules) Its length in whole bars (0: not known), whether it's in the owner's Toontrack
+        // folder (a folder with "toontrack" in its name on its path), whether a folder on its path (or its genre label)
+        // names a style the owner leaves out (excludedGrooveWords: electronic, brushes, jazz, big band, R&B, reggae),
+        // and its kick and snare (PR7-D's index; none: the MediaBay's files, not read for this).
+        int bars = 0;
+        bool toontrack = false;
+        bool excluded = false;
+        std::shared_ptr<const GrooveRhythm> rhythm;
     };
+    // (0.137.0) The words that leave a groove out of the composer's drums (in a folder's name or a genre label).
+    const juce::StringArray& excludedGrooveWords();
     // (0.112.1) Works out a groove's sectionMask and fill (findLibraryGrooves and findPr7dGrooves do it for theirs).
     void classifyGroove (LibraryGroove&);
 
@@ -92,7 +102,10 @@ namespace pr7s
     // "Chorus" in groove packs), -3 for another section's word. `fills`: only files with "fill" in them; else none of
     // those. Our scoring.
     // (0.112.1) `limit`: only the best that many (0: all), in the same order a full list would give them.
-    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills, size_t limit = 0);
+    // (0.137.0) `ownersRules`: grooves in a left-out folder (excludedGrooveWords) skipped, and the Toontrack folder's
+    // first (the composer's fills).
+    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills, size_t limit = 0,
+                                                  bool ownersRules = false);
     // The notes of a library file's last bar, from its first note in that bar (beats from that note's quarter; one bar
     // at most). Empty if the file can't be read. Files are read once and kept (by path and date).
     std::vector<LineNote> libraryFillBar (const LibraryGroove&, double beatsPerBar);

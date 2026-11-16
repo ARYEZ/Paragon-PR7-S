@@ -396,6 +396,8 @@ namespace pr7s
                 continue;
             const auto bpm = item.tempo();
             out.push_back ({ item.file, item.name, item.file.getParentDirectory().getFileName(), bpm, grooveScore (text, bpm, style, songBpm) });
+            if (item.beats > 0.0)   // (0.137.0: whole bars, a 4/4 bar's beats; a groove ending a hair short of a bar line counts it)
+                out.back().bars = juce::jmax (1, (int) std::ceil (item.beats / 4.0 - 0.05));
         }
         for (auto& g : out)
             classifyGroove (g);   // (0.112.1)
@@ -414,6 +416,8 @@ namespace pr7s
             LibraryGroove groove { g.file, g.name, g.folder, g.bpm, 0 };
             groove.tags = g.tags.joinIntoString ("|");
             groove.layout = g.layout;
+            groove.bars = g.bars;   // (0.137.0)
+            groove.rhythm = g.rhythm;
             groove.score = grooveScore ((g.file.getFullPathName() + " " + groove.tags).toLowerCase(), g.bpm, style, songBpm);
             out.push_back (std::move (groove));
         }
@@ -479,8 +483,27 @@ namespace pr7s
         }
     }
 
+    const juce::StringArray& excludedGrooveWords()
+    {
+        static const juce::StringArray words { "electronic", "electro", "brush", "jazz", "big band", "bigband", "big-band", "r&b", "rnb", "r'n'b",
+                                               "r n b", "rhythm and blues", "reggae" };
+        return words;
+    }
+
     void classifyGroove (LibraryGroove& g)
     {
+        {
+            // (0.137.0) The folders on its path (not the file's own name) and its labels.
+            const auto folders = (g.file.getParentDirectory().getFullPathName() + " " + g.tags).toLowerCase();
+            g.toontrack = g.file.getParentDirectory().getFullPathName().toLowerCase().contains ("toontrack");
+            g.excluded = false;
+            for (const auto& w : excludedGrooveWords())
+                if (folders.contains (w))
+                {
+                    g.excluded = true;
+                    break;
+                }
+        }
         const auto& words = sectionWords();
         const auto text = (g.file.getFullPathName() + " " + g.name + " " + g.tags).toLowerCase();   // (0.107.0: PR7-D's labels too)
         g.fill = text.contains ("fill");
@@ -494,7 +517,7 @@ namespace pr7s
                 }
     }
 
-    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills, size_t limit)
+    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills, size_t limit, bool ownersRules)
     {
         const auto& words = sectionWords();
         section = juce::jlimit (0, (int) words.size() - 1, section);
@@ -512,9 +535,11 @@ namespace pr7s
                 classifyGroove (worked);
                 c = &worked;
             }
-            if (c->fill != fills)
+            if (c->fill != fills || (ownersRules && c->excluded))
                 continue;
             auto score = found[i].score + (fills ? 3 : 0);   // (findLibraryGrooves took 3 off for a fill)
+            if (ownersRules && c->toontrack)
+                score += 1000;
             for (int k = 0; k < (int) words.size(); ++k)
                 if ((c->sectionMask & (1 << k)) != 0)
                     score += k == section ? 6 : -3;
@@ -531,7 +556,9 @@ namespace pr7s
         for (size_t i = 0; i < wanted; ++i)
         {
             out.push_back (found[scored[i].second]);
-            out.back().score = scored[i].first;
+            if (out.back().sectionMask < 0)
+                classifyGroove (out.back());
+            out.back().score = scored[i].first - (ownersRules && out.back().toontrack ? 1000 : 0);
         }
         return out;
     }

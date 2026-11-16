@@ -63,6 +63,8 @@ namespace
             // (as findLibraryGrooves leaves them: a fill 3 down)
             grooves = { { v, "Verse Groove 01", "Verse", 120.0, 4 }, { v2, "Verse Groove 02", "Verse", 120.0, 4 },
                         { ch, "Chorus Groove 01", "Chorus", 120.0, 4 }, { f, "Fill 01", "Fills", 120.0, 1 } };
+            for (auto& g : grooves)
+                g.bars = 4;   // (0.137.0: the composer takes only 4 to 16 bars; one-bar files stand in)
         }
     };
 
@@ -93,6 +95,7 @@ TEST_CASE ("0.106.0: the composer's drums from the groove library: by the sectio
     const auto spans = eightBars();
     ComposerState s;
     CHECK (s.libraryDrums);   // (on by default)
+    s.fitKicks = false;       // (0.137.0: the grooves as written here)
 
     // The verse's grooves first for a verse, the chorus's for a chorus; fills apart.
     CHECK (libraryGroovesFor (library.grooves, 1, false).front().name.startsWith ("Verse"));
@@ -149,6 +152,7 @@ TEST_CASE ("0.106.0: library grooves over a section type's drums; SYNC still mak
     c.libraryGrooves = library.grooves;
     const auto spans = eightBars();
     ComposerState s;
+    s.fitKicks = false;   // (0.137.0)
     applySectionType (s, "Chorus", "DRIVING");
     s.lane (ComposerLayer::drums).style = 2;
     {

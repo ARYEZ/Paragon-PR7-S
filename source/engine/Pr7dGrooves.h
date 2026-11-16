@@ -3,6 +3,7 @@
 #include <juce_core/juce_core.h>
 
 #include <array>
+#include <memory>
 #include <vector>
 
 // PR7-D'S GROOVE LIBRARY (0.107.0, the owner: "you can't leverage the groove library that is scanned into the PR7-D?
@@ -23,6 +24,16 @@
 // from a root each instance sets) are read from C1 (36); CUSTOM ones (a map only PR7-D's settings know) as they are.
 namespace pr7s
 {
+    // (0.137.0) A groove's kick and snare from the first 32 beats (PR7-D's index keeps them as its "rhythm", for its
+    // FIND SIMILAR): beats from the groove's start; ghost snares (under 55% of the loudest) left out.
+    struct GrooveRhythm
+    {
+        std::vector<float> kicks, snares;
+        double lengthBeats = 0.0;
+    };
+    // PR7-D's rhythm text ("length;beatsPerBar;lane:twelfths[~velocity],...|..."; lanes 0 kick, 1 snare) as that.
+    GrooveRhythm grooveRhythmFromText (const juce::String&);
+
     struct Pr7dGroove
     {
         juce::File file;
@@ -32,6 +43,7 @@ namespace pr7s
         float intensity = 0.0f;
         juce::StringArray tags;      // "Group:Value"
         int layout = 1;              // its linked folder's (the values above)
+        std::shared_ptr<const GrooveRhythm> rhythm;   // (0.137.0: none in older indexes)
         double barBeats() const noexcept { return numerator * 4.0 / juce::jmax (1, denominator); }
     };
 

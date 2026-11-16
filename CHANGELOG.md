@@ -2,6 +2,32 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.137.0
+
+**The composer's drums lane, rebuilt to your rules.** Before, it picked among the handful of library grooves whose file names scored best, so ROLL kept giving you about five beats, and nothing listened to the riff. Now, for each section:
+
+1. **A pool of 100 grooves** (was 24, and ROLL only ever reached the top 5 to 8).
+2. **Two thirds from your Toontrack folder:** 66 of the 100 come from a folder with "Toontrack" in its name, 34 from your other folders. If there were ever too few other grooves, Toontrack makes up the rest.
+3. **The section's name first:** a verse takes only grooves with "verse" in their name or folders; a chorus "chorus" (or refrain, hook); a bridge "bridge" (or middle 8, interlude); and so on. If a section has no grooves of its own name, it borrows the nearest kind's: an intro, bridge or breakdown takes the verse's, an ending or solo the chorus's.
+4. **Only 4 to 16 bars.** Nothing shorter or longer is offered.
+5. **Scored by how the kick and snare fit the guitar.** Each groove's kicks are lined up against the rhythm guitar's hits: kicks that land on the riff and riff accents that get a kick both count, and snares on a backbeat or a guitar hit. The best fits come first. The style's words and the tempo still count, but only a little. The kick and snare come from PR7-D's groove index, so this works on your 100,000 grooves without opening every file.
+6. **The kick fitted a little to the riff:** where the guitar has an accent with no kick, a kick is added there (the groove's own kick sound and its usual velocity); a kick just off a guitar hit moves onto it. Two changes a bar at most, the bar's first kick never moved, snares, hats and cymbals left as written. Turn it off in the drums lane's menu: **Fit the Kick to the Riff**.
+7. **ROLL goes through all 100 in a random order.** You won't hear one again until you've heard all of them; then a new random order starts (never with the one you just heard). The order is kept with the song.
+
+**Styles left out:** any groove in a folder whose name says electronic, brushes, jazz, big band, R&B or reggae, or whose genre label says so, is never offered. That goes for fills too.
+
+**Fills** follow the same rules: never from those folders, and the Toontrack folder's first.
+
+**The drums lane's menu** lists all 100 (name, folder, bars), says how many are from Toontrack, and still lets you pick any by hand. ROLL's status line shows how many of the 100 you've heard.
+
+**Honest limits:**
+
+- **The fit is our own measure** of kick and snare against the guitar's rhythm, not a listening test. It needs PR7-D's groove index (PR7-D keeps each groove's kick and snare there); grooves found only through the MediaBay are still offered by name and length, but without the riff fit.
+- **The groove's length** comes from PR7-D's index (or the MediaBay's reading of the file); a file the index gives no length for is left out.
+- **The riff the drums fit to** is the rhythm guitar lane (or your pasted riff's lane). With the guitar lane off, the pool is ranked by name, style and tempo alone.
+
+**Checked:** tests cover the pool's size and its two-thirds share, the section and the nearest kind, the bar limits, the left-out styles and fills, the fit ranking, ROLL's full round with no repeats (and the next round), the kick fitting, and PR7-D's index read. Not checked here: your library itself (80,000 Toontrack grooves) and how the beats sound against your riffs (your ears).
+
 ## 0.136.0
 
 **Solos from your 13 Stone Temple Pilots files**, read for their solos' shapes only, never copied; our own names. Three readers went through them.

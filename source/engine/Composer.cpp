@@ -2,6 +2,8 @@
 #include "engine/SectionTypes.h"
 
 #include <algorithm>
+#include <map>
+#include <mutex>
 
 #include "engine/DrumIdeas.h"
 
@@ -71,7 +73,8 @@ namespace pr7s
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
              + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
              + "|" + sectionType.removeCharacters ("|") + "|" + transition.removeCharacters ("|")
-             + "|" + (libraryDrums ? "1" : "0") + "|" + libraryGroove.removeCharacters ("|") + "|" + juce::String (riffLane);
+             + "|" + (libraryDrums ? "1" : "0") + "|" + libraryGroove.removeCharacters ("|") + "|" + juce::String (riffLane)
+             + "|" + libraryPick.removeCharacters ("|") + "|" + groovesHeard.removeCharacters ("|") + "|" + (fitKicks ? "1" : "0");   // (0.137.0)
     }
 
     ComposerState ComposerState::fromString (const juce::String& text)
@@ -137,6 +140,12 @@ namespace pr7s
             s.libraryGroove = parts[12];
         if (parts.size() >= 14)
             s.riffLane = juce::jlimit (0, composerLayerCount - 1, parts[13].getIntValue());   // (0.114.0; older text: the guitar)
+        if (parts.size() >= 17)   // (0.137.0)
+        {
+            s.libraryPick = parts[14];
+            s.groovesHeard = parts[15];
+            s.fitKicks = parts[16] != "0";
+        }
         return s;
     }
 
@@ -386,7 +395,7 @@ namespace pr7s
         {
             if (! s.libraryDrums || c.libraryGrooves.empty() || spans.empty())
                 return std::nullopt;
-            const auto groove = composerLibraryGroove (s, c);
+            const auto groove = composerLibraryGroove (s, spans, c);
             if (! groove.has_value())
                 return std::nullopt;
             juce::String error;
@@ -395,11 +404,15 @@ namespace pr7s
                 return std::nullopt;
             idea->part = LineIdea::Part::drums;
             idea->style = "My library: " + groove->name;
+            // (0.137.0, the owner: "change the library groove a little to help it make more sense with the riff")
+            if (s.fitKicks && s.libraryGroove.isEmpty())
+                if (const auto moved = fitKicksToRiff (*idea, composerDrumRiff (s, spans, c), c.beatsPerBar); moved > 0)
+                    idea->description << "; the kick fitted to the riff (" << moved << (moved == 1 ? " change)" : " changes)");
             const auto bpb = c.beatsPerBar;
             const auto length = spans.back().end - spans.front().start;
             const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
             const auto& lane = s.lane (ComposerLayer::drums);
-            const auto fills = libraryGroovesFor (c.libraryGrooves, lane.style, true, 4);   // (0.112.1: the best four are all it picks among)
+            const auto fills = libraryGroovesFor (c.libraryGrooves, lane.style, true, 4, true);   // (0.137.0: none from a left-out folder, Toontrack's first)   // (0.112.1: the best four are all it picks among)
             if (! fills.empty() && bars >= 1)
             {
                 const auto& fill = fills[(size_t) (lane.variation / 3) % juce::jmin ((size_t) 4, fills.size())];
@@ -11535,27 +11548,388 @@ namespace pr7s
         };
     }
 
-    std::vector<LibraryGroove> composerLibraryGrooves (const ComposerState& s, const ComposerContext& c)
+    //==========================================================================
+    // (0.137.0, the owner's rules for the drums lane's library grooves.)
+    namespace
     {
-        return libraryGroovesFor (c.libraryGrooves, s.lane (ComposerLayer::drums).style, false, 24);   // (0.112.1: only the 24 made)
+        // A section with no groove naming it takes the nearest kind's (drumSections()' order).
+        int fallbackSection (int section)
+        {
+            switch (section)
+            {
+                case 0: return 1;   // intro: the verse's
+                case 1: return 2;   // verse: the chorus's
+                case 2: return 1;   // chorus: the verse's
+                case 3: return 1;   // bridge / interlude: the verse's
+                case 4: return 1;   // breakdown: the verse's
+                case 5: return 2;   // ending: the chorus's
+                case 6: return 2;   // solo: the chorus's
+                default: return 1;
+            }
+        }
+
+        bool nearAny (const std::vector<double>& sorted, double beat, double within)
+        {
+            const auto at = std::lower_bound (sorted.begin(), sorted.end(), beat - within);
+            return at != sorted.end() && *at <= beat + within;
+        }
+
+        // Up to +4 for a tempo near the song's (half and double count), as the library's word score has it.
+        double tempoBonus (double grooveBpm, double songBpm)
+        {
+            if (grooveBpm <= 0.0 || songBpm <= 0.0)
+                return 0.0;
+            auto ratio = songBpm / grooveBpm;
+            for (const auto k : { 0.5, 2.0 })
+                if (std::abs (std::log2 (ratio * k)) < std::abs (std::log2 (ratio)))
+                    ratio *= k;
+            const auto off = std::abs (std::log2 (ratio));
+            return off < 0.05 ? 4.0 : off < 0.12 ? 2.0 : off > 0.3 ? -2.0 : 0.0;
+        }
+
+        juce::String grooveHash (const LibraryGroove& g)
+        {
+            return juce::String::toHexString ((juce::int64) g.file.getFullPathName().hashCode64());
+        }
+
+        struct PoolKey
+        {
+            const void* list = nullptr;
+            size_t count = 0, size = 0;
+            int section = 0, bpm = 0, bar = 0;
+            juce::int64 riff = 0;
+            bool operator== (const PoolKey&) const = default;
+        };
+        struct KeptPool { PoolKey key; std::vector<LibraryGroove> pool; };
+        std::mutex poolLock;
+        std::vector<KeptPool> keptPools;   // (the last few: the menu, the compose and ROLL ask for the same)
+
+        juce::int64 riffHashOf (const SyncRhythm& riff, double length)
+        {
+            juce::String text (juce::roundToInt (length * 96.0));
+            for (const auto b : riff.all)
+                text << "," << juce::roundToInt (b * 96.0);
+            text << "|";
+            for (const auto b : riff.accents)
+                text << "," << juce::roundToInt (b * 96.0);
+            return text.hashCode64();
+        }
+
+        bool eligible (const LibraryGroove& g)
+        {
+            return ! g.fill && ! g.excluded && g.bars >= 4 && g.bars <= 16;
+        }
     }
 
-    std::optional<LibraryGroove> composerLibraryGroove (const ComposerState& s, const ComposerContext& c)
+    SyncRhythm composerDrumRiff (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+    {
+        if (spans.empty())
+            return {};
+        const auto lead = c.myRiff.has_value() ? s.riffLayer() : ComposerLayer::guitar;
+        if (lead == ComposerLayer::drums || (! c.myRiff.has_value() && ! s.lane (lead).on))
+            return {};
+        auto riff = syncRhythmOf (lead, rawLayer (lead, s, spans, c), c.beatsPerBar, 0.0);
+        std::sort (riff.all.begin(), riff.all.end());
+        std::sort (riff.accents.begin(), riff.accents.end());
+        return riff;
+    }
+
+    double composerGrooveFit (const GrooveRhythm& g, const SyncRhythm& riff, double beatsPerBar, double riffLength)
+    {
+        if (riff.all.empty())
+            return 0.5;
+        const auto bpb = beatsPerBar > 0.0 ? beatsPerBar : 4.0;
+        const auto window = juce::jmin (32.0, riffLength > 0.0 ? riffLength : 32.0);
+        const auto loop = g.lengthBeats > 0.25 ? juce::jmin (g.lengthBeats, 32.0) : 32.0;
+        constexpr auto within = 0.13;   // (a 32nd either side, and a hair)
+        std::vector<double> kicks, snares;
+        for (auto from = 0.0; from < window - 1.0e-6; from += loop)
+        {
+            for (const auto k : g.kicks)
+                if (k < loop - 1.0e-6 && from + k < window - 1.0e-6)
+                    kicks.push_back (from + k);
+            for (const auto k : g.snares)
+                if (k < loop - 1.0e-6 && from + k < window - 1.0e-6)
+                    snares.push_back (from + k);
+        }
+        std::sort (kicks.begin(), kicks.end());
+        auto onHit = 0;
+        for (const auto k : kicks)
+            if (nearAny (riff.all, k, within))
+                ++onHit;
+        const auto& wanted = riff.accents.empty() ? riff.all : riff.accents;
+        auto accents = 0, met = 0;
+        for (const auto a : wanted)
+            if (a < window - 1.0e-6)
+            {
+                ++accents;
+                if (nearAny (kicks, a, within))
+                    ++met;
+            }
+        auto f = 0.0;
+        if (! kicks.empty() && accents > 0)
+        {
+            const auto p = onHit / (double) kicks.size(), r = met / (double) accents;
+            if (p + r > 0.0)
+                f = 3.25 * p * r / (2.25 * p + r);
+        }
+        auto snare = 0.5;
+        if (! snares.empty())
+        {
+            auto good = 0;
+            for (const auto b : snares)
+            {
+                const auto inBar = std::fmod (b, bpb);
+                const auto beat = juce::roundToInt (inBar);
+                const auto onBackbeat = std::abs (inBar - beat) < 0.07 && (beat % 2 == 1 || (beat == 2 && bpb >= 4.0 - 1.0e-6));
+                if (onBackbeat || nearAny (riff.all, b, within))
+                    ++good;
+            }
+            snare = good / (double) snares.size();
+        }
+        return 0.75 * f + 0.25 * snare;
+    }
+
+    std::vector<LibraryGroove> composerGroovePool (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c, size_t size)
+    {
+        const auto& all = c.libraryGrooves.get();
+        if (all.empty() || size == 0)
+            return {};
+        auto section = juce::jlimit (0, 6, s.lane (ComposerLayer::drums).style);
+        const auto riff = composerDrumRiff (s, spans, c);
+        const auto riffLength = spans.empty() ? 0.0 : spans.back().end - spans.front().start;
+        const PoolKey key { all.data(), all.size(), size, section, juce::roundToInt (c.bpm * 10.0), juce::roundToInt (c.beatsPerBar * 1000.0),
+                            riffHashOf (riff, riffLength) };
+        {
+            const std::lock_guard<std::mutex> sl (poolLock);
+            for (const auto& kept : keptPools)
+                if (kept.key == key)
+                    return kept.pool;
+        }
+        // Hand-made grooves (tests) worked out here.
+        std::vector<LibraryGroove> worked;
+        const auto grooveAt = [&] (size_t i) -> const LibraryGroove&
+        {
+            if (all[i].sectionMask >= 0)
+                return all[i];
+            if (worked.size() != all.size())
+                worked.assign (all.begin(), all.end());
+            if (worked[i].sectionMask < 0)
+                classifyGroove (worked[i]);
+            return worked[i];
+        };
+        std::vector<double> fits (all.size(), -1.0);
+        const auto fitOf = [&] (size_t i)
+        {
+            if (fits[i] < 0.0)
+            {
+                const auto& g = grooveAt (i);
+                fits[i] = g.rhythm != nullptr ? composerGrooveFit (*g.rhythm, riff, c.beatsPerBar, riffLength) : 0.5;
+            }
+            return fits[i];
+        };
+        const auto scoreOf = [&] (size_t i) { return fitOf (i) * 100.0 + 0.5 * grooveAt (i).score; };
+        using Scored = std::pair<double, size_t>;
+        const auto better = [] (const Scored& a, const Scored& b) { return a.first != b.first ? a.first > b.first : a.second < b.second; };
+        const auto best = [&] (std::vector<Scored>& list, size_t n)
+        {
+            n = juce::jmin (n, list.size());
+            std::partial_sort (list.begin(), list.begin() + (std::ptrdiff_t) n, list.end(), better);
+            list.resize (n);
+        };
+        std::vector<Scored> toontrack, others;
+        for (int round = 0; round < 2 && toontrack.empty() && others.empty(); ++round)
+        {
+            if (round == 1)
+                section = fallbackSection (section);
+            for (size_t i = 0; i < all.size(); ++i)
+            {
+                const auto& g = grooveAt (i);
+                if (! eligible (g) || (g.sectionMask & (1 << section)) == 0)
+                    continue;
+                (g.toontrack ? toontrack : others).push_back ({ scoreOf (i), i });
+            }
+        }
+        const auto toontrackShare = size * 2 / 3;   // (the owner: 66 of 100)
+        best (toontrack, size);
+        best (others, size);
+        auto tTake = juce::jmin (toontrack.size(), toontrackShare);
+        auto oTake = juce::jmin (others.size(), size - toontrackShare);
+        tTake = juce::jmin (toontrack.size(), juce::jmax (tTake, size - oTake));   // (few others: more Toontrack)
+        std::vector<Scored> chosen (toontrack.begin(), toontrack.begin() + (std::ptrdiff_t) tTake);
+        if (tTake < toontrackShare)
+        {
+            // Short of the Toontrack folder's grooves naming the section: its others nearest in tempo and fit.
+            std::vector<Scored> extra;
+            for (size_t i = 0; i < all.size(); ++i)
+            {
+                const auto& g = grooveAt (i);
+                if (eligible (g) && g.toontrack && (g.sectionMask & (1 << section)) == 0)
+                    extra.push_back ({ fitOf (i) * 100.0 + 5.0 * tempoBonus (g.bpm, c.bpm), i });
+            }
+            best (extra, toontrackShare - tTake);
+            chosen.insert (chosen.end(), extra.begin(), extra.end());
+        }
+        oTake = juce::jmin (others.size(), size - juce::jmin (size, chosen.size()));
+        chosen.insert (chosen.end(), others.begin(), others.begin() + (std::ptrdiff_t) oTake);
+        std::stable_sort (chosen.begin(), chosen.end(), better);
+        std::vector<LibraryGroove> pool;
+        pool.reserve (chosen.size());
+        for (const auto& [score, i] : chosen)
+        {
+            pool.push_back (grooveAt (i));
+            pool.back().score = juce::roundToInt (score);
+        }
+        const std::lock_guard<std::mutex> sl (poolLock);
+        if (keptPools.size() >= 6)
+            keptPools.erase (keptPools.begin());
+        keptPools.push_back ({ key, pool });
+        return pool;
+    }
+
+    std::optional<LibraryGroove> composerLibraryGroove (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
     {
         if (! s.libraryDrums)
             return std::nullopt;
-        const auto grooves = composerLibraryGrooves (s, c);
-        if (grooves.empty())
-            return std::nullopt;
+        const auto pool = composerGroovePool (s, spans, c);
         if (s.libraryGroove.isNotEmpty())
-            for (const auto& g : grooves)
+        {
+            // Chosen by hand: from the pool, else from anywhere in the library.
+            for (const auto& g : pool)
                 if (g.file.getFullPathName() == s.libraryGroove)
                     return g;
-        // The take picks among the best few (within two points of the best, eight at most): ROLL gives another.
-        size_t best = 1;
-        while (best < grooves.size() && best < 8 && grooves[best].score >= grooves.front().score - 2)
-            ++best;
-        return grooves[(size_t) s.lane (ComposerLayer::drums).variation % best];
+            for (const auto& g : c.libraryGrooves)
+                if (g.file.getFullPathName() == s.libraryGroove)
+                {
+                    auto found = g;
+                    if (found.sectionMask < 0)
+                        classifyGroove (found);
+                    return found;
+                }
+        }
+        if (pool.empty())
+            return std::nullopt;
+        if (s.libraryPick.isNotEmpty())
+            for (const auto& g : pool)
+                if (g.file.getFullPathName() == s.libraryPick)
+                    return g;
+        return pool[(size_t) s.lane (ComposerLayer::drums).variation % pool.size()];
+    }
+
+    bool rollLibraryGroove (ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c, juce::Random& random)
+    {
+        if (! s.libraryDrums)
+            return false;
+        auto now = s;
+        now.libraryGroove = {};
+        const auto pool = composerGroovePool (now, spans, c);
+        if (pool.empty())
+            return false;
+        auto heard = juce::StringArray::fromTokens (s.groovesHeard, ",", "");
+        heard.removeEmptyStrings();
+        juce::String current;
+        if (const auto playing = composerLibraryGroove (now, spans, c))
+        {
+            current = grooveHash (*playing);
+            if (! heard.contains (current))
+                heard.add (current);
+        }
+        std::vector<size_t> left;
+        for (size_t i = 0; i < pool.size(); ++i)
+            if (! heard.contains (grooveHash (pool[i])))
+                left.push_back (i);
+        if (left.empty())
+        {
+            // Every one heard: the list goes round (in a new order), the one playing still last.
+            for (const auto& g : pool)
+                if (const auto h = grooveHash (g); h != current)
+                    heard.removeString (h);
+            for (size_t i = 0; i < pool.size(); ++i)
+                if (grooveHash (pool[i]) != current || pool.size() == 1)
+                    left.push_back (i);
+        }
+        const auto& next = pool[left[(size_t) random.nextInt ((int) left.size())]];
+        s.libraryGroove = {};
+        s.libraryPick = next.file.getFullPathName();
+        heard.add (grooveHash (next));
+        while (heard.size() > 1500)
+            heard.remove (0);
+        s.groovesHeard = heard.joinIntoString (",");
+        return true;
+    }
+
+    int fitKicksToRiff (LineIdea& drums, const SyncRhythm& riff, double beatsPerBar)
+    {
+        if (riff.all.empty() || drums.notes.empty() || beatsPerBar <= 0.0)
+            return 0;
+        // The groove's kick: its most played note of 33-36 (General MIDI's 35 and 36, the PR7-D Map's 33-36).
+        std::map<int, int> counts;
+        for (const auto& n : drums.notes)
+            if (n.pitch >= 33 && n.pitch <= 36)
+                ++counts[n.pitch];
+        if (counts.empty())
+            return 0;
+        auto kickPitch = counts.begin()->first;
+        for (const auto& [pitch, count] : counts)
+            if (count > counts[kickPitch])
+                kickPitch = pitch;
+        std::vector<size_t> kicks;
+        auto velocity = 0.0f;
+        auto length = 0.0;
+        for (size_t i = 0; i < drums.notes.size(); ++i)
+            if (drums.notes[i].pitch == kickPitch)
+            {
+                kicks.push_back (i);
+                velocity += drums.notes[i].velocity;
+                length += drums.notes[i].length;
+            }
+        velocity /= (float) kicks.size();
+        length /= (double) kicks.size();
+        const auto kickNear = [&] (double beat, double within)
+        {
+            for (const auto k : kicks)
+                if (std::abs (drums.notes[k].beat - beat) <= within)
+                    return true;
+            return false;
+        };
+        const auto end = drums.notes.back().beat + 1.0e-6;
+        const auto& accents = riff.accents.empty() ? riff.all : riff.accents;
+        auto changes = 0;
+        for (auto bar = 0.0; bar < end; bar += beatsPerBar)
+        {
+            auto inBar = 0;
+            // A kick moved onto a riff hit next to it that has none.
+            for (const auto k : kicks)
+            {
+                auto& n = drums.notes[k];
+                if (inBar >= 2 || n.beat < bar - 1.0e-6 || n.beat >= bar + beatsPerBar - 1.0e-6 || n.beat < bar + 1.0e-6
+                    || nearAny (riff.all, n.beat, 0.13))
+                    continue;
+                const auto at = std::lower_bound (riff.all.begin(), riff.all.end(), n.beat - 0.26);
+                for (auto it = at; it != riff.all.end() && *it <= n.beat + 0.26; ++it)
+                    if (! kickNear (*it, 0.13) && *it >= bar && *it < bar + beatsPerBar)
+                    {
+                        n.beat = *it;
+                        ++inBar;
+                        break;
+                    }
+            }
+            // A kick added under an accent with none.
+            for (const auto a : accents)
+            {
+                if (inBar >= 2)
+                    break;
+                if (a < bar - 1.0e-6 || a >= bar + beatsPerBar - 1.0e-6 || a >= end || kickNear (a, 0.13))
+                    continue;
+                drums.notes.push_back ({ a, length, kickPitch, velocity });
+                kicks.push_back (drums.notes.size() - 1);
+                ++inBar;
+            }
+            changes += inBar;
+        }
+        if (changes > 0)
+            std::stable_sort (drums.notes.begin(), drums.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        return changes;
     }
 
     void applyTransition (ComposerLayer l, LineIdea& idea, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)

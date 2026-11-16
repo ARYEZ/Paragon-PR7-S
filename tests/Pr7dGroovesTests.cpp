@@ -97,12 +97,12 @@ namespace
                 if (tags.isNotEmpty())
                     g->setAttribute ("tags", tags);
             };
-            groove (verse, 120.0, 4, 4, 1, "Genre:Metal|Type:Beat");
-            groove (chorus, 120.0, 4, 4, 1, "Genre:Metal|Type:Beat");
+            groove (verse, 120.0, 4, 4, 4, "Genre:Metal|Type:Beat");
+            groove (chorus, 120.0, 4, 4, 4, "Genre:Metal|Type:Beat");
             groove (fill, 120.0, 4, 4, 1, "Genre:Metal|Type:Fill");
             groove (waltz, 120.0, 3, 4, 1, {});
-            groove (gmVerse, 120.0, 4, 4, 1, {});
-            groove (outside, 120.0, 4, 4, 1, {});
+            groove (gmVerse, 120.0, 4, 4, 4, {});
+            groove (outside, 120.0, 4, 4, 4, {});
             groove (packs.getChildFile ("midiDB/Pack/Verse/Inside.mid"), 120.0, 4, 4, 1, {}, "db4:1|2|1");   // (a groove database's)
             index.writeTo (presets.getChildFile ("Groove Index.xml"));
         }
@@ -196,6 +196,7 @@ TEST_CASE ("0.107.0: the composer's drums play PR7-D's grooves, labelled fills a
 
     c.drums.fillEvery = 4;
     ComposerState s;
+    s.fitKicks = false;   // (0.137.0: the groove as written)
     s.lane (ComposerLayer::drums).style = 1;   // (a verse)
     s.lane (ComposerLayer::drums).variation = 0;
     const auto spans = eightBars();

@@ -111,9 +111,46 @@ namespace pr7s
             g.intensity = (float) x->getDoubleAttribute ("intensity");
             g.tags = juce::StringArray::fromTokens (x->getStringAttribute ("tags"), "|", "");
             g.tags.removeEmptyStrings();
+            if (const auto rhythm = x->getStringAttribute ("rhythm"); rhythm.isNotEmpty())   // (0.137.0)
+                g.rhythm = std::make_shared<const GrooveRhythm> (grooveRhythmFromText (rhythm));
             library.grooves.push_back (std::move (g));
         }
         return library;
+    }
+
+    GrooveRhythm grooveRhythmFromText (const juce::String& text)
+    {
+        GrooveRhythm r;
+        const auto parts = juce::StringArray::fromTokens (text, ";", {});
+        if (parts.size() < 3)
+            return r;
+        r.lengthBeats = juce::jmax (0.25, parts[0].getDoubleValue());
+        std::vector<std::pair<float, int>> snares;
+        auto loudest = 0;
+        for (const auto& lane : juce::StringArray::fromTokens (parts[2], "|", {}))
+        {
+            const auto l = lane.upToFirstOccurrenceOf (":", false, false).getIntValue();
+            if (l != 0 && l != 1)
+                continue;
+            for (const auto& t : juce::StringArray::fromTokens (lane.fromFirstOccurrenceOf (":", false, false), ",", {}))
+            {
+                const auto beat = (float) (t.upToFirstOccurrenceOf ("~", false, false).getIntValue() / 12.0);
+                const auto velocity = t.containsChar ('~') ? juce::jlimit (1, 127, t.fromFirstOccurrenceOf ("~", false, false).getIntValue()) : 127;
+                if (l == 0)
+                    r.kicks.push_back (beat);
+                else
+                {
+                    snares.push_back ({ beat, velocity });
+                    loudest = juce::jmax (loudest, velocity);
+                }
+            }
+        }
+        for (const auto& [beat, velocity] : snares)
+            if (velocity >= loudest * 0.55)
+                r.snares.push_back (beat);
+        std::sort (r.kicks.begin(), r.kicks.end());
+        std::sort (r.snares.begin(), r.snares.end());
+        return r;
     }
 
     int drumSlotOf (int note, int layout)

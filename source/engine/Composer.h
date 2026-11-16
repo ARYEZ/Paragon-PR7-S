@@ -99,6 +99,13 @@ namespace pr7s
         // the groove chosen by hand (its file's path; empty: by the section and the take).
         bool libraryDrums = true;
         juce::String libraryGroove;
+        // (0.137.0, the owner: "When I press roll it scrolls through all 100 ... in random order and I shouldn't see
+        // the same riff pop up until I've seen all of the riffs") The groove ROLL last picked from the section's 100
+        // (its file's path; empty: the take's place in the list), the grooves heard since the list went round
+        // (each path's hash, hex, by commas), and whether the kick is moved a little to fit the guitar (on).
+        juce::String libraryPick;
+        juce::String groovesHeard;
+        bool fitKicks = true;
         // (0.114.0, the owner: "imported without being changed at all and I need to select what composer lane it
         // goes to") The lane your riff (+ MY RIFF, ComposerContext::myRiff) plays on, exactly as you played it
         // (repeated to the length): no humanize, transition, playable-note or keyswitch changes on it.
@@ -216,7 +223,32 @@ namespace pr7s
     // (0.104.0) The state's transition written onto one lane's idea (composeLayers does it for every lane).
     void applyTransition (ComposerLayer, LineIdea&, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
     // (0.106.0) The library grooves the drums lane would choose from for the state's section (best first), and the
-    // one it plays (none: the library has none, or it's off).
-    std::vector<LibraryGroove> composerLibraryGrooves (const ComposerState&, const ComposerContext&);
-    std::optional<LibraryGroove> composerLibraryGroove (const ComposerState&, const ComposerContext&);
+    // one it plays (none: the library has none, or it's off). (0.137.0: the pool below; the one it plays: chosen by
+    // hand, else ROLL's pick, else the take's place in the pool.)
+    // (0.137.0, the owner's rules) The section's pool, best first:
+    //   - never a fill, never one in a left-out folder (excludedGrooveWords), only 4 to 16 bars;
+    //   - only grooves naming the section (in their name, folders or labels; none at all: the nearest kind's:
+    //     an intro or a bridge takes the verse's, a verse the chorus's, a chorus the verse's, an ending or a solo the
+    //     chorus's, a breakdown the verse's);
+    //   - scored by how the kick and snare fit the guitar (composerDrumRiff; composerGrooveFit), the style's words and
+    //     the tempo a little;
+    //   - `size` (100) of them, at least two thirds from the Toontrack folder (short of those: that folder's other
+    //     grooves nearest in tempo and fit, then other folders'), the rest from the others (short: more Toontrack).
+    // The chords are what the guitar is written over (none: the fit isn't counted). Worked out once per library,
+    // section and riff (kept).
+    std::vector<LibraryGroove> composerGroovePool (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&, size_t size = 100);
+    std::optional<LibraryGroove> composerLibraryGroove (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+    // The guitar's rhythm the drums fit to: your riff's lane when you pasted one, else the guitar lane (off: nothing).
+    SyncRhythm composerDrumRiff (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+    // How a groove's kick and snare fit a riff, 0 to 1 (no riff or no rhythm: 0.5): kicks on the riff's hits and the
+    // riff's accents met by a kick (weighed as PR7-D's riff match: recall 1.5 times precision), snares on a hit or a
+    // backbeat. Over the groove's first bars (32 beats at most), the riff from its start. Our measure.
+    double composerGrooveFit (const GrooveRhythm&, const SyncRhythm& riff, double beatsPerBar, double riffLength);
+    // ROLL on the drums lane with library grooves: the next of the pool in a random order, none heard again until
+    // all of them have been. False: no pool (the caller rolls the take as before).
+    bool rollLibraryGroove (ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&, juce::Random&);
+    // A groove's kicks moved a little toward the riff (FIT KICKS): a riff accent with no kick within a 32nd note gets
+    // one (the groove's own kick note, its usual velocity); a kick away from every riff hit and within a 16th of one
+    // that has none moves onto it; two changes a bar at most. Returns how many.
+    int fitKicksToRiff (LineIdea& drums, const SyncRhythm& riff, double beatsPerBar);
 }

@@ -598,6 +598,8 @@ void ComposerPage::generate()
     pr7s::generateComposer (state, random);
     if (! state.lane (ComposerLayer::guitar).locked)
         takeNewRiff();
+    if (! state.lane (ComposerLayer::drums).locked)
+        pr7s::rollLibraryGroove (state, placedSpans(), context, random);   // (0.137.0: the next of the section's 100)
     status = "Generated: a new take of every layer not locked";
     refresh();
 }
@@ -609,6 +611,20 @@ void ComposerPage::roll (ComposerLayer l)
     if (l == ComposerLayer::guitar)
         takeNewRiff();
     status = pr7s::composerLayerName (l) + ": a new take";
+    // (0.137.0, the owner: "it scrolls through all 100 ... in random order") The drums with library grooves: the next
+    // one of the section's pool none heard again until all have been.
+    if (l == ComposerLayer::drums)
+        if (pr7s::rollLibraryGroove (state, placedSpans(), context, random))
+            if (const auto now = pr7s::composerLibraryGroove (state, placedSpans(), context))
+            {
+                auto heard = juce::StringArray::fromTokens (state.groovesHeard, ",", "");
+                heard.removeEmptyStrings();
+                const auto pool = pr7s::composerGroovePool (state, placedSpans(), context);
+                auto count = 0;
+                for (const auto& g : pool)
+                    count += heard.contains (juce::String::toHexString ((juce::int64) g.file.getFullPathName().hashCode64())) ? 1 : 0;
+                status = "Drums: " + now->name + " (" + juce::String (count) + " of " + juce::String ((int) pool.size()) + " heard)";
+            }
     refresh();
 }
 
@@ -1935,14 +1951,24 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
         menu.addItem (libraryItems, "Grooves from My Library (PR7-D's groove library, else the MediaBay's drum MIDI)", true, state.libraryDrums);
         // (0.108.0, the studio link) PR7-D plays the drums from its own song track (the track keeps a muted copy).
         menu.addItem (libraryItems + 90, "PR7-D Plays the Drums from Its Song Track (on a track playing PR7-D)", true, studio.getPr7dPlaysDrums());
-        const auto grooves = pr7s::composerLibraryGrooves (state, context);
+        // (0.137.0, the owner's rules) The section's 100: two thirds from the Toontrack folder, 4 to 16 bars, naming
+        // the section, best fit to the guitar first; ROLL goes through them all in a random order.
+        menu.addItem (libraryItems + 91, "Fit the Kick to the Riff (a few kicks moved or added onto the guitar's hits)", state.libraryDrums, state.fitKicks);
+        const auto grooves = pr7s::composerGroovePool (state, placedSpans(), context);
+        auto fromToontrack = 0;
+        for (const auto& g : grooves)
+            fromToontrack += g.toontrack ? 1 : 0;
         juce::PopupMenu list;
-        list.addItem (libraryItems + 1, "Automatic (the section chooses, ROLL gives another)", state.libraryDrums, state.libraryGroove.isEmpty());
+        list.addItem (libraryItems + 1, "Automatic (ROLL goes through all " + juce::String ((int) grooves.size()) + " in a random order)", state.libraryDrums,
+                      state.libraryGroove.isEmpty());
+        if (! grooves.empty())
+            list.addSectionHeader (juce::String ((int) grooves.size()) + " for this section, " + juce::String (fromToontrack)
+                                   + " from Toontrack, best fit to the riff first");
         for (int i = 0; i < (int) grooves.size(); ++i)
-            list.addItem (libraryItems + 2 + i, grooves[(size_t) i].name + "  (" + grooves[(size_t) i].folder + ")", state.libraryDrums,
-                          state.libraryGroove == grooves[(size_t) i].file.getFullPathName());
-        const auto playing = pr7s::composerLibraryGroove (state, context);
-        menu.addSubMenu ("Library Groove: " + (grooves.empty() ? juce::String ("(none found: scan your grooves in the MediaBay)")
+            list.addItem (libraryItems + 200 + i, grooves[(size_t) i].name + "  (" + grooves[(size_t) i].folder + ", " + juce::String (grooves[(size_t) i].bars)
+                                                      + " bars)", state.libraryDrums, state.libraryGroove == grooves[(size_t) i].file.getFullPathName());
+        const auto playing = pr7s::composerLibraryGroove (state, placedSpans(), context);
+        menu.addSubMenu ("Library Groove: " + (grooves.empty() ? juce::String ("(none found: scan your grooves in PR7-D or the MediaBay)")
                                                                : playing.has_value() ? playing->name : juce::String ("(off)")),
                          list, ! grooves.empty());
     }
@@ -1972,18 +1998,20 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                         {
                             if (safe == nullptr || chosen <= 0)
                                 return;
-                            if (chosen >= libraryItems && chosen < libraryItems + 100)
+                            if (chosen >= libraryItems && chosen < libraryItems + 400)
                             {
                                 if (chosen == libraryItems)
                                     safe->setLibraryDrums (! safe->isUsingLibraryDrums());
                                 else if (chosen == libraryItems + 90)
                                     safe->studio.setPr7dPlaysDrums (! safe->studio.getPr7dPlaysDrums());
+                                else if (chosen == libraryItems + 91)
+                                    safe->setFitKicks (! safe->state.fitKicks);
                                 else if (chosen == libraryItems + 1)
                                     safe->setLibraryGroove ({});
-                                else
+                                else if (chosen >= libraryItems + 200)
                                 {
-                                    const auto grooves = pr7s::composerLibraryGrooves (safe->state, safe->context);
-                                    const auto i = chosen - libraryItems - 2;
+                                    const auto grooves = pr7s::composerGroovePool (safe->state, safe->placedSpans(), safe->context);
+                                    const auto i = chosen - libraryItems - 200;
                                     if (juce::isPositiveAndBelow (i, (int) grooves.size()))
                                         safe->setLibraryGroove (grooves[(size_t) i].file.getFullPathName());
                                 }
@@ -2015,6 +2043,14 @@ void ComposerPage::setLibraryDrums (bool on)
     state.libraryDrums = on;
     taken[(size_t) ComposerLayer::drums].reset();
     status = on ? "Drums: grooves from your library" : "Drums: the type's or the generator's";
+    refresh();
+}
+
+void ComposerPage::setFitKicks (bool on)
+{
+    state.fitKicks = on;
+    taken[(size_t) ComposerLayer::drums].reset();
+    status = on ? "Drums: the kick fitted to the riff" : "Drums: the groove's kick as written";
     refresh();
 }
 
