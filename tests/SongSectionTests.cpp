@@ -603,7 +603,7 @@ TEST_CASE ("0.93.0: the composer block by block: aimed at the first block, BUILD
 TEST_CASE ("0.94.0: the types a section can have; STANDARD is none; a type sets the guitar's flavour", "[sections][types]")
 {
     const auto chorus = sectionTypesFor ("Chorus");
-    REQUIRE (chorus.size() == 11);   // (0.99.0: SYNCOPATED DRIVE between them; 0.115.0 and 0.116.0: four more each after them)
+    REQUIRE (chorus.size() == 11 + 23);   // (0.140.0: 23 more after them) (0.99.0: SYNCOPATED DRIVE between them; 0.115.0 and 0.116.0: four more each after them)
     CHECK (chorus[0].name == "DRIVING");
     CHECK (chorus[0].flavour == RiffFlavour::drivingEighths);
     CHECK (chorus[2].name == "DRONING");
@@ -3211,7 +3211,7 @@ TEST_CASE ("0.116.0: the other four chorus types, every lane's options a differe
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const std::vector<juce::String> names { "TOM GROOVE RIFF", "RING, THEN ANSWER", "HALF-TIME CHORDS WITH AN OCTAVE PEDAL", "CHUG BAR, CHORD BAR" };
     const auto chorus = sectionTypesFor ("Chorus");
-    REQUIRE (chorus.size() == 7 + names.size());
+    REQUIRE (chorus.size() == 7 + names.size() + 23);   // (0.140.0: 23 more after them)
     CHECK (chorus[3].name == "PUSHED CHORDS UNDER A FIXED HOOK");   // (0.115.0's kept in their places)
     for (size_t i = 0; i < names.size(); ++i)
     {
@@ -3263,7 +3263,7 @@ TEST_CASE ("0.115.0: the four chorus types from the owner's songs, every lane's 
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const std::vector<juce::String> names { "PUSHED CHORDS UNDER A FIXED HOOK", "TWIN HARMONY, HALF TIME", "SIXTEENTH WALL, HALF-TIME KIT", "GROUPED STREAM" };
     const auto chorus = sectionTypesFor ("Chorus");
-    REQUIRE (chorus.size() == 3 + names.size() + 4);   // (0.116.0: four more after them)
+    REQUIRE (chorus.size() == 3 + names.size() + 4 + 23);   // (0.116.0: four more after them; 0.140.0: 23 more)
     CHECK (chorus[0].name == "DRIVING");   // (the first three kept in their places)
     for (size_t i = 0; i < names.size(); ++i)
     {
@@ -4324,5 +4324,161 @@ TEST_CASE ("0.139.0: the verse types' shapes", "[sections][types][verse139]")
         const auto g = composeLayers (typed ("BASS GROOVE, GUITAR SQUEALS"), spans, c)[(size_t) ComposerLayer::guitar];
         CHECK (std::any_of (g.notes.begin(), g.notes.end(), [] (const LineNote& n) { return n.beat < 1.0e-6 && n.pitch >= 79 && n.effect == LineNote::Effect::vibrato; }));
         CHECK (starts (g, 6.5, 8.0) == 6);
+    }
+}
+
+TEST_CASE ("0.140.0: the 23 chorus types from the 61 songs, every lane's options a different part", "[sections][types][chorus140]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> names { "DOTTED STREAM", "NEIGHBOUR TRILL WALL", "TWO RUNG CHORDS A BAR", "THREE DOTTED PUSHES", "FOUR ON THE FLOOR, DYAD RIFF",
+                                            "SPLIT ON THE AND OF THREE", "TREMOLO DYADS OVER RUNG CHORDS", "DOTTED CHORDS, HIGH TREMOLO NOTE", "THE RIFF IS THE CHORUS",
+                                            "HIGH TREMOLO DYAD OVER THE RIFF", "HELD CHORDS IN 3+3+2", "DOTTED PEDAL CELL", "FIXED SHAPE, CREEPING ROOT",
+                                            "CHROMATIC CHORDS UNDER A FIXED TREMOLO", "HALF-NOTE CHORDS, OFF-BEAT OPEN HATS", "HIT, HOLD, BURST INTO THE NEXT",
+                                            "PUSH BAR, CELL BAR", "SYNCOPATED CHORDS WITH A PUSH BAR", "THREE-SIXTEENTH CELLS AFTER A HELD ONE", "SHRINKING GROUPS",
+                                            "HELD ROOTS CLIMBING, PUSHED LATE", "FALLING CELLS IN SIXES", "FOUR EIGHTHS, THEN A PUSH" };
+    const auto chorus = sectionTypesFor ("Chorus");
+    REQUIRE (chorus.size() == 11 + names.size());
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        CHECK (chorus[11 + i].name == names[i]);
+        CHECK (sectionTypeCalled (names[i])->band == SectionType::Band::chorus);
+        CHECK (isSectionTypeOf ("Post-Chorus", names[i]));   // (a post-chorus lists the chorus's types after its own)
+    }
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    for (const auto& name : names)
+    {
+        ComposerState s;
+        applySectionType (s, "Chorus", name);
+        REQUIRE (sectionBand (s) == SectionType::Band::chorus);
+        for (const auto l : composerLayers())
+        {
+            const auto options = sectionApproaches (s, l);
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) options.size());
+            std::set<juce::String> seen;
+            for (const auto& idea : choices)
+            {
+                INFO (name << " " << composerLayerName (l) << " " << idea.style);
+                CHECK (idea.notes.size() + (idea.style.containsIgnoreCase ("out") ? 1 : 0) > 0);
+                seen.insert (key (idea));
+            }
+            INFO (name << " " << composerLayerName (l));
+            CHECK (seen.size() == choices.size());
+        }
+        const auto all = composeLayers (s, spans, c);
+        for (const auto& idea : all)
+            for (const auto& n : idea.notes)
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+    }
+}
+
+TEST_CASE ("0.140.0: the chorus types' shapes", "[sections][types][chorus140]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();
+    const auto typed = [] (const juce::String& name, int guitar = 0, int bass = 0, int drums = 0, int lead = 0)
+    {
+        ComposerState s;
+        applySectionType (s, "Chorus", name);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::bass).approach = bass;
+        s.lane (ComposerLayer::drums).approach = drums;
+        s.lane (ComposerLayer::lead).on = true;
+        s.lane (ComposerLayer::lead).approach = lead;
+        return s;
+    };
+    const auto starts = [] (const LineIdea& idea)
+    {
+        std::set<int> at;
+        for (const auto& n : idea.notes)
+            at.insert (juce::roundToInt (n.beat * 4.0));   // (sixteenths from the start)
+        return at;
+    };
+    const auto has = [] (const LineIdea& idea, double beat, int pitch)
+    {
+        return std::any_of (idea.notes.begin(), idea.notes.end(), [&] (const LineNote& n) { return std::abs (n.beat - beat) < 1.0e-6 && n.pitch == pitch; });
+    };
+    // DOTTED STREAM: the guitar on 3+3+3+3+2+2; the bass on the same hits; the kick on the dotted ones.
+    {
+        const auto all = composeLayers (typed ("DOTTED STREAM"), spans, c);
+        const auto g = starts (all[(size_t) ComposerLayer::guitar]);
+        for (int k = 0; k < 16; ++k)
+            CHECK ((g.count (k) > 0) == (std::string ("x--x--x--x--x-xx")[(size_t) k] == 'x'));
+        CHECK (starts (all[(size_t) ComposerLayer::bass]) == g);
+        const auto& d = all[(size_t) ComposerLayer::drums];
+        for (const auto k : { 0, 3, 6, 10 })
+            CHECK (has (d, k * 0.25, GmDrum::kick));
+    }
+    // NEIGHBOUR TRILL WALL: a chord on every sixteenth, the bass alternating two notes.
+    {
+        const auto all = composeLayers (typed ("NEIGHBOUR TRILL WALL"), spans, c);
+        CHECK (starts (all[(size_t) ComposerLayer::guitar]).size() == 128u);
+        const auto& b = all[(size_t) ComposerLayer::bass];
+        REQUIRE (b.notes.size() > 3);
+        CHECK (b.notes[0].pitch != b.notes[1].pitch);
+        CHECK (b.notes[0].pitch == b.notes[2].pitch);
+    }
+    // SPLIT ON THE AND OF THREE: the next bar's chord pushed in on the and of 3 (Am bar 0, F next: F's root at 2.5).
+    {
+        const auto g = composeLayers (typed ("SPLIT ON THE AND OF THREE"), spans, c)[(size_t) ComposerLayer::guitar];
+        CHECK (has (g, 0.0, 33));      // (A)
+        CHECK (has (g, 2.5, 41));      // (F, pushed)
+    }
+    // FOUR ON THE FLOOR, DYAD RIFF: the kick on every beat, an open hat on every off-beat eighth.
+    {
+        const auto d = composeLayers (typed ("FOUR ON THE FLOOR, DYAD RIFF"), spans, c)[(size_t) ComposerLayer::drums];
+        for (int b = 0; b < 32; ++b)
+        {
+            CHECK (has (d, b, GmDrum::kick));
+            CHECK (has (d, b + 0.5, GmDrum::openHat));
+            CHECK_FALSE (has (d, b, GmDrum::openHat));
+        }
+    }
+    // SHRINKING GROUPS: a crash on each group's start: eighths 0, 9, 17 and 24 of every four bars.
+    {
+        const auto d = composeLayers (typed ("SHRINKING GROUPS"), spans, c)[(size_t) ComposerLayer::drums];
+        for (const auto eighth : { 0, 9, 17, 24, 32, 41 })
+            CHECK (has (d, eighth * 0.5, GmDrum::crash));
+        CHECK_FALSE (has (d, 4.0, GmDrum::crash));   // (bar 2's one is inside the first group)
+    }
+    // HIGH TREMOLO DYAD OVER THE RIFF: the lead the same two notes the whole chorus, over every chord.
+    {
+        const auto l = composeLayers (typed ("HIGH TREMOLO DYAD OVER THE RIFF"), spans, c)[(size_t) ComposerLayer::lead];
+        std::set<int> pitches;
+        for (const auto& n : l.notes)
+            pitches.insert (n.pitch);
+        CHECK (pitches.size() == 2u);
+        CHECK (l.notes.size() == 256u);   // (two notes on every sixteenth of eight bars)
+    }
+    // HIT, HOLD, BURST INTO THE NEXT: the next chord's root on the bar's last three sixteenths but one.
+    {
+        const auto g = composeLayers (typed ("HIT, HOLD, BURST INTO THE NEXT"), spans, c)[(size_t) ComposerLayer::guitar];
+        for (const auto k : { 12, 13, 15 })
+            CHECK (has (g, k * 0.25, 41));   // (F after Am)
+        CHECK_FALSE (has (g, 14 * 0.25, 41));
+    }
+    // FIXED SHAPE, CREEPING ROOT: the arpeggio's top notes the same in every bar; only its root moves.
+    {
+        const auto g = composeLayers (typed ("FIXED SHAPE, CREEPING ROOT"), spans, c)[(size_t) ComposerLayer::guitar];
+        std::set<int> tops;
+        std::set<int> roots;
+        for (const auto& n : g.notes)
+        {
+            const auto inBar = std::fmod (n.beat, 4.0);
+            (inBar < 1.0e-6 ? roots : tops).insert (n.pitch);
+        }
+        CHECK (tops.size() == 3u);
+        CHECK (roots.size() == 4u);   // (Am F C G)
     }
 }
