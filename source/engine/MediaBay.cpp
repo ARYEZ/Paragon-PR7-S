@@ -873,6 +873,15 @@ namespace pr7s
         return true;
     }
 
+    void MediaDatabase::setItemsForTests (std::vector<MediaItem> list)
+    {
+        {
+            const juce::ScopedLock sl (pendingLock);
+            pending = std::move (list);
+        }
+        takeScanResults();
+    }
+
     std::vector<int> MediaDatabase::find (const MediaQuery& query) const
     {
         const TextSearch search (query.text);

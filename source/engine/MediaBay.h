@@ -162,6 +162,7 @@ namespace pr7s
         int getFilesSeen() const noexcept { return filesSeen.load(); }
         std::function<bool()> shouldPause;
         bool takeScanResults();                      // (message thread) a finished scan's items in; true if any
+        void setItemsForTests (std::vector<MediaItem>);   // as a scan's results (the speed tests' 120,000 files)
 
         const std::vector<MediaItem>& getItems() const noexcept { return items; }
         std::vector<int> find (const MediaQuery&) const;   // indices into getItems, in the items' order

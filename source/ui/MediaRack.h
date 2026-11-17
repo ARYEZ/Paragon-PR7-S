@@ -124,6 +124,9 @@ private:
     juce::String getTooltipForRow (int row) override;
 
     void timerCallback() override;
+public:
+    void runTimerForTests() { timerCallback(); }
+private:
     void go (State);              // to a page, remembered for BACK
     void rebuild();               // rows for the page
     void layout();

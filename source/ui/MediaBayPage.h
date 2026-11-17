@@ -126,6 +126,9 @@ private:
     juce::String getCellTooltip (int row, int column) override;
 
     void timerCallback() override;
+public:
+    void runTimerForTests() { timerCallback(); }
+private:
     void refreshBrowser();
     void refreshKeys();
     void saveSettings();
