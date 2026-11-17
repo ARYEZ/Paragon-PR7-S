@@ -6156,12 +6156,15 @@ TEST_CASE ("0.160.0: round four's bass versions, in front of LOCKED WITH THE KIC
         CHECK (layers[(size_t) ComposerLayer::bass].style.toLowerCase().contains ("locked"));
     }
     // PLAYS ONLY THE HEAD: nothing after the bar's seventh sixteenth.
-    for (const auto& n : play ("PLAYS ONLY THE HEAD")[(size_t) ComposerLayer::bass].notes)
+    // (Kept in a local first: a member reached through [] of a temporary is gone before the loop; MSVC read it empty.)
+    const auto head = play ("PLAYS ONLY THE HEAD")[(size_t) ComposerLayer::bass];
+    for (const auto& n : head.notes)
         CHECK (std::fmod (n.beat, 4.0) < 1.75 - 1.0e-6);
     // KEEPS THE CHORUS RHYTHM: its figure in every bar.
     {
         std::set<int> at;
-        for (const auto& n : play ("KEEPS THE CHORUS RHYTHM")[(size_t) ComposerLayer::bass].notes)
+        const auto rhythm = play ("KEEPS THE CHORUS RHYTHM")[(size_t) ComposerLayer::bass];
+        for (const auto& n : rhythm.notes)
             if (n.beat >= 8.0 - 1.0e-6 && n.beat < 12.0 - 1.0e-6)
                 at.insert (juce::roundToInt ((n.beat - 8.0) * 4.0));
         CHECK (at == std::set<int> { 0, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14 });
