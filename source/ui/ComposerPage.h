@@ -7,6 +7,7 @@
 #include "engine/Studio.h"
 #include "ui/LinesPage.h"
 #include "ui/PartDropTarget.h"
+#include "ui/OptionBrowser.h"
 
 // THE COMPOSER (0.58.0, the owner asked: "a combined page, all layers stacked, each with a lock and a
 // re-roll, and one generate button"). engine/Composer.h says how the layers are chosen.
@@ -133,6 +134,24 @@ public:
     juce::String typeSectionName() const;   // the name the types are for: the block's, else the SECTION's
     void setApproach (pr7s::ComposerLayer, int approach);
     int getApproach (pr7s::ComposerLayer l) const { return state.lane (l).approach; }
+    int getStyle (pr7s::ComposerLayer l) const { return state.lane (l).style; }
+    // (0.156.0, the owner chose D with C's feel filters) A lane's style key: a short menu (Automatic, the section
+    // type's own options, favourites and recent, MORE OPTIONS...) and the option browser behind MORE OPTIONS with
+    // everything. Options' ids: a style's number, or `approachId` + an approach's number.
+    static constexpr int approachId = 100000;
+    static constexpr int shortListMost = 12;   // a group longer than this is left to the browser (favourites and recent still shown)
+    std::vector<OptionBrowser::Option> laneOptions (pr7s::ComposerLayer) const;
+    juce::String optionListKey (pr7s::ComposerLayer l) const { return "lane:" + pr7s::composerLayerName (l).toLowerCase(); }
+    juce::PopupMenu makeStyleMenu (pr7s::ComposerLayer);
+    void styleMenuChosen (pr7s::ComposerLayer, int item);
+    std::unique_ptr<OptionBrowser> makeOptionBrowser (pr7s::ComposerLayer);   // (tests: shown by showOptionBrowser)
+    void showOptionBrowser (pr7s::ComposerLayer);
+    void useOption (pr7s::ComposerLayer, int id);     // an option's id chosen (noted as used)
+    void tryOption (pr7s::ComposerLayer, int id);     // HEAR: chosen for now and heard; put back unless used
+    void endTrial (bool keep);
+    static constexpr int moreOptionsItem = 4800;
+    static constexpr int approachItems = 6300;    // (0.94.0) the type's approaches: 6300 automatic, 6301 + i (0.156.0: up to 6399)
+    static inline const juce::String typeOwnGroup = "THIS TYPE'S OWN", songsGroup = "FROM YOUR SONGS", stylesGroup = "STYLES";
     // (0.126.0) OWN STYLES: a lane the section type writes plays its own styles instead (and back).
     void setOwnStyles (pr7s::ComposerLayer, bool own);
     // (0.126.0) SYNC TO: this lane alone follows another lane's rhythm (none: not on its own).
@@ -226,7 +245,8 @@ private:
     static constexpr int libraryItems = 7000;     // (0.106.0) the drums' style menu: 7000 on/off, 7001 automatic, 7002 + i a groove
     static constexpr int ownStylesItem = 6290;
     static constexpr int syncToItems = 6260;      // (0.126.0) SYNC TO: 6260 none, 6261 + layer    // (0.126.0) the type's lanes: Play Its Own Styles / Follow Again
-    static constexpr int approachItems = 6300;    // (0.94.0) the type's approaches: 6300 automatic, 6301 + i
+    struct Trial { bool active = false; pr7s::ComposerLayer layer {}; int approach = -1, style = 0; bool wasHearing = false; };
+    Trial trial;
     void showTypeMenu();
     void applyBlockType();   // the target block's type onto the state (when it differs)
     static constexpr int myRiffItem = 4900;   // (0.75.0) the guitar's style menu: My Riff   // (0.70.0) the lead's style menu: Solo Style items

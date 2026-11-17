@@ -1,0 +1,264 @@
+#include "OptionFeel.h"
+
+#include <algorithm>
+#include <array>
+#include <cmath>
+
+namespace pr7s
+{
+    juce::String optionFeelName (OptionFeel f)
+    {
+        switch (f)
+        {
+            case OptionFeel::straight: return "STRAIGHT";
+            case OptionFeel::half: return "HALF TIME";
+            case OptionFeel::doubleTime: return "DOUBLE TIME";
+            case OptionFeel::broken: return "BROKEN";
+            case OptionFeel::unknown: break;
+        }
+        return {};
+    }
+
+    juce::String energyName (int energy)
+    {
+        return energy == 1 ? "CALM" : energy == 2 ? "MEDIUM" : energy == 3 ? "HEAVY" : juce::String();
+    }
+
+    namespace
+    {
+        struct Onset
+        {
+            double beat = 0.0;
+            float velocity = 0.0f;
+        };
+
+        // Notes starting within 1/48 beat of each other count as one hit (the loudest).
+        std::vector<Onset> onsetsOf (std::vector<Onset> notes)
+        {
+            std::sort (notes.begin(), notes.end(), [] (const Onset& a, const Onset& b) { return a.beat < b.beat; });
+            std::vector<Onset> out;
+            for (const auto& n : notes)
+            {
+                if (! out.empty() && n.beat - out.back().beat < 1.0 / 48.0)
+                    out.back().velocity = std::max (out.back().velocity, n.velocity);
+                else
+                    out.push_back (n);
+            }
+            return out;
+        }
+
+        bool onGrid (double beat, double step)
+        {
+            const auto x = beat / step;
+            return std::abs (x - std::round (x)) < 0.08;
+        }
+
+        double spanOf (const LineIdea& idea)
+        {
+            auto end = 0.0;
+            for (const auto& n : idea.notes)
+                if (! n.keyswitch)
+                    end = std::max (end, n.beat + std::max (n.length, 0.0));
+            return end;
+        }
+
+        double meanVelocity (const std::vector<Onset>& onsets)
+        {
+            if (onsets.empty())
+                return 0.0;
+            auto sum = 0.0;
+            for (const auto& o : onsets)
+                sum += o.velocity;
+            return sum / (double) onsets.size();
+        }
+    }
+
+    OptionMeasure measureOption (const LineIdea& idea, double beatsPerBar, bool drums)
+    {
+        OptionMeasure m;
+        const auto bpb = beatsPerBar > 0.0 ? beatsPerBar : 4.0;
+        std::vector<Onset> all;
+        for (const auto& n : idea.notes)
+            if (! n.keyswitch)
+                all.push_back ({ n.beat, n.velocity });
+        const auto onsets = onsetsOf (all);
+        if (onsets.empty())
+            return m;
+        const auto length = std::max ({ spanOf (idea), onsets.back().beat + 0.25, bpb });
+        const auto beats = std::ceil (length / bpb - 1e-6) * bpb;
+        const auto bars = beats / bpb;
+        m.hitsPerBeat = (double) onsets.size() / beats;
+
+        if (! drums)
+        {
+            auto off = 0;
+            for (const auto& o : onsets)
+                off += onGrid (o.beat, 0.5) ? 0 : 1;
+            m.offGrid = (double) off / (double) onsets.size();
+            if (m.hitsPerBeat < 0.6)
+                m.feel = OptionFeel::half;
+            else if (m.hitsPerBeat > 2.6)
+                m.feel = OptionFeel::doubleTime;   // (sixteenths are off the eighths half the time: not broken)
+            else if (m.offGrid > 0.35)
+                m.feel = OptionFeel::broken;
+            else
+                m.feel = OptionFeel::straight;
+            const auto score = m.hitsPerBeat * meanVelocity (onsets);
+            m.energy = score < 0.9 ? 1 : score < 2.2 ? 2 : 3;
+            return m;
+        }
+
+        // (Measured against the composer's own drum options, the owner's songs' among them.) The bar in sixteenths of
+        // a four-beat bar; its last beat left out (fills live there). The loud snares (and claps) say the feel; ghost
+        // notes only when there are no loud ones.
+        const auto sixteenth = bpb / 16.0;
+        std::vector<Onset> kicks, loud, soft;
+        for (const auto& n : idea.notes)
+        {
+            if (n.keyswitch)
+                continue;
+            if (n.pitch == 35 || n.pitch == 36)
+                kicks.push_back ({ n.beat, n.velocity });
+            else if (n.pitch == 38 || n.pitch == 39 || n.pitch == 40)
+                (n.velocity >= 0.6f ? loud : soft).push_back ({ n.beat, n.velocity });
+        }
+        const auto snaresSoft = loud.empty();
+        const auto snareHits = onsetsOf (snaresSoft ? soft : loud);
+        const auto kickHits = onsetsOf (kicks);
+        const auto barsCount = juce::jmax (1, (int) std::round (bars));
+        std::vector<std::array<bool, 12>> inBar ((size_t) barsCount, std::array<bool, 12> {});
+        // Every fourth bar left out too when there are four or more (a phrase's last bar holds its fill).
+        const auto fillBar = [barsCount] (int bar) { return barsCount >= 4 && bar % 4 == 3; };
+        auto early = 0, odd = 0;
+        for (const auto& o : snareHits)
+        {
+            const auto pos = o.beat / sixteenth;
+            const auto step = (int) std::round (pos);
+            if (fillBar ((int) std::floor (pos / 16.0 + 1e-6)))
+                continue;
+            if (std::abs (pos - step) > 0.2)
+            {
+                ++early;
+                ++odd;   // (off the sixteenths: pushed)
+                continue;
+            }
+            const auto inThe = step % 16;
+            if (inThe >= 12)
+                continue;
+            ++early;
+            odd += inThe % 2;
+            inBar[(size_t) juce::jlimit (0, barsCount - 1, step / 16)][(size_t) inThe] = true;
+        }
+        auto kickOdd = 0;
+        auto kicksCounted = 0;
+        for (const auto& o : kickHits)
+        {
+            const auto pos = o.beat / sixteenth;
+            if (fillBar ((int) std::floor (pos / 16.0 + 1e-6)) || ((int) std::round (pos)) % 16 >= 12)
+                continue;
+            ++kicksCounted;
+            kickOdd += (std::abs (pos - std::round (pos)) > 0.2 || ((int) std::round (pos)) % 2 == 1) ? 1 : 0;
+        }
+        const auto barsWith = [&] (std::initializer_list<int> steps)
+        {
+            auto n = 0;
+            for (int b = 0; b < (int) inBar.size(); ++b)
+            {
+                if (fillBar (b))
+                    continue;
+                const auto& bar = inBar[(size_t) b];
+                auto all = true;
+                for (const auto st : steps)
+                    all = all && bar[(size_t) st];
+                n += all ? 1 : 0;
+            }
+            return n;
+        };
+        auto counted = 0;
+        for (int b = 0; b < barsCount; ++b)
+            counted += fillBar (b) ? 0 : 1;
+        const auto half = counted / 2.0;
+        m.offGrid = kicksCounted == 0 ? 0.0 : (double) kickOdd / (double) kicksCounted;
+
+        if (! snaresSoft && (barsWith ({ 0, 4, 8 }) >= half || barsWith ({ 2, 6, 10 }) >= half))
+            m.feel = OptionFeel::doubleTime;
+        else if ((early > 0 && odd * 4 >= early) || (kicksCounted >= 4 && kickOdd * 4 >= kicksCounted))
+            m.feel = OptionFeel::broken;
+        else if (barsWith ({ 8 }) >= half && barsWith ({ 4 }) * 4 < counted)
+            m.feel = OptionFeel::half;
+        else if (snareHits.empty() && (double) kickHits.size() / beats <= 0.5)
+            m.feel = OptionFeel::half;
+        else
+            m.feel = OptionFeel::straight;
+
+        // Energy: the kick and snare count fully, everything else less; times how hard.
+        const auto backbone = (double) (kickHits.size() + snareHits.size()) / beats;
+        const auto others = juce::jmax (0.0, m.hitsPerBeat - backbone);
+        const auto score = (backbone + 0.4 * others) * meanVelocity (onsets);
+        m.energy = score < 1.0 ? 1 : score < 1.9 ? 2 : 3;
+        return m;
+    }
+
+    //==============================================================================
+    bool OptionMemory::isFavourite (const juce::String& list, const juce::String& name) const
+    {
+        const auto found = favourites.find (list);
+        return found != favourites.end() && found->second.contains (name);
+    }
+
+    void OptionMemory::setFavourite (const juce::String& list, const juce::String& name, bool on)
+    {
+        auto& names = favourites[list];
+        if (on)
+            names.addIfNotAlreadyThere (name);
+        else
+            names.removeString (name);
+        if (names.isEmpty())
+            favourites.erase (list);
+    }
+
+    void OptionMemory::noteUsed (const juce::String& list, const juce::String& name)
+    {
+        if (name.isEmpty())
+            return;
+        auto& names = recent[list];
+        names.removeString (name);
+        names.insert (0, name);
+        while (names.size() > recentKept)
+            names.remove (names.size() - 1);
+    }
+
+    juce::StringArray OptionMemory::favouritesOf (const juce::String& list) const
+    {
+        const auto found = favourites.find (list);
+        return found == favourites.end() ? juce::StringArray() : found->second;
+    }
+
+    juce::StringArray OptionMemory::recentOf (const juce::String& list) const
+    {
+        const auto found = recent.find (list);
+        return found == recent.end() ? juce::StringArray() : found->second;
+    }
+
+    juce::String OptionMemory::toText (const std::map<juce::String, juce::StringArray>& lists)
+    {
+        juce::StringArray lines;
+        for (const auto& [list, names] : lists)
+            for (const auto& n : names)
+                lines.add (list + "|" + n);
+        return lines.joinIntoString ("\n");
+    }
+
+    std::map<juce::String, juce::StringArray> OptionMemory::fromText (const juce::String& text)
+    {
+        std::map<juce::String, juce::StringArray> out;
+        for (const auto& line : juce::StringArray::fromLines (text))
+        {
+            const auto list = line.upToFirstOccurrenceOf ("|", false, false).trim();
+            const auto name = line.fromFirstOccurrenceOf ("|", false, false).trim();
+            if (list.isNotEmpty() && name.isNotEmpty())
+                out[list].addIfNotAlreadyThere (name);
+        }
+        return out;
+    }
+}

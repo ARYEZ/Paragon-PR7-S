@@ -1849,44 +1849,70 @@ juce::Button* ComposerPage::keyNamed (const juce::String& name)
 }
 
 //==============================================================================
-void ComposerPage::showStyleMenu (ComposerLayer l)
+juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
 {
     const auto choices = pr7s::composerChoices (l, state, spans, context);
     juce::PopupMenu menu;
     // (0.97.1) A lane the section type writes: its options are the type's approaches, each a different part.
     const auto typeWrites = pr7s::sectionTypeWritesLane (l, state, context);
-    for (int i = 0; i < (int) choices.size(); ++i)
-        menu.addItem (i + 1, choices[(size_t) i].style + (choices[(size_t) i].description.isNotEmpty() ? "  (" + choices[(size_t) i].description + ")" : juce::String()),
-                      true, i == state.lane (l).style);
-    // (0.94.0) The section type's approaches for this lane, first.
-    if (const auto approaches = pr7s::sectionApproaches (state, l); typeWrites && ! approaches.isEmpty())
+    // (0.156.0, the owner's mock-up D) The short list: Automatic, the type's own options, favourites and recent;
+    // everything else behind MORE OPTIONS... (the option browser, with the feel filters).
+    const auto options = laneOptions (l);
+    const auto memory = studio.getOptionMemory();
+    const auto key = optionListKey (l);
+    const auto itemOf = [] (int id) { return id >= approachId ? approachItems + 1 + (id - approachId) : id + 1; };
+    const auto isOn = [this, l] (int id) { return id >= approachId ? state.lane (l).approach == id - approachId
+                                                                     : state.lane (l).approach < 0 && id == state.lane (l).style; };
+    const auto nameOf = [] (const OptionBrowser::Option& o) { return o.name + (o.description.isNotEmpty() ? "  (" + o.description + ")" : juce::String()); };
+    std::map<juce::String, int> groupSizes;
+    for (const auto& o : options)
+        ++groupSizes[o.group];
+    juce::StringArray shownNames;
+    const auto addGroup = [&] (const juce::String& group, const juce::String& heading)
     {
-        juce::PopupMenu typed;
-        typed.addSectionHeader (state.sectionType.isNotEmpty() ? state.sectionType : juce::String ("DRONING"));
-        typed.addItem (approachItems, "Automatic (the take chooses)", true, state.lane (l).approach < 0);
-        for (int i = 0; i < approaches.size(); ++i)
-        {
-            const auto& idea = i < (int) choices.size() ? choices[(size_t) i] : pr7s::LineIdea {};
-            typed.addItem (approachItems + 1 + i, approaches[i] + (idea.description.isNotEmpty() ? "  (" + idea.description + ")" : juce::String()),
-                           true, state.lane (l).approach == i);
-        }
-        menu = typed;
+        if (groupSizes[group] == 0 || groupSizes[group] > shortListMost)
+            return;
+        menu.addSectionHeader (heading);
+        for (const auto& o : options)
+            if (o.group == group)
+            {
+                menu.addItem (itemOf (o.id), nameOf (o), true, isOn (o.id));
+                shownNames.add (o.name);
+            }
+    };
+    const auto approaches = pr7s::sectionApproaches (state, l);
+    if (! approaches.isEmpty())
+    {
+        menu.addSectionHeader (state.sectionType.isNotEmpty() ? state.sectionType : juce::String ("DRONING"));
+        menu.addItem (approachItems, typeWrites ? "Automatic (the take chooses)" : "Automatic (the style and the take choose)", true, state.lane (l).approach < 0);
     }
-    else if (const auto approaches = pr7s::sectionApproaches (state, l); ! approaches.isEmpty())
+    addGroup (typeOwnGroup, "THIS TYPE'S OWN");
+    addGroup (stylesGroup, "STYLES");
+    // Favourites, then the recent, of what isn't shown already.
     {
-        juce::PopupMenu typed;
-        typed.addSectionHeader (state.sectionType.isNotEmpty() ? state.sectionType : juce::String ("DRONING"));
-        typed.addItem (approachItems, "Automatic (the style and the take choose)", true, state.lane (l).approach < 0);
-        for (int i = 0; i < approaches.size(); ++i)
-            typed.addItem (approachItems + 1 + i, approaches[i], true, state.lane (l).approach == i);
-        juce::PopupMenu whole;
-        whole.addSubMenu ("Approach: " + pr7s::approachName (state, l), typed);
-        whole.addSeparator();
-        whole.addSectionHeader ("STYLES");
-        for (int i = 0; i < (int) choices.size(); ++i)
-            whole.addItem (i + 1, choices[(size_t) i].style + (choices[(size_t) i].description.isNotEmpty() ? "  (" + choices[(size_t) i].description + ")" : juce::String()),
-                           true, i == state.lane (l).style);
-        menu = whole;
+        bool headed = false;
+        const auto addNamed = [&] (const juce::StringArray& names, bool star)
+        {
+            for (const auto& n : names)
+                for (const auto& o : options)
+                    if (o.name == n && ! shownNames.contains (n))
+                    {
+                        if (! headed)
+                            menu.addSectionHeader (juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 FAVOURITES & RECENT")));
+                        headed = true;
+                        menu.addItem (itemOf (o.id), (star ? juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 ")) : juce::String()) + o.name
+                                                         + (star ? juce::String() : juce::String ("  (recent)")), true, isOn (o.id));
+                        shownNames.add (n);
+                        break;
+                    }
+        };
+        addNamed (memory.favouritesOf (key), true);
+        addNamed (memory.recentOf (key), false);
+    }
+    if (! options.empty())
+    {
+        menu.addSeparator();
+        menu.addItem (moreOptionsItem, "MORE OPTIONS... (all " + juce::String ((int) options.size()) + ", with search and feel filters)");
     }
     // (0.126.0) A lane the section type writes can play its own styles instead, and come back.
     if (typeWrites)
@@ -1993,49 +2019,204 @@ void ComposerPage::showStyleMenu (ComposerLayer l)
                                                                       : juce::String ("Double the Sync Track (with SYNC on)"),
                       sync.has_value() && *sync != l, state.lane (l).doubleSync);
     }
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].style),
-                        [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
-                        {
-                            if (safe == nullptr || chosen <= 0)
-                                return;
-                            if (chosen >= libraryItems && chosen < libraryItems + 400)
-                            {
-                                if (chosen == libraryItems)
-                                    safe->setLibraryDrums (! safe->isUsingLibraryDrums());
-                                else if (chosen == libraryItems + 90)
-                                    safe->studio.setPr7dPlaysDrums (! safe->studio.getPr7dPlaysDrums());
-                                else if (chosen == libraryItems + 91)
-                                    safe->setFitKicks (! safe->state.fitKicks);
-                                else if (chosen == libraryItems + 1)
-                                    safe->setLibraryGroove ({});
-                                else if (chosen >= libraryItems + 200)
-                                {
-                                    const auto grooves = pr7s::composerGroovePool (safe->state, safe->placedSpans(), safe->context);
-                                    const auto i = chosen - libraryItems - 200;
-                                    if (juce::isPositiveAndBelow (i, (int) grooves.size()))
-                                        safe->setLibraryGroove (grooves[(size_t) i].file.getFullPathName());
-                                }
-                            }
-                            else if (chosen >= syncToItems && chosen < syncToItems + 20)
-                                safe->setSyncTo (l, chosen == syncToItems ? std::optional<ComposerLayer> {}
-                                                                          : std::optional<ComposerLayer> ((ComposerLayer) (chosen - syncToItems - 1)));
-                            else if (chosen == ownStylesItem)
-                                safe->setOwnStyles (l, ! safe->isPlayingOwnStyles (l));
-                            else if (chosen == doubleSyncItem)
-                                safe->setDoubleSync (l, ! safe->isDoublingSync (l));
-                            else if (chosen == myRiffItem)
-                                safe->setRiffLane (l);
-                            else if (chosen == writtenRiffsItem)
-                                safe->setWrittenRiffs (! safe->isUsingWrittenRiffs());
-                            else if (chosen >= approachItems && chosen < approachItems + 50)
-                                safe->setApproach (l, chosen - approachItems - 1);
-                            else if (chosen >= flavourItems && chosen < writtenRiffsItem)
-                                safe->setRiffFlavour (chosen - flavourItems);
-                            else if (chosen >= soloItems)
-                                safe->setSoloStyle (pr7s::soloStyles()[(size_t) juce::jlimit (0, (int) pr7s::soloStyles().size() - 1, chosen - soloItems)]);
-                            else
-                                safe->setStyle (l, chosen - 1);
-                        });
+    return menu;
+}
+
+void ComposerPage::showStyleMenu (ComposerLayer l)
+{
+    makeStyleMenu (l).showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].style),
+                                     [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
+                                     {
+                                         if (safe != nullptr && chosen > 0)
+                                             safe->styleMenuChosen (l, chosen);
+                                     });
+}
+
+void ComposerPage::styleMenuChosen (ComposerLayer l, int chosen)
+{
+    if (chosen <= 0)
+        return;
+    if (chosen == moreOptionsItem)
+    {
+        showOptionBrowser (l);
+        return;
+    }
+    if (chosen >= libraryItems && chosen < libraryItems + 400)
+    {
+        if (chosen == libraryItems)
+            setLibraryDrums (! isUsingLibraryDrums());
+        else if (chosen == libraryItems + 90)
+            studio.setPr7dPlaysDrums (! studio.getPr7dPlaysDrums());
+        else if (chosen == libraryItems + 91)
+            setFitKicks (! state.fitKicks);
+        else if (chosen == libraryItems + 1)
+            setLibraryGroove ({});
+        else if (chosen >= libraryItems + 200)
+        {
+            const auto grooves = pr7s::composerGroovePool (state, placedSpans(), context);
+            const auto i = chosen - libraryItems - 200;
+            if (juce::isPositiveAndBelow (i, (int) grooves.size()))
+                setLibraryGroove (grooves[(size_t) i].file.getFullPathName());
+        }
+    }
+    else if (chosen >= syncToItems && chosen < syncToItems + 20)
+        setSyncTo (l, chosen == syncToItems ? std::optional<ComposerLayer> {}
+                                                  : std::optional<ComposerLayer> ((ComposerLayer) (chosen - syncToItems - 1)));
+    else if (chosen == ownStylesItem)
+        setOwnStyles (l, ! isPlayingOwnStyles (l));
+    else if (chosen == doubleSyncItem)
+        setDoubleSync (l, ! isDoublingSync (l));
+    else if (chosen == myRiffItem)
+        setRiffLane (l);
+    else if (chosen == writtenRiffsItem)
+        setWrittenRiffs (! isUsingWrittenRiffs());
+    else if (chosen == approachItems)
+        setApproach (l, -1);
+    else if (chosen > approachItems && chosen < approachItems + 100)
+        useOption (l, approachId + chosen - approachItems - 1);
+    else if (chosen >= flavourItems && chosen < writtenRiffsItem)
+        setRiffFlavour (chosen - flavourItems);
+    else if (chosen >= soloItems)
+        setSoloStyle (pr7s::soloStyles()[(size_t) juce::jlimit (0, (int) pr7s::soloStyles().size() - 1, chosen - soloItems)]);
+    else
+        useOption (l, chosen - 1);
+}
+
+std::vector<OptionBrowser::Option> ComposerPage::laneOptions (ComposerLayer l) const
+{
+    std::vector<OptionBrowser::Option> out;
+    const auto choices = pr7s::composerChoices (l, state, spans, context);
+    const auto drums = l == ComposerLayer::drums;
+    const auto bpb = context.beatsPerBar;
+    const auto approaches = pr7s::sectionApproaches (state, l);
+    const auto own = pr7s::baseSectionApproaches (state, l).size();
+    if (pr7s::sectionTypeWritesLane (l, state, context))
+    {
+        // The type's options, each a different part (composerChoices made one each, in this order).
+        for (int i = 0; i < approaches.size(); ++i)
+        {
+            OptionBrowser::Option o;
+            o.id = approachId + i;
+            o.name = approaches[i];
+            o.group = i < own ? typeOwnGroup : songsGroup;
+            o.drums = drums;
+            if (i < (int) choices.size())
+            {
+                o.idea = choices[(size_t) i];
+                o.description = o.idea.description;
+                o.measure = pr7s::measureOption (o.idea, bpb, drums);
+            }
+            out.push_back (std::move (o));
+        }
+        return out;
+    }
+    // A type with options that only steer the lane's own styles (the guitar's riff kinds...): those, then the styles.
+    for (int i = 0; i < approaches.size(); ++i)
+    {
+        OptionBrowser::Option o;
+        o.id = approachId + i;
+        o.name = approaches[i];
+        o.group = i < own ? typeOwnGroup : songsGroup;
+        o.drums = drums;
+        out.push_back (std::move (o));
+    }
+    for (int i = 0; i < (int) choices.size(); ++i)
+    {
+        OptionBrowser::Option o;
+        o.id = i;
+        o.idea = choices[(size_t) i];
+        o.name = o.idea.style;
+        o.description = o.idea.description;
+        o.group = stylesGroup;
+        o.drums = drums;
+        o.measure = pr7s::measureOption (o.idea, bpb, drums);
+        out.push_back (std::move (o));
+    }
+    return out;
+}
+
+std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
+{
+    const auto& lane = state.lane (l);
+    const auto chosen = lane.approach >= 0 ? approachId + lane.approach : lane.style;
+    auto title = pr7s::composerLayerName (l) + (state.sectionType.isNotEmpty() ? juce::String (": ") + state.sectionType : juce::String());
+    auto browser = std::make_unique<OptionBrowser> (title, laneOptions (l), chosen, studio.getOptionMemory(), optionListKey (l));
+    juce::Component::SafePointer<ComposerPage> safe (this);
+    browser->onHear = [safe, l] (int id) { if (safe != nullptr) safe->tryOption (l, id); };
+    browser->onUse = [safe, l] (int id)
+    {
+        if (safe == nullptr)
+            return;
+        safe->endTrial (true);
+        safe->useOption (l, id);
+    };
+    browser->onFavourite = [safe, l] (const juce::String& name, bool on)
+    {
+        if (safe != nullptr)
+            safe->studio.setOptionFavourite (safe->optionListKey (l), name, on);
+    };
+    browser->onClosed = [safe] { if (safe != nullptr) safe->endTrial (false); };
+    return browser;
+}
+
+void ComposerPage::showOptionBrowser (ComposerLayer l)
+{
+    auto browser = makeOptionBrowser (l);
+    if (getPeer() == nullptr && getTopLevelComponent()->getPeer() == nullptr)
+        return;
+    auto* box = &juce::CallOutBox::launchAsynchronously (std::move (browser), lanes[(size_t) l].style.getScreenBounds(), nullptr);
+    juce::ignoreUnused (box);
+}
+
+void ComposerPage::useOption (ComposerLayer l, int id)
+{
+    const auto options = laneOptions (l);
+    for (const auto& o : options)
+        if (o.id == id)
+            studio.noteOptionUsed (optionListKey (l), o.name);
+    if (id >= approachId)
+    {
+        setApproach (l, id - approachId);
+        return;
+    }
+    // A style: the type's option let go, so the style plays.
+    if (state.lane (l).approach >= 0 && ! pr7s::sectionTypeWritesLane (l, state, context))
+        state.lane (l).approach = -1;
+    setStyle (l, id);
+}
+
+void ComposerPage::tryOption (ComposerLayer l, int id)
+{
+    if (! trial.active || trial.layer != l)
+    {
+        endTrial (false);
+        trial = { true, l, state.lane (l).approach, state.lane (l).style, hearing };
+    }
+    if (id >= approachId)
+        setApproach (l, id - approachId);
+    else
+    {
+        if (! pr7s::sectionTypeWritesLane (l, state, context))
+            state.lane (l).approach = -1;
+        setStyle (l, id);
+    }
+    if (! hearing)
+        hear();
+}
+
+void ComposerPage::endTrial (bool keep)
+{
+    if (! trial.active)
+        return;
+    const auto was = trial;
+    trial = {};
+    if (keep)
+        return;
+    state.lane (was.layer).approach = was.approach;
+    taken[(size_t) was.layer].reset();
+    setStyle (was.layer, was.style);
+    if (! was.wasHearing)
+        stop();
 }
 
 void ComposerPage::setLibraryDrums (bool on)

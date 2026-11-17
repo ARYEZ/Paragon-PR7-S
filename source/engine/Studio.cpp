@@ -8862,6 +8862,40 @@ namespace pr7s
             settings->setValue ("autoSaveKeep", autoSaveKeepHere);
     }
 
+    OptionMemory Studio::getOptionMemory() const
+    {
+        if (settings == nullptr)
+            return optionMemoryHere;
+        OptionMemory m;
+        m.favourites = OptionMemory::fromText (settings->getValue ("optionFavourites"));
+        m.recent = OptionMemory::fromText (settings->getValue ("optionRecent"));
+        return m;
+    }
+
+    void Studio::saveOptionMemory (const OptionMemory& m)
+    {
+        optionMemoryHere = m;
+        if (settings != nullptr)
+        {
+            settings->setValue ("optionFavourites", OptionMemory::toText (m.favourites));
+            settings->setValue ("optionRecent", OptionMemory::toText (m.recent));
+        }
+    }
+
+    void Studio::setOptionFavourite (const juce::String& list, const juce::String& name, bool on)
+    {
+        auto m = getOptionMemory();
+        m.setFavourite (list, name, on);
+        saveOptionMemory (m);
+    }
+
+    void Studio::noteOptionUsed (const juce::String& list, const juce::String& name)
+    {
+        auto m = getOptionMemory();
+        m.noteUsed (list, name);
+        saveOptionMemory (m);
+    }
+
     bool Studio::getAskBeforeTypeChange() const
     {
         if (settings != nullptr)

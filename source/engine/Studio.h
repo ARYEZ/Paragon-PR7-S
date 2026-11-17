@@ -30,6 +30,7 @@
 #include "Composer.h"
 #include "SoloEngine.h"
 #include "Blueprints.h"
+#include "OptionFeel.h"
 
 #include <optional>
 #include <mutex>
@@ -93,6 +94,11 @@ namespace pr7s
         void setAutoSaveMinutes (int minutes);
         int getAutoSaveKeep() const;
         void setAutoSaveKeep (int copies);
+        // (0.156.0) The option browser's favourites and recent picks, per list ("lane:drums"...), by name: settings
+        // "optionFavourites" / "optionRecent" (lines "list|name"); without a settings file, kept for the run.
+        OptionMemory getOptionMemory() const;
+        void setOptionFavourite (const juce::String& list, const juce::String& name, bool on);
+        void noteOptionUsed (const juce::String& list, const juce::String& name);
         // (0.94.0) HUB SETTINGS' ASK BEFORE CHANGING A BUILT SECTION'S TYPE (settings "askSectionTypeChange"; off).
         bool getAskBeforeTypeChange() const;
         void setAskBeforeTypeChange (bool ask);
@@ -1894,6 +1900,8 @@ namespace pr7s
         juce::uint32 lastBackupTime = juce::Time::getMillisecondCounter();
         int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;
         bool askTypeChangeHere = false;
+        OptionMemory optionMemoryHere;   // (0.156.0; without a settings file)
+        void saveOptionMemory (const OptionMemory&);
         std::array<TrackTypeLook, numTrackTypes> trackTypeLooksHere;   // (0.80.0; without a settings file)
         std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;
         std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)

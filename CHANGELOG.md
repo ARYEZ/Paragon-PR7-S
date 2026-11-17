@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.156.0
+
+**A shorter style menu and a browser for every option** (you chose mock-up D with C's feel filters). The lanes' option lists had grown to 30 and more, so each lane's style key in ARCHITECT now opens a short menu:
+
+- **Automatic**, then the section type's own options (or the lane's styles when there's no type).
+- **★ Favourites and Recent**: the options you've starred and the last four you used on that lane.
+- **MORE OPTIONS...** at the bottom opens the option browser with everything. The rest of the menu (Sync To, the library grooves, the riff flavours, the solo style...) is where it was.
+
+**The option browser:**
+
+- **Groups on the left with counts:** ★ FAVOURITES, RECENT, EVERYTHING, THIS TYPE'S OWN, FROM YOUR SONGS, STYLES.
+- **A search box** that looks through every group (any word of a name or description).
+- **FEEL keys** (STRAIGHT, HALF TIME, DOUBLE TIME, BROKEN) and **ENERGY keys** (CALM, MEDIUM, HEAVY): one of each at a time, clicked again to let go.
+- **The chosen option's details:** what it does, its feel and energy, and its first two bars drawn (a drum grid of cymbals, snare, toms and kick, or a small piano roll for the other lanes).
+- **HEAR** plays it with your other lanes. If you close the browser without **USE IT**, the lane goes back to what it had. Double-click a row to use it. Click a row's star (or ★ FAVOURITE) to keep it in your favourites, which stay between sessions.
+
+The feel and energy are measured from the notes each option writes, not labels anyone typed in, so treat them as a guide. Fills (the last beat of a bar, the last bar of a phrase) and ghost notes don't count. ELECTRONIC HALF-TIME LOOP still reads as straight because its backbeat is a clap.
+
+Next, 0.157.0: the same browser for TYPE, INTO THE NEXT and the solo styles.
+
 ## 0.155.0
 
 **Eleven more drum options and fifteen more keys options from your 54 song files** (round four, shapes only; our own names). Like 0.145.0's, they're offered under every named section type, after that type's own options, so the songs you've built keep their choices. Pick one from the drums or keys lane's style menu in ARCHITECT.
