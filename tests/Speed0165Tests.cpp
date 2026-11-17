@@ -196,6 +196,14 @@ TEST_CASE ("0.165.0: the arrangement kept as a picture while it scrolls draws wh
             // Only the strip the scroll uncovered was drawn.
             CHECK (arrange.getScrollCacheColumnsDrawn() == juce::roundToInt (steps * step * timeline.pixelsPerBeat * scale));
             const auto whole = render (true);
+            if (const auto folder = juce::SystemStats::getEnvironmentVariable ("PARAGON_CACHE_DIFF", {}); folder.isNotEmpty())
+                for (const auto& [name, image] : { std::pair { "kept", &kept }, std::pair { "whole", &whole } })
+                {
+                    juce::FileOutputStream out (juce::File (folder).getChildFile (juce::String (name) + juce::String (scale) + "-" + juce::String (steps) + ".png"));
+                    out.setPosition (0);
+                    out.truncate();
+                    juce::PNGImageFormat().writeImageToStream (*image, out);
+                }
             CHECK (farPixels (kept, whole, 24) == 0);
             CHECK (farPixels (kept, whole, 2) < width * height / 2000);   // (a cut edge's smoothing, at most a shade)
         }

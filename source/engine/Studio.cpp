@@ -355,9 +355,15 @@ namespace pr7s
     void Studio::numberParts()
     {
         for (auto& track : project.tracks)
+        {
+            // (0.165.0) Looked at without writing: written to (and so copied, when shared) only with a part to number.
+            const auto& parts = std::as_const (track.parts);
+            if (std::none_of (parts.begin(), parts.end(), [] (const Part& p) { return p.id == 0; }))
+                continue;
             for (auto& part : track.parts)
                 if (part.id == 0)
                     part.id = nextPartId++;
+        }
     }
 
     std::optional<std::pair<int, int>> Studio::findPart (int partId) const
