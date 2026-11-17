@@ -410,7 +410,7 @@ namespace pr7s
             struct BuiltFrom
             {
                 bool valid = false;
-                std::vector<Part> parts;
+                PartList parts;   // (0.165.0: shared with the song while unchanged)
                 int midiChannel = 1, soloLane = -1;
                 std::optional<DrumMap> map;
                 // (0.36.0) Following the chord track: its mode, reference, and the chord track as it was.

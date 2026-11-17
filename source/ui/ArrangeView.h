@@ -487,6 +487,21 @@ public:
     const std::optional<DropPreview>& getDropPreview() const noexcept { return dropPreview; }
 
     void paint (juce::Graphics&) override;
+
+    // (0.165.0) While Stationary Cursor moves the whole view under the playing playhead, the arrangement
+    // is kept as a picture (a ring as wide as the view, in screen pixels): each frame copies it and draws
+    // only the strip the scroll uncovers. Anything else that asks for a redraw goes through these, which
+    // redraw those columns of the picture too (Component::repaint alone: only the playhead's strips, which
+    // aren't in the picture). The playhead and what stays put on the screen are drawn over it.
+    void repaint();
+    void repaint (int x, int y, int width, int height);
+    void repaint (juce::Rectangle<int>);
+    bool isScrollCacheActive() const;
+    void setScrollCacheForTests (std::optional<bool> on) { scrollCacheForced = on; }
+    int getScrollCacheColumnsDrawn() const noexcept { return cacheColumnsDrawn; }   // (tests) screen columns drawn last paint
+    void paintFreshForTests (juce::Graphics&);   // (tests) drawn whole, as without the picture
+    double scrollStep() const;   // (the smallest scroll that moves the picture by whole screen pixels; 0: none)
+
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
@@ -496,6 +511,26 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
+    void paintContent (juce::Graphics&);
+    void paintPinned (juce::Graphics&);
+    void dirtyCache (juce::Rectangle<int>);
+    std::optional<bool> scrollCacheForced;
+    bool paintingCache = false;       // drawing into the picture: what stays put on the screen left out
+    bool playheadScroll = false;      // the playhead's own scroll: its repaint doesn't throw the picture away
+    juce::Image cacheImage;           // the ring (RGB, screen pixels)
+    struct CacheKey
+    {
+        int width = 0, height = 0, scrollY = 0;
+        float scale = 0.0f;
+        double pixelsPerBeat = 0.0, rowZoom = 0.0, barLength = 0.0;
+        int finish = 0;
+        bool operator== (const CacheKey&) const = default;
+    } cacheKey;
+    bool cacheValid = false;
+    juce::int64 cacheFrom = 0, cacheTo = 0;   // the song's screen pixels the ring holds
+    std::vector<std::pair<juce::int64, juce::int64>> cacheDirty;   // stretches to draw again
+    int cacheColumnsDrawn = 0;
+    float lastPaintScale = 1.0f;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void paintPart (juce::Graphics&, juce::Rectangle<float>, const pr7s::Part&, juce::Colour, bool selected, bool recording) const;
@@ -621,6 +656,8 @@ private:
     float lineValueAt (double t, float v1, float v2, double beatsInto, bool reverse) const;
     void paintAutomation (juce::Graphics&, const Timeline::Row&) const;
     void paintTempo (juce::Graphics&, const Timeline::Row&) const;
+    void paintTempoLabels (juce::Graphics&, const Timeline::Row&) const;   // (0.165.0: the scale's ends, pinned to the screen)
+    float dashStart (float left) const noexcept;   // (0.165.0) a dashed line's first dash at or before x, by the song
     bool tempoDown (const juce::MouseEvent&);
     void tempoDrag (const juce::MouseEvent&);
     void tempoUp();

@@ -110,6 +110,115 @@ namespace pr7s
         bool operator== (const Part&) const = default;
     };
 
+    // (0.165.0) A track's parts, shared by every copy of the song until one of them changes them: an
+    // undo step, the engine's note of what it built from, a save's copy no longer copy every track's
+    // notes, and comparing two copies that still share is one look. Reading (through a const list) never
+    // copies; anything that can write (a non-const begin, [], push_back...) gives this list its own copy
+    // first if it's shared. **Never keep a Part& or iterator from a list across a copy of the song**
+    // (an undo step, Engine::update): it would then point into contents another copy shares.
+    class PartList
+    {
+    public:
+        using value_type = Part;
+        using size_type = std::size_t;
+        using iterator = std::vector<Part>::iterator;
+        using const_iterator = std::vector<Part>::const_iterator;
+        using reference = Part&;
+        using const_reference = const Part&;
+
+        PartList() = default;
+        PartList (std::vector<Part> parts) : list (parts.empty() ? nullptr : std::make_shared<std::vector<Part>> (std::move (parts))) {}
+        PartList (std::initializer_list<Part> parts) : PartList (std::vector<Part> (parts)) {}
+        PartList& operator= (std::vector<Part> parts)
+        {
+            list = parts.empty() ? nullptr : std::make_shared<std::vector<Part>> (std::move (parts));
+            return *this;
+        }
+
+        PartList& operator= (std::initializer_list<Part> parts) { return *this = std::vector<Part> (parts); }
+
+        const std::vector<Part>& get() const noexcept { return list != nullptr ? *list : none(); }
+        operator const std::vector<Part>&() const noexcept { return get(); }
+        // Its own contents to change (copied first when another copy of the song shares them).
+        std::vector<Part>& edit()
+        {
+            if (list == nullptr)
+                list = std::make_shared<std::vector<Part>>();
+            else if (list.use_count() > 1)
+                list = std::make_shared<std::vector<Part>> (*list);
+            return *list;
+        }
+        bool sharesWith (const PartList& other) const noexcept { return list != nullptr && list == other.list; }
+
+        size_type size() const noexcept { return get().size(); }
+        bool empty() const noexcept { return get().empty(); }
+        const_iterator begin() const noexcept { return get().begin(); }
+        const_iterator end() const noexcept { return get().end(); }
+        const_iterator cbegin() const noexcept { return get().begin(); }
+        const_iterator cend() const noexcept { return get().end(); }
+        const Part& operator[] (size_type i) const noexcept { return get()[i]; }
+        const Part& at (size_type i) const { return get().at (i); }
+        const Part& front() const noexcept { return get().front(); }
+        const Part& back() const noexcept { return get().back(); }
+
+        iterator begin() { return edit().begin(); }
+        iterator end() { return edit().end(); }
+        Part& operator[] (size_type i) { return edit()[i]; }
+        Part& at (size_type i) { return edit().at (i); }
+        Part& front() { return edit().front(); }
+        Part& back() { return edit().back(); }
+
+        void push_back (const Part& part) { edit().push_back (part); }
+        void push_back (Part&& part) { edit().push_back (std::move (part)); }
+        template <typename... Args> Part& emplace_back (Args&&... args) { return edit().emplace_back (std::forward<Args> (args)...); }
+        void clear() noexcept { list = nullptr; }
+        void reserve (size_type n) { edit().reserve (n); }
+        void resize (size_type n) { edit().resize (n); }
+        // (An iterator from either begin: found by its place, so one taken before the copy still works.)
+        iterator erase (const_iterator at)
+        {
+            const auto i = at - get().begin();
+            auto& parts = edit();
+            return parts.erase (parts.begin() + i);
+        }
+        iterator erase (const_iterator from, const_iterator to)
+        {
+            const auto i = from - get().begin(), j = to - get().begin();
+            auto& parts = edit();
+            return parts.erase (parts.begin() + i, parts.begin() + j);
+        }
+        iterator insert (const_iterator at, const Part& part)
+        {
+            const auto i = at - get().begin();
+            auto& parts = edit();
+            return parts.insert (parts.begin() + i, part);
+        }
+        iterator insert (const_iterator at, Part&& part)
+        {
+            const auto i = at - get().begin();
+            auto& parts = edit();
+            return parts.insert (parts.begin() + i, std::move (part));
+        }
+        template <typename It> iterator insert (const_iterator at, It from, It to)
+        {
+            const auto i = at - get().begin();
+            std::vector<Part> added (from, to);   // (the range may be this list's own contents)
+            auto& parts = edit();
+            return parts.insert (parts.begin() + i, std::make_move_iterator (added.begin()), std::make_move_iterator (added.end()));
+        }
+
+        bool operator== (const PartList& other) const { return list == other.list || get() == other.get(); }
+        bool operator== (const std::vector<Part>& other) const { return get() == other; }
+
+    private:
+        static const std::vector<Part>& none() noexcept
+        {
+            static const std::vector<Part> empty;
+            return empty;
+        }
+        std::shared_ptr<std::vector<Part>> list;
+    };
+
     // What plays a track: the studio's synth (PR7-K since 0.9.11; the kind
     // keeps its old name, so songs saved before open on PR7-K), or a VST3 instrument.
     struct Instrument
@@ -373,7 +482,7 @@ namespace pr7s
         int output = 0;                  // a group channel's id, or 0: the master (FX and group channels: the master)
         std::vector<Send> sends;         // by slot (none after the last used); FX channels have none
         bool sendsBypass = false;        // all of its sends off at once
-        std::vector<Part> parts;
+        PartList parts;   // (0.165.0: shared between copies of the song until changed)
         std::vector<Insert> inserts;     // its effects, by slot (none after the last one used)
         int preFaderSlots = 16;          // slots before the fader and pan (the rest after them)
         std::vector<AutomationLane> automation;   // in the order shown

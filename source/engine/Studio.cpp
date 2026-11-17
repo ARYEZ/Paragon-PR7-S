@@ -426,6 +426,7 @@ namespace pr7s
         // A copy without the plug-ins' settings (they aren't undone, and can be several MB each:
         // since 0.34.1 they're moved out of the song while it's copied, not copied and thrown away),
         // nor what undo never puts back (the drum maps, the hand-edited hitpoints).
+        checkUndoSharing();
         auto state = copyWithoutPluginStates (true);
         // (0.83.0) Its place in the Edit History: the time now; its name is worked out when the history is
         // looked at (0.83.2, getHistory), from what differs from the step it follows.
@@ -445,6 +446,39 @@ namespace pr7s
         while ((int) undoStates.size() > most)
             dropOldestStep();
         undoIndex = (int) undoStates.size() - 1;
+        noteUndoParts();
+    }
+
+    void Studio::noteUndoParts()
+    {
+        if (! guardUndoSharing)
+            return;
+        // The recent steps only (the last few: where a stray write would land), as plain copies.
+        undoParts.assign (undoStates.size(), {});
+        for (size_t i = undoStates.size() > 6 ? undoStates.size() - 6 : 0; i < undoStates.size(); ++i)
+            for (const auto& track : undoStates[i].tracks)
+                undoParts[i].push_back (track.parts.get());
+    }
+
+    void Studio::checkUndoSharing()
+    {
+        if (! guardUndoSharing || undoParts.size() != undoStates.size())
+            return;
+        for (size_t i = 0; i < undoStates.size(); ++i)
+        {
+            if (undoParts[i].empty())
+                continue;
+            auto same = undoParts[i].size() == undoStates[i].tracks.size();
+            for (size_t t = 0; same && t < undoStates[i].tracks.size(); ++t)
+                same = undoParts[i][t] == undoStates[i].tracks[t].parts.get();
+            if (! same)
+            {
+                std::fprintf (stderr, "\n*** An undo step's parts changed after it was kept (step %d of %d): something wrote "
+                                      "through a Part& kept across a copy of the song (0.165.0's shared parts).\n",
+                              (int) i, (int) undoStates.size());
+                std::abort();
+            }
+        }
     }
 
     // The lanes and their points as they were; which are shown, and the R and
@@ -534,6 +568,7 @@ namespace pr7s
     {
         if (! canUndo())
             return;
+        checkUndoSharing();
         restore (undoStates[(size_t) --undoIndex]);
     }
 
@@ -541,6 +576,7 @@ namespace pr7s
     {
         if (! canRedo())
             return;
+        checkUndoSharing();
         restore (undoStates[(size_t) ++undoIndex]);
     }
 
@@ -550,6 +586,7 @@ namespace pr7s
         if (index < 0 || index == undoIndex)
             return;
         undoIndex = index;
+        checkUndoSharing();
         restore (undoStates[(size_t) undoIndex]);
     }
 
@@ -9402,6 +9439,7 @@ namespace pr7s
             apply (project);
             for (auto& state : undoStates)
                 apply (state);
+            noteUndoParts();   // (a real change to the kept steps: noted again)
             for (auto& [id, parts] : frozenParts)
                 for (auto& part : parts)
                     if (part.isAudio())

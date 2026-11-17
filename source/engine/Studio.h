@@ -1730,6 +1730,9 @@ namespace pr7s
         void removeAllEffects();
         void unloadSongTracks();
         void recordUndoState();
+    public:
+        static inline bool guardUndoSharing = false;   // (0.165.0, the tests turn it on)
+    private:
         Project copyWithoutPluginStates (bool forUndo) const;   // (0.83.1)
         bool applyAutoColour();   // (0.79.0) the rule's colours onto its tracks; true if any changed
         void restore (const Project&);
@@ -1977,6 +1980,11 @@ namespace pr7s
         std::vector<Project> undoStates;
         mutable std::vector<HistoryStep> undoInfo;   // (0.83.0) one per undo state: its name, time, details
         void dropOldestStep();
+        // (0.165.0) The tests' guard on shared parts: each recent undo step's parts as a plain copy, checked
+        // against the step itself on every new step, undo and redo (a write through a kept Part& would show).
+        void checkUndoSharing();
+        void noteUndoParts();
+        std::vector<std::vector<std::vector<Part>>> undoParts;
         int undoIndex = -1;
         int maxUndoHere = 100;               // (without a settings file)
         void clearHistory();

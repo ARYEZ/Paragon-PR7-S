@@ -135,7 +135,8 @@ void ArrangeView::timerCallback()
     // (0.85.2) Not with Stationary Cursor: the play bar stands still and the whole view moves under it,
     // so every frame redraws all of it (at 5760 wide); 30 a second as before 0.78.3.
     const auto stationary = playing && timeline.autoScroll.on && timeline.autoScroll.stationary && ! timeline.autoScroll.suspended;
-    const auto rate = gliding || (playing && ! stationary) ? 60 : 30;
+    // (0.165.0) With the picture kept, a frame is a copy and a thin strip: 60 a second again, smoothly.
+    const auto rate = gliding || (playing && ! stationary) || (stationary && isScrollCacheActive() && scrollStep() > 0.0) ? 60 : 30;
     if (getTimerInterval() != 1000 / rate)
         startTimerHz (rate);
 }
@@ -211,8 +212,8 @@ void ArrangeView::refreshPlayhead()
     if (std::abs (x - playheadX) < 0.05f && red == playheadRed)
         return;
     const auto strip = [this] (float at) { return juce::Rectangle<float> (at - 8.0f, 0.0f, 17.0f, (float) getHeight()).toNearestIntEdges(); };
-    repaint (strip (playheadX));
-    repaint (strip (x));
+    Component::repaint (strip (playheadX));   // (0.165.0: the playhead isn't in the scrolling picture)
+    Component::repaint (strip (x));
     playheadX = x;
     playheadRed = red;
 }
@@ -232,10 +233,22 @@ void ArrangeView::followPlayhead()
     }
     if (drag != Drag::none)
         return;
-    if (const auto first = timeline.autoScroll.follow (position, timeline.firstBeat, timeline.pixelsPerBeat, (float) getWidth(),
-                                                       engine.isPlaying(), jumped))
+    // (0.165.0) While playing, Stationary Cursor follows the play bar where it's drawn (smooth), not the audio
+    // block's position (a step every block: at 2048 the view jumped about 20 times a second, unevenly).
+    const auto playing = engine.isPlaying() || engine.isRecording();
+    const auto stationary = playing && timeline.autoScroll.on && timeline.autoScroll.stationary && ! timeline.autoScroll.suspended;
+    const auto followed = stationary ? playingBeat (shownBeat, engine.getShownPosition()) : position;
+    if (auto first = timeline.autoScroll.follow (followed, timeline.firstBeat, timeline.pixelsPerBeat, (float) getWidth(),
+                                                 engine.isPlaying(), jumped))
     {
+        // On whole screen pixels while the picture is kept (it's copied, never resampled).
+        if (isScrollCacheActive())
+            if (const auto step = scrollStep(); step > 0.0)
+                first = std::round (*first / step) * step;
+        if (std::abs (*first - timeline.firstBeat) < 1.0e-12)
+            return;
         timeline.firstBeat = *first;
+        const juce::ScopedValueSetter<bool> ownScroll (playheadScroll, true);
         scrolled();
     }
 }
@@ -742,7 +755,7 @@ void ArrangeView::duplicateSelected()
 }
 
 //==============================================================================
-void ArrangeView::paint (juce::Graphics& g)
+void ArrangeView::paintContent (juce::Graphics& g)
 {
     const auto& project = studio.getProject();
     const auto bounds = getLocalBounds().toFloat();
@@ -1184,6 +1197,18 @@ void ArrangeView::paint (juce::Graphics& g)
                     r.reduced (6.0f, 3.0f), juce::Justification::topLeft, true);
     }
 
+}
+
+void ArrangeView::paintPinned (juce::Graphics& g)
+{
+    // What stays where it is on the screen whatever the scroll (never in the scrolling picture).
+    const auto& project = studio.getProject();
+    const auto bounds = getLocalBounds().toFloat();
+    if (rowsInPaint != nullptr)
+        for (const auto& row : *rowsInPaint)
+            if (row.kind == Timeline::Row::Kind::tempo)
+                paintTempoLabels (g, row);
+
     // The playhead: a line down the lanes and a marker on the ruler (where it's drawn: it glides, 0.17.4).
     const auto x = timeline.xForBeat (shownBeat);
     if (x >= -2.0f && x <= bounds.getWidth() + 2.0f)
@@ -1201,6 +1226,173 @@ void ArrangeView::paint (juce::Graphics& g)
         g.drawText ("Add a track (+ ADD TRACK, bottom left) to start", bounds.withTrimmedTop ((float) Timeline::rulerHeight),
                     juce::Justification::centred, false);
     }
+}
+
+// ---- (0.165.0) The scrolling picture ----
+
+void ArrangeView::paintFreshForTests (juce::Graphics& g)
+{
+    const auto rows = timeline.layout (studio);
+    paintContent (g);
+    rowsInPaint = &rows;
+    paintPinned (g);
+    rowsInPaint = nullptr;
+}
+
+void ArrangeView::repaint()
+{
+    dirtyCache (getLocalBounds());
+    Component::repaint();
+}
+
+void ArrangeView::repaint (int x, int y, int width, int height)
+{
+    repaint (juce::Rectangle<int> (x, y, width, height));
+}
+
+void ArrangeView::repaint (juce::Rectangle<int> area)
+{
+    dirtyCache (area);
+    Component::repaint (area);
+}
+
+bool ArrangeView::isScrollCacheActive() const
+{
+    if (scrollCacheForced)
+        return *scrollCacheForced;
+    const auto& engine = studio.getEngine();
+    const auto& scroll = timeline.autoScroll;
+    // Only while the view moves under a playing playhead, nothing being dragged, no warning on the screen.
+    return (engine.isPlaying() || engine.isRecording()) && scroll.on && scroll.stationary && ! scroll.suspended
+           && drag == Drag::none && chordWarning.isEmpty();
+}
+
+double ArrangeView::scrollStep() const
+{
+    // A whole number of screen pixels: at 125 % a step of 4 logical pixels (5 on the screen), at 150 % 2...
+    for (int logical = 1; logical <= 4; ++logical)
+    {
+        const auto screen = (double) logical * lastPaintScale;
+        if (std::abs (screen - std::round (screen)) < 1.0e-3)
+            return (double) logical / timeline.pixelsPerBeat;
+    }
+    return 0.0;
+}
+
+void ArrangeView::dirtyCache (juce::Rectangle<int> area)
+{
+    if (playheadScroll || ! cacheValid)
+        return;
+    area = area.getIntersection (getLocalBounds());
+    if (area.isEmpty())
+        return;
+    if (area.getWidth() * 2 >= getWidth())
+    {
+        cacheValid = false;   // (most of it: all of it again)
+        cacheDirty.clear();
+        return;
+    }
+    // The columns under it (a pixel either side: the edges' smoothing), full height.
+    const auto origin = (juce::int64) std::llround (timeline.firstBeat * timeline.pixelsPerBeat * cacheKey.scale);
+    const auto from = origin + (juce::int64) std::floor ((float) area.getX() * cacheKey.scale) - 2;
+    const auto to = origin + (juce::int64) std::ceil ((float) area.getRight() * cacheKey.scale) + 2;
+    cacheDirty.emplace_back (from, to);
+}
+
+void ArrangeView::paint (juce::Graphics& g)
+{
+    const auto scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+    lastPaintScale = scale;
+    cacheColumnsDrawn = 0;
+    const auto exact = timeline.firstBeat * timeline.pixelsPerBeat * scale;
+    const auto origin = (juce::int64) std::llround (exact);
+    // Not now (or the scroll isn't on whole screen pixels): drawn as it always was, the picture let go.
+    if (! isScrollCacheActive() || std::abs (exact - (double) origin) > 0.02 || getWidth() <= 0 || getHeight() <= 0)
+    {
+        if (cacheImage.isValid())
+            cacheImage = {};
+        cacheValid = false;
+        cacheDirty.clear();
+        const auto rows = timeline.layout (studio);
+        paintContent (g);
+        rowsInPaint = &rows;
+        paintPinned (g);
+        rowsInPaint = nullptr;
+        return;
+    }
+
+    CacheKey key;
+    key.width = juce::roundToInt (std::ceil ((float) getWidth() * scale));
+    key.height = juce::roundToInt (std::ceil ((float) getHeight() * scale));
+    key.scrollY = timeline.scrollY;
+    key.scale = scale;
+    key.pixelsPerBeat = timeline.pixelsPerBeat;
+    key.rowZoom = timeline.rowZoom;
+    key.barLength = studio.getProject().signatures().barLengthAt (timeline.firstBeat);   // (the bar numbers' spacing)
+    key.finish = (int) Finish::get();
+    if (! (key == cacheKey) || ! cacheImage.isValid())
+    {
+        cacheKey = key;
+        cacheImage = juce::Image (juce::Image::RGB, key.width, key.height, false, juce::SoftwareImageType());
+        cacheValid = false;
+    }
+    const auto ring = (juce::int64) key.width;
+    const auto viewFrom = origin, viewTo = origin + ring;
+
+    // What has to be drawn into the ring: all of it, or what the scroll uncovered and what was asked for again.
+    std::vector<std::pair<juce::int64, juce::int64>> draw;
+    if (! cacheValid || cacheTo <= viewFrom || cacheFrom >= viewTo)
+        draw.emplace_back (viewFrom, viewTo);
+    else
+    {
+        if (viewFrom < cacheFrom)
+            draw.emplace_back (viewFrom, cacheFrom);
+        if (cacheTo < viewTo)
+            draw.emplace_back (cacheTo, viewTo);
+        for (const auto& [a, b] : cacheDirty)
+            if (b > viewFrom && a < viewTo)
+                draw.emplace_back (juce::jmax (a, viewFrom), juce::jmin (b, viewTo));
+    }
+    cacheDirty.clear();
+    {
+        const auto ringOf = [ring] (juce::int64 p) { return ((p % ring) + ring) % ring; };
+        juce::Graphics into (cacheImage);
+        const juce::ScopedValueSetter<bool> inPicture (paintingCache, true);
+        for (const auto& [a, b] : draw)
+            for (auto from = a; from < b;)
+            {
+                // A piece that doesn't wrap round the ring's end.
+                const auto column = ringOf (from);
+                const auto to = juce::jmin (b, from + (ring - column));
+                const auto base = from - column;   // (the song pixel at the ring's column 0 for this piece)
+                juce::Graphics::ScopedSaveState saved (into);
+                into.reduceClipRegion ((int) column, 0, (int) (to - from), key.height);
+                into.addTransform (juce::AffineTransform::scale (scale).translated ((float) (origin - base), 0.0f));
+                paintContent (into);
+                cacheColumnsDrawn += (int) (to - from);
+                from = to;
+            }
+    }
+    cacheValid = true;
+    cacheFrom = viewFrom;
+    cacheTo = viewTo;
+
+    // The picture onto the screen: its two pieces, each on whole screen pixels (copied, not resampled).
+    const auto start = (int) (((origin % ring) + ring) % ring);
+    const auto place = [&] (int fromColumn, int columns, int atScreen)
+    {
+        if (columns <= 0)
+            return;
+        g.drawImageTransformed (cacheImage.getClippedImage ({ fromColumn, 0, columns, key.height }),
+                                juce::AffineTransform::translation ((float) atScreen, 0.0f).scaled (1.0f / scale));
+    };
+    place (start, key.width - start, 0);
+    place (0, start, key.width - start);
+
+    const auto rows = timeline.layout (studio);
+    rowsInPaint = &rows;
+    paintPinned (g);
+    rowsInPaint = nullptr;
 }
 
 void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, const pr7s::Part& part, juce::Colour colour,
@@ -3150,7 +3342,7 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
     const auto dotted = [&] (float y, juce::Colour c)
     {
         g.setColour (c);
-        for (auto x = juce::jmax (0.0f, std::floor (left / 6.0f) * 6.0f); x < area.getRight() && x <= right; x += 6.0f)   // (multiples of 6: the same dashes)
+        for (auto x = dashStart (left); x < area.getRight() && x <= right; x += 6.0f)   // (multiples of 6: the same dashes)
             g.fillRect (x, y, 3.0f, 1.0f);
     };
     // A curve through points (a step for an on/off switch), flat before the first and after the
@@ -4380,6 +4572,25 @@ juce::Point<float> ArrangeView::getTempoEventPosition (int index) const
     return { timeline.xForBeat (events[(size_t) index].beat), yForBpm (area, events[(size_t) index].bpm) };
 }
 
+void ArrangeView::paintTempoLabels (juce::Graphics& g, const Timeline::Row& row) const
+{
+    const auto& project = studio.getProject();
+    const auto area = juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height).reduced (0.0f, laneInset);
+    if (! g.clipRegionIntersects (area.toNearestIntEdges()))
+        return;
+    g.setColour (ParagonColours::textDim.withAlpha (0.5f));
+    g.setFont (ParagonLookAndFeel::textFont (9.0f));
+    g.drawText (juce::String (juce::roundToInt (project.tempoViewHigh)) + " BPM", area.withHeight (11.0f).withTrimmedRight (8.0f), juce::Justification::topRight, false);
+    g.drawText (juce::String (juce::roundToInt (project.tempoViewLow)) + " BPM", area.withTop (area.getBottom() - 11.0f).withTrimmedRight (8.0f), juce::Justification::bottomRight, false);
+}
+
+float ArrangeView::dashStart (float left) const noexcept
+{
+    // (Lined up with the song, not the screen: the same dashes whichever way the view is scrolled.)
+    const auto phase = std::fmod ((float) std::fmod (timeline.firstBeat * timeline.pixelsPerBeat, 6.0), 6.0f);
+    return std::floor ((left + phase) / 6.0f) * 6.0f - phase;
+}
+
 void ArrangeView::paintTempo (juce::Graphics& g, const Timeline::Row& row) const
 {
     const auto& project = studio.getProject();
@@ -4389,11 +4600,7 @@ void ArrangeView::paintTempo (juce::Graphics& g, const Timeline::Row& row) const
     const auto editing = drag == Drag::tempoPoints || drag == Drag::tempoDraw;
     const auto& events = editing ? tempoWorking : project.tempoEvents;
 
-    // The scale's ends, faintly at the right (the first event's tempo is at the left).
-    g.setColour (ParagonColours::textDim.withAlpha (0.5f));
-    g.setFont (ParagonLookAndFeel::textFont (9.0f));
-    g.drawText (juce::String (juce::roundToInt (project.tempoViewHigh)) + " BPM", area.withHeight (11.0f).withTrimmedRight (8.0f), juce::Justification::topRight, false);
-    g.drawText (juce::String (juce::roundToInt (project.tempoViewLow)) + " BPM", area.withTop (area.getBottom() - 11.0f).withTrimmedRight (8.0f), juce::Justification::bottomRight, false);
+    // (The scale's ends at the right: paintTempoLabels, drawn over the picture: they stay put on the screen.)
 
     // Off: the fixed tempo as a level line (the manual's), the events greyed out behind it.
     if (! on)
@@ -4401,7 +4608,7 @@ void ArrangeView::paintTempo (juce::Graphics& g, const Timeline::Row& row) const
         const auto y = yForBpm (area, project.bpm);
         g.setColour (ParagonColours::text.withAlpha (0.7f));
         const auto redrawn = g.getClipBounds().toFloat();
-        for (auto x = juce::jmax (0.0f, std::floor ((redrawn.getX() - curveMargin) / 6.0f) * 6.0f); x < area.getRight() && x <= redrawn.getRight() + curveMargin; x += 6.0f)
+        for (auto x = dashStart (redrawn.getX() - curveMargin); x < area.getRight() && x <= redrawn.getRight() + curveMargin; x += 6.0f)
             g.fillRect (x, y, 3.0f, 1.0f);
     }
     if (events.empty())
@@ -4864,7 +5071,8 @@ void ArrangeView::paintChords (juce::Graphics& g, const Timeline::Row& row)
     for (size_t i = 0; i < track.scales.size(); ++i)
     {
         const auto x1 = timeline.xForBeat (track.scales[i].beat);
-        const auto x2 = i + 1 < track.scales.size() ? timeline.xForBeat (track.scales[i + 1].beat) : (float) getWidth();
+        const auto x2 = i + 1 < track.scales.size() ? timeline.xForBeat (track.scales[i + 1].beat)
+                                                     : (float) ((studio.getProject().beatsPerBar() * 4096.0 - timeline.firstBeat) * timeline.pixelsPerBeat);   // (0.165.0: the last to far right, not the screen's edge)
         const auto r = juce::Rectangle<float> (x1, strip.getY(), juce::jmax (4.0f, x2 - x1), strip.getHeight()).reduced (1.0f, 0.0f);
         if (r.getRight() < clip.getX() || r.getX() > clip.getRight())
             continue;
