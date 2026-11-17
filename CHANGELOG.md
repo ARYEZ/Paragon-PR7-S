@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.166.0
+
+**The MIDI editor, round two of the scrolling fix, and glowing notes** (you asked for both).
+
+**The MIDI editor while it scrolls under a still play bar (Stationary Cursor):**
+- **It's kept as a picture while the song plays,** as the arrangement has been since 0.165.0. Each frame copies the picture and draws only the thin strip that scrolled into view; the keys, the side panel and the play bar stay drawn on top. An edit or a click redraws just its own columns.
+- **The scroll is smooth:** it follows the play bar where it's drawn, 60 times a second, instead of the audio's block steps (about 20 uneven jumps a second at your 2048 buffer).
+- Measured here, a frame at 5760 px wide and the editor's 200 % size: **25.6 ms drawn whole, 4.1 ms kept as a picture.**
+
+**The notes glow,** like the automation lines: each note has a soft halo in its own velocity colour (orange, pink, red), a brighter body and a bright line along its top. Muted notes don't glow. With CHORD GUIDES on, the halo is pearl white so it stands out from the guide rows. Drum diamonds glow too.
+
+The kept picture was compared with a full redraw at 100 %, 150 % and 200 % display scale, after scrolls of several sizes, a partial redraw and an edit: no difference beyond a shade where a strip meets the picture.
+
+Not checked here: the smoothness on your screens and graphics card, and how the glow looks to your eye at your display's size (screenshots in all three finishes were checked).
+
 ## 0.165.0
 
 **Speed, round six** (you asked: fix the three things left from round five). Each was checked against the old way before it went in.
