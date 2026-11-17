@@ -2,6 +2,46 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.159.0
+
+**45 new versions of styles we already had, from your songs** (round four, the readers' "new versions" lists; shapes only, our own names). Each is a guitar, drums or keys option on the shared lists, so it shows under every named section type, after the type's own options. In the option browser they're in the FROM YOUR SONGS group, and FEEL / ENERGY and the search find them.
+
+**Guitar (21):**
+- **CHORDS IN SIXTEENTHS UNDER A FIXED HIGH NOTE** (Enemy): power chords on every sixteenth following the chords, with a second guitar holding the key's fifth high.
+- **TRESILLO FOURTH DYADS** (Given Up): fourth dyads on 3+3+2, twice a bar: the bar's chord, then the next.
+- **FIXED LOW CLUSTER IN SIXTEENTHS** (Leave Out All the Rest): a low cluster of the key's note, its second and third on every sixteenth that never moves, with the chords rung over it.
+- **HIGH TRITONE EIGHTHS OVER RUNG CHORDS** (Praise): the riff's power chords rung, a second guitar's high tritone dyad fixed in eighths.
+- **FOURTH DYADS ROCKING A HALF STEP** (Part of Me).
+- **CHUGS WITH A SIXTH** (Beautiful): a chug cell of three, gap, three, three, the second group opening on a major sixth.
+- **ROOT TO FIFTH IN THE BAR** (Beautiful): the chord for half a bar, then its fifth; every second bar a flat six.
+- **RIFF CELL TWICE A BAR** (Forsaken): one cell in each half of the bar.
+- **DYAD STREAM, ROOT STEPPING EACH BAR** (Bender): the key's note and its tritone on the sixteenths with a hole every eight, a whole step lower every other bar.
+- **SIXTEENTH PEDAL OVER LATE HITS** (Bender): one guitar's low sixteenth pedal seesawing a whole step, the other hitting the and of 2 and 4.
+- **RUNG SYNCOPATION, TONIC AND HALF STEP** (Don't Stay).
+- **DOTTED CHORDS, HIGH OCTAVE FIGURE** (Awake): chords on 1, the and of 2 and 4 with a half-step pickup, then a second guitar's high octaves from halfway.
+- **PEDAL WALL, CHORDS MOVING ON TOP** (Bender): full chords on every sixteenth over the key's fixed low note, the upper chord following the progression.
+- **ONE-NOTE SCRATCH RHYTHM** (With You): one muted note, a broken pattern of ten to twelve hits drawn again every bar.
+- **PEDAL-TOP FINGERPICKING** (Angel's Son): the same top note on every other sixteenth, the root and third under it.
+- **FIXED FIGURE OVER HALF TIME** (Somewhere I Belong): a high three-note figure that keeps its notes over every chord, a second guitar ringing the chords.
+- **TWO GUITARS IN TWO RHYTHMS** (Somewhere I Belong): eighths in one guitar, 1-2-2&-3-4-4& an octave up in the other.
+- **ROCKING UP A STEP IN THREES** (Straight Out of Line): the root and the step above in groups of three across the beat.
+- **UNISON CELL ACROSS THE BAR** (Bender): a twelve-sixteenth cell running across the bar lines.
+- **DOUBLE HITS WITH SCRATCHES** (One Step Closer).
+- **PEDAL IN THREES, CLIMBING** (Black): a soft pedal, every third note higher and climbing a step every two bars.
+
+The ones with a second guitar put it on the lane's second track when you give the guitar lane two (Hub > ARCHITECT TRACKS). A type's DOUBLES THE GUITAR bass follows whichever you choose.
+
+**Drums (12):** DOTTED KICK CHAIN, CRASH QUARTERS (Enemy); PULSE, SNARE CREEPS IN (Iridescent: four on the floor, the snare entering by quarters of the section); SPLASH QUARTERS, SNARE ON THREE (Part of Me); LOOP AND SIDESTICK SIXTEENTHS (Leave Out All the Rest); DISPLACED SNARE, RIDE BELL (I Stand Alone); BROKEN BEAT, CRASH EIGHTHS (I Stand Alone); LAYERED DOUBLE KICK (Whatever); THE STOMP JOINS (Castle of Glass: kick and floor tom together, a soft snare on 2 and 4); CARVED KICK, CHINA SIXTEENTHS (Papercut); QUARTER HATS, BUSY KICK (In My Remains); TOM GROOVE, SNARE ON THREE (Bender); SNARE ON THE A OF TWO, CRASH EIGHTHS (Lying From You).
+
+**Keys (12):** FIXED TOP, ROOT UNDER IT (In Pieces); FALLING FOUR-NOTE CELL (In Pieces); CHOIR STABS ON THE ACCENTS (The Heart of Everything); STRINGS QUARTER, EIGHTH, EIGHTH and STRINGS DOTTED-QUARTER LINE (The Heart of Everything); HIGH STAB HOOK, FIXED (Heavy Is the Crown); FIVE-NOTE CHORDS ON ONE AND THREE (In My Remains); HIGH STRINGS MOTIF (Faint); TONIC AND STEP SIXTEENTH LOOP (With You); PIANO TRIADS ON THE QUARTERS (Bleed It Out); TONIC EIGHTH PULSE (Faint); PAD CHORDS IN HALF NOTES (Given Up).
+
+**What isn't in this release:**
+- The bass versions (DOUBLES THE PINGS AN OCTAVE DOWN, BASS PLAYS ONLY THE HEAD, BASS KEEPS THE CHORUS RHYTHM). Every bass list ends with LOCKED WITH THE KICK, and saved songs remember that option by its place in the list, so anything added after it would have to be put in front of it. I can do that if you want them.
+- A few that only make sense inside one type (INTRO RETURNS with the hymn, DEAD STOP as four eighths, RING, THEN ANSWER through three changes, DOTTED STREAM ending 3+3+3+3+4). I can add those to their own types.
+- Some were already covered by what we have (the readers said so), and the keys and transition ones they listed came in 0.154.0 and 0.155.0.
+
+All of these come from the readers' short notes, not a bar-by-bar reading, so they're our reading of each name. Listen before you trust them.
+
 ## 0.158.0
 
 **Six riff kinds from your songs as guitar options** (round four; shapes only, our own names). They're on the guitar lane's list under every named section type, after the type's own options, in the browser's FROM YOUR SONGS group:
