@@ -2005,6 +2005,15 @@ namespace pr7s
         //   STABS & GAPS (Sweet Sacrifice): sixteenth stabs, a step down, silence, a two-note pickup; the bass and the
         //     toms on the guitar's hits.
         //   RISING BASS (At the End of August): tremolo-picked or held chords while the bass climbs a scale step a bar.
+        std::optional<LineIdea> extraOptionLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+        // (0.158.0) The guitar's option from the shared list (round four's riff kinds), when that's what's chosen.
+        std::optional<LineIdea> extraGuitarOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (s.lane (ComposerLayer::guitar).ownStyles)
+                return std::nullopt;
+            return extraOptionLayer (ComposerLayer::guitar, s, spans, c);
+        }
+
         struct PreChorus
         {
             const ComposerState& s;
@@ -2227,7 +2236,7 @@ namespace pr7s
                         addNote (out, i * e, e * 0.88, bassRoot (i * e), i % 2 == 0 ? 0.82f : 0.7f, until);
                     return out;
                 };
-                auto doubled = [&] { return doubledLine (guitar(), spans, bassLowest(), bassHighest(), "guitar"); };
+                auto doubled = [&] { return doubledLine (sortedGuitar(), spans, bassLowest(), bassHighest(), "guitar"); };
                 if (type == "BUILD & STOP")
                 {
                     if (a == 0)
@@ -2436,7 +2445,8 @@ namespace pr7s
 
             LineIdea sortedGuitar() const
             {
-                auto g = guitar();
+                auto extra = extraGuitarOf (s, spans, c);   // (0.158.0: a riff kind chosen as the guitar's option)
+                auto g = extra.has_value() ? std::move (*extra) : guitar();
                 sortNotes (g);
                 return g;
             }
@@ -2919,7 +2929,8 @@ namespace pr7s
             // The guitar as the bass and the kick follow it: nothing over the low root's twelfth.
             LineIdea lowGuitar() const
             {
-                auto g = guitar();
+                auto extra = extraGuitarOf (s, spans, c);   // (0.158.0: a riff kind chosen as the guitar's option)
+                auto g = extra.has_value() ? std::move (*extra) : guitar();
                 sortNotes (g);
                 const auto top = tuning().lowest() + 19;
                 g.notes.erase (std::remove_if (g.notes.begin(), g.notes.end(), [top] (const LineNote& n) { return n.pitch > top || n.keyswitch; }), g.notes.end());
@@ -4389,7 +4400,8 @@ namespace pr7s
             }
             LineIdea sortedGuitar() const
             {
-                auto g = guitar();
+                auto extra = extraGuitarOf (s, spans, c);   // (0.158.0: a riff kind chosen as the guitar's option)
+                auto g = extra.has_value() ? std::move (*extra) : guitar();
                 sortNotes (g);
                 return g;
             }
@@ -5178,7 +5190,8 @@ namespace pr7s
 
             LineIdea sortedGuitar() const
             {
-                auto g = guitar();
+                auto extra = extraGuitarOf (s, spans, c);   // (0.158.0: a riff kind chosen as the guitar's option)
+                auto g = extra.has_value() ? std::move (*extra) : guitar();
                 sortNotes (g);
                 return g;
             }
@@ -6742,7 +6755,8 @@ namespace pr7s
             }
             LineIdea sortedGuitar() const
             {
-                auto g = guitar();
+                auto extra = extraGuitarOf (s, spans, c);   // (0.158.0: a riff kind chosen as the guitar's option)
+                auto g = extra.has_value() ? std::move (*extra) : guitar();
                 sortNotes (g);
                 return g;
             }
@@ -7599,7 +7613,8 @@ namespace pr7s
             }
             LineIdea sortedGuitar() const
             {
-                auto g = guitar();
+                auto extra = extraGuitarOf (s, spans, c);   // (0.158.0: a riff kind chosen as the guitar's option)
+                auto g = extra.has_value() ? std::move (*extra) : guitar();
                 sortNotes (g);
                 return g;
             }
@@ -8549,7 +8564,8 @@ namespace pr7s
             // The guitar as the bass and the kick follow it: nothing over the low root's octave and fifth.
             LineIdea lowGuitar() const
             {
-                auto g = guitar();
+                auto extra = extraGuitarOf (s, spans, c);   // (0.158.0: a riff kind chosen as the guitar's option)
+                auto g = extra.has_value() ? std::move (*extra) : guitar();
                 sortNotes (g);
                 const auto top = tuning().lowest() + 12 + 7;
                 g.notes.erase (std::remove_if (g.notes.begin(), g.notes.end(), [&] (const LineNote& n) { return n.pitch > top; }), g.notes.end());
@@ -10388,7 +10404,8 @@ namespace pr7s
             }
             LineIdea lowGuitar() const
             {
-                auto g = guitar();
+                auto extra = extraGuitarOf (s, spans, c);   // (0.158.0: a riff kind chosen as the guitar's option)
+                auto g = extra.has_value() ? std::move (*extra) : guitar();
                 sortNotes (g);
                 const auto top = tuning().lowest() + 19;
                 g.notes.erase (std::remove_if (g.notes.begin(), g.notes.end(), [top] (const LineNote& n) { return n.pitch > top || n.keyswitch; }), g.notes.end());
@@ -14320,7 +14337,7 @@ namespace pr7s
         // type's own guitar, and LOCKED WITH THE KICK stays the bass's last). Written here with Round3's helpers.
         std::optional<LineIdea> extraOptionLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
-            if (spans.empty() || (l != ComposerLayer::drums && l != ComposerLayer::chords))
+            if (spans.empty() || (l != ComposerLayer::drums && l != ComposerLayer::chords && l != ComposerLayer::guitar))
                 return std::nullopt;
             const auto a = s.lane (l).approach;
             const auto base = baseSectionApproaches (s, l).size();
@@ -14334,6 +14351,113 @@ namespace pr7s
             const auto bars = r.bars;
             LineIdea out { composerPartOf (l), n.toLowerCase(), {}, {} };
             auto each = [&] (auto&& bar) { for (int b = 0; b < bars; ++b) bar (b); };
+            // (0.158.0) Round four's riff kinds, offered as the guitar's options under every named type (shapes only,
+            // our names; written from the readers' notes on the owner's songs). A type's bass that doubles the guitar
+            // reads these too (`extraGuitarOf` in each type's lowGuitar).
+            if (l == ComposerLayer::guitar)
+            {
+                const auto open = r.open(), hard = r.hard(), muted = r.muted();
+                if (n == "CHUGS, THEN THREE CHORDS")
+                {
+                    out.description = "Muted chugs on the root for half a bar, then three ringing power chords (the root, the minor third, the fourth) at 3+3+2";
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        const auto root = r.barRoot (b);
+                        for (int k = 0; k < 8; ++k)
+                            r.add (out, o + k * s16, s16 * 0.8, root, muted);
+                        r.power (out, o + 8 * s16, s16 * 2.9, root, hard);
+                        r.power (out, o + 11 * s16, s16 * 2.9, root + 3, hard);
+                        r.power (out, o + 14 * s16, s16 * 1.9, root + 5, hard);
+                    });
+                }
+                else if (n == "HIT, THEN BURSTS ON TWO AND FOUR")
+                {
+                    out.description = "A power chord on 1, then muted sixteenth bursts filling beats 2 and 4; beat 3 left open";
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        const auto root = r.barRoot (b);
+                        r.power (out, o, s16 * 3.8, root, hard);
+                        for (const auto k : { 4, 5, 6, 7, 12, 13, 14, 15 })
+                            r.add (out, o + k * s16, s16 * 0.8, root, muted);
+                    });
+                }
+                else if (n == "PUSHED POWER CHORDS WITH A FLAT-TWO STAB")
+                {
+                    out.description = "Power chords on 1 and the and of 2, a short stab a half step up, then the next chord pushed onto the and of 4";
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        const auto root = r.barRoot (b);
+                        if (b == 0)   // (from the second bar on the bar's first chord came in pushed)
+                            r.power (out, o, s16 * 5.8, root, hard);
+                        r.power (out, o + 6 * s16, s16 * 4.8, root, open);
+                        r.power (out, o + 11 * s16, s16 * 0.9, root + 1, hard, false);
+                        r.power (out, o + 14 * s16, s16 * 7.8, r.nextRoot (b), hard);
+                    });
+                }
+                else if (n == "ROOT TWICE, TRITONE PUSHED IN")
+                {
+                    out.description = "The root struck twice (1 and the a of 1), then a tritone dyad pushed in on the and of 2 and rung; the same in the bar's second half";
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        const auto root = r.barRoot (b);
+                        for (const auto h : { 0, 8 })
+                        {
+                            r.power (out, o + h * s16, s16 * 1.8, root, hard, false);
+                            r.power (out, o + (h + 3) * s16, s16 * 1.8, root, hard, false);
+                            r.add (out, o + (h + 6) * s16, s16 * 1.9, root, open);
+                            r.add (out, o + (h + 6) * s16, s16 * 1.9, root + 6, open);
+                        }
+                    });
+                }
+                else if (n == "SUS2 SPLIT BETWEEN TWO GUITARS")
+                {
+                    out.description = "One chord split between two guitars: one plays root and fifth, the other the second, fifth and octave (on a lane with two tracks, left and right); struck on 1 and the and of 3, rung";
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        const auto root = r.barRoot (b) + 12;
+                        for (const auto& h : { std::pair { 0, 10 }, std::pair { 10, 6 } })
+                        {
+                            const auto at = o + h.first * s16, len = s16 * (h.second - 0.2);
+                            r.add (out, at, len, root, open);
+                            r.add (out, at, len, root + 7, open);
+                            for (const auto iv : { 2, 7, 12 })
+                            {
+                                LineNote note { at, len, root + iv, open };
+                                note.harmony = true;
+                                if (at < r.length - 1.0e-6)
+                                    out.notes.push_back (note);
+                            }
+                        }
+                    });
+                }
+                else if (n == "TONIC WALL UNDER MOVING CHORDS")
+                {
+                    out.description = "A wall of muted sixteenths on the key's tonic that never moves, the chords changing over it as rung triads on 1 and 3";
+                    const auto low = r.tuning().lowest();
+                    const auto tonic = r.tonicIn (low, low + 11);
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        for (int k = 0; k < 16; ++k)
+                            r.add (out, o + k * s16, s16 * 0.8, tonic, muted);
+                        const auto chord = r.chordOfBar (b);
+                        const auto voicings = voicingsFor (chord, 55);
+                        if (! voicings.empty())
+                            for (const auto h : { 0, 8 })
+                                for (const auto p : voicings[voicings.size() / 2])
+                                    r.add (out, o + h * s16, s16 * 7.8, p, open);
+                    });
+                }
+                else
+                    return std::nullopt;
+                sortNotes (out);
+                return out;
+            }
             if (l == ComposerLayer::drums)
             {
                 if (n == "DOUBLE-TIME PUNK BEAT")
@@ -14961,7 +15085,8 @@ namespace pr7s
             }
             LineIdea sortedGuitar() const
             {
-                auto g = guitar();
+                auto extra = extraGuitarOf (s, spans, c);   // (0.158.0: a riff kind chosen as the guitar's option)
+                auto g = extra.has_value() ? std::move (*extra) : guitar();
                 sortNotes (g);
                 return g;
             }

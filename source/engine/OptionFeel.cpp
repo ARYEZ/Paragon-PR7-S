@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <set>
 #include <cmath>
 
 namespace pr7s
@@ -92,10 +93,18 @@ namespace pr7s
 
         if (! drums)
         {
+            // (0.158.0) Off the sixteenths (triplets, sextuplets, pushed) counts as broken; a line of sixteenths is busy,
+            // not broken. Measured over the bars that play (a solo's opening rest doesn't make it calm).
             auto off = 0;
             for (const auto& o : onsets)
-                off += onGrid (o.beat, 0.5) ? 0 : 1;
+                off += onGrid (o.beat, 0.25) ? 0 : 1;
             m.offGrid = (double) off / (double) onsets.size();
+            {
+                std::set<int> playing;
+                for (const auto& o : onsets)
+                    playing.insert ((int) std::floor (o.beat / bpb));
+                m.hitsPerBeat = (double) onsets.size() / (double (playing.size()) * bpb);
+            }
             if (m.hitsPerBeat < 0.6)
                 m.feel = OptionFeel::half;
             else if (m.hitsPerBeat > 2.6)

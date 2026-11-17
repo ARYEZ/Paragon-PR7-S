@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.158.0
+
+**Six riff kinds from your songs as guitar options** (round four; shapes only, our own names). They're on the guitar lane's list under every named section type, after the type's own options, in the browser's FROM YOUR SONGS group:
+
+- **CHUGS, THEN THREE CHORDS:** muted chugs on the root for half a bar, then three ringing power chords (the root, the minor third, the fourth) at 3+3+2 sixteenths.
+- **HIT, THEN BURSTS ON TWO AND FOUR:** a power chord on 1, then muted sixteenth bursts filling beats 2 and 4. Beat 3 stays open.
+- **PUSHED POWER CHORDS WITH A FLAT-TWO STAB:** power chords on 1 and the and of 2, a short stab a half step up, then the next chord pushed onto the and of 4 and held over the bar line.
+- **ROOT TWICE, TRITONE PUSHED IN:** the root struck twice, then a tritone dyad pushed in on the and of 2 and rung, the same again in the second half.
+- **SUS2 SPLIT BETWEEN TWO GUITARS:** one chord split between two guitars, one playing root and fifth, the other the second, fifth and octave. Put the guitar lane on two tracks (Hub > ARCHITECT TRACKS, your left and right guitars) and each guitar gets its half. On one track you hear both together.
+- **TONIC WALL UNDER MOVING CHORDS:** a wall of muted sixteenths on the key's tonic that never moves, with the chords changing over it as rung triads on 1 and 3.
+
+When a type's bass is on **DOUBLES THE GUITAR**, it now doubles whichever of these riffs you've chosen, and the kick options that follow the guitar follow it too. That was why 0.145.0 left the guitar out of the shared lists, and it's fixed now.
+
+These six were built from the readers' short notes on your songs (Greed, The Howling, Praise, By Myself, Bleed It Out), not from a bar-by-bar reading, so they're our reading of what each name describes.
+
+**Two browser fixes:**
+- The groups on the left now follow their set order (BY STYLE, then BENDS, MELODIC... for solos).
+- Solos used to read almost all BROKEN / CALM. Now a line only counts as broken when it's off the sixteenth grid (triplets, sextuplets), and its busyness counts only the bars it plays. Each solo's picture shows its busiest two bars, not the first two, where most solos are still resting.
+
 ## 0.157.0
 
 **The same short menus and browser for TYPE, the solo styles and INTO THE NEXT** (the second half of the option picker you chose).

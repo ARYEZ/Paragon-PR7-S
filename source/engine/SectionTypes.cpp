@@ -1326,6 +1326,9 @@ namespace pr7s
                      "HIP-HOP BREAK", "SNARE ON TWO AND THE AND OF THREE", "KIT ON ONE AND THREE", "SNARE MARCH, CRASH EVERY BAR",
                      "SOFT SNARE QUARTERS", "CRASH QUARTERS BUILD", "OFF-SIXTEENTH SNARE", "BREAKBEAT",
                      "FOUR ON THE FLOOR, CRASH ON TWO THREE FOUR", "HIP-HOP BACKBEAT WITH A GHOST", "PEDAL HAT SIXTEENTHS UNDER THE BEAT" };
+        if (layer == ComposerLayer::guitar)   // (0.158.0) round four's riff kinds
+            return { "CHUGS, THEN THREE CHORDS", "HIT, THEN BURSTS ON TWO AND FOUR", "PUSHED POWER CHORDS WITH A FLAT-TWO STAB",
+                     "ROOT TWICE, TRITONE PUSHED IN", "SUS2 SPLIT BETWEEN TWO GUITARS", "TONIC WALL UNDER MOVING CHORDS" };
         if (layer == ComposerLayer::chords)
             return { "SYNTH BASS SIXTEENTHS", "STRINGS ON THE QUARTERS", "PIANO ARPEGGIO IN 3+3+2", "PIZZICATO ARPEGGIO", "TIMPANI ROLL RISER",
                      // (0.155.0) Round four.

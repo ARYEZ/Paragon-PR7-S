@@ -49,6 +49,8 @@ public:
     void choose (int id);
     // (0.157.0) No HEAR key (a list that can't be tried in place: INTO THE NEXT from the block menu).
     void setHearable (bool);
+    // (0.158.0) The groups on the left in this order (others after, as they come).
+    void setGroupOrder (const juce::StringArray&);
     bool isMeasured() const { return measured; }   // any option has a feel: the FEEL / ENERGY keys show
     void hear();
     void use();
@@ -76,6 +78,7 @@ private:
     int chosen = 0;
     float scroll = 0.0f;
     bool measured = false, drawn = false, hearable = true;
+    juce::StringArray groupOrder;
 
     juce::TextEditor search;
     std::vector<std::unique_ptr<juce::TextButton>> feelKeys, energyKeys;

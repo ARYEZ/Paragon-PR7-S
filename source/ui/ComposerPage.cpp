@@ -2405,6 +2405,11 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeTypeBrowser()
     juce::Component::SafePointer<ComposerPage> safe (this);
     const auto nameOf = [types] (int id) { return id <= 0 || id > (int) types.size() ? juce::String() : types[(size_t) id - 1].name; };
     browser->setHearable (canTryType());
+    {
+        juce::StringArray order { "STANDARD" };
+        order.addArray (pr7s::typeGroupOrder());
+        browser->setGroupOrder (order);
+    }
     browser->onHear = [safe, nameOf] (int id)
     {
         if (safe == nullptr || ! safe->canTryType())
@@ -2430,6 +2435,11 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeTypeBrowser()
 std::unique_ptr<OptionBrowser> ComposerPage::makeSoloBrowser()
 {
     auto browser = std::make_unique<OptionBrowser> ("SOLO STYLE", soloOptions(), (int) studio.getSoloStyle(), studio.getOptionMemory(), soloListKey);
+    {
+        juce::StringArray order { "BY STYLE" };
+        order.addArray (pr7s::soloGroupOrder());
+        browser->setGroupOrder (order);   // (0.158.0)
+    }
     juce::Component::SafePointer<ComposerPage> safe (this);
     browser->onHear = [safe] (int id)
     {

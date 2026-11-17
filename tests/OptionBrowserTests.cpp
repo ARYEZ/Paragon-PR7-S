@@ -67,7 +67,11 @@ TEST_CASE ("0.156.0: an option's feel and energy, measured from its part", "[opt
     // A line: held notes half time and calm, pushed ones broken, sixteenths double time.
     CHECK (measureOption (lineOf ({ 0.0, 4.0 }, 4.0), 4.0, false).feel == OptionFeel::half);
     CHECK (measureOption (lineOf ({ 0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0 }, 1.0), 4.0, false).feel == OptionFeel::straight);
-    CHECK (measureOption (lineOf ({ 0.25, 0.75, 1.75, 2.25, 3.75, 4.25, 5.75, 6.25 }, 0.25), 4.0, false).feel == OptionFeel::broken);
+    // (0.158.0) Off the sixteenths (triplets) is broken; pushed sixteenths are not.
+    CHECK (measureOption (lineOf ({ 1.0 / 3, 2.0 / 3, 4.0 / 3, 5.0 / 3, 7.0 / 3, 8.0 / 3, 10.0 / 3, 11.0 / 3 }, 0.25), 4.0, false).feel == OptionFeel::broken);
+    CHECK (measureOption (lineOf ({ 0.25, 0.75, 1.75, 2.25, 3.75, 4.25, 5.75, 6.25 }, 0.25), 4.0, false).feel == OptionFeel::straight);
+    // A solo resting its first bars is measured over the bars it plays.
+    CHECK (measureOption (lineOf ({ 8.0, 8.5, 9.0, 9.5, 10.0, 10.5, 11.0, 11.5 }, 0.5), 4.0, false).hitsPerBeat == 2.0);
     {
         std::vector<double> starts;
         for (int s = 0; s < 32; ++s)
@@ -445,4 +449,21 @@ TEST_CASE ("0.157.0: the solo style's short menu and browser", "[options][compos
     CHECK ((int) studio.getSoloStyle() == pick);
     CHECK (studio.getOptionMemory().recentOf (ComposerPage::soloListKey)[0] == soloStyleName (soloStyles()[10]));
     page.stop();
+}
+
+TEST_CASE ("0.158.0: the browser's groups in their order; solos measured fairly", "[options][composer][ui]")
+{
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (3);
+    auto browser = page.makeSoloBrowser();
+    const auto groups = browser->getGroups();
+    REQUIRE (groups.size() >= 5);
+    CHECK (groups[3] == "BY STYLE");
+    CHECK (groups[4] == "BENDS");
+    // Not every solo the same feel.
+    std::set<OptionFeel> feels;
+    for (const auto& o : page.soloOptions())
+        feels.insert (o.measure.feel);
+    CHECK (feels.size() >= 3);
 }

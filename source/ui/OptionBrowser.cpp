@@ -108,10 +108,22 @@ bool OptionBrowser::passes (const Option& o) const
 juce::StringArray OptionBrowser::getGroups() const
 {
     juce::StringArray out { favouritesGroup, recentGroup, everythingGroup };
+    juce::StringArray present;
     for (const auto& o : options)
         if (o.group.isNotEmpty())
-            out.addIfNotAlreadyThere (o.group);
+            present.addIfNotAlreadyThere (o.group);
+    for (const auto& g : groupOrder)
+        if (present.contains (g))
+            out.addIfNotAlreadyThere (g);
+    for (const auto& g : present)
+        out.addIfNotAlreadyThere (g);
     return out;
+}
+
+void OptionBrowser::setGroupOrder (const juce::StringArray& order)
+{
+    groupOrder = order;
+    repaint();
 }
 
 int OptionBrowser::countIn (const juce::String& g) const
@@ -455,8 +467,28 @@ void OptionBrowser::paintPicture (juce::Graphics& g, const Option& o, juce::Rect
         g.drawText ("NOTHING TO DRAW HERE (HEAR IT)", area, juce::Justification::centred);
         return;
     }
-    const auto beats = 8.0;   // the first two bars of four
+    const auto beats = 8.0;   // two bars of four
     const auto steps = 32;
+    // (0.158.0) A line (a solo) drawn from its busiest two bars: the first two are often a rest before it starts.
+    auto from = 0.0;
+    if (! o.drums)
+    {
+        auto end = 0.0;
+        for (const auto& n : o.idea.notes)
+            end = juce::jmax (end, n.beat);
+        auto most = -1;
+        for (auto at = 0.0; at <= end; at += 4.0)
+        {
+            auto count = 0;
+            for (const auto& n : o.idea.notes)
+                count += ! n.keyswitch && n.beat >= at && n.beat < at + beats ? 1 : 0;
+            if (count > most)
+            {
+                most = count;
+                from = at;
+            }
+        }
+    }
     const auto stepW = (float) (area.getWidth() - 40) / (float) steps;
     const auto left = (float) area.getX() + 40.0f;
     // The beat lines.
@@ -496,7 +528,7 @@ void OptionBrowser::paintPicture (juce::Graphics& g, const Option& o, juce::Rect
     }
     auto low = 127, high = 0;
     for (const auto& n : notes)
-        if (! n.keyswitch && n.beat < beats)
+        if (! n.keyswitch && n.beat >= from && n.beat < from + beats)
         {
             low = juce::jmin (low, n.pitch);
             high = juce::jmax (high, n.pitch);
@@ -507,10 +539,10 @@ void OptionBrowser::paintPicture (juce::Graphics& g, const Option& o, juce::Rect
     const auto rowH = (float) (area.getHeight() - 8) / span;
     for (const auto& n : notes)
     {
-        if (n.keyswitch || n.beat >= beats)
+        if (n.keyswitch || n.beat < from || n.beat >= from + beats)
             continue;
-        const auto x = left + (float) (n.beat / beats * steps) * stepW;
-        const auto w = juce::jmax (2.0f, (float) (juce::jmin (n.length, beats - n.beat) / beats * steps) * stepW - 1.0f);
+        const auto x = left + (float) ((n.beat - from) / beats * steps) * stepW;
+        const auto w = juce::jmax (2.0f, (float) (juce::jmin (n.length, from + beats - n.beat) / beats * steps) * stepW - 1.0f);
         const auto y = (float) area.getBottom() - 4.0f - (float) (n.pitch - low + 1) * rowH;
         g.setGradientFill (lit);
         g.setOpacity (juce::jlimit (0.4f, 1.0f, n.velocity));
