@@ -62,6 +62,7 @@ public:
     int countIn (const juce::String& group) const;
     bool isFavourite (int id) const;
     juce::TextButton* keyNamed (const juce::String&);
+    juce::String getHeading() const { return title; }
 
     void paint (juce::Graphics&) override;
     void resized() override;
@@ -97,4 +98,23 @@ private:
     void paintPicture (juce::Graphics&, const Option&, juce::Rectangle<int>) const;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OptionBrowser)
+};
+
+// (0.160.0, the owner: "needs to open centered and maximized and needs to be freely resizable") The browser in a
+// window of its own (it was a call-out box of a fixed size): centred on the screen the composer is on, then
+// maximized; resizable down to `leastWidth` x `leastHeight`. Closing it ends a trial as closing the box did (the
+// browser's own onClosed, when it goes with the window).
+class OptionBrowserWindow final : public juce::DocumentWindow
+{
+public:
+    OptionBrowserWindow (std::unique_ptr<OptionBrowser>, juce::Component* near);
+    void closeButtonPressed() override;
+    std::function<void()> onClose;   // (the owner deletes the window: never inside this call)
+    OptionBrowser& getBrowser() { return *browser; }
+    static constexpr int leastWidth = 820, leastHeight = 480;
+    // The screen area it opens on: the display under `near`'s middle (the main display without one).
+    static juce::Rectangle<int> screenFor (juce::Component* near);
+
+private:
+    OptionBrowser* browser = nullptr;
 };

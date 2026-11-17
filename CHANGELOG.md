@@ -2,6 +2,29 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.160.0
+
+**Eight bass versions from your songs, in front of LOCKED WITH THE KICK** (you asked; round four, shapes only, our own names). They're on the bass lane's list under every named section type whose bass list ends with LOCKED WITH THE KICK, after the type's own options and just in front of it. LOCKED WITH THE KICK stays last. In the browser they're in FROM YOUR SONGS.
+
+- **DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN** (I Stand Alone): the bass plays the guitar's top notes, its pings and stabs over the chugs, octaves down, and stays silent under the low chugs.
+- **PLAYS ONLY THE HEAD** (Don't Stay): the bass doubles the guitar's first seven sixteenths of each bar, then leaves the rest of the bar to the guitar.
+- **KEEPS THE CHORUS RHYTHM** (The Emptiness Machine): the chorus's chord rhythm on one root a bar, for a verse where the guitars drop back.
+- **CARVED SIXTEENTH LINE** (Papercut): three, a gap, one, four, a gap. Pair it with the drums' CARVED KICK, CHINA SIXTEENTHS from 0.159.0 and the kick doubles it.
+- **EIGHTHS, PICKUP INTO EACH BAR** (In My Remains): root eighths with a three-note pickup walking into the next chord.
+- **A NOTE A BAR, FALLING FROM THE KEY'S NOTE** (All I Need): one note a bar, a scale step lower each bar, starting again every four.
+- **CHROMATIC EIGHTHS AROUND THE ROOT** (Given Up): eighths circling the root through its half-step and whole-step neighbours.
+- **DOTTED FIGURE WITH THE KICK** (Angel's Son).
+
+The two that follow the guitar read whatever the guitar lane is playing, including the riff kinds from 0.158.0 and 0.159.0.
+
+When a type has no guitar for those two to follow (the guitar out, or no high notes), they play a part of their own instead of going silent: the root and its octave on the beats for HIGH NOTES, a short head figure on the root for THE HEAD.
+
+**Two fixes you reported:**
+- **The option browser** (MORE OPTIONS..., MORE TYPES..., MORE SOLO STYLES...) now opens as a window of its own, centred on the screen the Architect is on and maximized. It's freely resizable (down to 820 x 480) and has the usual minimise / maximise / close buttons. Closing it works as closing the old box did: a HEAR you tried without USE IT goes back.
+- **The style menus are names only.** Every option used to carry its whole description in brackets, which made the menu as wide as your screen, so SOLO STYLE's list opened far off to the left, outside it. Now the lane's style menu, the solo styles, the riff flavours and the TYPE menu show just the names, and each submenu opens beside its menu. What each one does is still in the browser.
+
+**One thing to know about songs saved on LOCKED WITH THE KICK:** a song remembers a lane's option by its place in the list, and the new options now sit where LOCKED WITH THE KICK used to be. A section saved with its bass on LOCKED WITH THE KICK will open on DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN instead. Pick LOCKED WITH THE KICK again to get it back. Built blocks keep the music they already have until you rebuild them.
+
 ## 0.159.0
 
 **45 new versions of styles we already had, from your songs** (round four, the readers' "new versions" lists; shapes only, our own names). Each is a guitar, drums or keys option on the shared lists, so it shows under every named section type, after the type's own options. In the option browser they're in the FROM YOUR SONGS group, and FEEL / ENERGY and the search find them.

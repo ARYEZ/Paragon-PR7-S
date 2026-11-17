@@ -589,3 +589,36 @@ void OptionBrowser::mouseWheelMove (const juce::MouseEvent& e, const juce::Mouse
     scroll = juce::jlimit (0.0f, most, scroll - w.deltaY * 120.0f);
     repaint (listArea);
 }
+
+//==============================================================================
+juce::Rectangle<int> OptionBrowserWindow::screenFor (juce::Component* near)
+{
+    const auto& displays = juce::Desktop::getInstance().getDisplays();
+    const auto* display = near != nullptr && near->isShowing() ? displays.getDisplayForPoint (near->getScreenBounds().getCentre())
+                                                              : displays.getPrimaryDisplay();
+    return display != nullptr ? display->userArea : juce::Rectangle<int> { 0, 0, 1920, 1040 };
+}
+
+OptionBrowserWindow::OptionBrowserWindow (std::unique_ptr<OptionBrowser> b, juce::Component* near)
+    : DocumentWindow (b->getHeading().isNotEmpty() ? "Paragon PR7-S: " + b->getHeading().toLowerCase() : juce::String ("Paragon PR7-S: options"),
+                      juce::Colour (0xff0d0a0e), DocumentWindow::allButtons)
+{
+    setUsingNativeTitleBar (true);
+    browser = b.release();
+    setContentOwned (browser, false);
+    setResizable (true, false);
+    setResizeLimits (leastWidth, leastHeight, 16384, 16384);
+    const auto area = screenFor (near);
+    // Centred first (where it comes back to when un-maximized), then maximized.
+    setBounds (area.withSizeKeepingCentre (juce::jmin (area.getWidth(), juce::jmax (leastWidth, area.getWidth() * 3 / 4)),
+                                           juce::jmin (area.getHeight(), juce::jmax (leastHeight, area.getHeight() * 3 / 4))));
+    setVisible (true);
+    setFullScreen (true);
+    toFront (true);
+}
+
+void OptionBrowserWindow::closeButtonPressed()
+{
+    if (onClose)
+        onClose();
+}

@@ -467,3 +467,50 @@ TEST_CASE ("0.158.0: the browser's groups in their order; solos measured fairly"
         feels.insert (o.measure.feel);
     CHECK (feels.size() >= 3);
 }
+
+TEST_CASE ("0.160.0: the browser in a window of its own; menus of names", "[options][composer][ui]")
+{
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (3);
+    page.setOn (L::lead, true);
+    page.setSection (DrumSection::chorus);
+    page.setSectionType ("SIXTEENTH WALL, HALF-TIME KIT");
+    // The menus show names only (a description made the menu as wide as the screen, its submenus off to the side).
+    for (const auto l : { L::drums, L::bass, L::guitar, L::chords, L::lead })
+    {
+        const auto menu = page.makeStyleMenu (l);
+        countItems (menu, [] (const juce::PopupMenu::Item& i)
+        {
+            INFO (i.text);
+            CHECK (i.text.length() <= 70);
+            return false;
+        });
+    }
+    countItems (page.makeTypeMenu(), [] (const juce::PopupMenu::Item& i)
+    {
+        INFO (i.text);
+        CHECK (i.text.length() <= 70);
+        return false;
+    });
+    // The window: resizable, on the composer's screen, maximized.
+    auto trialEnded = false;
+    {
+        auto browser = page.makeSoloBrowser();
+        auto before = browser->onClosed;
+        browser->onClosed = [&] { trialEnded = true; if (before) before(); };
+        OptionBrowserWindow window (std::move (browser), &page);
+        CHECK (window.isResizable());
+        CHECK (window.getConstrainer() != nullptr);
+        CHECK (window.getConstrainer()->getMinimumWidth() == OptionBrowserWindow::leastWidth);
+        CHECK (window.getConstrainer()->getMinimumHeight() == OptionBrowserWindow::leastHeight);
+        CHECK (window.isVisible());
+        const auto area = OptionBrowserWindow::screenFor (&page);
+        CHECK (area.contains (window.getScreenBounds().getCentre()));
+        window.setSize (1000, 600);   // freely resizable: the browser follows
+        CHECK (window.getBrowser().getWidth() > 900);
+        CHECK (window.getBrowser().getHeight() > 400);
+        CHECK_FALSE (trialEnded);
+    }
+    CHECK (trialEnded);   // closing the window ends a trial as closing the box did
+}

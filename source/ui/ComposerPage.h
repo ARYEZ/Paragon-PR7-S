@@ -146,6 +146,9 @@ public:
     void styleMenuChosen (pr7s::ComposerLayer, int item);
     std::unique_ptr<OptionBrowser> makeOptionBrowser (pr7s::ComposerLayer);   // (tests: shown by showOptionBrowser)
     void showOptionBrowser (pr7s::ComposerLayer);
+    // (0.160.0) The browsers open in a window of their own, centred and maximized (one at a time: a new one replaces it).
+    void openBrowserWindow (std::unique_ptr<OptionBrowser>);
+    OptionBrowserWindow* getBrowserWindow() { return browserWindow.get(); }
     void useOption (pr7s::ComposerLayer, int id);     // an option's id chosen (noted as used)
     void tryOption (pr7s::ComposerLayer, int id);     // HEAR: chosen for now and heard; put back unless used
     void endTrial (bool keep);
@@ -241,6 +244,7 @@ public:
     static constexpr int headerHeight = 64, controlsHeight = 44, songHeight = 54, rulerHeight = 30, laneHeaderWidth = 480, gap = 12;
 
 private:
+    std::unique_ptr<OptionBrowserWindow> browserWindow;
     int targetBlock = 0;   // (0.90.0) the SECTIONS row's block composed (its id; 0: none)
     struct Lane
     {

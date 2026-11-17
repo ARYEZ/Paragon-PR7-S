@@ -1331,6 +1331,10 @@ namespace pr7s
                      "LOOP AND SIDESTICK SIXTEENTHS", "DISPLACED SNARE, RIDE BELL", "BROKEN BEAT, CRASH EIGHTHS",
                      "LAYERED DOUBLE KICK", "THE STOMP JOINS", "CARVED KICK, CHINA SIXTEENTHS",
                      "QUARTER HATS, BUSY KICK", "TOM GROOVE, SNARE ON THREE", "SNARE ON THE A OF TWO, CRASH EIGHTHS" };
+        if (layer == ComposerLayer::bass)   // (0.160.0) round four's bass versions: put in front of LOCKED WITH THE KICK
+            return { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
+                     "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
+                     "DOTTED FIGURE WITH THE KICK" };
         if (layer == ComposerLayer::guitar)   // (0.158.0) round four's riff kinds
             return { "CHUGS, THEN THREE CHORDS", "HIT, THEN BURSTS ON TWO AND FOUR", "PUSHED POWER CHORDS WITH A FLAT-TWO STAB",
                      "ROOT TWICE, TRITONE PUSHED IN", "SUS2 SPLIT BETWEEN TWO GUITARS", "TONIC WALL UNDER MOVING CHORDS",
@@ -1362,6 +1366,18 @@ namespace pr7s
         auto names = baseSectionApproaches (s, layer);
         if (names.isEmpty() || ! sectionTypeCalled (s.sectionType).has_value())
             return names;
+        // (0.160.0) The bass's go in front of LOCKED WITH THE KICK, which stays last (the composer finds it there);
+        // a bass list that doesn't end with it takes none.
+        if (layer == ComposerLayer::bass)
+        {
+            if (names[names.size() - 1] != "LOCKED WITH THE KICK")
+                return names;
+            names.remove (names.size() - 1);
+            for (const auto& n : extraApproaches (layer))
+                names.addIfNotAlreadyThere (n);
+            names.add ("LOCKED WITH THE KICK");
+            return names;
+        }
         for (const auto& n : extraApproaches (layer))
             names.addIfNotAlreadyThere (n);
         return names;

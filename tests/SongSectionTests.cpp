@@ -826,7 +826,7 @@ TEST_CASE ("0.94.0: STACCATO CHUG: one verse type, the rhythm guitar's approache
                                            RiffFlavour::tritone, RiffFlavour::chugs, RiffFlavour::gallop, RiffFlavour::stopStart });
     // A Pre-Chorus has it too; a chorus doesn't.
     CHECK (isSectionTypeOf ("Pre-Chorus", "STACCATO CHUG"));
-    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 3);   // (0.97.2: LOCKED WITH THE KICK)
+    CHECK (baseSectionApproaches (s, ComposerLayer::bass).size() == 3);   // (0.97.2: LOCKED WITH THE KICK)
     CHECK (sectionApproaches (s, ComposerLayer::chords).isEmpty());  // (the keys: their usual styles)
 }
 
@@ -1078,7 +1078,7 @@ TEST_CASE ("0.97.0: CLEAN VERSE: a verse type with five clean guitar parts and t
     CHECK (guitar[2] == "SPARSE CLEAN NOTES");
     CHECK (guitar[3] == "GUITARS OUT");
     CHECK (guitar[4] == "HELD CHORD & PULSE");
-    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 6);   // (0.97.2: LOCKED WITH THE KICK; 0.100.0: OUT, THEN IN HALFWAY)
+    CHECK (baseSectionApproaches (s, ComposerLayer::bass).size() == 6);   // (0.97.2: LOCKED WITH THE KICK; 0.100.0: OUT, THEN IN HALFWAY)
     CHECK (baseSectionApproaches (s, ComposerLayer::drums).size() == 6);   // (0.100.0: OUT, THEN IN HALFWAY; 0.101.0: HALF-TIME HATS, TOM GROOVE)
     CHECK (baseSectionApproaches (s, ComposerLayer::chords).size() == 5);   // (0.100.0: OCTAVE DRONE)
     CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 2);   // (0.101.0: the swells; automatic: the lead's own style)
@@ -1228,8 +1228,8 @@ TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, ea
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::guitar, droning, c));
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, droning, c));
     const auto bass = composerChoices (ComposerLayer::bass, droning, spans, c);
-    REQUIRE (bass.size() == 7);   // (0.97.2: LOCKED WITH THE KICK last)
-    CHECK (distinct (bass) == 7);
+    REQUIRE (bass.size() == (size_t) sectionApproaches (droning, ComposerLayer::bass).size());   // (0.97.2: LOCKED WITH THE KICK last; 0.160.0: the shared bass versions)
+    CHECK (distinct (bass) == (int) bass.size());
     for (const auto l : { ComposerLayer::chords, ComposerLayer::drums })   // (0.97.2: seven each)
     {
         const auto ideas = composerChoices (l, droning, spans, c);
@@ -1264,7 +1264,7 @@ TEST_CASE ("0.97.1: a lane the section type writes offers the type's options, ea
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::guitar, split, c));   // (its guitar has its riff kinds and styles)
     const auto clean = cleanState (-1);
     CHECK (distinct (composerChoices (ComposerLayer::guitar, clean, spans, c)) == 10 + extraApproaches (ComposerLayer::guitar).size());   // (0.100.0: seven; 0.101.0: ten; 0.158.0: the shared riff kinds)
-    CHECK (distinct (composerChoices (ComposerLayer::bass, clean, spans, c)) == 6);     // (0.100.0: six)
+    CHECK (distinct (composerChoices (ComposerLayer::bass, clean, spans, c)) == 6 + extraApproaches (ComposerLayer::bass).size());     // (0.100.0: six; 0.160.0: the shared bass versions)
     // SYNC on: the lanes follow the sync lane, the styles back.
     auto synced = droning;
     synced.syncLane = (int) ComposerLayer::guitar;
@@ -1311,7 +1311,7 @@ TEST_CASE ("0.97.2: LOCKED WITH THE KICK on the bass under every type that write
     ComposerState quiet;
     applySectionType (quiet, "Verse", "CLEAN VERSE");
     quiet.lane (ComposerLayer::drums).approach = 2;
-    quiet.lane (ComposerLayer::bass).approach = 5;   // (0.100.0: LOCKED WITH THE KICK moved to 6th)
+    quiet.lane (ComposerLayer::bass).approach = sectionApproaches (quiet, ComposerLayer::bass).size() - 1;   // (0.100.0: LOCKED WITH THE KICK moved to 6th; 0.160.0: still the last)
     CHECK (composeLayers (quiet, spans, c)[(size_t) ComposerLayer::bass].notes.size() == 8 * 4);
 }
 
@@ -1326,7 +1326,7 @@ TEST_CASE ("0.98.0: the DRIVING chorus's options for every lane", "[sections][ty
     CHECK (sectionTypeWritesLane (ComposerLayer::lead, s, c));
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, s, c));
     CHECK (baseSectionApproaches (s, ComposerLayer::guitar).size() == 7);   // (0.117.0: the turnaround)
-    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 6);   // (0.117.0: the dominant pedal)
+    CHECK (baseSectionApproaches (s, ComposerLayer::bass).size() == 6);   // (0.117.0: the dominant pedal)
     CHECK (baseSectionApproaches (s, ComposerLayer::drums).size() == 7);   // (0.116.0: two more)
     CHECK (baseSectionApproaches (s, ComposerLayer::chords).size() == 4);
     CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 4);   // (0.117.0: the falling octaves)
@@ -1497,7 +1497,7 @@ TEST_CASE ("0.99.0: SYNCOPATED DRIVE: a chorus type with its options", "[section
         CHECK (sectionTypeWritesLane (l, s, c));
     CHECK_FALSE (sectionTypeWritesLane (ComposerLayer::melody, s, c));
     CHECK (baseSectionApproaches (s, ComposerLayer::guitar).size() == 5);   // (0.117.0: the turnaround)
-    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 5);   // (0.117.0: the dominant pedal)
+    CHECK (baseSectionApproaches (s, ComposerLayer::bass).size() == 5);   // (0.117.0: the dominant pedal)
     CHECK (baseSectionApproaches (s, ComposerLayer::drums).size() == 4);
     CHECK (baseSectionApproaches (s, ComposerLayer::chords).size() == 3);
     CHECK (sectionApproaches (s, ComposerLayer::lead).size() == 3);
@@ -1659,7 +1659,7 @@ TEST_CASE ("0.100.0: MUTED DRIVE: a verse type of palm-muted eighths with its ba
     for (const auto l : { ComposerLayer::bass, ComposerLayer::drums, ComposerLayer::chords, ComposerLayer::lead })
         CHECK (sectionTypeWritesLane (l, s, c));
     CHECK (baseSectionApproaches (s, ComposerLayer::guitar).size() == 3);
-    CHECK (sectionApproaches (s, ComposerLayer::bass).size() == 4);
+    CHECK (baseSectionApproaches (s, ComposerLayer::bass).size() == 4);
     CHECK (baseSectionApproaches (s, ComposerLayer::drums).size() == 4);   // (0.118.0: FOUR ON THE FLOOR)
     const auto struck = [] (const std::string& bar) { int n = 0; for (int i = 0; i < 16; i += 2) n += bar[(size_t) i] != '=' && bar[(size_t) i] != '-'; return n; };
     for (juce::uint32 seed = 1; seed < 30; ++seed)
@@ -5096,7 +5096,7 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     CHECK (drums.size() == 9 + 11 + 12);   // (0.155.0: eleven more drums, fifteen more keys)
     CHECK (keys.size() == 5 + 15 + 12);
     CHECK (extraApproaches (ComposerLayer::guitar).size() == 27);   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
-    CHECK (extraApproaches (ComposerLayer::bass).isEmpty());
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8);   // (0.160.0: in front of LOCKED WITH THE KICK)
 
     // Under STANDARD (no named type) nothing is added.
     {
@@ -6085,5 +6085,93 @@ TEST_CASE ("0.159.0: round four's new versions of styles we have", "[sections][t
             bars.insert (at);
         }
         CHECK (bars.size() >= 6);
+    }
+}
+
+TEST_CASE ("0.160.0: round four's bass versions, in front of LOCKED WITH THE KICK", "[sections][types][bass160]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const char* names[] = { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
+                            "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
+                            "DOTTED FIGURE WITH THE KICK" };
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8);
+    // Under every named type whose bass ends with LOCKED WITH THE KICK: there, just in front of it; else not at all.
+    auto typed = 0;
+    for (const auto* section : { "Verse", "Chorus", "Bridge", "Breakdown", "Intro", "Outro", "Pre-Chorus" })
+        for (const auto& t : sectionTypesFor (section))
+        {
+            ComposerState s;
+            applySectionType (s, section, t.name);
+            const auto base = baseSectionApproaches (s, ComposerLayer::bass);
+            const auto all = sectionApproaches (s, ComposerLayer::bass);
+            if (base.isEmpty())
+                continue;
+            INFO (section << " " << t.name);
+            if (base[base.size() - 1] != "LOCKED WITH THE KICK")
+            {
+                CHECK (all == base);
+                continue;
+            }
+            ++typed;
+            CHECK (all[all.size() - 1] == "LOCKED WITH THE KICK");
+            for (int i = 0; i < base.size() - 1; ++i)
+                CHECK (all[i] == base[i]);   // the type's own keep their places
+            for (const auto* n : names)
+                CHECK (all.contains (n));
+        }
+    CHECK (typed > 50);
+    ComposerState s;
+    applySectionType (s, "Chorus", "DRIVING");
+    const auto all = sectionApproaches (s, ComposerLayer::bass);
+    const auto play = [&] (const juce::String& name)
+    {
+        auto t = s;
+        REQUIRE (all.contains (name));
+        t.lane (ComposerLayer::bass).approach = all.indexOf (name);
+        return composeLayers (t, spans, c);
+    };
+    std::set<std::vector<int>> seen;
+    for (const auto* name : names)
+    {
+        INFO (name);
+        const auto layers = play (name);
+        const auto& b = layers[(size_t) ComposerLayer::bass];
+        REQUIRE_FALSE (b.notes.empty());
+        CHECK (b.description.isNotEmpty());
+        std::vector<int> shape;
+        for (const auto& n : b.notes)
+        {
+            shape.push_back (juce::roundToInt (n.beat * 16.0) * 128 + n.pitch);
+            CHECK (n.pitch <= 60);
+            CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+        }
+        CHECK (seen.insert (shape).second);
+    }
+    // LOCKED WITH THE KICK is still the last and still locked.
+    {
+        auto t = s;
+        t.lane (ComposerLayer::bass).approach = all.size() - 1;
+        const auto layers = composeLayers (t, spans, c);
+        CHECK (layers[(size_t) ComposerLayer::bass].style.toLowerCase().contains ("locked"));
+    }
+    // PLAYS ONLY THE HEAD: nothing after the bar's seventh sixteenth.
+    for (const auto& n : play ("PLAYS ONLY THE HEAD")[(size_t) ComposerLayer::bass].notes)
+        CHECK (std::fmod (n.beat, 4.0) < 1.75 - 1.0e-6);
+    // KEEPS THE CHORUS RHYTHM: its figure in every bar.
+    {
+        std::set<int> at;
+        for (const auto& n : play ("KEEPS THE CHORUS RHYTHM")[(size_t) ComposerLayer::bass].notes)
+            if (n.beat >= 8.0 - 1.0e-6 && n.beat < 12.0 - 1.0e-6)
+                at.insert (juce::roundToInt ((n.beat - 8.0) * 4.0));
+        CHECK (at == std::set<int> { 0, 2, 4, 5, 6, 7, 8, 9, 10, 12, 13, 14 });
+    }
+    // A NOTE A BAR: from the key's note, a step lower each bar.
+    {
+        const auto b = play ("A NOTE A BAR, FALLING FROM THE KEY'S NOTE")[(size_t) ComposerLayer::bass];
+        REQUIRE (b.notes.size() == 8);
+        CHECK (b.notes[0].pitch % 12 == 9);
+        CHECK (b.notes[1].pitch % 12 == 7);
+        CHECK (b.notes[4].pitch == b.notes[0].pitch);
     }
 }

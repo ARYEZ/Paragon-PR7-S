@@ -209,6 +209,11 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
 
 ComposerPage::~ComposerPage()
 {
+    if (browserWindow != nullptr)
+    {
+        browserWindow->getBrowser().onClosed = nullptr;   // (no trial put back into a page that's going)
+        browserWindow.reset();
+    }
     if (hearing)
         studio.stopComposerAudition();
 }
@@ -1856,7 +1861,9 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
     const auto itemOf = [] (int id) { return id >= approachId ? approachItems + 1 + (id - approachId) : id + 1; };
     const auto isOn = [this, l] (int id) { return id >= approachId ? state.lane (l).approach == id - approachId
                                                                      : state.lane (l).approach < 0 && id == state.lane (l).style; };
-    const auto nameOf = [] (const OptionBrowser::Option& o) { return o.name + (o.description.isNotEmpty() ? "  (" + o.description + ")" : juce::String()); };
+    // (0.160.0, the owner: a long description made the menu as wide as the screen and its submenus open off to the side) names only: what
+    // each does is in the browser (MORE OPTIONS...)
+    const auto nameOf = [] (const OptionBrowser::Option& o) { return o.name; };
     std::map<juce::String, int> groupSizes;
     for (const auto& o : options)
         ++groupSizes[o.group];
@@ -1936,8 +1943,7 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
             {
                 const auto st = pr7s::soloStyles()[(size_t) i];
                 if (pr7s::soloStyleName (st) == n)
-                    solos.addItem (soloItems + i, (memory.isFavourite (soloListKey, n) ? juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 ")) : juce::String()) + n
-                                                      + "  (" + pr7s::soloStyleDescription (st) + ")", true, st == now);
+                    solos.addItem (soloItems + i, (memory.isFavourite (soloListKey, n) ? juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 ")) : juce::String()) + n, true, st == now);
             }
         solos.addSeparator();
         solos.addItem (moreSolosItem, "MORE SOLO STYLES... (all " + juce::String ((int) pr7s::soloStyles().size()) + ", with search and feel filters)");
@@ -1951,7 +1957,7 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
         for (int i = 0; i < (int) pr7s::riffFlavours().size(); ++i)
         {
             const auto f = pr7s::riffFlavours()[(size_t) i];
-            flavours.addItem (flavourItems + i, pr7s::riffFlavourName (f) + "  (" + pr7s::riffFlavourDescription (f) + ")", true,
+            flavours.addItem (flavourItems + i, pr7s::riffFlavourName (f), true,
                               ! state.writtenRiffs && i == state.riffFlavour);
         }
         menu.addSeparator();
@@ -1979,12 +1985,12 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
     if (l == ComposerLayer::drums)
     {
         menu.addSeparator();
-        menu.addItem (libraryItems, "Grooves from My Library (PR7-D's groove library, else the MediaBay's drum MIDI)", true, state.libraryDrums);
+        menu.addItem (libraryItems, "Grooves from My Library (PR7-D's, else the MediaBay's)", true, state.libraryDrums);
         // (0.108.0, the studio link) PR7-D plays the drums from its own song track (the track keeps a muted copy).
         menu.addItem (libraryItems + 90, "PR7-D Plays the Drums from Its Song Track (on a track playing PR7-D)", true, studio.getPr7dPlaysDrums());
         // (0.137.0, the owner's rules) The section's 100: two thirds from the Toontrack folder, 4 to 16 bars, naming
         // the section, best fit to the guitar first; ROLL goes through them all in a random order.
-        menu.addItem (libraryItems + 91, "Fit the Kick to the Riff (a few kicks moved or added onto the guitar's hits)", state.libraryDrums, state.fitKicks);
+        menu.addItem (libraryItems + 91, "Fit the Kick to the Riff (kicks nudged onto its hits)", state.libraryDrums, state.fitKicks);
         const auto grooves = pr7s::composerGroovePool (state, placedSpans(), context);
         auto fromToontrack = 0;
         for (const auto& g : grooves)
@@ -2050,7 +2056,7 @@ void ComposerPage::styleMenuChosen (ComposerLayer l, int chosen)
     {
         auto browser = makeSoloBrowser();
         if (getPeer() != nullptr || getTopLevelComponent()->getPeer() != nullptr)
-            juce::CallOutBox::launchAsynchronously (std::move (browser), lanes[(size_t) l].style.getScreenBounds(), nullptr);
+            openBrowserWindow (std::move (browser));
         return;
     }
     if (chosen >= libraryItems && chosen < libraryItems + 400)
@@ -2101,7 +2107,7 @@ std::vector<OptionBrowser::Option> ComposerPage::laneOptions (ComposerLayer l) c
     const auto drums = l == ComposerLayer::drums;
     const auto bpb = context.beatsPerBar;
     const auto approaches = pr7s::sectionApproaches (state, l);
-    const auto own = pr7s::baseSectionApproaches (state, l).size();
+    const auto ownNames = pr7s::baseSectionApproaches (state, l);   // (0.160.0: by name: the bass's shared options sit in front of its own last)
     if (pr7s::sectionTypeWritesLane (l, state, context))
     {
         // The type's options, each a different part (composerChoices made one each, in this order).
@@ -2110,7 +2116,7 @@ std::vector<OptionBrowser::Option> ComposerPage::laneOptions (ComposerLayer l) c
             OptionBrowser::Option o;
             o.id = approachId + i;
             o.name = approaches[i];
-            o.group = i < own ? typeOwnGroup : songsGroup;
+            o.group = ownNames.contains (approaches[i]) ? typeOwnGroup : songsGroup;
             o.drums = drums;
             if (i < (int) choices.size())
             {
@@ -2128,7 +2134,7 @@ std::vector<OptionBrowser::Option> ComposerPage::laneOptions (ComposerLayer l) c
         OptionBrowser::Option o;
         o.id = approachId + i;
         o.name = approaches[i];
-        o.group = i < own ? typeOwnGroup : songsGroup;
+        o.group = ownNames.contains (approaches[i]) ? typeOwnGroup : songsGroup;
         o.drums = drums;
         out.push_back (std::move (o));
     }
@@ -2176,8 +2182,21 @@ void ComposerPage::showOptionBrowser (ComposerLayer l)
     auto browser = makeOptionBrowser (l);
     if (getPeer() == nullptr && getTopLevelComponent()->getPeer() == nullptr)
         return;
-    auto* box = &juce::CallOutBox::launchAsynchronously (std::move (browser), lanes[(size_t) l].style.getScreenBounds(), nullptr);
-    juce::ignoreUnused (box);
+    openBrowserWindow (std::move (browser));
+}
+
+void ComposerPage::openBrowserWindow (std::unique_ptr<OptionBrowser> browser)
+{
+    browserWindow.reset();   // (the old one's trial ends as it goes)
+    browserWindow = std::make_unique<OptionBrowserWindow> (std::move (browser), this);
+    browserWindow->onClose = [safe = juce::Component::SafePointer<ComposerPage> (this)]
+    {
+        juce::MessageManager::callAsync ([safe]
+        {
+            if (safe != nullptr)
+                safe->browserWindow.reset();
+        });
+    };
 }
 
 void ComposerPage::useOption (ComposerLayer l, int id)
@@ -2339,7 +2358,7 @@ juce::PopupMenu ComposerPage::makeTypeMenu()
         for (int i = 0; i < (int) types.size(); ++i)
             if (types[(size_t) i].name == n && ! shown.contains (n))
             {
-                menu.addItem (2 + i, prefix + n + "  (" + types[(size_t) i].description + ")", true, n == state.sectionType);
+                menu.addItem (2 + i, prefix + n, true, n == state.sectionType);
                 shown.add (n);
             }
     };
@@ -2383,7 +2402,7 @@ void ComposerPage::typeMenuChosen (int item)
     {
         auto browser = makeTypeBrowser();
         if (getPeer() != nullptr || getTopLevelComponent()->getPeer() != nullptr)
-            juce::CallOutBox::launchAsynchronously (std::move (browser), typeKey.getScreenBounds(), nullptr);
+            openBrowserWindow (std::move (browser));
         return;
     }
     const auto types = pr7s::sectionTypesFor (typeSectionName());

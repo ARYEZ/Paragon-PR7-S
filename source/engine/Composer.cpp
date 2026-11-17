@@ -2006,6 +2006,7 @@ namespace pr7s
         //     toms on the guitar's hits.
         //   RISING BASS (At the End of August): tremolo-picked or held chords while the bass climbs a scale step a bar.
         std::optional<LineIdea> extraOptionLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+        LineIdea syncedLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
         // (0.158.0) The guitar's option from the shared list (round four's riff kinds), when that's what's chosen.
         std::optional<LineIdea> extraGuitarOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
@@ -14334,15 +14335,18 @@ namespace pr7s
         //======================================================================
         // (0.145.0) The options from the owner's 61 song files added to every section type's keys and drums lists
         // (`extraApproaches`, after each type's own; the bass and guitar lists left as they were: the bass doubles each
-        // type's own guitar, and LOCKED WITH THE KICK stays the bass's last). Written here with Round3's helpers.
+        // type's own guitar, and LOCKED WITH THE KICK stays the bass's last; since 0.160.0 the bass's shared options go in front of it). Written here with Round3's helpers.
         std::optional<LineIdea> extraOptionLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
-            if (spans.empty() || (l != ComposerLayer::drums && l != ComposerLayer::chords && l != ComposerLayer::guitar))
+            if (spans.empty() || (l != ComposerLayer::drums && l != ComposerLayer::chords && l != ComposerLayer::guitar && l != ComposerLayer::bass))
                 return std::nullopt;
             const auto a = s.lane (l).approach;
             const auto base = baseSectionApproaches (s, l).size();
             const auto names = sectionApproaches (s, l);
-            if (a < base || a >= names.size() || base == 0)
+            // (0.160.0) The bass's shared options sit in front of LOCKED WITH THE KICK (the type's own last).
+            const auto bass = l == ComposerLayer::bass && names.size() > base;
+            const auto from = bass ? base - 1 : base, to = bass ? names.size() - 1 : names.size();
+            if (base == 0 || a < from || a >= to)
                 return std::nullopt;
             const auto n = names[a];
             const Round3 r (s, spans, c);
@@ -14804,6 +14808,125 @@ namespace pr7s
                             r.add (out, o + k * s16, s16 * 0.8, i % 3 == 2 ? upper : tonic, i % 3 == 2 ? open : muted);
                         }
                     });
+                }
+                else
+                    return std::nullopt;
+                sortNotes (out);
+                return out;
+            }
+            // (0.160.0, the owner: "add the bass versions too, before LOCKED WITH THE KICK") Round four's bass
+            // versions, between a type's own bass options and LOCKED WITH THE KICK (which stays last).
+            if (l == ComposerLayer::bass)
+            {
+                const auto low = r.bassLowest(), high = r.bassHighest();
+                const auto fold = [&] (int p)
+                {
+                    while (p > juce::jmin (high, low + 19)) p -= 12;
+                    while (p < low) p += 12;
+                    return p;
+                };
+                const auto guitarHits = [&]
+                {
+                    // The guitar as it plays here: each hit's lowest and highest note (notes starting together one hit).
+                    struct Hit { double at, length; int lowest, highest; };
+                    std::vector<Hit> hits;
+                    const auto guitar = syncedLayer (ComposerLayer::guitar, s, spans, c);
+                    for (const auto& n : guitar.notes)
+                    {
+                        if (n.keyswitch)
+                            continue;
+                        if (! hits.empty() && std::abs (hits.back().at - n.beat) < 1.0e-3)
+                        {
+                            hits.back().lowest = juce::jmin (hits.back().lowest, n.pitch);
+                            hits.back().highest = juce::jmax (hits.back().highest, n.pitch);
+                            hits.back().length = juce::jmax (hits.back().length, n.length);
+                        }
+                        else
+                            hits.push_back ({ n.beat, n.length, n.pitch, n.pitch });
+                    }
+                    return hits;
+                };
+                if (n == "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN")
+                {
+                    out.description = "The bass plays the guitar's top notes (its pings and stabs over the chugs) octaves down, silent under the low chugs";
+                    const auto hits = guitarHits();
+                    auto lowest = 999;
+                    for (const auto& h : hits)
+                        lowest = juce::jmin (lowest, h.lowest);
+                    for (const auto& h : hits)
+                        if (h.highest >= lowest + 12)
+                            r.add (out, h.at, juce::jmax (s16 * 0.8, h.length), fold (h.highest), 0.78f);
+                    if (out.notes.empty())   // (no high notes to double: the root and its octave in turn on the beats)
+                    {
+                        out.description = "No high guitar notes here to double: the root and its octave in turn on the beats";
+                        each ([&] (int b)
+                        {
+                            for (int k = 0; k < 4; ++k)
+                                r.add (out, b * bpb + k * q, q * 0.9, fold (r.bassRoot (b * bpb) + (k % 2 == 1 ? 12 : 0)), 0.76f);
+                        });
+                    }
+                }
+                else if (n == "PLAYS ONLY THE HEAD")
+                {
+                    out.description = "The bass doubles the guitar's first seven sixteenths of every bar (the riff's head), then leaves the rest of the bar to the guitar";
+                    for (const auto& h : guitarHits())
+                    {
+                        const auto inBar = std::fmod (h.at, bpb);
+                        if (inBar < 7.0 * s16 - 1.0e-6)
+                            r.add (out, h.at, juce::jmin (h.length, 7.0 * s16 - inBar), fold (h.lowest), 0.8f);
+                    }
+                    if (out.notes.empty())   // (no guitar here: the head as a figure of its own on the root)
+                    {
+                        out.description = "No guitar here to double: a head of its own on the root (1, the and of 1, the a of 1, 2-and), then silent for the rest of the bar";
+                        each ([&] (int b) { r.each16 ("x-xx--x---------", b * bpb, [&] (double t, int) { r.add (out, t, s16 * 0.85, r.bassRoot (t), 0.8f); }); });
+                    }
+                }
+                else if (n == "KEEPS THE CHORUS RHYTHM")
+                {
+                    out.description = "The guitars may drop back, but the bass keeps a chorus's chord rhythm (1, 2, 2-and on through the bar), one root a bar";
+                    each ([&] (int b) { r.each16 ("x-x-xxxxxxx-xxx-", b * bpb, [&] (double t, int k) { r.add (out, t, s16 * 0.85, r.bassRoot (t), k == 0 ? 0.86f : 0.72f); }); });
+                }
+                else if (n == "CARVED SIXTEENTH LINE")
+                {
+                    out.description = "The bass on a carved sixteenth line (three, a gap, one, four, a gap...) that a kick can double, the root of each chord";
+                    each ([&] (int b) { r.each16 ("xxx--x-xxxx--x-x", b * bpb, [&] (double t, int k) { r.add (out, t, s16 * 0.85, r.bassRoot (t), k % 4 == 0 ? 0.84f : 0.72f); }); });
+                }
+                else if (n == "EIGHTHS, PICKUP INTO EACH BAR")
+                {
+                    out.description = "Root eighths, the last three sixteenths of every bar a pickup walking into the next chord's root";
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        const auto root = r.bassRoot (o);
+                        for (int k = 0; k < 12; k += 2)
+                            r.add (out, o + k * s16, e * 0.85, root, k == 0 ? 0.84f : 0.7f);
+                        const auto next = r.bassRoot (b + 1 < bars ? (b + 1) * bpb : 0.0);
+                        for (int i = 0; i < 3; ++i)
+                            r.add (out, o + (13 + i) * s16, s16 * 0.85, fold (scaleStep (r.key, next, i - 3)), 0.74f);
+                    });
+                }
+                else if (n == "A NOTE A BAR, FALLING FROM THE KEY'S NOTE")
+                {
+                    out.description = "One note a bar, starting on the key's note and falling a scale step every bar, starting again every four bars, whatever the chords do";
+                    const auto tonic = r.tonicIn (low + 5, low + 16);
+                    each ([&] (int b) { r.add (out, b * bpb, bpb * 0.96, fold (scaleStep (r.key, tonic, -(b % 4))), 0.78f); });
+                }
+                else if (n == "CHROMATIC EIGHTHS AROUND THE ROOT")
+                {
+                    out.description = "Eighths around the root: every third note the root, the others its neighbours a half or whole step away (the flat two, the two, the minor third)";
+                    const int moves[] { 0, 1, 2, 0, 3, 1, 0, 2 };
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        const auto root = r.bassRoot (o);
+                        for (int k = 0; k < 8; ++k)
+                            r.add (out, o + k * e, e * 0.85, fold (root + moves[k]), moves[k] == 0 ? 0.84f : 0.7f);
+                    });
+                }
+                else if (n == "DOTTED FIGURE WITH THE KICK")
+                {
+                    out.description = "The root on a dotted figure (1, the a of 1, the and of 2, 3, then 3-and, 3-a, 4 and 4-a) a kick can double";
+                    each ([&] (int b) { r.each16 ("x--x--x--x-xxx-x", b * bpb, [&] (double t, int k) { r.add (out, t, s16 * 1.6, r.bassRoot (t), k == 0 ? 0.86f : 0.74f); }); });
                 }
                 else
                     return std::nullopt;
