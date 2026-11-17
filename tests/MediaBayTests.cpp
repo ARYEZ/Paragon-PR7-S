@@ -1336,6 +1336,7 @@ TEST_CASE ("0.163.0: the quicker MediaBay finds, sorts and saves as before", "[m
         list.push_back (item);
     }
     const auto store = juce::File::createTempFile ("pr7s-mb163.xml");
+    juce::File rated;
     {
         MediaDatabase database (store);
         database.setItemsForTests (list);
@@ -1385,13 +1386,14 @@ TEST_CASE ("0.163.0: the quicker MediaBay finds, sorts and saves as before", "[m
         check (MediaColumn::category, [] (const MediaItem& a, const MediaItem& b) { return a.tags.category.compareNatural (b.tags.category); });
 
         // A rating, then saved and read back.
-        database.setRatings ({ items[5].file }, 4);
+        rated = items[5].file;
+        database.setRatings ({ rated }, 4);
         CHECK (database.indexOf (items[5].file) == 5);
         database.save();
     }
     MediaDatabase again (store);
     CHECK ((int) again.getItems().size() == 600);
-    const auto i = again.indexOf (list[5].file);
+    const auto i = again.indexOf (rated);
     REQUIRE (i >= 0);
     CHECK (again.getItems()[(size_t) i].rating == 4);
     store.deleteFile();
