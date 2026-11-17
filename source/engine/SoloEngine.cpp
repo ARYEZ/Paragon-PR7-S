@@ -3810,6 +3810,8 @@ namespace pr7s
             case Writer::stillCell:
             {
                 const auto g = gridFor (0.25);
+                const auto take = variationSeed % 4;            // (each take its own shapes)
+                const auto lift = (variationSeed / 4) % 3 - 1;  // (and its register, a little up or down)
                 const auto onBeat = [] (double x) { return std::abs (x - std::round (x)) < 1.0e-6; };
                 const auto clampPool = [] (const std::vector<int>& pool, int i) { return pool[(size_t) juce::jlimit (0, (int) pool.size() - 1, i)]; };
                 const auto stepIn = [&clampPool] (const std::vector<int>& pool, int pitch, int steps)
@@ -3876,13 +3878,15 @@ namespace pr7s
                         const auto f = (float) b / (float) blocks;
                         const auto t = tAt (from);
                         const auto pool = bluesOf (from, false, true);
+                        const auto lift0 = lift;
                         const auto lift = f < 0.42f ? f / 0.42f : 1.0f - 0.6f * (f - 0.42f) / 0.58f;   // (the top at about 42%)
-                        const auto centre = (int) std::round ((double) low + 7.0 + 12.0 * lift);
+                        const auto centre = (int) std::round ((double) low + 7.0 + 12.0 * lift) + 2 * lift0;
                         const auto device = blocks == 1 ? 3 : blocks == 2 ? (b == 0 ? 0 : 3)
                                           : f < 0.25f ? 0 : f < 0.45f ? 1 : f < 0.62f ? 2 : 3;
                         if (device == 0)
                         {
-                            const int cell[] = { 0, 1, -1 };
+                            const int cells[4][3] = { { 0, 1, -1 }, { 0, -1, 1 }, { 1, 0, -1 }, { 0, 2, 1 } };
+                            const auto& cell = cells[take];
                             auto k = 0;
                             for (auto x = from; x + 1.5 <= to + 1.0e-9; x += 1.5, ++k)
                                 plain (x, 1.46, stepIn (pool, centre, cell[k % 3]), t, k % 3 == 0);
@@ -3909,7 +3913,8 @@ namespace pr7s
                         else
                         {
                             const auto top = stepIn (pool, centre + 3, 0);
-                            const int cell[] = { 0, -1, -2 };
+                            const int cells[4][3] = { { 0, -1, -2 }, { 0, -2, -1 }, { -2, -1, 0 }, { 0, -1, 1 } };
+                            const auto& cell = cells[take];
                             auto k = 0;
                             for (auto x = from; x + g <= to + 1.0e-9; x += g, ++k)
                                 plain (x, g, stepIn (pool, top, cell[k % 3]), t, k % 3 == 0);
@@ -3925,14 +3930,15 @@ namespace pr7s
                     const auto lastBar = juce::jmax (1, (int) std::floor (endAt / beatsPerBar + 1.0e-6));
                     const auto callBars = lastBar >= 8 ? 4 : lastBar >= 4 ? 2 : 1;
                     const auto bendBars = lastBar >= 8 ? juce::jmax (1, (lastBar - callBars) / 3) : lastBar >= 6 ? 1 : 0;
-                    const char* answer = "x-gx-gx-x-gxg-x-";
+                    const char* answers[] = { "x-gx-gx-x-gxg-x-", "x-x-gx-gx-gx-x--", "xg-xg-x-xg-x-xg-", "x--x-gx-x-gx-g-x" };
+                    const char* answer = answers[take];
                     for (auto b = 0; b < callBars; ++b)
                     {
                         const auto o = b * beatsPerBar;
                         const auto t = tAt (o);
                         if (b % 2 == 0)
                         {
-                            const auto from = nearestIndex (pool, root + 9.0);
+                            const auto from = nearestIndex (pool, root + 9.0) + lift;
                             for (auto k = 0; k < 5; ++k)
                                 plain (o + k * 0.5, 0.48, clampPool (pool, from + k), t, k == 0);
                             put (o + 2.5, beatsPerBar - 2.52, clampPool (pool, from + 5 + (b / 2) % 2), t, true,
@@ -3961,8 +3967,9 @@ namespace pr7s
                         for (auto x = at + 2.0, k = 0.0; x + g <= juce::jmin (endAt, at + beatsPerBar) + 1.0e-9; x += g, k += 1.0)
                             plain (x, g, std::fmod (k, 2.0) < 0.5 ? fourth : other, t, onBeat (x));
                     }
-                    const int theme[] = { 0, 1, 2, 1, 0, -1, 0 };
-                    const auto themeTop = nearestIndex (pool, root + 19.0);
+                    const int themes[4][7] = { { 0, 1, 2, 1, 0, -1, 0 }, { 0, -1, 0, 1, 2, 1, 0 }, { 2, 1, 0, 1, 0, -1, -2 }, { 0, 2, 1, 0, -1, 0, 1 } };
+                    const auto& theme = themes[take];
+                    const auto themeTop = nearestIndex (pool, root + 19.0) + lift;
                     auto k = 0;
                     for (; at < endAt - 1.0e-6; at += beatsPerBar)
                         for (auto q = 0; q < 4; ++q)
@@ -3980,14 +3987,15 @@ namespace pr7s
                     // bend held; the bent note struck twice and a fall in three-note cells; the double stops a step up.
                     const auto pool = bluesOf (0.0, false, false);
                     const auto tonic = nearestOf ({ keyTonic (0.0) }, (double) low + 9.0, low, high);
-                    const char* riff = "x--x--x-x--x-x--";
+                    const char* riffs[] = { "x--x--x-x--x-x--", "x-x--x--x-x--x--", "x--x-x--x--x-xx-", "xx--x--x-x--x--x" };
+                    const char* riff = riffs[take];
                     for (auto o = 0.0, b = 0.0; o < endAt - 1.0e-6; o += beatsPerBar, b += 1.0)
                     {
                         const auto t = tAt (o);
                         const auto kind = (int) b % 4;
                         if (kind == 0 || kind == 3)
                         {
-                            const auto top = stepIn (pool, tonic + 3, kind == 3 ? 1 : 0);
+                            const auto top = stepIn (pool, tonic + 3, (kind == 3 ? 1 : 0) + lift);
                             for (auto k = 0; k < 16 && o + k * g < juce::jmin (endAt, o + beatsPerBar) - 1.0e-9; ++k)
                                 if (riff[k] == 'x')
                                 {
@@ -4122,14 +4130,14 @@ namespace pr7s
                 {
                     // One idea a bar: a bend into the tonic and a blues run down; a stutter in the riff's rhythm; an
                     // octave dive and swoop; a three-note cell looped; leaps, ending bent up into the high tonic.
-                    const auto t0 = nearestOf ({ keyTonic (0.0) }, (double) low + 7.0, low + 5, high - 24);
+                    const auto t0 = nearestOf ({ keyTonic (0.0) }, (double) low + 7.0 + 5.0 * lift, low + 5, high - 24);
                     const auto pool = bluesOf (0.0, true, true);
                     const auto lastBar = juce::jmax (0, (int) std::ceil (total / beatsPerBar - 1.0e-6) - 1);
                     for (auto b = 0; b <= lastBar; ++b)
                     {
                         const auto o = b * beatsPerBar, e = juce::jmin (total, o + beatsPerBar);
                         const auto t = tAt (o);
-                        const auto idea = b == lastBar ? 4 : b % 4;
+                        const auto idea = b == lastBar ? 4 : (b + take) % 4;
                         if (idea == 0)
                         {
                             put (o, 0.48, t0 + 10, t, true, LineNote::Effect::bend, 2.0f, false);
@@ -4167,7 +4175,8 @@ namespace pr7s
                         }
                         else if (idea == 3)
                         {
-                            const int cell[] = { 14, 15, 17 };
+                            const int cells[4][3] = { { 14, 15, 17 }, { 15, 14, 12 }, { 12, 14, 15 }, { 17, 15, 14 } };
+                            const auto& cell = cells[take];
                             auto k = 0;
                             for (auto x = o; x + g <= e + 1.0e-9; x += g, ++k)
                                 plain (x, g, t0 + cell[k % 3], t, k % 3 == 0);
@@ -4202,7 +4211,7 @@ namespace pr7s
                         put (at, length, harmonyAt != 0 ? harmonyAt : stepIn (keyScaleOf (at), pitch, 2), tAt (at), false, effect, amount, true);
                     };
                     const auto keyPc = chordAt (0.0).key.pitchClass();
-                    const auto fifth = nearestOf ({ pcOf (keyPc + 7) }, (double) low + 14.0, low + 4, high - 12);
+                    const auto fifth = nearestOf ({ pcOf (keyPc + 7) }, (double) low + 14.0 + (take % 2) * 12.0 + 5.0 * lift, low + 4, high - 12);
                     const auto pool = keyScaleOf (0.0);
                     const auto unit = 2.0 * beatsPerBar;
                     const auto runLength = gridFor (1.0 / 3.0) * 12.0;
@@ -4228,7 +4237,7 @@ namespace pr7s
                         const auto from = stepIn (pool, six, -3);
                         duet (b2 + 1.75, 0.24, stepIn (pool, from, -1), false, LineNote::Effect::none, 0.0f, 0);
                         for (auto k = 0; k < 4; ++k)
-                            duet (b2 + 2.0 + 0.5 * k, k == 3 ? 0.48 : 0.48, stepIn (pool, from, k + (k >= 2 ? tail : 0)), k == 0,
+                            duet (b2 + 2.0 + 0.5 * k, 0.48, stepIn (pool, from, (take >= 2 ? (k == 1 ? 2 : k == 2 ? 1 : k) : k) + (k >= 2 ? tail : 0)), k == 0,
                                   LineNote::Effect::none, 0.0f, 0);
                     }
                     auto at = units * unit;
@@ -4268,7 +4277,7 @@ namespace pr7s
                     // root; the same rule each round, so the theme comes back over the same chords; the last bar walks
                     // down to the tonic.
                     const auto pool = keyScaleOf (0.0);
-                    const auto centre = (double) nearestOf ({ pcOf (keyTonic (0.0) + 7) }, (double) low + 12.0, low + 5, high - 8);
+                    const auto centre = (double) nearestOf ({ pcOf (keyTonic (0.0) + (take % 2 == 0 ? 7 : 10)) }, (double) low + 12.0 + 3.0 * lift, low + 5, high - 8);
                     const auto lastBar = juce::jmax (0, (int) std::ceil (total / beatsPerBar - 1.0e-6) - 1);
                     for (auto b = 0; b < lastBar; ++b)
                     {
@@ -4278,10 +4287,10 @@ namespace pr7s
                         const auto next = nearestOf ({ chordAt (o + beatsPerBar).chord.root }, centre, low, high);
                         const auto pickupsAt = beatsPerBar - 1.5;
                         put (o, juce::jmax (0.5, pickupsAt - 0.02), here, t, true, LineNote::Effect::vibrato, 0.5f, false);
-                        const auto a = stepIn (pool, next, -2);
-                        plain (o + pickupsAt, 0.48, a, t, false);
-                        plain (o + pickupsAt + 0.5, 0.48, stepIn (pool, a, 2), t, false);
-                        plain (o + pickupsAt + 1.0, 0.48, stepIn (pool, a, 1), t, false);
+                        const int shapes[4][3] = { { -2, 0, -1 }, { -2, -1, 0 }, { -3, -1, -2 }, { -1, -2, 0 } };
+                        const auto& shape = shapes[take];
+                        for (auto k = 0; k < 3; ++k)
+                            plain (o + pickupsAt + 0.5 * k, 0.48, stepIn (pool, next, shape[k] + (k == 1 ? 1 : 0)), t, false);
                     }
                     const auto o = lastBar * beatsPerBar;
                     endPitch = nearestOf ({ keyTonic (o) }, centre - 4.0, low, high);
@@ -4302,7 +4311,7 @@ namespace pr7s
                     // from beat 2 a scale step higher.
                     const auto& key = chordAt (0.0).key;
                     const auto pool = keyScaleOf (0.0);
-                    const auto top = nearestOf ({ key.pitchClass() }, (double) low + 16.0, low + 6, high - 2);
+                    const auto top = nearestOf ({ key.pitchClass() }, (double) low + 16.0 + (take == 1 ? 12.0 : 0.0) + 4.0 * lift, low + 6, high - 2);
                     const auto lastBar = juce::jmax (0, (int) std::ceil (total / beatsPerBar - 1.0e-6) - 1);
                     const auto roundBars = juce::jmax (1, (int) std::round (roundBeats / beatsPerBar));
                     const auto hasDominant = [&] (int b) { return pcOf (chordAt (b * beatsPerBar).chord.root) == pcOf (key.pitchClass() + 7); };
@@ -4332,8 +4341,9 @@ namespace pr7s
                         const auto raise = b / roundBars;
                         for (auto x = o; x + g <= e + 1.0e-9; x += g, ++k)
                         {
-                            const auto lift = x - o >= 2.0 - 1.0e-9 ? raise : 0;
-                            plain (x, g, stepIn (pool, top, lift - (k % 6)), t, k % 6 == 0);
+                            const auto raiseHere = x - o >= 2.0 - 1.0e-9 ? raise : 0;
+                            const int cells[4][6] = { { 0, -1, -2, -3, -4, -5 }, { 0, -2, -1, -3, -2, -4 }, { 0, -1, -3, -2, -4, -5 }, { 1, 0, -1, -2, -3, -4 } };
+                            plain (x, g, stepIn (pool, top, raiseHere + cells[take][k % 6]), t, k % 6 == 0);
                         }
                     }
                     endAt = lastBar * beatsPerBar;

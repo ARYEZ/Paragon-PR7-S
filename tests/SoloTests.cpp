@@ -52,7 +52,8 @@ TEST_CASE ("0.65.0: every style's leads end with a whole solo that builds up, wi
             auto busiest = 0;
             for (auto from = 8.0; from <= 24.0; from += 4.0)
                 busiest = juce::jmax (busiest, onsetsIn (solo, from, from + 8.0));
-            CHECK (busiest >= onsetsIn (solo, 0.0, 8.0));
+            if (style != GuitarStyle::numetal)   // (0.162.0: nu-metal's BY STYLE plays the round-four songs' styles: flat or hot first)
+                CHECK (busiest >= onsetsIn (solo, 0.0, 8.0));
             auto bends = 0, vibratos = 0;
             for (const auto& n : solo.notes)
             {
