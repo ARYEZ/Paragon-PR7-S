@@ -3810,7 +3810,7 @@ namespace pr7s
             case Writer::stillCell:
             {
                 const auto g = gridFor (0.25);
-                const auto take = variationSeed % 4;            // (each take its own shapes)
+                const auto take = (variationSeed + variationSeed / 4) % 4;   // (each take its own shapes)
                 const auto lift = (variationSeed / 4) % 3 - 1;  // (and its register, a little up or down)
                 const auto onBeat = [] (double x) { return std::abs (x - std::round (x)) < 1.0e-6; };
                 const auto clampPool = [] (const std::vector<int>& pool, int i) { return pool[(size_t) juce::jlimit (0, (int) pool.size() - 1, i)]; };
