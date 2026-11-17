@@ -2,6 +2,42 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.162.0
+
+**Eight new solo styles from the solos in your round-four songs** (you asked; shapes only, our own names). The round-three and round-four readers had skipped solos, so four readers went back through every file that had a lead stretch. Most of those songs have no guitar solo; eight do: Stricken, Ten Thousand Fists, So Cold, Awake, Straight Out of Line, I'm Not Okay (I Promise), What I've Done and In Pieces. One style from each:
+
+- **THREES ACROSS THE BLOCKS** (Stricken): one idea per two-bar chord block, repeated exactly and changed at the block line. In order: dotted quarters, dotted-eighth double stops, one note picked in sixteenths for a bar, then a three-note cell looped across the beat. Minor pentatonic plus the ninth, no bends.
+- **RIFF-TALK CALL & STAB** (Ten Thousand Fists): a one-bar call answered by fourth dyads and muted ghost hits in the riff's rhythm. Then the call again, its top note a step higher. Then held whole-step bends and a two-note shake, and a two-bar theme on the off-beats to the end.
+- **RIFF DOUBLE-STOP, UNISON PEAK** (So Cold): minor-third double stops in the riff's rhythm, then a bend and release. Next a unison bend held three beats, the bent note struck twice, and a fall in three-note cells. The key's minor third held over the last bar.
+- **TREMOLO, THEN THE TALK** (Awake): the first half is tremolo picking on the key's tonic, moving on a four-bar cycle. The second half is a bluesy line that comes in on the band's push, says its opening call twice and bends late. Where the instrument's shortest note is longer than a sixteenth, the tremolo is one held note on its tremolo key.
+- **RIFF STUTTER BREAK** (Straight Out of Line): a short, hot break with one idea a bar:
+  - a bend into the tonic and a blues run down;
+  - one note stuttered in the riff's rhythm with ghost hits;
+  - an octave dive and swoop;
+  - a three-note cell looped;
+  - a bar of leaps.
+
+  No rests; it bends up into the high tonic at the end.
+- **TWIN THIRDS SINGALONG** (I'm Not Okay): two guitars a third apart from the first note. The second guitar goes on the lead lane's second track; one track plays both.
+  - The call: the key's fifth bent a whole step three times, then a fall.
+  - The call said twice, with only its tail changed.
+  - An answer of turns leaping up to the bent tonic.
+  - The one fast run: triplets home onto the chord's third.
+- **SWAYING THIRDS THEME** (What I've Done): a small theme within an octave. Pairs a third apart in eighths rise into a note held on each chord's root. Each time round the chords it comes back the same, and its last bar walks down to the tonic.
+- **STILL CELL, MOVING CHORDS** (In Pieces): one falling six-note cell kept at the same pitches while the chords change under it. It stops on the dominant bar for a gallop on one note. Each later round rises a step, with no rests, and it ends on the last chord's root, straight into the next section.
+
+**What these eight have in common**, so they all do it:
+- one steady pace, with at most one fast run near the end (no waves of bursts);
+- rests of half a beat at most;
+- ideas repeated exactly rather than raised and developed;
+- the key's scale over every chord;
+- whole-step bends only, on long notes;
+- one long last note on the key's own note (its tonic or minor third, or the chord's third), not always the last chord's root.
+
+**BY STYLE with the nu-metal guitar style** now plays one of these eight, a different one for each take (ROLL). Rock keeps SINGING BENDS, and your other 92 solo styles are unchanged.
+
+As always, these come from the readers' measurements, not from listening, so play them before you trust them.
+
 ## 0.161.0
 
 **The versions that belong to one type, added to that type** (you asked; round four, shapes only, our own names). Each is a new option in its own type's list (after the type's own options; a bass one just in front of LOCKED WITH THE KICK), in the browser's THIS TYPE'S OWN group:

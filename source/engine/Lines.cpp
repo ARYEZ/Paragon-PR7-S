@@ -1056,7 +1056,7 @@ namespace pr7s
         // (0.65.0) The seventh: a whole solo made from the six.
         // (0.66.0) Or one in a SOLO STYLE.
         // (0.116.0) BY STYLE: the guitar STYLE's solo style, phrased as the owner's solos (it was the six leads joined).
-        const auto chosen = soloStyle == SoloStyle::automatic ? soloStyleForGuitarStyle ((int) style) : soloStyle;
+        const auto chosen = soloStyle == SoloStyle::automatic ? soloStyleForGuitarStyle ((int) style, variation) : soloStyle;
         auto solo = composeSolo (chosen, spans, beatsPerBar, tuning, vel, variation, shortest, bpm);
         if (! solo.notes.empty())
             ideas.push_back (std::move (solo));

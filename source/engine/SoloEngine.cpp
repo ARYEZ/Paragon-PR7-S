@@ -71,7 +71,9 @@ namespace pr7s
         // (0.135.0) A style that writes (part of) its solo its own way: the phrase plan then carries on from where it
         // stops, or (whole) nothing is left for it.
         enum class Writer { none, fixedHead, callOpening, pickedHymn, oneTrick, steppingCalls, preBendOpening, gearStream, barOstinato,
-                            vampFlow };   // (0.136.0: sixteenth runs landing on held tension notes bent into the chord)   // (0.134.0: bent into the root and dived; a low dyad squealed up; tremolo dyads over a pedal)   // (0.133.0 round two: held notes stepping down the chord, each in a beat early)   // (0.133.0: harmonics dived stepping down; thirds climbing into a dived double stop)   // (0.129.0: trilled, then fallen off)
+                            vampFlow,
+                            // (0.162.0, the round-four songs' solos) each writes the whole solo
+                            threesBlocks, riffTalk, riffDoubleStop, tremoloTalk, stutterBreak, twinThirds, swayingThirds, stillCell };   // (0.136.0: sixteenth runs landing on held tension notes bent into the chord)   // (0.134.0: bent into the root and dived; a low dyad squealed up; tremolo dyads over a pedal)   // (0.133.0 round two: held notes stepping down the chord, each in a beat early)   // (0.133.0: harmonics dived stepping down; thirds climbing into a dived double stop)   // (0.129.0: trilled, then fallen off)
         struct Profile
         {
             bool sixth = false, ninth = false, flatFive = false, majorOnMajor = false, curls = false;
@@ -174,6 +176,9 @@ namespace pr7s
             int turnsLow = 0;          // (1: the second turn an octave down; 2: all the second guitar's)
             float fallAmount = 5.0f;   // (the fall-off out of a held note)
             Writer writer = Writer::none;
+            // (0.162.0) The last note: the last chord's root (0, as before), the key's tonic (1), the last chord's third
+            // (2), the key's minor third (3) (the round-four songs' solos end on the key's note over a moving chord).
+            int endTone = 0;
             const char* description = "";
         };
 
@@ -1132,6 +1137,53 @@ namespace pr7s
                     p.description = "A short break down in the rhythm guitar's register: mixolydian, a three-note cell looped "
                                     "across the beat, quick half-step bends, and the low flat seven bent slowly up into the root";
                     break;
+                case SoloStyle::threesAcrossBlocks:
+                    p.writer = Writer::threesBlocks; p.endTone = 1; p.ninth = true; p.legato = false;
+                    p.description = "One device a two-bar chord block, repeated exactly and changed at the block line: dotted "
+                                    "quarters, dotted-eighth double stops, a single note picked in sixteenths, a three-note cell "
+                                    "looped across the beat; minor pentatonic and the ninth, no bends, the key's tonic held at the end";
+                    break;
+                case SoloStyle::riffTalkCallStab:
+                    p.writer = Writer::riffTalk; p.endTone = 1; p.legato = false;
+                    p.description = "A one-bar call answered by fourth dyads with muted ghost hits in the riff's rhythm (the call "
+                                    "again, its top a step higher), then held whole-step bends and a two-note sixteenth shake, and "
+                                    "a two-bar theme on the off-beats played to the end";
+                    break;
+                case SoloStyle::riffDoubleStopUnison:
+                    p.writer = Writer::riffDoubleStop; p.endTone = 3; p.legato = false; p.vibrato = 0.6f;
+                    p.description = "Minor-third double stops in the riff's rhythm, a bend and release, a unison bend held three "
+                                    "beats, the bent note struck twice, a fall in three-note cells, and the key's minor third held a "
+                                    "whole bar over the last chord";
+                    break;
+                case SoloStyle::tremoloThenTalk:
+                    p.writer = Writer::tremoloTalk; p.endTone = 1;
+                    p.description = "Two halves: tremolo picking on the key's tonic moving on a four-bar cycle (a held top note "
+                                    "every fourth bar), then a bluesy talking line entering on the band's push, its opening call "
+                                    "said twice, late whole-step bends, the peak a bar before the end and a long held tonic";
+                    break;
+                case SoloStyle::riffStutterBreak:
+                    p.writer = Writer::stutterBreak; p.endTone = 1;
+                    p.description = "A short hot break, one idea a bar: a bend into the tonic and a blues run down, one note "
+                                    "stuttered in the riff's rhythm with ghost hits, an octave dive and swoop, a three-note cell "
+                                    "looped, a bar of leaps; no rests, bent up into the high tonic at the end";
+                    break;
+                case SoloStyle::twinThirdsSingalong:
+                    p.writer = Writer::twinThirds; p.endTone = 2; p.legato = false;
+                    p.description = "Two guitars a third apart from the first note: the key's fifth bent a whole step three times "
+                                    "and a fall, said twice with only its tail changed, an answer of turns leaping to the bent tonic, "
+                                    "and the one fast run, triplets home onto the chord's third held";
+                    break;
+                case SoloStyle::swayingThirdsTheme:
+                    p.writer = Writer::swayingThirds; p.endTone = 1;
+                    p.description = "A small theme within an octave: pairs a third apart in eighths rising into a note held on each "
+                                    "chord's root, the second round the first again, its last bar walking down to the tonic held";
+                    break;
+                case SoloStyle::stillCellMovingChords:
+                    p.writer = Writer::stillCell;
+                    p.description = "One falling cell of six notes kept at the same pitches while the chords change under it (it "
+                                    "rubs and colours each), stopped on the dominant bar for a gallop on one note, the second round "
+                                    "rising, no rests, ending on the last chord's root into the next section";
+                    break;
                 case SoloStyle::automatic: break;
             }
             if (p.notesPerBeat <= 0.0f)
@@ -1320,7 +1372,10 @@ namespace pr7s
                                                   SoloStyle::addNineMelody, SoloStyle::gearShiftStream, SoloStyle::barOstinato, SoloStyle::triadCellSweeps,
                                                   SoloStyle::heldOverFallingBass,
                                                   SoloStyle::heldBendTalker, SoloStyle::sprintBendRunDown, SoloStyle::slideInOutro, SoloStyle::sourBendsStabs,
-                                                  SoloStyle::valleyLaunch, SoloStyle::chromaticVampFlow, SoloStyle::riffRegisterBreak };
+                                                  SoloStyle::valleyLaunch, SoloStyle::chromaticVampFlow, SoloStyle::riffRegisterBreak,
+                                                  SoloStyle::threesAcrossBlocks, SoloStyle::riffTalkCallStab, SoloStyle::riffDoubleStopUnison,
+                                                  SoloStyle::tremoloThenTalk, SoloStyle::riffStutterBreak, SoloStyle::twinThirdsSingalong,
+                                                  SoloStyle::swayingThirdsTheme, SoloStyle::stillCellMovingChords };
         return all;
     }
 
@@ -1420,6 +1475,14 @@ namespace pr7s
             case SoloStyle::valleyLaunch: return "VALLEY LAUNCH";
             case SoloStyle::chromaticVampFlow: return "CHROMATIC VAMP FLOW";
             case SoloStyle::riffRegisterBreak: return "RIFF-REGISTER BREAK";
+            case SoloStyle::threesAcrossBlocks: return "THREES ACROSS THE BLOCKS";
+            case SoloStyle::riffTalkCallStab: return "RIFF-TALK CALL & STAB";
+            case SoloStyle::riffDoubleStopUnison: return "RIFF DOUBLE-STOP, UNISON PEAK";
+            case SoloStyle::tremoloThenTalk: return "TREMOLO, THEN THE TALK";
+            case SoloStyle::riffStutterBreak: return "RIFF STUTTER BREAK";
+            case SoloStyle::twinThirdsSingalong: return "TWIN THIRDS SINGALONG";
+            case SoloStyle::swayingThirdsTheme: return "SWAYING THIRDS THEME";
+            case SoloStyle::stillCellMovingChords: return "STILL CELL, MOVING CHORDS";
         }
         return "BY STYLE";
     }
@@ -1435,7 +1498,7 @@ namespace pr7s
     juce::String soloStyleDescription (SoloStyle s)
     {
         if (s == SoloStyle::automatic)
-            return "The guitar STYLE's own: rock and nu-metal SINGING BENDS, thrash and groove LICK TWICE TO END, "
+            return "The guitar STYLE's own: rock SINGING BENDS, nu-metal one of the eight from your round-four songs by the take, thrash and groove LICK TWICE TO END, "
                    "metalcore ROLLING SEQUENCES, shred TWO SPEEDS";
         return profileOf (s).description;
     }
@@ -1449,6 +1512,19 @@ namespace pr7s
             case 4: return SoloStyle::twoSpeeds;                  // (shred)
             default: return SoloStyle::singingBends;              // (rock, nu-metal)
         }
+    }
+
+    SoloStyle soloStyleForGuitarStyle (int guitarStyle, int variation)
+    {
+        if (guitarStyle == 2)
+        {
+            // (0.162.0) Nu-metal: one of the eight from the owner's round-four songs, by the take.
+            static const SoloStyle eight[] { SoloStyle::threesAcrossBlocks, SoloStyle::riffTalkCallStab, SoloStyle::riffDoubleStopUnison,
+                                             SoloStyle::tremoloThenTalk, SoloStyle::riffStutterBreak, SoloStyle::twinThirdsSingalong,
+                                             SoloStyle::swayingThirdsTheme, SoloStyle::stillCellMovingChords };
+            return eight[(size_t) (((variation % 8) + 8) % 8)];
+        }
+        return soloStyleForGuitarStyle (guitarStyle);
     }
 
     //==========================================================================
@@ -1550,6 +1626,14 @@ namespace pr7s
                 case SoloStyle::valleyLaunch: return "Valley Launch";
                 case SoloStyle::chromaticVampFlow: return "Chromatic Vamp Flow";
                 case SoloStyle::riffRegisterBreak: return "Riff-Register Break";
+                case SoloStyle::threesAcrossBlocks: return "Threes Across The Blocks";
+                case SoloStyle::riffTalkCallStab: return "Riff-Talk Call & Stab";
+                case SoloStyle::riffDoubleStopUnison: return "Riff Double-Stop, Unison Peak";
+                case SoloStyle::tremoloThenTalk: return "Tremolo, Then The Talk";
+                case SoloStyle::riffStutterBreak: return "Riff Stutter Break";
+                case SoloStyle::twinThirdsSingalong: return "Twin Thirds Singalong";
+                case SoloStyle::swayingThirdsTheme: return "Swaying Thirds Theme";
+                case SoloStyle::stillCellMovingChords: return "Still Cell, Moving Chords";
                 case SoloStyle::automatic: break;
             }
             return "By Style";
@@ -3714,6 +3798,554 @@ namespace pr7s
                 lastLanding = -1;
                 break;
             }
+            // (0.162.0) The round-four songs' solos (shapes only): each writes the whole solo, its own bends and
+            // vibrato (the expression pass leaves it alone), ending on one long note.
+            case Writer::threesBlocks:
+            case Writer::riffTalk:
+            case Writer::riffDoubleStop:
+            case Writer::tremoloTalk:
+            case Writer::stutterBreak:
+            case Writer::twinThirds:
+            case Writer::swayingThirds:
+            case Writer::stillCell:
+            {
+                const auto g = gridFor (0.25);
+                const auto onBeat = [] (double x) { return std::abs (x - std::round (x)) < 1.0e-6; };
+                const auto clampPool = [] (const std::vector<int>& pool, int i) { return pool[(size_t) juce::jlimit (0, (int) pool.size() - 1, i)]; };
+                const auto stepIn = [&clampPool] (const std::vector<int>& pool, int pitch, int steps)
+                {
+                    return pool.empty() ? pitch : clampPool (pool, nearestIndex (pool, pitch) + steps);
+                };
+                // The key's minor blues (its minor tonic: a major key's relative minor), with the b5 and ninth where asked.
+                const auto bluesOf = [&] (double x, bool flatFive, bool ninth)
+                {
+                    const auto t = keyTonic (x);
+                    std::vector<int> pcs;
+                    for (const auto s : { 0, 3, 5, 7, 10 })
+                        pcs.push_back (pcOf (t + s));
+                    if (flatFive) pcs.push_back (pcOf (t + 6));
+                    if (ninth) pcs.push_back (pcOf (t + 2));
+                    return poolOf (pcs, low, high);
+                };
+                // The key's own scale (major with a b7 in a major key, natural minor in a minor one).
+                const auto keyScaleOf = [&] (double x)
+                {
+                    const auto& k = chordAt (x).key;
+                    std::vector<int> pcs;
+                    for (const auto s : k.minor ? std::vector<int> { 0, 2, 3, 5, 7, 8, 10 } : std::vector<int> { 0, 2, 4, 5, 7, 9, 10 })
+                        pcs.push_back (pcOf (k.pitchClass() + s));
+                    return poolOf (pcs, low, high);
+                };
+                const auto put = [&] (double at, double length, int pitch, float t, bool accent,
+                                      LineNote::Effect effect, float amount, bool harmony)
+                {
+                    if (at < -1.0e-9 || at >= total - 1.0e-6)
+                        return;
+                    addNote (notes, at, juce::jmin (length, total - at), juce::jlimit (low, high, pitch), velocityAt (t, accent));
+                    notes.back().effect = effect;
+                    notes.back().amount = amount;
+                    notes.back().harmony = harmony;
+                };
+                const auto plain = [&] (double at, double length, int pitch, float t, bool accent)
+                {
+                    put (at, length, pitch, t, accent, LineNote::Effect::none, 0.0f, false);
+                };
+                const auto ghost = [&] (double at, double length, int pitch)
+                {
+                    if (at < -1.0e-9 || at >= total - 1.0e-6)
+                        return;
+                    addNote (notes, at, length, juce::jlimit (low, high, pitch), vel.muteLoose);
+                };
+                const auto tAt = [&] (double x) { return (float) (x / juce::jmax (1.0e-6, total)); };
+                const auto roundBeats = cycle > beatsPerBar - 1.0e-6 && cycle < total - 1.0e-6 ? cycle : 4.0 * beatsPerBar;
+                const auto hold = juce::jmin (beatsPerBar, 4.0);
+                auto endAt = juce::jmax (0.0, total - hold);    // (where the last long note starts)
+                auto endPitch = nearestOf ({ keyTonic (endAt) }, centreAt (endAt), low, high);
+
+                if (p.writer == Writer::threesBlocks)
+                {
+                    // One device a two-bar block, repeated exactly inside it: dotted quarters, dotted-eighth double
+                    // stops, one note picked in sixteenths, a three-note cell looped across the beat (the fast one late).
+                    const auto blockBeats = 2.0 * beatsPerBar;
+                    const auto blocks = juce::jmax (1, (int) std::ceil (endAt / blockBeats - 1.0e-6));
+                    for (auto b = 0; b < blocks; ++b)
+                    {
+                        const auto from = b * blockBeats, to = juce::jmin (endAt, from + blockBeats);
+                        if (to <= from + 0.5)
+                            break;
+                        const auto f = (float) b / (float) blocks;
+                        const auto t = tAt (from);
+                        const auto pool = bluesOf (from, false, true);
+                        const auto lift = f < 0.42f ? f / 0.42f : 1.0f - 0.6f * (f - 0.42f) / 0.58f;   // (the top at about 42%)
+                        const auto centre = (int) std::round ((double) low + 7.0 + 12.0 * lift);
+                        const auto device = blocks == 1 ? 3 : blocks == 2 ? (b == 0 ? 0 : 3)
+                                          : f < 0.25f ? 0 : f < 0.45f ? 1 : f < 0.62f ? 2 : 3;
+                        if (device == 0)
+                        {
+                            const int cell[] = { 0, 1, -1 };
+                            auto k = 0;
+                            for (auto x = from; x + 1.5 <= to + 1.0e-9; x += 1.5, ++k)
+                                plain (x, 1.46, stepIn (pool, centre, cell[k % 3]), t, k % 3 == 0);
+                        }
+                        else if (device == 1)
+                        {
+                            auto k = 0;
+                            for (auto x = from; x + 0.75 <= to + 1.0e-9; x += 0.75, ++k)
+                            {
+                                const auto top = stepIn (pool, centre, k % 4 == 3 ? 1 : 0);
+                                plain (x, 0.72, top, t, k % 4 == 0);
+                                plain (x, 0.72, stepIn (pool, top, -2), t, false);   // (a third or fourth under)
+                            }
+                        }
+                        else if (device == 2)
+                        {
+                            const auto note = stepIn (pool, centre, 0);
+                            const auto mid = juce::jmin (to, from + beatsPerBar);
+                            for (auto x = from; x + g <= mid + 1.0e-9; x += g)
+                                plain (x, g, note, t, onBeat (x));
+                            if (to - mid >= 0.5)
+                                put (mid, to - mid - 0.02, stepIn (pool, note, 1), t, true, LineNote::Effect::vibrato, p.vibrato, false);
+                        }
+                        else
+                        {
+                            const auto top = stepIn (pool, centre + 3, 0);
+                            const int cell[] = { 0, -1, -2 };
+                            auto k = 0;
+                            for (auto x = from; x + g <= to + 1.0e-9; x += g, ++k)
+                                plain (x, g, stepIn (pool, top, cell[k % 3]), t, k % 3 == 0);
+                        }
+                    }
+                }
+                else if (p.writer == Writer::riffTalk)
+                {
+                    // A call, answered by fourth dyads and muted ghost hits in the riff's rhythm, twice (the second
+                    // call's top a step higher); held whole-step bends and a two-note shake; an off-beat theme to the end.
+                    const auto pool = bluesOf (0.0, false, false);
+                    const auto root = nearestOf ({ keyTonic (0.0) }, (double) low + 2.0, low, high);
+                    const auto lastBar = juce::jmax (1, (int) std::floor (endAt / beatsPerBar + 1.0e-6));
+                    const auto callBars = lastBar >= 8 ? 4 : lastBar >= 4 ? 2 : 1;
+                    const auto bendBars = lastBar >= 8 ? juce::jmax (1, (lastBar - callBars) / 3) : lastBar >= 6 ? 1 : 0;
+                    const char* answer = "x-gx-gx-x-gxg-x-";
+                    for (auto b = 0; b < callBars; ++b)
+                    {
+                        const auto o = b * beatsPerBar;
+                        const auto t = tAt (o);
+                        if (b % 2 == 0)
+                        {
+                            const auto from = nearestIndex (pool, root + 9.0);
+                            for (auto k = 0; k < 5; ++k)
+                                plain (o + k * 0.5, 0.48, clampPool (pool, from + k), t, k == 0);
+                            put (o + 2.5, beatsPerBar - 2.52, clampPool (pool, from + 5 + (b / 2) % 2), t, true,
+                                 LineNote::Effect::vibrato, p.vibrato, false);
+                        }
+                        else
+                            for (auto k = 0; k < 16 && o + k * g < o + beatsPerBar - 1.0e-9; ++k)
+                            {
+                                const auto x = o + k * g;
+                                if (answer[k] == 'x')
+                                {
+                                    plain (x, g * 0.9, root + 17, t, true);
+                                    plain (x, g * 0.9, root + 12, t, false);
+                                }
+                                else if (answer[k] == 'g')
+                                    ghost (x, g * 0.5, root + 12);
+                            }
+                    }
+                    auto at = callBars * beatsPerBar;
+                    for (auto b = 0; b < bendBars && at < endAt - 1.0e-6; ++b, at += beatsPerBar)
+                    {
+                        const auto t = tAt (at);
+                        const auto fourth = nearestOf ({ pcOf (keyTonic (at) + 5) }, (double) root + 17.0, low, high);
+                        put (at, 1.98, fourth, t, true, LineNote::Effect::bend, 2.0f, false);
+                        const auto other = stepIn (pool, fourth, -1);
+                        for (auto x = at + 2.0, k = 0.0; x + g <= juce::jmin (endAt, at + beatsPerBar) + 1.0e-9; x += g, k += 1.0)
+                            plain (x, g, std::fmod (k, 2.0) < 0.5 ? fourth : other, t, onBeat (x));
+                    }
+                    const int theme[] = { 0, 1, 2, 1, 0, -1, 0 };
+                    const auto themeTop = nearestIndex (pool, root + 19.0);
+                    auto k = 0;
+                    for (; at < endAt - 1.0e-6; at += beatsPerBar)
+                        for (auto q = 0; q < 4; ++q)
+                        {
+                            const auto x = at + q + 0.5;
+                            if (x >= endAt - 0.5 || (k % 7 == 6 && q == 3))
+                                continue;
+                            plain (x, 0.96, clampPool (pool, themeTop + theme[k % 7]), tAt (x), q == 0);
+                            ++k;
+                        }
+                }
+                else if (p.writer == Writer::riffDoubleStop)
+                {
+                    // Four bars round: minor-third double stops in the riff's rhythm; a bend and release, then a unison
+                    // bend held; the bent note struck twice and a fall in three-note cells; the double stops a step up.
+                    const auto pool = bluesOf (0.0, false, false);
+                    const auto tonic = nearestOf ({ keyTonic (0.0) }, (double) low + 9.0, low, high);
+                    const char* riff = "x--x--x-x--x-x--";
+                    for (auto o = 0.0, b = 0.0; o < endAt - 1.0e-6; o += beatsPerBar, b += 1.0)
+                    {
+                        const auto t = tAt (o);
+                        const auto kind = (int) b % 4;
+                        if (kind == 0 || kind == 3)
+                        {
+                            const auto top = stepIn (pool, tonic + 3, kind == 3 ? 1 : 0);
+                            for (auto k = 0; k < 16 && o + k * g < juce::jmin (endAt, o + beatsPerBar) - 1.0e-9; ++k)
+                                if (riff[k] == 'x')
+                                {
+                                    plain (o + k * g, g * 1.8, top, t, k == 0);
+                                    plain (o + k * g, g * 1.8, top - 3, t, false);
+                                }
+                        }
+                        else if (kind == 1)
+                        {
+                            const auto fourth = nearestOf ({ pcOf (keyTonic (o) + 5) }, (double) tonic + 5.0, low, high);
+                            put (o, 0.48, fourth, t, true, LineNote::Effect::bend, 2.0f, false);
+                            put (o + 0.5, 0.48, fourth, t, false, LineNote::Effect::release, 2.0f, false);
+                            const auto room = juce::jmin (endAt, o + beatsPerBar) - (o + 1.0);
+                            if (room >= 0.5)
+                            {
+                                put (o + 1.0, room - 0.02, fourth, t, true, LineNote::Effect::bend, 2.0f, false);
+                                put (o + 1.0, room - 0.02, fourth + 2, t, false, LineNote::Effect::none, 0.0f, true);   // (the unison)
+                            }
+                        }
+                        else
+                        {
+                            const auto fifth = nearestOf ({ pcOf (keyTonic (o) + 7) }, (double) tonic + 7.0, low, high);
+                            plain (o, 0.9, fifth, t, true);
+                            plain (o + 1.0, 0.9, fifth, t, true);
+                            auto k = 0;
+                            for (auto x = o + 2.0; x + g <= juce::jmin (endAt, o + beatsPerBar) + 1.0e-9; x += g, ++k)
+                                plain (x, g, stepIn (pool, fifth, -(k / 3) - (k % 3)), t, k % 3 == 0);
+                        }
+                    }
+                    endPitch = nearestOf ({ pcOf (keyTonic (endAt) + 3) }, (double) tonic + 3.0, low, high);
+                }
+                else if (p.writer == Writer::tremoloTalk)
+                {
+                    // Half A: tremolo on the tonic moving on a four-bar cycle (tonic, the b7 then the ninth, tonic, the
+                    // b5 under), a held top note every fourth bar; half B: the talking line.
+                    const auto lastBar = juce::jmax (1, (int) std::floor (endAt / beatsPerBar + 1.0e-6));
+                    const auto halfBars = lastBar >= 4 ? (lastBar + 1) / 2 : 0;
+                    const auto tonic = nearestOf ({ keyTonic (0.0) }, (double) low + 9.0, low, high);
+                    const auto trem = [&] (double from, double to, int pitch)
+                    {
+                        if (to <= from + 0.1)
+                            return;
+                        if (shortestStep <= 0.13)
+                        {
+                            const auto gt = gridFor (bpm > 0.0 ? juce::jlimit (0.125, 0.25, bpm / 60.0 / 16.0) : 0.125);
+                            auto k = 0;
+                            for (auto x = from; x < to - 1.0e-9; x += gt, ++k)
+                                addNote (notes, x, juce::jmin (gt, to - x), juce::jlimit (low, high, pitch), velocityAt (tAt (x), k % 4 == 0));
+                        }
+                        else
+                        {
+                            addNote (notes, from, to - from - 0.02, juce::jlimit (low, high, pitch), velocityAt (tAt (from), true));
+                            notes.back().technique = LineNote::Technique::tremolo;
+                        }
+                    };
+                    for (auto b = 0; b < halfBars; ++b)
+                    {
+                        const auto o = b * beatsPerBar, e = o + beatsPerBar;
+                        switch (b % 4)
+                        {
+                            case 1: trem (o, o + beatsPerBar * 0.5, tonic - 2); trem (o + beatsPerBar * 0.5, e, tonic + 2); break;
+                            case 3:
+                                trem (o, e, tonic - 6);
+                                plain (o, beatsPerBar - 0.02, tonic + 5, tAt (o), true);   // (the held top note)
+                                break;
+                            default: trem (o, e, tonic); break;
+                        }
+                    }
+                    const auto hb = halfBars * beatsPerBar;
+                    const auto talkLength = endAt - hb;
+                    const auto line = [&] (double from, double to, int start, int target)
+                    {
+                        const auto pool = bluesOf (from, true, false);
+                        auto idx = nearestIndex (pool, start);
+                        const auto goal = nearestIndex (pool, target);
+                        auto x = from;
+                        auto dir = goal >= idx ? 1 : -1;
+                        auto run = 0, k = 0;
+                        while (x < to - g + 1.0e-9)
+                        {
+                            const auto left = to - x;
+                            auto len = r.nextFloat() < 0.72f ? g : 2.0 * g;
+                            const auto held = ++k % 6 == 0 && left >= 1.5;
+                            if (held)
+                                len = 0.75 + 0.25 * r.nextInt (4);
+                            len = juce::jmin (len, left);
+                            const auto pitch = clampPool (pool, idx);
+                            if (held && r.nextFloat() < 0.4f && pitch - 2 >= low)
+                                put (x, len - 0.02, pitch - 2, tAt (x), true, LineNote::Effect::bend, 2.0f, false);
+                            else
+                                plain (x, len - 0.02, pitch, tAt (x), onBeat (x));
+                            x += len;
+                            if (++run >= 1 + r.nextInt (3))
+                            {
+                                run = 0;
+                                dir = idx < goal ? 1 : idx > goal ? -1 : -dir;
+                                if (r.nextFloat() < 0.3f)
+                                    dir = -dir;
+                            }
+                            idx = juce::jlimit (0, (int) pool.size() - 1, idx + dir);
+                        }
+                        return x;
+                    };
+                    const auto call = [&] (double at)   // (in on the push: the fourth bent a whole step, late)
+                    {
+                        const auto fourth = nearestOf ({ pcOf (keyTonic (at) + 5) }, (double) tonic + 5.0, low, high);
+                        put (at, 0.98, fourth, tAt (at), true, LineNote::Effect::bend, 2.0f, false);
+                        return at + 1.0;
+                    };
+                    if (talkLength >= 8.0)
+                    {
+                        const auto s1 = hb + 0.75;
+                        const auto e1 = line (call (s1), s1 + juce::jmax (1.5, talkLength * 0.1), tonic + 5, tonic + 3);
+                        const auto s2 = std::ceil ((e1 + 0.5) / beatsPerBar - 1.0e-6) * beatsPerBar + 0.75;
+                        const auto e2 = line (call (s2), juce::jmin (endAt - 4.0, s2 + talkLength * 0.36), tonic + 5, tonic + 10);
+                        const auto s3 = e2 + 0.75;
+                        const auto top = nearestOf ({ keyTonic (s3) }, (double) tonic + 12.0, low, high);
+                        auto x = s3;
+                        if (endAt - s3 > 4.0)
+                        {
+                            const auto pool = bluesOf (s3, true, false);
+                            auto idx = nearestIndex (pool, top);
+                            for (; x + g <= juce::jmin (endAt - 2.5, s3 + juce::jmax (1.5, talkLength * 0.1)) + 1.0e-9; x += g)
+                                plain (x, g, clampPool (pool, idx--), tAt (x), onBeat (x));
+                        }
+                        line (x + 0.5, endAt, (int) top - 5, (int) top + 3);
+                    }
+                    else
+                        line (call (hb + (talkLength >= 2.0 ? 0.75 : 0.0)), endAt, tonic + 5, tonic + 3);
+                }
+                else if (p.writer == Writer::stutterBreak)
+                {
+                    // One idea a bar: a bend into the tonic and a blues run down; a stutter in the riff's rhythm; an
+                    // octave dive and swoop; a three-note cell looped; leaps, ending bent up into the high tonic.
+                    const auto t0 = nearestOf ({ keyTonic (0.0) }, (double) low + 7.0, low + 5, high - 24);
+                    const auto pool = bluesOf (0.0, true, true);
+                    const auto lastBar = juce::jmax (0, (int) std::ceil (total / beatsPerBar - 1.0e-6) - 1);
+                    for (auto b = 0; b <= lastBar; ++b)
+                    {
+                        const auto o = b * beatsPerBar, e = juce::jmin (total, o + beatsPerBar);
+                        const auto t = tAt (o);
+                        const auto idea = b == lastBar ? 4 : b % 4;
+                        if (idea == 0)
+                        {
+                            put (o, 0.48, t0 + 10, t, true, LineNote::Effect::bend, 2.0f, false);
+                            auto idx = nearestIndex (pool, t0 + 12);
+                            auto x = o + 0.5;
+                            for (; x + g <= e - 1.0 + 1.0e-9; x += g)
+                                plain (x, g, clampPool (pool, idx--), t, onBeat (x));
+                            put (x, e - x - 0.02, nearestOf ({ pcOf (t0 + 3) }, (double) clampPool (pool, idx), low, high), t, true,
+                                 LineNote::Effect::vibrato, 0.4f, false);
+                        }
+                        else if (idea == 1)
+                        {
+                            plain (o, 0.48, t0 - 5, t, true);
+                            plain (o + 0.5, 0.48, t0 - 5, t, false);
+                            put (o + 1.0, 0.48, t0 + 3, t, true, LineNote::Effect::bend, 2.0f, false);
+                            auto k = 0;
+                            for (auto x = o + 1.5; x + g <= e - 0.5 + 1.0e-9; x += g, ++k)
+                            {
+                                if (k % 2 == 0)
+                                    plain (x, g, t0 + 5, t, true);
+                                else
+                                    ghost (x, g * 0.6, t0 + 5);
+                            }
+                            put (e - 0.5, 0.48, t0 + 10, t, false, LineNote::Effect::release, 1.0f, false);
+                        }
+                        else if (idea == 2)
+                        {
+                            const int turn[] = { 0, -1, 0, 1 };
+                            const auto hi = t0 + 12;
+                            auto k = 0;
+                            for (auto x = o; x + g <= o + 2.0 + 1.0e-9; x += g, ++k)
+                                plain (x, g, stepIn (pool, hi, turn[k % 4]), t, onBeat (x));
+                            put (o + 2.0, 0.98, hi, t, true, LineNote::Effect::dive, 12.0f, false);
+                            put (e - 1.0, 0.98, hi, t, true, LineNote::Effect::scoop, 12.0f, false);
+                        }
+                        else if (idea == 3)
+                        {
+                            const int cell[] = { 14, 15, 17 };
+                            auto k = 0;
+                            for (auto x = o; x + g <= e + 1.0e-9; x += g, ++k)
+                                plain (x, g, t0 + cell[k % 3], t, k % 3 == 0);
+                        }
+                        else
+                        {
+                            const int leap[] = { 6, 12, 15, 18, 12, 6 };
+                            auto k = 0;
+                            const auto leapsEnd = b == lastBar ? juce::jmax (o, e - 2.0) : e;
+                            for (auto x = o; x + 0.5 <= leapsEnd + 1.0e-9; x += 0.5, ++k)
+                                plain (x, 0.48, t0 + leap[k % 6], t, onBeat (x));
+                        }
+                    }
+                    endAt = juce::jmax (0.0, total - juce::jmin (2.0, total));
+                    endPitch = nearestOf ({ keyTonic (endAt) }, (double) t0 + 24.0, low, high);
+                    clear (endAt);
+                    notes.erase (std::remove_if (notes.begin(), notes.end(), [endAt] (const LineNote& n) { return n.beat >= endAt - 1.0e-6; }), notes.end());
+                    put (endAt, total - endAt, endPitch - 2, 1.0f, true, LineNote::Effect::bend, 2.0f, false);
+                    lastLanding = (int) notes.size() - 1;
+                    burstSpans.push_back ({ 0.0, total });
+                    cursor = loopEnd;
+                    break;
+                }
+                else if (p.writer == Writer::twinThirds)
+                {
+                    // Every note with a second voice a third (two scale steps) above it: a call of the key's fifth bent a
+                    // whole step three times and a fall, said twice (the tail a step higher the second time), an answer of
+                    // turns leaping up to the bent tonic, then a hold, the run home in triplets and the chord's third.
+                    const auto duet = [&] (double at, double length, int pitch, bool accent, LineNote::Effect effect, float amount, int harmonyAt)
+                    {
+                        put (at, length, pitch, tAt (at), accent, effect, amount, false);
+                        put (at, length, harmonyAt != 0 ? harmonyAt : stepIn (keyScaleOf (at), pitch, 2), tAt (at), false, effect, amount, true);
+                    };
+                    const auto keyPc = chordAt (0.0).key.pitchClass();
+                    const auto fifth = nearestOf ({ pcOf (keyPc + 7) }, (double) low + 14.0, low + 4, high - 12);
+                    const auto pool = keyScaleOf (0.0);
+                    const auto unit = 2.0 * beatsPerBar;
+                    const auto runLength = gridFor (1.0 / 3.0) * 12.0;
+                    const auto endPart = 2.0 + runLength + juce::jmin (beatsPerBar, 4.0);
+                    const auto answerLength = 1.5 * beatsPerBar;
+                    auto avail = total - endPart;
+                    const auto withAnswer = avail >= unit + answerLength;
+                    if (withAnswer)
+                        avail -= answerLength;
+                    const auto units = juce::jmax (0, (int) std::floor (avail / unit + 1.0e-6));
+                    const auto six = stepIn (pool, fifth, 1);
+                    for (auto u = 0; u < units; ++u)
+                    {
+                        const auto o = u * unit;
+                        const auto tail = u % 2;
+                        duet (o, 0.98, fifth, true, LineNote::Effect::bend, 2.0f, 0);
+                        duet (o + 1.0, 0.98, fifth, true, LineNote::Effect::bend, 2.0f, 0);
+                        duet (o + 2.0, 0.48, fifth, false, LineNote::Effect::bend, 2.0f, 0);
+                        duet (o + 2.5, 0.48, stepIn (pool, six, -1), false, LineNote::Effect::none, 0.0f, 0);
+                        duet (o + 3.0, 0.48, stepIn (pool, six, -2), false, LineNote::Effect::none, 0.0f, 0);
+                        duet (o + 3.5, beatsPerBar - 2.02, stepIn (pool, six, -3), true, LineNote::Effect::none, 0.0f, 0);
+                        const auto b2 = o + beatsPerBar;
+                        const auto from = stepIn (pool, six, -3);
+                        duet (b2 + 1.75, 0.24, stepIn (pool, from, -1), false, LineNote::Effect::none, 0.0f, 0);
+                        for (auto k = 0; k < 4; ++k)
+                            duet (b2 + 2.0 + 0.5 * k, k == 3 ? 0.48 : 0.48, stepIn (pool, from, k + (k >= 2 ? tail : 0)), k == 0,
+                                  LineNote::Effect::none, 0.0f, 0);
+                    }
+                    auto at = units * unit;
+                    if (withAnswer)
+                    {
+                        const auto n0 = stepIn (pool, fifth, 2);
+                        const int turn[] = { 0, 1, 0, -1 };
+                        auto k = 0;
+                        for (auto x = at; x + g <= at + 2.0 + 1.0e-9; x += g, ++k)
+                            duet (x, g, stepIn (pool, n0, turn[k % 4]), onBeat (x), LineNote::Effect::none, 0.0f, 0);
+                        const auto top = nearestOf ({ keyPc }, (double) n0 + 5.0, low + 2, high);
+                        duet (at + 2.0, 0.98, top - 2, true, LineNote::Effect::bend, 2.0f, top - 2 + 12);   // (the climax: an octave)
+                        k = 0;
+                        for (auto x = at + 3.0; x + g <= at + answerLength + 1.0e-9; x += g, ++k)
+                            duet (x, g, stepIn (pool, top, -(k / 2) - (k % 2)), onBeat (x), LineNote::Effect::none, 0.0f, 0);
+                        at += answerLength;
+                    }
+                    // The hold, the run home and the landing.
+                    const auto holdPitch = stepIn (pool, fifth, 1);
+                    duet (at, 1.98, holdPitch, true, LineNote::Effect::vibrato, 0.6f, 0);
+                    const auto tg = gridFor (1.0 / 3.0);
+                    auto idx = nearestIndex (pool, holdPitch - 7.0);
+                    auto x = at + 2.0;
+                    for (auto k = 0; k < 12 && x + tg <= total - 1.0 + 1.0e-9; ++k, x += tg)
+                    {
+                        duet (x, tg, clampPool (pool, idx), k % 3 == 0, LineNote::Effect::none, 0.0f, 0);
+                        idx += k < 9 ? 1 : -1;
+                    }
+                    endAt = juce::jmin (x, total - 0.5);
+                    const auto& lc = chordAt (endAt).chord;
+                    endPitch = nearestOf ({ pcOf (lc.root + (lc.type == Chord::Type::minor || lc.type == Chord::Type::diminished ? 3 : 4)) },
+                                         (double) clampPool (pool, idx), low, high - 7);
+                }
+                else if (p.writer == Writer::swayingThirds)
+                {
+                    // Each bar: the chord's root held, then pairs a third apart in eighths rising into the next chord's
+                    // root; the same rule each round, so the theme comes back over the same chords; the last bar walks
+                    // down to the tonic.
+                    const auto pool = keyScaleOf (0.0);
+                    const auto centre = (double) nearestOf ({ pcOf (keyTonic (0.0) + 7) }, (double) low + 12.0, low + 5, high - 8);
+                    const auto lastBar = juce::jmax (0, (int) std::ceil (total / beatsPerBar - 1.0e-6) - 1);
+                    for (auto b = 0; b < lastBar; ++b)
+                    {
+                        const auto o = b * beatsPerBar;
+                        const auto t = tAt (o);
+                        const auto here = nearestOf ({ chordAt (o).chord.root }, centre, low, high);
+                        const auto next = nearestOf ({ chordAt (o + beatsPerBar).chord.root }, centre, low, high);
+                        const auto pickupsAt = beatsPerBar - 1.5;
+                        put (o, juce::jmax (0.5, pickupsAt - 0.02), here, t, true, LineNote::Effect::vibrato, 0.5f, false);
+                        const auto a = stepIn (pool, next, -2);
+                        plain (o + pickupsAt, 0.48, a, t, false);
+                        plain (o + pickupsAt + 0.5, 0.48, stepIn (pool, a, 2), t, false);
+                        plain (o + pickupsAt + 1.0, 0.48, stepIn (pool, a, 1), t, false);
+                    }
+                    const auto o = lastBar * beatsPerBar;
+                    endPitch = nearestOf ({ keyTonic (o) }, centre - 4.0, low, high);
+                    if (lastBar > 0)
+                    {
+                        // (the pickups before it walk down instead)
+                        notes.erase (std::remove_if (notes.begin(), notes.end(), [o] (const LineNote& n) { return n.beat >= o - 1.5 - 1.0e-6; }), notes.end());
+                        clear (o - 1.5);
+                        for (auto k = 0; k < 3; ++k)
+                            plain (o - 1.5 + 0.5 * k, 0.48, stepIn (pool, endPitch, 3 - k), tAt (o), k == 0);
+                    }
+                    endAt = o;
+                }
+                else if (p.writer == Writer::stillCell)
+                {
+                    // One six-note cell falling a scale step a note, its pitches kept whatever the chord; on the
+                    // dominant (else every round's last bar) a gallop on the b6 then the fifth; each later round's cell
+                    // from beat 2 a scale step higher.
+                    const auto& key = chordAt (0.0).key;
+                    const auto pool = keyScaleOf (0.0);
+                    const auto top = nearestOf ({ key.pitchClass() }, (double) low + 16.0, low + 6, high - 2);
+                    const auto lastBar = juce::jmax (0, (int) std::ceil (total / beatsPerBar - 1.0e-6) - 1);
+                    const auto roundBars = juce::jmax (1, (int) std::round (roundBeats / beatsPerBar));
+                    const auto hasDominant = [&] (int b) { return pcOf (chordAt (b * beatsPerBar).chord.root) == pcOf (key.pitchClass() + 7); };
+                    auto anyDominant = false;
+                    for (auto b = 0; b < lastBar; ++b)
+                        anyDominant = anyDominant || hasDominant (b);
+                    auto k = 0;
+                    for (auto b = 0; b < lastBar; ++b)
+                    {
+                        const auto o = b * beatsPerBar, e = o + beatsPerBar;
+                        const auto t = tAt (o);
+                        const auto gallop = anyDominant ? hasDominant (b) : b % roundBars == roundBars - 1;
+                        if (gallop)
+                        {
+                            const auto first = nearestOf ({ pcOf (key.pitchClass() + (key.minor ? 8 : 5)) }, (double) top - 5.0, low, high);
+                            const auto second = nearestOf ({ pcOf (key.pitchClass() + (key.minor ? 7 : 4)) }, (double) first - 1.0, low, high);
+                            for (auto q = 0.0; q < beatsPerBar - 1.0e-9; q += 1.0)
+                            {
+                                const auto pitch = q < beatsPerBar * 0.5 ? first : second;
+                                plain (o + q, 0.48, pitch, t, true);
+                                plain (o + q + 0.5, g, pitch, t, false);
+                                plain (o + q + 0.5 + g, g, pitch, t, false);
+                            }
+                            k = 0;
+                            continue;
+                        }
+                        const auto raise = b / roundBars;
+                        for (auto x = o; x + g <= e + 1.0e-9; x += g, ++k)
+                        {
+                            const auto lift = x - o >= 2.0 - 1.0e-9 ? raise : 0;
+                            plain (x, g, stepIn (pool, top, lift - (k % 6)), t, k % 6 == 0);
+                        }
+                    }
+                    endAt = lastBar * beatsPerBar;
+                    endPitch = nearestOf ({ chordAt (endAt).chord.root }, (double) top - 3.0, low, high);
+                }
+                clear (endAt);
+                notes.erase (std::remove_if (notes.begin(), notes.end(), [endAt] (const LineNote& n) { return n.beat >= endAt - 1.0e-6; }), notes.end());
+                heldAt (endAt, total - endAt, endPitch, 0.9f);
+                burstSpans.push_back ({ 0.0, total });
+                cursor = loopEnd;
+                break;
+            }
         }
         if (p.writer == Writer::gearStream && bars >= 4)
             loopEnd = juce::jmax (beatsPerBar, std::floor (bars * 0.5 + 1.0e-6) * beatsPerBar);
@@ -4117,7 +4749,15 @@ namespace pr7s
         {
             auto& last = notes.back();
             const auto& c = chordAt (last.beat).chord;
-            last.pitch = nearestOf ({ c.root }, p.endHigh ? (double) high - 4.0 : (double) last.pitch, low, high);   // (0.67.0: or high)
+            const auto& lastSpan = chordAt (last.beat);
+            const auto minorTonicPc = lastSpan.key.minor ? lastSpan.key.pitchClass() : pcOf (lastSpan.key.pitchClass() + 9);
+            const auto endPc = p.endTone == 1 ? (lastSpan.key.minor ? minorTonicPc : lastSpan.key.pitchClass())
+                             : p.endTone == 2 ? pcOf (c.root + (c.type == Chord::Type::minor || c.type == Chord::Type::diminished ? 3 : 4))
+                             : p.endTone == 3 ? pcOf (minorTonicPc + 3) : pcOf (c.root);   // (0.162.0: the key's note, else the root)
+            // (0.162.0) A bent last note keeps its bend: the note it sounds is the one aimed for.
+            const auto bentBy = p.endTone > 0 && (last.effect == LineNote::Effect::bend || last.effect == LineNote::Effect::slowBend)
+                              ? juce::roundToInt (last.amount) : 0;
+            last.pitch = nearestOf ({ endPc }, p.endHigh ? (double) high - 4.0 : (double) last.pitch + bentBy, low + bentBy, high) - bentBy;   // (0.67.0: or high)
             last.length = juce::jmax (last.length, total - last.beat);
             last.technique = LineNote::Technique::normal;
         }
@@ -4948,6 +5588,8 @@ namespace pr7s
                     break;
                 }
                 case Ending::held:
+                    if (p.endTone > 0 && last->effect == LineNote::Effect::bend)
+                        break;   // (0.162.0: bent up into the key's note and held there)
                     last->effect = LineNote::Effect::vibrato;
                     last->amount = p.vibrato;
                     break;

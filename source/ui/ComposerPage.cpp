@@ -2317,7 +2317,7 @@ std::vector<OptionBrowser::Option> ComposerPage::soloOptions() const
         o.group = st == pr7s::SoloStyle::automatic ? juce::String ("BY STYLE") : pr7s::soloGroupOf (st);
         if (! spans.empty())
         {
-            const auto chosen = st == pr7s::SoloStyle::automatic ? pr7s::soloStyleForGuitarStyle ((int) context.style) : st;
+            const auto chosen = st == pr7s::SoloStyle::automatic ? pr7s::soloStyleForGuitarStyle ((int) context.style, 0) : st;
             o.idea = pr7s::composeSolo (chosen, spans, context.beatsPerBar, tuning, velocities, 0, shortest, context.bpm);
             o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, false);
         }

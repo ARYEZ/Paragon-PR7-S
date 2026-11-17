@@ -61,7 +61,10 @@ namespace pr7s
                                  gearShiftStream, barOstinato, triadCellSweeps, heldOverFallingBass,
                                  // (0.136.0, from the owner's Stone Temple Pilots solos, shapes only; our names)
                                  heldBendTalker, sprintBendRunDown, slideInOutro, sourBendsStabs, valleyLaunch,
-                                 chromaticVampFlow, riffRegisterBreak };
+                                 chromaticVampFlow, riffRegisterBreak,
+                                 // (0.162.0, from the owner's round-four songs' solos, shapes only; our names)
+                                 threesAcrossBlocks, riffTalkCallStab, riffDoubleStopUnison, tremoloThenTalk,
+                                 riffStutterBreak, twinThirdsSingalong, swayingThirdsTheme, stillCellMovingChords };
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",
@@ -72,6 +75,8 @@ namespace pr7s
 
     // (0.116.0) BY STYLE: the solo style the guitar STYLE plays (Lines.h's GuitarStyle by number).
     SoloStyle soloStyleForGuitarStyle (int guitarStyle);
+    // (0.162.0) With the take: nu-metal's BY STYLE picks one of the round-four songs' eight styles by `variation`.
+    SoloStyle soloStyleForGuitarStyle (int guitarStyle, int variation);
 
     // A whole solo in that style over the chords (`automatic`: nothing; guitarLeadIdeas asks soloStyleForGuitarStyle).
     LineIdea composeSolo (SoloStyle, const std::vector<ChordSpan>&, double beatsPerBar, const GuitarTuning&,
