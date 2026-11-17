@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.165.0
+
+**Speed, round six** (you asked: fix the three things left from round five). Each was checked against the old way before it went in.
+
+**The arrangement while it scrolls under a still play bar (Stationary Cursor):**
+- **It's kept as a picture while the song plays.** Each frame copies the picture and draws only the thin strip that scrolled into view. It used to draw the whole arrangement every frame, across all three of your screens. Anything else that changes (an edit, a click, a selection) redraws just its own columns of the picture. The play bar, the tempo lane's BPM labels and the LOCKED labels are drawn on top, because they stay where they are on the screen.
+- **The scroll is smooth and twice as often.** The view used to follow the audio's block steps. At your 2048 buffer that's about 20 jumps a second, unevenly, and it redrew only 30 times a second because a frame was expensive. It now follows the play bar where it's drawn, 60 times a second.
+- **The same fixes help the normal view too.** Things that used to be lined up with the screen are now lined up with the song: dashed lines, glow round automation points just past the edge, the round ends of the glowing automation lines.
+
+**Undo:**
+- **Each undo step shares every track it didn't change** instead of copying the whole song's notes. The engine's note of what it last built shares the same way, so checking which tracks changed is one look for each untouched track instead of comparing every note. On a song of 30 tracks of 2000 notes, a fader move with an undo step went from about 0.7 ms to 0.06 ms, and a note edit costs about 0.3 ms. The undo history also takes far less memory: a step holds only the tracks that changed.
+- **A safety check in the tests:** every recent undo step is checked against its own copy on each new step, undo and redo. Anything that wrote into a kept step by mistake would stop the tests. None did.
+
+**The channel EQ:** each band's filter stages now run together, sample by sample, in full precision. It's about 1.5 times faster with 4 to 12 stages on. The sound changes only by rounding about 100 dB down (the old way rounded between stages; the new way doesn't).
+
+Measured here, before and after:
+
+| | Before | After |
+|---|---|---|
+| A frame of Stationary Cursor at 5760 px wide | 5 to 7 ms | 0.6 to 1 ms |
+| A fader move with an undo step (30 tracks x 2000 notes) | about 0.7 ms | 0.06 ms |
+| The EQ with 8 stages, a 2048 block in stereo | 71 µs | 46 µs |
+
+The kept picture was compared with a full redraw at 100 %, 150 % and 200 % display scale, after scrolls of several sizes, a partial redraw and an edit: none of them differ by more than a shade where a strip meets the picture.
+
+Not checked here: the smoothness on your screens and graphics card (the picture is copied the same way on Windows, but I can only time it here).
+
 ## 0.164.0
 
 **Speed, round five** (you asked: another optimization pass on the whole studio). Three reviewers read the code (the audio thread, what happens on each edit, the screen). I checked every finding in the code before changing anything, and every change was checked to give the same result as before.
