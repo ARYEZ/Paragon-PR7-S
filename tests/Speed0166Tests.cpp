@@ -137,7 +137,8 @@ TEST_CASE ("0.166.0: the MIDI editor's notes glow in their own colour", "[speed1
     auto& editor = song.editor();
     editor.setChordGuides (false);
     auto notes = editor.getPart()->notes;
-    notes[0] = { 2.0, 1.0, 64, 1.0f };   // (HIGH: red)
+    const auto area = editor.getNotesArea();
+    notes[0] = { 2.0, 1.0, editor.pitchForY (area.getCentreY()), 1.0f };   // (HIGH: red; on a row in view)
     song.studio.setNotes (song.lead, 0, notes);
     song.studio.dispatchPendingMessages();
     juce::Image image (juce::Image::RGB, editor.getWidth(), editor.getHeight(), true, juce::SoftwareImageType());

@@ -2406,6 +2406,15 @@ void KeyEditor::paint (juce::Graphics& g)
     place (start, key.width - start, key.left);
     place (0, start, key.left + key.width - start);
     {
+        // The strip under the scroll bar down the right: drawn as without the picture (the picture's notes
+        // run under it, to scroll into view).
+        juce::Graphics::ScopedSaveState saved (g);
+        const auto notes = getNotesArea();
+        const auto strip = juce::Rectangle<float> (notes.getRight(), notes.getY(), (float) getWidth() - notes.getRight(), notes.getHeight());
+        if (g.reduceClipRegion (strip.getSmallestIntegerContainer()))
+            paintBody (g);
+    }
+    {
         juce::Graphics::ScopedSaveState saved (g);
         g.reduceClipRegion (getNotesArea().getSmallestIntegerContainer());
         paintFollowStamp (g);
