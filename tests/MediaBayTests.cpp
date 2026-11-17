@@ -1317,3 +1317,118 @@ TEST_CASE ("0.57.2: the search text is kept between searches and made again afte
     CHECK (database.find (q).empty());
     store.deleteFile();
 }
+
+TEST_CASE ("0.163.0: the quicker MediaBay finds, sorts and saves as before", "[mediabay]")
+{
+    // Made-up items over several folders (names out of order, numbers to sort naturally).
+    std::vector<MediaItem> list;
+    juce::Random random (163);
+    const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-mb163");
+    for (int i = 0; i < 600; ++i)
+    {
+        MediaItem item;
+        const auto folder = root.getChildFile ("Pack " + juce::String (random.nextInt (5))).getChildFile ("Sub " + juce::String (random.nextInt (4)));
+        item.name = (random.nextBool() ? "Kick " : "snare ") + juce::String (random.nextInt (200));
+        item.file = folder.getChildFile (item.name + " " + juce::String (i) + ".wav");
+        item.type = random.nextInt (3) == 0 ? MediaType::midi : MediaType::audio;
+        item.tags.category = random.nextBool() ? "Drums" : (random.nextBool() ? "Bass" : "");
+        item.bpm = 80 + random.nextInt (100);
+        list.push_back (item);
+    }
+    const auto store = juce::File::createTempFile ("pr7s-mb163.xml");
+    {
+        MediaDatabase database (store);
+        database.setItemsForTests (list);
+        const auto& items = database.getItems();
+
+        // A folder with its subfolders, and without: as File::isAChildOf says.
+        for (const bool subfolders : { true, false })
+        {
+            MediaQuery q;
+            q.folder = root.getChildFile ("Pack 2");
+            if (! subfolders)
+                q.folder = q.folder.getChildFile ("Sub 1");
+            q.subfolders = subfolders;
+            std::vector<int> expected;
+            for (int i = 0; i < (int) items.size(); ++i)
+            {
+                const auto parent = items[(size_t) i].file.getParentDirectory();
+                if (subfolders ? (parent == q.folder || items[(size_t) i].file.isAChildOf (q.folder)) : parent == q.folder)
+                    expected.push_back (i);
+            }
+            CHECK (database.find (q) == expected);
+            CHECK (! expected.empty());
+        }
+        // "Pack 2" isn't "Pack 20".
+        MediaQuery near;
+        near.folder = root.getChildFile ("Pack");
+        CHECK (database.find (near).empty());
+
+        // Sorts by name, folder and category: the order a natural-order compare gives.
+        auto all = database.find ({});
+        const auto check = [&] (MediaColumn column, std::function<int (const MediaItem&, const MediaItem&)> compare)
+        {
+            for (const bool up : { true, false })
+            {
+                auto sorted = all;
+                database.sort (sorted, column, up);
+                for (size_t i = 1; i < sorted.size(); ++i)
+                {
+                    const auto c = compare (items[(size_t) sorted[i - 1]], items[(size_t) sorted[i]]);
+                    CHECK ((up ? c <= 0 : c >= 0));
+                }
+            }
+        };
+        check (MediaColumn::name, [] (const MediaItem& a, const MediaItem& b) { return a.name.compareNatural (b.name); });
+        check (MediaColumn::folder, [] (const MediaItem& a, const MediaItem& b)
+               { return a.file.getParentDirectory().getFullPathName().compareNatural (b.file.getParentDirectory().getFullPathName()); });
+        check (MediaColumn::category, [] (const MediaItem& a, const MediaItem& b) { return a.tags.category.compareNatural (b.tags.category); });
+
+        // A rating, then saved and read back.
+        database.setRatings ({ items[5].file }, 4);
+        CHECK (database.indexOf (items[5].file) == 5);
+        database.save();
+    }
+    MediaDatabase again (store);
+    CHECK ((int) again.getItems().size() == 600);
+    const auto i = again.indexOf (list[5].file);
+    REQUIRE (i >= 0);
+    CHECK (again.getItems()[(size_t) i].rating == 4);
+    store.deleteFile();
+}
+
+TEST_CASE ("0.163.0: a file renamed from the MediaBay keeps its rating and tags", "[mediabay]")
+{
+    using A = MediaAttribute;
+    MediaFolder folder;
+    const auto store = juce::File::createTempFile ("pr7s-mb163-rename.xml");
+    const auto kick = folder.root.getChildFile ("Kicks").getChildFile ("Kick 808.wav");
+    MediaDatabase database (store);
+    database.addLocation (folder.root);
+    database.scanNow();
+    database.setRatings ({ kick }, 3);
+    database.setAttribute ({ kick }, { A::comment, {} }, "Boomy");
+
+    juce::String error;
+    CHECK (database.renameFile (kick, "Big Kick", error));
+    const auto renamed = kick.getSiblingFile ("Big Kick.wav");
+    CHECK (renamed.existsAsFile());
+    CHECK (! kick.exists());
+    const auto i = database.indexOf (renamed);
+    REQUIRE (i >= 0);
+    CHECK (database.getItems()[(size_t) i].name == "Big Kick");
+    CHECK (database.getItems()[(size_t) i].rating == 3);
+    CHECK (database.getTags (renamed).comment == "Boomy");
+    CHECK (database.indexOf (kick) < 0);
+    MediaQuery q;
+    q.text = "big";
+    CHECK (names (database, database.find (q)) == std::vector<juce::String> { "Big Kick" });
+
+    // Refused: an empty name, a name taken.
+    CHECK (! database.renameFile (renamed, "  ", error));
+    const auto other = renamed.getSiblingFile ("Taken.wav");
+    other.replaceWithText ("x");
+    CHECK (! database.renameFile (renamed, "Taken", error));
+    CHECK (error.contains ("already"));
+    store.deleteFile();
+}

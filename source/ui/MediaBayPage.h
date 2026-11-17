@@ -78,6 +78,8 @@ public:
 
     // Tags (0.21.1): on the selected files.
     juce::Array<juce::File> getSelectedFiles() const;
+    std::vector<const pr7s::MediaItem*> getSelectedItems() const;   // (0.163.0: by the selected rows, not a search of every file)
+    bool renameResult (int row, const juce::String& newName, juce::String& error);   // (0.163.0: the file on disk; its rating and tags kept)
     void selectRows (const juce::Array<int>& rows);
     void setAttribute (const pr7s::AttributeId&, const juce::String& value);
     void removeAttribute (const pr7s::AttributeId&);
@@ -119,6 +121,8 @@ private:
     void paintRowBackground (juce::Graphics&, int row, int width, int height, bool selected) override;
     void paintCell (juce::Graphics&, int row, int column, int width, int height, bool selected) override;
     void cellClicked (int row, int column, const juce::MouseEvent&) override;
+    void showResultMenu (int row);
+    void askToRename (int row);
     void cellDoubleClicked (int row, int column, const juce::MouseEvent&) override;
     void selectedRowsChanged (int lastRowSelected) override;
     void sortOrderChanged (int columnId, bool forwards) override;
@@ -128,6 +132,7 @@ private:
     void timerCallback() override;
 public:
     void runTimerForTests() { timerCallback(); }
+    juce::String typedSearch; double typedAt = -1.0;   // (0.163.0) typing waits for a pause (a search of 120,000 files a key)
 private:
     void refreshBrowser();
     void refreshKeys();

@@ -42,6 +42,7 @@ public:
         juce::PluginDescription plugin;        // plugin
         bool studioSynth = false, instrument = false;
         pr7s::MediaType type = pr7s::MediaType::audio;
+        int item = -1;                         // media: its place in the MediaBay (its detail made when first drawn)
     };
 
     void paint (juce::Graphics&) override;
@@ -126,6 +127,7 @@ private:
     void timerCallback() override;
 public:
     void runTimerForTests() { timerCallback(); }
+    juce::String typedSearch; double typedAt = -1.0;   // (0.163.0) typing waits for a pause
 private:
     void go (State);              // to a page, remembered for BACK
     void rebuild();               // rows for the page
@@ -143,6 +145,8 @@ private:
 
     struct Tile { juce::String name, detail; std::function<void()> action; int favorite = -1; };
     std::vector<Tile> tiles() const;
+    mutable juce::uint32 countedGeneration = 0; mutable bool counted = false; mutable int loopCount = 0, presetCount = 0;   // (0.163.0: HOME's counts, not two searches a paint)
+    juce::String detailOf (const pr7s::MediaItem&) const;
     std::vector<juce::Rectangle<int>> tileBounds (int count) const;
 
     pr7s::Studio& studio;

@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.163.0
+
+**The MediaBay at 120,000 files** (you: "the lag is insane and makes it basically unusable"). Measured with 120,000 made-up files, before and after this release:
+
+- **Saving its list took about four minutes.** JUCE's XML adds each new line by walking to the end of the list, so 120,000 files was about 7 billion steps. It saved after every scan, and two seconds after every rating or tag. Now it builds the list in one pass and writes it on a thread of its own, so the window keeps going while it writes. This was the big one: the minutes-long freezes.
+- **Typing in the search** searched every file on every key (0.9 s for the first letter). Now each file's search text is made once and kept (only a file whose tags change is made again). The search also waits for a short pause in your typing (about a fifth of a second), and Enter searches at once.
+- **Choosing a folder** checked each of the 120,000 files' paths through the disk-path routines (0.4 s). Now it compares text it worked out once.
+- **Sorting by name or folder** compared names letter by letter 2 million times (0.35 s and 1.2 s). Now each file's place is worked out once.
+- **The Inspector and the attribute menus** looked through every file to find the selected ones. Now they read the selected rows directly.
+- **The Media rack** (the right zone) counted every file twice on each paint of its HOME page, and built a line of text for every file when it showed a results page. Now the counts are kept until something changes, and the text is made only for the rows you can see.
+
+(The before/after timings are in the commit and the speed test `"[.perf-mediabay]"`.)
+
+**Rename a file from the MediaBay** (you asked): right-click a result, then **Rename...**. The file is renamed on disk and keeps its extension, rating and tags. You can't rename it over a file that's already there, or to an empty name. The same menu has **Show in Its Folder** and **Remove Its Rating**.
+
+**The family's gradient in place of the flat orange** in the MediaBay and the Media rack: selected rows, the playing file's bar, the headings, the stars, the scan boxes, the waveform, the top line and the rack's tab.
+
+Not checked here: your library itself (the timings are on made-up files of the same count), and Windows' file renaming (a file another program holds open can't be renamed: you get a message saying so).
+
 ## 0.162.0
 
 **Eight new solo styles from the solos in your round-four songs** (you asked; shapes only, our own names). The round-three and round-four readers had skipped solos, so four readers went back through every file that had a lead stretch. Most of those songs have no guitar solo; eight do: Stricken, Ten Thousand Fists, So Cold, Awake, Straight Out of Line, I'm Not Okay (I Promise), What I've Done and In Pieces. One style from each:

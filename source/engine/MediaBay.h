@@ -5,6 +5,7 @@
 #include <juce_audio_formats/juce_audio_formats.h>
 
 #include <atomic>
+#include <future>
 #include <functional>
 #include <map>
 #include <memory>
@@ -217,11 +218,25 @@ namespace pr7s
         static int vst3UniqueIdFor (const juce::String& classId);
         static juce::String keyFromName (const juce::String&);    // "Bass_Am_120": "Am"; "" if none
 
+        // (0.163.0) Written as it goes (it walked every element it had written for each new one: 4 minutes with
+        // 120,000 files). `save` writes now; `saveInBackground` copies what's kept and writes it on a thread of its
+        // own (the scan's results, a rating or tag after a pause: the screen doesn't wait); `waitForSave` (the
+        // destructor and the tests) waits for it.
         void save() const;
+        void saveInBackground() const;
+        void waitForSave() const;
         mutable bool unsaved = false;
-        mutable std::unordered_map<juce::String, juce::String> searchCache;   // (0.57.2) by path
         const juce::String& searchTextOf (const MediaItem&) const;
         double lastEdit = 0.0;
+
+        // (0.163.0) An item by its file (-1: not scanned), and a number that changes whenever the items, their
+        // ratings or tags change (the Media rack's tiles count again only then).
+        int indexOf (const juce::File&) const;
+        juce::uint32 getGeneration() const noexcept { return generation; }
+
+        // (0.163.0, the owner asked) A file renamed on the disk: its rating and tags go with it. `newName` without
+        // the extension (it stays). False (and why) if it can't be: no such file, the name's taken, the disk said no.
+        bool renameFile (const juce::File&, const juce::String& newName, juce::String& error);
 
     private:
         class Scanner;
@@ -235,8 +250,22 @@ namespace pr7s
         std::map<juce::String, MediaTags> tags;   // full path: tags
         std::vector<AttributeList> userCategories, userStyles;
         std::vector<UserAttribute> userAttributes;
-        bool passes (const MediaItem&, const MediaQuery&, const TextSearch&) const;
+        bool passes (int index, const MediaQuery&, const TextSearch&, const juce::String& folderPath) const;
         void dropUnincluded();
+        // (0.163.0) Kept beside `items`, made again whenever they change: each one's index by path, its folder's
+        // path, its search text (made when first asked), its place by name and by folder (made when first sorted).
+        void rebuildIndex();
+        void invalidateSearch (int index) const;
+        std::unique_ptr<juce::XmlElement> makeXml() const;
+        const std::vector<int>& nameRanks() const;
+        const std::vector<int>& folderRanks() const;
+        std::unordered_map<juce::String, int> byPath;
+        std::vector<juce::String> parents;
+        mutable std::vector<juce::String> searchTexts;
+        mutable std::vector<char> searchMade;
+        mutable std::vector<int> nameRank, folderRank;
+        juce::uint32 generation = 0;
+        mutable std::future<void> saving;
         std::unique_ptr<Scanner> scanner;
         std::atomic<bool> scanning { false };
         std::atomic<int> filesSeen { 0 };

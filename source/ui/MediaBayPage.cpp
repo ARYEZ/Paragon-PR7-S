@@ -1,6 +1,7 @@
 #include "ui/MediaBayPage.h"
 
 #include "ui/ParagonLookAndFeel.h"
+#include <set>
 
 using namespace MediaUi;
 
@@ -53,10 +54,10 @@ public:
         {
             if (isSelected())
             {
-                g.setColour (ParagonColours::accent.withAlpha (0.18f));
+                MediaUi::gradient (g, juce::Rectangle<int> (0, 0, width, height), 0.18f);
                 g.fillRect (0, 0, width, height);
             }
-            g.setColour (ParagonColours::accent);
+            MediaUi::gradient (g, juce::Rectangle<int> (4, 0, juce::jmin (width - 8, 160), height));
             g.setFont (ParagonLookAndFeel::titleFont (13.5f));
             g.drawText (name, 4, 0, width - 8, height, juce::Justification::centredLeft, true);
         }
@@ -95,7 +96,7 @@ public:
         {
             if (isSelected())
             {
-                g.setColour (ParagonColours::accent.withAlpha (0.22f));
+                MediaUi::gradient (g, juce::Rectangle<int> (0, 0, width, height), 0.22f);
                 g.fillRect (0, 0, width, height);
             }
             // The box.
@@ -105,7 +106,7 @@ public:
             g.drawRoundedRectangle (box, 2.0f, 1.0f);
             if (state == pr7s::MediaDatabase::ScanState::all)
             {
-                g.setColour (ParagonColours::accent);
+                MediaUi::gradient (g, box, 1.0f, true);
                 g.fillRoundedRectangle (box, 2.0f);
                 juce::Path tick;
                 tick.startNewSubPath (box.getX() + 2.5f, box.getCentreY());
@@ -116,7 +117,7 @@ public:
             }
             else if (state == pr7s::MediaDatabase::ScanState::some)
             {
-                g.setColour (ParagonColours::accent);
+                MediaUi::gradient (g, box, 1.0f, true);
                 g.fillRoundedRectangle (box.reduced (3.0f), 1.0f);
             }
             // A folder shape and the name: accent while it's being scanned, pearl white scanned, dim not.
@@ -439,11 +440,7 @@ public:
     {
         using A = pr7s::MediaAttribute;
         rows.clear();
-        const auto files = page.getSelectedFiles();
-        std::vector<const pr7s::MediaItem*> items;
-        for (const auto& item : page.database.getItems())
-            if (files.contains (item.file))
-                items.push_back (&item);
+        const auto items = page.getSelectedItems();
 
         const auto heading = [this] (const juce::String& text) { rows.push_back ({ Row::Kind::heading, text, {}, {} }); };
         const auto common = [&] (const std::function<juce::String (const pr7s::MediaItem&)>& text)
@@ -518,7 +515,7 @@ public:
             auto area = juce::Rectangle<int> (0, i * rowHeight, getWidth(), rowHeight);
             if (row.kind == Row::Kind::heading)
             {
-                g.setColour (ParagonColours::accent);
+                MediaUi::gradient (g, area.reduced (6, 0).withWidth (juce::jmin (area.getWidth() - 12, 200)));
                 g.setFont (ParagonLookAndFeel::titleFont (13.0f));
                 g.drawText (row.label, area.reduced (6, 0).withTrimmedTop (6), juce::Justification::centredLeft, false);
                 g.setColour (ParagonColours::panelEdge);
@@ -527,7 +524,7 @@ public:
             }
             if (i == hover && row.kind == Row::Kind::attribute)
             {
-                g.setColour (ParagonColours::accent.withAlpha (0.10f));
+                MediaUi::gradient (g, area, 0.10f);
                 g.fillRect (area);
             }
             auto label = area.removeFromLeft (labelWidth).reduced (8, 0);
@@ -653,9 +650,8 @@ private:
         {
             // The subs of the selected files' categories (or styles).
             juce::StringArray parents;
-            for (const auto& item : page.database.getItems())
-                if (page.getSelectedFiles().contains (item.file))
-                    parents.addArray (pr7s::MediaDatabase::attributeValues (item, parent));
+            for (const auto* item : page.getSelectedItems())
+                parents.addArray (pr7s::MediaDatabase::attributeValues (*item, parent));
             parents.removeDuplicates (true);
             for (const auto& name : parents)
                 choices.addArray (page.database.subsOf (parent, name));
@@ -854,7 +850,12 @@ MediaBayPage::MediaBayPage (pr7s::Studio& s)
     search.setColour (juce::TextEditor::focusedOutlineColourId, ParagonColours::accent);
     search.setTooltip ("Words all found (and, +, or a space); either (or, a comma); none (not, a leading minus); (parentheses); \"a phrase\". "
                        "Looks in the name, the folder, the type, the tempo and the key");
-    search.onTextChange = [this] { setSearch (search.getText()); };
+    search.onTextChange = [this]
+    {
+        typedSearch = search.getText();
+        typedAt = juce::Time::getMillisecondCounterHiRes();
+    };
+    search.onReturnKey = [this] { if (typedAt >= 0.0) { typedAt = -1.0; setSearch (typedSearch); } };
     addAndMakeVisible (search);
 
     for (auto* key : { &audioKey, &midiKey, &presetsKey, &songsKey, &subfoldersKey, &shuffleKey, &resetKey, &rescanKey,
@@ -1105,7 +1106,8 @@ void MediaBayPage::refreshBrowser()
 
 void MediaBayPage::refresh()
 {
-    // The selected files stay selected when they're still there.
+    // The selected files stay selected when they're still there (0.163.0: by their places in the database, found
+    // by path, not a list of paths searched for every result).
     juce::StringArray selectedPaths;
     const auto rows = table.getSelectedRows();
     for (int i = 0; i < rows.size(); ++i)
@@ -1121,8 +1123,12 @@ void MediaBayPage::refresh()
         // (Selecting them again isn't a new choice: AUTO PLAY doesn't start again.)
         const juce::ScopedValueSetter<bool> svs (reselecting, true);
         table.deselectAllRows();
-        for (int row = 0; row < (int) results.size() && ! selectedPaths.isEmpty(); ++row)
-            if (selectedPaths.contains (getResult (row)->file.getFullPathName()))
+        std::set<int> wanted;
+        for (const auto& path : selectedPaths)
+            if (const auto i = database.indexOf (juce::File (path)); i >= 0)
+                wanted.insert (i);
+        for (int row = 0; row < (int) results.size() && ! wanted.empty(); ++row)
+            if (wanted.count (results[(size_t) row]) > 0)
                 table.selectRow (row, false, false);
     }
     table.repaint();
@@ -1174,6 +1180,7 @@ juce::String MediaBayPage::getStatusText() const
 //==============================================================================
 void MediaBayPage::setSearch (const juce::String& text)
 {
+    typedAt = -1.0;
     query.text = text;
     if (search.getText() != text)
         search.setText (text, false);
@@ -1444,6 +1451,34 @@ void MediaBayPage::removeSelectedLocation()
 }
 
 //==============================================================================
+std::vector<const pr7s::MediaItem*> MediaBayPage::getSelectedItems() const
+{
+    std::vector<const pr7s::MediaItem*> items;
+    const auto rows = table.getSelectedRows();
+    for (int i = 0; i < rows.size(); ++i)
+        if (const auto* item = getResult (rows[i]))
+            items.push_back (item);
+    std::sort (items.begin(), items.end());   // (the database's order, as before)
+    return items;
+}
+
+bool MediaBayPage::renameResult (int row, const juce::String& newName, juce::String& error)
+{
+    const auto* item = getResult (row);
+    if (item == nullptr)
+        return false;
+    const auto file = item->file;
+    if (file == previewing)
+    {
+        studio.stopMediaPreview();
+        previewing = juce::File();
+    }
+    if (! database.renameFile (file, newName, error))
+        return false;
+    refresh();
+    return true;
+}
+
 juce::Array<juce::File> MediaBayPage::getSelectedFiles() const
 {
     juce::Array<juce::File> files;
@@ -1482,14 +1517,11 @@ void MediaBayPage::setCharacter (int pair, int side)
 
 juce::String MediaBayPage::getAttributeText (const pr7s::AttributeId& id) const
 {
-    const auto files = getSelectedFiles();
     bool first = true;
     juce::String text;
-    for (const auto& item : database.getItems())
+    for (const auto* item : getSelectedItems())
     {
-        if (! files.contains (item.file))
-            continue;
-        const auto value = pr7s::MediaDatabase::attributeValues (item, id).joinIntoString (", ");
+        const auto value = pr7s::MediaDatabase::attributeValues (*item, id).joinIntoString (", ");
         if (first)
             text = value;
         else if (value != text)
@@ -1636,6 +1668,11 @@ juce::StringArray MediaBayPage::filesFromDragDescription (const juce::String& de
 
 void MediaBayPage::timerCallback()
 {
+    if (typedAt >= 0.0 && juce::Time::getMillisecondCounterHiRes() - typedAt >= 180.0)
+    {
+        typedAt = -1.0;
+        setSearch (typedSearch);
+    }
     if (database.takeScanResults())
     {
         browser->repaint();
@@ -1659,15 +1696,17 @@ int MediaBayPage::getNumRows()
 void MediaBayPage::paintRowBackground (juce::Graphics& g, int row, int width, int height, bool selected)
 {
     if (selected)
-        g.fillAll (ParagonColours::accent.withAlpha (0.22f));
+    {
+        MediaUi::gradient (g, juce::Rectangle<int> (0, 0, width, height), 0.24f);
+        g.fillRect (0, 0, width, height);
+    }
     else if (row % 2 == 1)
         g.fillAll (juce::Colour (0xff120f13));
     if (const auto* item = getResult (row); item != nullptr && item->file == previewing && studio.isMediaPreviewing())
     {
-        g.setColour (ParagonColours::accent);
+        MediaUi::gradient (g, juce::Rectangle<int> (0, 0, 3, height), 1.0f, true);
         g.fillRect (0, 0, 3, height);
     }
-    juce::ignoreUnused (width);
 }
 
 void MediaBayPage::paintCell (juce::Graphics& g, int row, int column, int width, int height, bool selected)
@@ -1721,6 +1760,8 @@ void MediaBayPage::paintCell (juce::Graphics& g, int row, int column, int width,
 
 void MediaBayPage::cellClicked (int row, int column, const juce::MouseEvent& event)
 {
+    if (event.mods.isPopupMenu())
+        return showResultMenu (row);
     if (column != ratingColumn)
         return;
     const auto width = (float) table.getHeader().getColumnWidth (ratingColumn) - 12.0f;
@@ -1728,6 +1769,61 @@ void MediaBayPage::cellClicked (int row, int column, const juce::MouseEvent& eve
     const auto* item = getResult (row);
     // Clicking the stars it already has takes them all away.
     setRating (row, item != nullptr && item->rating == star ? 0 : star);
+}
+
+void MediaBayPage::showResultMenu (int row)
+{
+    // (0.163.0) A result's menu: the file renamed, shown in its folder, its rating taken away.
+    const auto* item = getResult (row);
+    if (item == nullptr)
+        return;
+    if (! table.isRowSelected (row))
+        table.selectRow (row);
+    juce::PopupMenu menu;
+    menu.addItem (1, "Rename...");
+    menu.addItem (2, "Show in Its Folder");
+    menu.addItem (3, "Remove Its Rating", item->rating > 0);
+    const auto file = item->file;
+    menu.showMenuAsync (juce::PopupMenu::Options(), [this, row, file, safe = juce::Component::SafePointer<MediaBayPage> (this)] (int chosen)
+    {
+        if (safe == nullptr)
+            return;
+        const auto* now = getResult (row);
+        if (now == nullptr || now->file != file)
+            return;
+        if (chosen == 2)
+            file.revealToUser();
+        else if (chosen == 3)
+            setRating (row, 0);
+        else if (chosen == 1)
+            askToRename (row);
+    });
+}
+
+void MediaBayPage::askToRename (int row)
+{
+    const auto* item = getResult (row);
+    if (item == nullptr)
+        return;
+    const auto file = item->file;
+    auto* box = new FamilyAlertWindow ("Rename the file", file.getFileName() + "\n(its rating and tags stay with it)", juce::MessageBoxIconType::NoIcon);
+    box->addTextEditor ("name", file.getFileNameWithoutExtension(), "NEW NAME (" + file.getFileExtension().toUpperCase() + " KEPT)");
+    box->addButton ("RENAME", 1, juce::KeyPress (juce::KeyPress::returnKey));
+    box->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+    box->enterModalState (true, juce::ModalCallbackFunction::create ([this, box, file, safe = juce::Component::SafePointer<MediaBayPage> (this)] (int result)
+    {
+        if (safe == nullptr || result != 1)
+            return;
+        const auto newName = box->getTextEditorContents ("name");
+        for (int r = 0; r < (int) results.size(); ++r)
+            if (getResult (r)->file == file)
+            {
+                juce::String error;
+                if (! renameResult (r, newName, error))
+                    juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon, "Rename the file", error);
+                return;
+            }
+    }), true);
 }
 
 void MediaBayPage::cellDoubleClicked (int row, int column, const juce::MouseEvent&)
@@ -1774,7 +1870,7 @@ juce::String MediaBayPage::getCellTooltip (int row, int column)
 void MediaBayPage::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0c0a0d));
-    g.setColour (ParagonColours::accent);
+    MediaUi::gradient (g, juce::Rectangle<int> (0, 0, getWidth(), 3));
     g.fillRect (0, 0, getWidth(), 3);
     auto title = getLocalBounds().removeFromTop (titleHeight).reduced (gap, 6);
     g.setColour (ParagonColours::text);
@@ -1849,7 +1945,7 @@ void MediaBayPage::paintPreviewer (juce::Graphics& g, juce::Rectangle<int> area)
             const auto h = juce::jmin (1.0f, peak) * wave.getHeight() * 0.48f;
             shape.addRectangle (wave.getX() + (float) x, wave.getCentreY() - h, 1.0f, juce::jmax (1.0f, h * 2.0f));
         }
-        g.setColour (pr7s::FamilyColours::orange.withAlpha (0.8f));
+        MediaUi::gradient (g, wave, 0.85f);
         g.fillPath (shape);
     }
     else if (item != nullptr)

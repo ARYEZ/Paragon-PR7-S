@@ -12,6 +12,17 @@ namespace MediaUi
 {
     inline juce::Font interFont (float height, bool bold = false) { return juce::Font (ParagonLookAndFeel::textFont (height, bold ? juce::Font::bold : juce::Font::plain)); }   // (0.71.1: Bebas, the owner's rule; the old name kept)
 
+    // (0.163.0, the owner asked) The family's gradient (red / pink / orange) in place of the flat orange: across
+    // an area (or down it), at an opacity.
+    inline void gradient (juce::Graphics& g, juce::Rectangle<float> area, float alpha = 1.0f, bool down = false)
+    {
+        auto fill = ParagonLookAndFeel::familyGradient (area.getTopLeft(), down ? area.getBottomLeft() : area.getTopRight());
+        if (alpha < 1.0f)
+            fill.multiplyOpacity (alpha);
+        g.setGradientFill (fill);
+    }
+    inline void gradient (juce::Graphics& g, juce::Rectangle<int> area, float alpha = 1.0f, bool down = false) { gradient (g, area.toFloat(), alpha, down); }
+
     // Each type in one of the family's colours (a small tab beside the name).
     inline juce::Colour typeColour (pr7s::MediaType type)
     {
@@ -53,7 +64,7 @@ namespace MediaUi
             star.addStar (centre, 5, size * 0.22f, size * 0.5f);   // (the first point at 12 o'clock)
             if (i < rating)
             {
-                g.setColour (pr7s::FamilyColours::orange);
+                gradient (g, star.getBounds(), 1.0f, true);
                 g.fillPath (star);
             }
             else

@@ -44,9 +44,9 @@ namespace MediaUi
         const auto chosen = host.getFilterSelection (index).contains (value);
         if (chosen)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.22f));
+            gradient (g, juce::Rectangle<int> (0, 0, width, height), 0.22f);
             g.fillRect (0, 0, width, height);
-            g.setColour (ParagonColours::accent);
+            gradient (g, juce::Rectangle<int> (0, 0, 3, height), 1.0f, true);
             g.fillRect (0, 0, 3, height);
         }
         auto area = juce::Rectangle<int> (0, 0, width, height).reduced (8, 0);
@@ -56,7 +56,7 @@ namespace MediaUi
         const auto attribute = host.getFilterColumn (index);
         g.setColour (chosen ? ParagonColours::text : ParagonColours::text.withAlpha (0.85f));
         if (attribute.kind == pr7s::MediaAttribute::rating)
-            g.setColour (pr7s::FamilyColours::orange);
+            gradient (g, area, 1.0f);
         g.drawText (shownValue (host.getFilterDatabase(), attribute, value), area, juce::Justification::centredLeft, true);
     }
 
