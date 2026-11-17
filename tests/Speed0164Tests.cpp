@@ -2,6 +2,8 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cmath>
+
 #include "engine/Pr7dLink.h"
 #include "engine/Studio.h"
 
@@ -41,9 +43,23 @@ TEST_CASE ("0.164.0: a part of thousands of notes, controllers and warp markers 
     REQUIRE (back.has_value());
     REQUIRE (back->tracks.size() == 1);
     const auto& read = back->tracks[0].parts.at (0);
-    CHECK (read.notes == part.notes);   // (in order: the children went in back to front, so they read as written)
-    CHECK (read.controllers == part.controllers);
-    CHECK (back->tracks[0].automation.at (0).points == lane.points);
+    // In order (the children went in back to front, so they read as written), each as written (to the file's rounding).
+    REQUIRE (read.notes.size() == part.notes.size());
+    REQUIRE (read.controllers.size() == part.controllers.size());
+    const auto& points = back->tracks[0].automation.at (0).points;
+    REQUIRE (points.size() == lane.points.size());
+    auto notesSame = true, controllersSame = true, pointsSame = true;
+    for (size_t i = 0; i < part.notes.size(); ++i)
+        notesSame = notesSame && std::abs (read.notes[i].start - part.notes[i].start) < 1.0e-6 && read.notes[i].pitch == part.notes[i].pitch
+                    && std::abs (read.notes[i].velocity - part.notes[i].velocity) < 1.0e-5f;
+    for (size_t i = 0; i < part.controllers.size(); ++i)
+        controllersSame = controllersSame && std::abs (read.controllers[i].start - part.controllers[i].start) < 1.0e-6
+                          && read.controllers[i].value == part.controllers[i].value;
+    for (size_t i = 0; i < lane.points.size(); ++i)
+        pointsSame = pointsSame && std::abs (points[i].beat - lane.points[i].beat) < 1.0e-6 && std::abs (points[i].value - lane.points[i].value) < 1.0e-5f;
+    CHECK (notesSame);
+    CHECK (controllersSame);
+    CHECK (pointsSame);
     // Written twice: the same text.
     CHECK (xml->toString() == song.toXml()->toString());
 }
