@@ -177,6 +177,7 @@ public:
     void followPlayhead();
     double getPixelsPerBeat() const noexcept { return pixelsPerBeat; }
     double getFirstBeat() const noexcept { return firstBeat; }
+    void setFirstBeatForTests (double beat) { firstBeat = beat; }
     juce::ScrollBar& getScrollBarAcross() noexcept { return across; }
     juce::ScrollBar& getScrollBarDown() noexcept { return down; }
 
@@ -315,6 +316,20 @@ public:
     static constexpr float minRowHeight = 6.0f, maxRowHeight = 36.0f;
 
     void paint (juce::Graphics&) override;
+
+    // (0.166.0) While Stationary Cursor moves the notes under the playing playhead, the part that scrolls
+    // (the notes, the ruler under the info line, the lanes) is kept as a picture, as the arrangement's
+    // (ArrangeView, 0.165.0): each frame copies it and draws only the strip the scroll uncovered. These
+    // overloads hide Component's so every redraw asked for redraws those columns of the picture too.
+    void repaint();
+    void repaint (int x, int y, int width, int height);
+    void repaint (juce::Rectangle<int>);
+    bool isScrollCacheActive() const;
+    void setScrollCacheForTests (std::optional<bool> on) { scrollCacheForced = on; }
+    int getScrollCacheColumnsDrawn() const noexcept { return cacheColumnsDrawn; }   // (tests) screen columns drawn last paint
+    double scrollStep() const;   // (the smallest scroll that moves the picture by whole screen pixels; 0: none)
+    void paintFreshForTests (juce::Graphics&);   // (tests) drawn whole, as without the picture
+
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
@@ -383,6 +398,28 @@ private:
     void paintPanel (juce::Graphics&);
     void paintKeys (juce::Graphics&);
     void paintNotes (juce::Graphics&);
+    static constexpr float glowReach = 5.0f;    // (0.166.0) how far a note's glow reaches
+    void paintFollowStamp (juce::Graphics&);   // (0.166.0: pinned to the notes' corner, drawn over the picture)
+    void paintBody (juce::Graphics&);           // (0.166.0) everything but the playhead and the frame
+    void paintOver (juce::Graphics&);           // the playhead and the frame
+    juce::Rectangle<float> notesPaintArea() const;   // the notes' area; into the picture: to the right edge
+    void dirtyCache (juce::Rectangle<int>);
+    std::optional<bool> scrollCacheForced;
+    bool paintingCache = false, playheadScroll = false;
+    juce::Image cacheImage;   // the ring (RGB, screen pixels) of the part that scrolls
+    struct CacheKey
+    {
+        int width = 0, height = 0, left = 0, top = 0, list = 0, lanes = 0, finish = 0;
+        float scale = 0.0f, scrollY = 0.0f, rowHeight = 0.0f, lanesTop = 0.0f;
+        double pixelsPerBeat = 0.0, barLength = 0.0;
+        bool drums = false;
+        bool operator== (const CacheKey&) const = default;
+    } cacheKey;
+    bool cacheValid = false;
+    juce::int64 cacheFrom = 0, cacheTo = 0, cacheBase = 0;
+    std::vector<std::pair<juce::int64, juce::int64>> cacheDirty;
+    int cacheColumnsDrawn = 0;
+    float lastPaintScale = 1.0f;
     void paintVelocities (juce::Graphics&);
     void paintRuler (juce::Graphics&);
     // The lanes (KeyEditorLanes.cpp).
