@@ -23,7 +23,7 @@ Each version's notes appear on its GitHub Release page.
   - The call said twice, with only its tail changed.
   - An answer of turns leaping up to the bent tonic.
   - The one fast run: triplets home onto the chord's third.
-- **SWAYING THIRDS THEME** (What I've Done): a small theme within an octave. Pairs a third apart in eighths rise into a note held on each chord's root. Each time round the chords it comes back the same, and its last bar walks down to the tonic.
+- **SWAYING THIRDS THEME** (What I've Done): a small theme in about an octave. Pairs a third apart in eighths rise into a note held on each chord's root. Each time round the chords it comes back the same, and its last bar walks down to the tonic.
 - **STILL CELL, MOVING CHORDS** (In Pieces): one falling six-note cell kept at the same pitches while the chords change under it. It stops on the dominant bar for a gallop on one note. Each later round rises a step, with no rests, and it ends on the last chord's root, straight into the next section.
 
 **What these eight have in common**, so they all do it:

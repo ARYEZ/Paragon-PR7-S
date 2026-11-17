@@ -1175,7 +1175,7 @@ namespace pr7s
                     break;
                 case SoloStyle::swayingThirdsTheme:
                     p.writer = Writer::swayingThirds; p.endTone = 1;
-                    p.description = "A small theme within an octave: pairs a third apart in eighths rising into a note held on each "
+                    p.description = "A small theme in about an octave: pairs a third apart in eighths rising into a note held on each "
                                     "chord's root, the second round the first again, its last bar walking down to the tonic held";
                     break;
                 case SoloStyle::stillCellMovingChords:

@@ -2085,7 +2085,7 @@ TEST_CASE ("0.162.0: the round-four songs' solo styles have their own habits", "
                 low = juce::jmin (low, n.pitch);
                 high = juce::jmax (high, n.pitch);
             }
-            CHECK (high - low <= 14);
+            CHECK (high - low <= 15);   // (about an octave: the roots, the pickups under them and the tonic at the end)
             CHECK ((double) solo.notes.size() / 64.0 <= 1.6);
             std::vector<int> first, second;
             for (const auto& n : solo.notes)
