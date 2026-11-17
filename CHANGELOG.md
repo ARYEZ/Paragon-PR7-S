@@ -2,6 +2,31 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.161.0
+
+**The versions that belong to one type, added to that type** (you asked; round four, shapes only, our own names). Each is a new option in its own type's list (after the type's own options; a bass one just in front of LOCKED WITH THE KICK), in the browser's THIS TYPE'S OWN group:
+
+- **INTRO RETURNS, LAST CHORD RINGS** (outro, The Heart of Everything): guitar **THEME, THEN ONE LAST HIT** (the opening theme back, then the band drops away to one chord on the last bar's one); keys **THE HYMN ALONE AT THE END** (from halfway, organ and choir chords held a bar each).
+- **DEAD STOP** (Praise): guitar **FOUR EIGHTHS, THEN SILENCE**.
+- **HOOK ALONE TO THE END** (Faint, In Pieces): keys **HOOK WITH A ONE-BAR BREAK**.
+- **RIFF ALONE, THEN THE BAND**: drums **GHOST NOTES UNDER THE RIFF** (soft ghost snares and hats under the riff alone, the full groove from halfway).
+- **RING, THEN ANSWER** (By Myself): guitar **ANSWER THROUGH THREE CHANGES**.
+- **DOTTED STREAM** (Angel's Son, Keep Away): guitar **DOTTED, ENDING 3+3+3+3+4**.
+- **HELD CHORDS IN 3+3+2** (Heavy): guitar **THREE CHORDS, THEN A HELD BAR**.
+- **CHROMATIC CHORDS UNDER A FIXED TREMOLO** (Enemy): drums **DOTTED KICKS, CRASH QUARTERS**.
+- **HOOK KEPT, BAND BUILT UNDER IT** (Heavy Is the Crown, Beautiful): guitar **THE BAND IN AT ONCE** (the hook alone, then the whole band together, not in stages) and **CHUG CELL OPENING ON A CLIMB**.
+- **KEYS ALONE, THEN RINGING HITS** (In Pieces): bass **IN AFTER THE DRUMS**.
+- **OCTAVE-JUMP PEDAL**: guitar **OCTAVE-JUMP PEDAL, FLAT-SEVEN FLIPS**.
+- **HOLED SIXTEENTH PEDAL** (The Heart of Everything): drums **KICK ON EVERY NOTE, TOMS IN THE HOLES**.
+- **SNARE CARPET BUILD** (Part of Me): drums **SNARE CARPET, NO CRASH**.
+- **UNISON ROCKING RIFF** (Licking Cream): guitar **UP A HALF STEP IN 2+1+3**.
+
+**RISING BASS** (a pre-chorus type) is now on the bridge's type list too (All I Need's bridge).
+
+As before, these come from the readers' short notes, so listen before you trust them.
+
+**One thing to know:** under these 13 types, the shared options (FROM YOUR SONGS) after the new ones moved down a place or two. A section saved with one of those shared options chosen under one of these types will open on the option next to it. Pick it again to get it back. Built blocks keep their music until you rebuild them.
+
 ## 0.160.0
 
 **Eight bass versions from your songs, in front of LOCKED WITH THE KICK** (you asked; round four, shapes only, our own names). They're on the bass lane's list under every named section type whose bass list ends with LOCKED WITH THE KICK, after the type's own options and just in front of it. LOCKED WITH THE KICK stays last. In the browser they're in FROM YOUR SONGS.

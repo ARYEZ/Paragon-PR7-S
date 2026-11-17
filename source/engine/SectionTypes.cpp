@@ -302,6 +302,8 @@ namespace pr7s
                          { "UNISON STABS OVER HATS ONLY", "Everyone stabbing root octaves together over only the hats, three hits to end", r, {}, b },
                          { "EIGHTHS WITH AIR AT BOTH ENDS", "Bars in pairs: power chords in eighths, then eighths with air at both ends of the bar", r, {}, b },
                          { "ARPEGGIO UP AN OCTAVE, BASS STEPPING DOWN", "The drums out, an arpeggio an octave up, the bass falling a scale step a bar", r, {}, b },
+                         // (0.161.0, round four's versions: All I Need's bridge) the pre-chorus's RISING BASS as a bridge too
+                         { "RISING BASS", "Chords held or tremolo picked while the bass climbs a step a bar underneath", RiffFlavour::openChords, {}, SectionType::Band::preChorus },
                          creep, open, droning };
             }
             case 4:
@@ -1253,7 +1255,7 @@ namespace pr7s
         return sectionBand (s) == SectionType::Band::staccato;
     }
 
-    juce::StringArray baseSectionApproaches (const ComposerState& s, ComposerLayer layer)
+    static juce::StringArray ownSectionApproaches (const ComposerState& s, ComposerLayer layer)
     {
         if (s.writtenRiffs)
             return {};
@@ -1313,6 +1315,62 @@ namespace pr7s
             }
         const auto& flavours = riffFlavours();
         return sectionApproaches (flavours[(size_t) juce::jlimit (0, (int) flavours.size() - 1, s.riffFlavour)], layer);
+    }
+
+    // (0.161.0, the owner: "add the type-bound versions to their own types too") Round four's versions that only make
+    // sense inside one type (the readers' notes on the owner's songs, shapes only, our names), added to that type's own
+    // list: a bass option in front of LOCKED WITH THE KICK, any other after the type's own. Written by
+    // `typeVersionLayer` (Composer.cpp), before the type's own writer.
+    struct TypeVersion { const char* type; ComposerLayer layer; const char* name; };
+    static const std::vector<TypeVersion>& typeVersions()
+    {
+        static const std::vector<TypeVersion> list {
+            { "INTRO RETURNS, LAST CHORD RINGS", ComposerLayer::guitar, "THEME, THEN ONE LAST HIT" },
+            { "INTRO RETURNS, LAST CHORD RINGS", ComposerLayer::chords, "THE HYMN ALONE AT THE END" },
+            { "DEAD STOP", ComposerLayer::guitar, "FOUR EIGHTHS, THEN SILENCE" },
+            { "HOOK ALONE TO THE END", ComposerLayer::chords, "HOOK WITH A ONE-BAR BREAK" },
+            { "RIFF ALONE, THEN THE BAND", ComposerLayer::drums, "GHOST NOTES UNDER THE RIFF" },
+            { "RING, THEN ANSWER", ComposerLayer::guitar, "ANSWER THROUGH THREE CHANGES" },
+            { "DOTTED STREAM", ComposerLayer::guitar, "DOTTED, ENDING 3+3+3+3+4" },
+            { "HELD CHORDS IN 3+3+2", ComposerLayer::guitar, "THREE CHORDS, THEN A HELD BAR" },
+            { "CHROMATIC CHORDS UNDER A FIXED TREMOLO", ComposerLayer::drums, "DOTTED KICKS, CRASH QUARTERS" },
+            { "HOOK KEPT, BAND BUILT UNDER IT", ComposerLayer::guitar, "THE BAND IN AT ONCE" },
+            { "HOOK KEPT, BAND BUILT UNDER IT", ComposerLayer::guitar, "CHUG CELL OPENING ON A CLIMB" },
+            { "KEYS ALONE, THEN RINGING HITS", ComposerLayer::bass, "IN AFTER THE DRUMS" },
+            { "OCTAVE-JUMP PEDAL", ComposerLayer::guitar, "OCTAVE-JUMP PEDAL, FLAT-SEVEN FLIPS" },
+            { "HOLED SIXTEENTH PEDAL", ComposerLayer::drums, "KICK ON EVERY NOTE, TOMS IN THE HOLES" },
+            { "SNARE CARPET BUILD", ComposerLayer::drums, "SNARE CARPET, NO CRASH" },
+            { "UNISON ROCKING RIFF", ComposerLayer::guitar, "UP A HALF STEP IN 2+1+3" },
+        };
+        return list;
+    }
+
+    juce::StringArray typeVersionsOf (const juce::String& type, ComposerLayer layer)
+    {
+        juce::StringArray out;
+        for (const auto& v : typeVersions())
+            if (v.layer == layer && type.trim().equalsIgnoreCase (v.type))
+                out.add (v.name);
+        return out;
+    }
+
+    juce::StringArray baseSectionApproaches (const ComposerState& s, ComposerLayer layer)
+    {
+        auto names = ownSectionApproaches (s, layer);
+        if (names.isEmpty())
+            return names;
+        const auto versions = typeVersionsOf (s.sectionType, layer);
+        if (versions.isEmpty())
+            return names;
+        if (layer == ComposerLayer::bass && names[names.size() - 1] == "LOCKED WITH THE KICK")
+        {
+            names.remove (names.size() - 1);
+            names.addArray (versions);
+            names.add ("LOCKED WITH THE KICK");
+            return names;
+        }
+        names.addArray (versions);
+        return names;
     }
 
     juce::StringArray extraApproaches (ComposerLayer layer)

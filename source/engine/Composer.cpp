@@ -15654,6 +15654,243 @@ namespace pr7s
             return std::nullopt;
         }
 
+        //======================================================================
+        // (0.161.0) Round four's type-bound versions (`typeVersionsOf`, SectionTypes.cpp): an option added to one type's
+        // own list, written here before the type's own writer sees it.
+        std::optional<LineIdea> typeVersionLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (spans.empty() || l == ComposerLayer::melody)
+                return std::nullopt;
+            const auto a = s.lane (l).approach;
+            const auto names = sectionApproaches (s, l);
+            if (a < 0 || a >= names.size() || ! typeVersionsOf (s.sectionType, l).contains (names[a]))
+                return std::nullopt;
+            const auto n = names[a];
+            const Round3 r (s, spans, c);
+            const auto bpb = r.bpb, s16 = r.s16, e = r.e, q = r.q;
+            const auto bars = r.bars;
+            const auto open = r.open(), hard = r.hard(), muted = r.muted(), soft = r.soft();
+            LineIdea out { composerPartOf (l), n.toLowerCase(), {}, {} };
+            auto each = [&] (auto&& bar) { for (int b = 0; b < bars; ++b) bar (b); };
+            const auto half = juce::jmax (1, bars / 2);
+            if (n == "THEME, THEN ONE LAST HIT")
+            {
+                out.description = "The opening theme back (root sixteenths with a stab), then the band drops away and one chord is hit on the last bar's one";
+                each ([&] (int b)
+                {
+                    if (b == bars - 1)
+                        r.power (out, b * bpb, q * 0.95, r.barRoot (b), hard);
+                    else if (b < half)
+                        r.each16 ("xxxx-xxxxx-xx-x-", b * bpb, [&] (double t, int k) { r.power (out, t, s16 * 0.85, r.barRoot (b) + (k == 14 ? 3 : 0), k == 14 ? open : muted, k == 14); });
+                });
+            }
+            else if (n == "THE HYMN ALONE AT THE END")
+            {
+                out.description = "From halfway the hymn alone: organ and choir chords held a bar each, the last one rung to the end";
+                std::vector<int> previous;
+                for (int b = half; b < bars; ++b)
+                {
+                    const auto voicings = voicingsFor (r.chordOfBar (b), 55);
+                    if (voicings.empty())
+                        continue;
+                    const auto& shape = voicings[(size_t) juce::jlimit (0, (int) voicings.size() - 1, previous.empty() ? (int) voicings.size() / 2 : closestVoicing (voicings, previous, previous))];
+                    previous = shape;
+                    for (const auto p : shape)
+                        r.add (out, b * bpb, bpb * 0.98, p, 0.5f);
+                }
+            }
+            else if (n == "FOUR EIGHTHS, THEN SILENCE")
+            {
+                out.description = "Power chords on the eighths to the end; the last bar four eighths, then nothing at all";
+                each ([&] (int b)
+                {
+                    for (int k = 0; k < (b == bars - 1 ? 4 : 8); ++k)
+                        r.power (out, b * bpb + k * e, e * 0.8, r.barRoot (b), k % 2 == 0 ? hard : open);
+                });
+            }
+            else if (n == "HOOK WITH A ONE-BAR BREAK")
+            {
+                out.description = "The keys hook (the key's note and fifth in eighths) alone to the end, one bar of silence after its first bar";
+                const auto tonic = r.tonicIn (64, 75);
+                each ([&] (int b)
+                {
+                    if (b == 1 && bars > 2)
+                        return;
+                    for (int k = 0; k < 8; ++k)
+                        r.add (out, b * bpb + k * e, e * 0.85, k % 2 == 0 ? tonic : tonic + 7, k == 0 ? 0.5f : 0.4f);
+                });
+            }
+            else if (n == "GHOST NOTES UNDER THE RIFF")
+            {
+                out.description = "Under the riff alone, soft ghost snares and closed hats only; from halfway the full groove with a crash";
+                each ([&] (int b)
+                {
+                    if (b < half)
+                    {
+                        r.each16 ("--x--x-x--x--x-x", b * bpb, [&] (double t, int) { r.hit (out, t, GmDrum::snare, 0.26f); });
+                        r.each16 (Round3::eighths, b * bpb, [&] (double t, int) { r.hit (out, t, GmDrum::closedHat, 0.34f); });
+                        return;
+                    }
+                    r.kit (out, b, "x-x-----x-x-----", Round3::backbeat, GmDrum::closedHat, Round3::eighths, b == half ? 1 : 4);
+                    if (b == half)
+                        r.hit (out, b * bpb, GmDrum::crash, 0.86f);
+                });
+            }
+            else if (n == "ANSWER THROUGH THREE CHANGES")
+            {
+                out.description = "Bars in pairs: a power chord rung a whole bar, then the answer bar's hits after the beat moving through three chords";
+                each ([&] (int b)
+                {
+                    const auto o = b * bpb;
+                    if (b % 2 == 0)
+                    {
+                        r.power (out, o, bpb * 0.97, r.barRoot (b), hard);
+                        return;
+                    }
+                    const auto root = r.barRoot (b);
+                    const int roots[] { root, scaleStep (r.key, root, -1), scaleStep (r.key, root, -2) };
+                    const int hits[] { 2, 3, 6, 7, 10, 11 };
+                    for (int i = 0; i < 6; ++i)
+                        r.power (out, o + hits[i] * s16, s16 * (i % 2 == 0 ? 0.9 : 1.8), roots[i / 2], i % 2 == 0 ? hard : open, false);
+                });
+            }
+            else if (n == "DOTTED, ENDING 3+3+3+3+4")
+            {
+                out.description = "Power chords on 3+3+3+3 and a closing four sixteenths struck in a row, every bar";
+                each ([&] (int b)
+                {
+                    const int hits[] { 0, 3, 6, 9, 12, 13, 14, 15, 16 };
+                    for (int i = 0; i < 8; ++i)
+                        r.power (out, b * bpb + hits[i] * s16, s16 * (hits[i + 1] - hits[i] - 0.15), r.barRoot (b), i < 4 ? hard : open, i < 4);
+                });
+            }
+            else if (n == "THREE CHORDS, THEN A HELD BAR")
+            {
+                out.description = "Bars in pairs: three chords on 3+3+2 (this bar's, then the next two), then the last one held through the second bar";
+                each ([&] (int b)
+                {
+                    if (b % 2 == 1)
+                        return;
+                    const auto o = b * bpb;
+                    const int roots[] { r.barRoot (b), r.nextRoot (b), r.barRoot (b + 2 < bars ? b + 2 : 0) };
+                    r.power (out, o, s16 * 5.8, roots[0], hard);
+                    r.power (out, o + 6 * s16, s16 * 5.8, roots[1], hard);
+                    r.power (out, o + 12 * s16, s16 * 4 + (b + 1 < bars ? bpb * 0.97 : 0.0), roots[2], open);
+                });
+            }
+            else if (n == "DOTTED KICKS, CRASH QUARTERS")
+            {
+                out.description = "The kick on dotted eighths, the snare on 2 and 4, a crash on every quarter under the tremolo";
+                each ([&] (int b) { r.kit (out, b, "x--x--x--x--x---", Round3::backbeat, GmDrum::crash, Round3::quarters, 0); });
+            }
+            else if (n == "THE BAND IN AT ONCE")
+            {
+                out.description = "The hook alone for the first half (the guitar out), then the full band at once on eighth power chords";
+                each ([&] (int b)
+                {
+                    if (b < half)
+                        return;
+                    for (int k = 0; k < 8; ++k)
+                        r.power (out, b * bpb + k * e, e * 0.85, r.barRoot (b), k % 2 == 0 ? hard : open);
+                });
+            }
+            else if (n == "CHUG CELL OPENING ON A CLIMB")
+            {
+                out.description = "A unison chug cell under the hook; every other bar it opens with a fast climb (the root and three scale notes up in sixteenths)";
+                each ([&] (int b)
+                {
+                    const auto o = b * bpb;
+                    const auto root = r.barRoot (b);
+                    auto from = 0;
+                    if (b % 2 == 1)
+                    {
+                        for (int k = 0; k < 4; ++k)
+                            r.add (out, o + k * s16, s16 * 0.85, scaleStep (r.key, root + 12, k), open);
+                        from = 4;
+                    }
+                    for (int k = from; k < 16; ++k)
+                        if (juce::String ("xxx-xx-xxx-xx-x-")[k] == 'x')
+                            r.add (out, o + k * s16, s16 * 0.85, root, muted);
+                });
+            }
+            else if (n == "IN AFTER THE DRUMS")
+            {
+                out.description = "The bass waits: out while the keys are alone and the drums come in, then root eighths for the last quarter";
+                const auto from = juce::jmax (1, bars * 3 / 4);
+                each ([&] (int b)
+                {
+                    if (b < from)
+                        return;
+                    for (int k = 0; k < 8; ++k)
+                        r.add (out, b * bpb + k * e, e * 0.85, r.bassRoot (b * bpb), k == 0 ? 0.84f : 0.72f);
+                });
+            }
+            else if (n == "OCTAVE-JUMP PEDAL, FLAT-SEVEN FLIPS")
+            {
+                out.description = "The low root in sixteenths jumping to its octave; every other bar the last beat flips to the flat seven";
+                each ([&] (int b)
+                {
+                    const auto o = b * bpb;
+                    const auto root = r.barRoot (b);
+                    r.each16 ("xxxxxx-x-xxxxx--", o, [&] (double t, int k)
+                    {
+                        auto p = root + (k == 5 || k == 9 ? 12 : 0);
+                        if (b % 2 == 1 && k >= 12)
+                            p = root + 10;
+                        r.add (out, t, s16 * 0.85, p, k % 4 == 0 ? open : muted);
+                    });
+                });
+            }
+            else if (n == "KICK ON EVERY NOTE, TOMS IN THE HOLES")
+            {
+                out.description = "The kick doubles every note of the sixteenth stream, toms fill its holes, the snare on 2 and 4";
+                each ([&] (int b)
+                {
+                    const auto o = b * bpb;
+                    const char* stream = "xxxxx-xxxxxx-xxx";
+                    for (int k = 0; k < 16; ++k)
+                        r.hit (out, o + k * s16, stream[k] == 'x' ? GmDrum::kick : GmDrum::tomLow, stream[k] == 'x' ? 0.8f : 0.7f);
+                    r.each16 (Round3::backbeat, o, [&] (double t, int) { r.hit (out, t, GmDrum::snare, 0.92f); });
+                });
+            }
+            else if (n == "SNARE CARPET, NO CRASH")
+            {
+                out.description = "No kick and no crash: the snare on every sixteenth, growing louder bar by bar; the groove back for the last bar";
+                each ([&] (int b)
+                {
+                    if (b == bars - 1 && bars > 1)
+                    {
+                        r.kit (out, b, "x-------x-x-----", Round3::backbeat, GmDrum::closedHat, Round3::eighths, 0);
+                        return;
+                    }
+                    const auto grow = bars > 1 ? (float) b / (float) (bars - 1) : 1.0f;
+                    for (int k = 0; k < 16; ++k)
+                        r.hit (out, b * bpb + k * s16, GmDrum::snare, (k % 4 == 0 ? 0.5f : 0.36f) + 0.35f * grow);
+                });
+            }
+            else if (n == "UP A HALF STEP IN 2+1+3")
+            {
+                out.description = "The riff rocking in cells of two on the root, one a half step up, three on the root, across the beats";
+                each ([&] (int b)
+                {
+                    const auto o = b * bpb;
+                    const auto root = r.barRoot (b);
+                    for (int k = 0; k < 16; ++k)
+                    {
+                        const auto i = (b * 16 + k) % 6;
+                        r.power (out, o + k * s16, s16 * 0.85, root + (i == 2 ? 1 : 0), i == 0 ? hard : muted, false);
+                    }
+                });
+            }
+            else
+                return std::nullopt;
+            juce::ignoreUnused (q, soft);
+            if (l == ComposerLayer::bass)
+                keepInRange (out, r.bassLowest(), r.bassHighest());
+            sortNotes (out);
+            return out;
+        }
+
         std::optional<LineIdea> chorusLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             if (spans.empty() || sectionBand (s) != SectionType::Band::chorus || l == ComposerLayer::melody)
@@ -18162,6 +18399,10 @@ namespace pr7s
             if (! leaderLayer.has_value())
                 if (auto extra = extraOptionLayer (l, s, spans, c))
                     return std::move (*extra);
+            // (0.161.0) A type's own round-four versions.
+            if (! leaderLayer.has_value())
+                if (auto version = typeVersionLayer (l, s, spans, c))
+                    return std::move (*version);
             // (0.97.0, CLEAN VERSE's band) with SYNC off, every lane but the melody and the lead plays its clean part.
             if (! leaderLayer.has_value())
                 if (auto clean = cleanLayer (l, s, spans, c))

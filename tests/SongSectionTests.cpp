@@ -2548,10 +2548,10 @@ TEST_CASE ("0.105.0: a bridge's own types, every lane's options a different part
     const std::vector<juce::String> names { "HALF-TIME MELODIC", "HEAVY BUILD", "LATE-CHANGE CLIMB", "CLEAN BRIDGE",
                                             "SLIDING CHORDS", "GUITARS OUT, THEN BACK", "SLIDE OVER A HELD ROOT" };
     const auto bridge = sectionTypesFor ("Bridge");
-    REQUIRE (bridge.size() == names.size() + 9 + 11 + 14 + 3);   // (0.142.0: eleven more)   // (0.122.0: nine more after them)
+    REQUIRE (bridge.size() == names.size() + 9 + 11 + 14 + 1 + 3);   // (0.161.0: RISING BASS before the old three)   // (0.142.0: eleven more)   // (0.122.0: nine more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (bridge[i].name == names[i]);
-    CHECK (bridge[names.size() + 20 + 14].name == "CREEP");   // (the old three kept after them)
+    CHECK (bridge[names.size() + 20 + 14 + 1].name == "CREEP");   // (the old three kept after them)
     CHECK (sectionTypeNamed ("Middle 8", "CLEAN BRIDGE").has_value());
     CHECK_FALSE (sectionTypeNamed ("Verse", "HEAVY BUILD").has_value());
     CHECK (sectionTypeCalled ("SLIDING CHORDS")->band == SectionType::Band::bridge);
@@ -6176,5 +6176,104 @@ TEST_CASE ("0.160.0: round four's bass versions, in front of LOCKED WITH THE KIC
         CHECK (b.notes[0].pitch % 12 == 9);
         CHECK (b.notes[1].pitch % 12 == 7);
         CHECK (b.notes[4].pitch == b.notes[0].pitch);
+    }
+}
+
+TEST_CASE ("0.161.0: round four's versions added to their own types", "[sections][types][versions161]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::tuple<const char*, ComposerLayer, const char*> versions[] {
+        { "INTRO RETURNS, LAST CHORD RINGS", ComposerLayer::guitar, "THEME, THEN ONE LAST HIT" },
+        { "INTRO RETURNS, LAST CHORD RINGS", ComposerLayer::chords, "THE HYMN ALONE AT THE END" },
+        { "DEAD STOP", ComposerLayer::guitar, "FOUR EIGHTHS, THEN SILENCE" },
+        { "HOOK ALONE TO THE END", ComposerLayer::chords, "HOOK WITH A ONE-BAR BREAK" },
+        { "RIFF ALONE, THEN THE BAND", ComposerLayer::drums, "GHOST NOTES UNDER THE RIFF" },
+        { "RING, THEN ANSWER", ComposerLayer::guitar, "ANSWER THROUGH THREE CHANGES" },
+        { "DOTTED STREAM", ComposerLayer::guitar, "DOTTED, ENDING 3+3+3+3+4" },
+        { "HELD CHORDS IN 3+3+2", ComposerLayer::guitar, "THREE CHORDS, THEN A HELD BAR" },
+        { "CHROMATIC CHORDS UNDER A FIXED TREMOLO", ComposerLayer::drums, "DOTTED KICKS, CRASH QUARTERS" },
+        { "HOOK KEPT, BAND BUILT UNDER IT", ComposerLayer::guitar, "THE BAND IN AT ONCE" },
+        { "HOOK KEPT, BAND BUILT UNDER IT", ComposerLayer::guitar, "CHUG CELL OPENING ON A CLIMB" },
+        { "KEYS ALONE, THEN RINGING HITS", ComposerLayer::bass, "IN AFTER THE DRUMS" },
+        { "OCTAVE-JUMP PEDAL", ComposerLayer::guitar, "OCTAVE-JUMP PEDAL, FLAT-SEVEN FLIPS" },
+        { "HOLED SIXTEENTH PEDAL", ComposerLayer::drums, "KICK ON EVERY NOTE, TOMS IN THE HOLES" },
+        { "SNARE CARPET BUILD", ComposerLayer::drums, "SNARE CARPET, NO CRASH" },
+        { "UNISON ROCKING RIFF", ComposerLayer::guitar, "UP A HALF STEP IN 2+1+3" } };
+    const auto sectionOf = [] (const juce::String& type)
+    {
+        for (const auto* section : { "Intro", "Verse", "Pre-Chorus", "Chorus", "Bridge", "Breakdown", "Interlude", "Outro" })
+            for (const auto& t : sectionTypesFor (section))
+                if (t.name == type)
+                    return juce::String (section);
+        return juce::String();
+    };
+    for (const auto& [type, layer, name] : versions)
+    {
+        INFO (type << " / " << name);
+        const auto section = sectionOf (type);
+        REQUIRE (section.isNotEmpty());
+        ComposerState s;
+        applySectionType (s, section, type);
+        REQUIRE (s.sectionType == juce::String (type));
+        CHECK (typeVersionsOf (type, layer).contains (name));
+        const auto own = baseSectionApproaches (s, layer);
+        const auto all = sectionApproaches (s, layer);
+        REQUIRE (own.contains (name));   // in the type's own list
+        if (layer == ComposerLayer::bass)
+            CHECK (all[all.size() - 1] == "LOCKED WITH THE KICK");
+        // Not under another type.
+        ComposerState other;
+        applySectionType (other, "Chorus", "DRIVING");
+        CHECK_FALSE (sectionApproaches (other, layer).contains (name));
+        // It plays, a part of its own (not one of the type's other options).
+        const auto choices = composerChoices (layer, s, spans, c);
+        REQUIRE (choices.size() == (size_t) all.size());
+        const auto index = (size_t) all.indexOf (name);
+        REQUIRE_FALSE (choices[index].notes.empty());
+        CHECK (choices[index].description.isNotEmpty());
+        const auto key = [] (const LineIdea& idea)
+        {
+            std::vector<int> k;
+            for (const auto& n : idea.notes)
+                if (! n.keyswitch)
+                    k.push_back (juce::roundToInt (n.beat * 16.0) * 128 + n.pitch);
+            return k;
+        };
+        for (size_t i = 0; i < choices.size(); ++i)
+            if (i != index)
+                CHECK (key (choices[i]) != key (choices[index]));
+        for (const auto& n : choices[index].notes)
+            CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+    }
+    // RISING BASS as a bridge too.
+    auto bridge = false;
+    for (const auto& t : sectionTypesFor ("Bridge"))
+        bridge = bridge || t.name == "RISING BASS";
+    CHECK (bridge);
+    // The shapes.
+    const auto play = [&] (const char* type, ComposerLayer l, const char* name)
+    {
+        ComposerState s;
+        applySectionType (s, sectionOf (type), type);
+        REQUIRE (s.sectionType == juce::String (type));
+        s.lane (l).approach = sectionApproaches (s, l).indexOf (name);
+        return composeLayers (s, spans, c)[(size_t) l];
+    };
+    {
+        // FOUR EIGHTHS, THEN SILENCE: the last bar's notes stop on beat 3.
+        for (const auto& n : play ("DEAD STOP", ComposerLayer::guitar, "FOUR EIGHTHS, THEN SILENCE").notes)
+            if (! n.keyswitch && n.beat >= 28.0 - 1.0e-6)
+                CHECK (n.beat < 30.0 - 1.0e-6);
+    }
+    {
+        // IN AFTER THE DRUMS: nothing before the last quarter.
+        for (const auto& n : play ("KEYS ALONE, THEN RINGING HITS", ComposerLayer::bass, "IN AFTER THE DRUMS").notes)
+            CHECK (n.beat >= 24.0 - 1.0e-6);
+    }
+    {
+        // SNARE CARPET, NO CRASH: no crash anywhere.
+        for (const auto& n : play ("SNARE CARPET BUILD", ComposerLayer::drums, "SNARE CARPET, NO CRASH").notes)
+            CHECK ((n.pitch != GmDrum::crash && n.pitch != GmDrum::crash2));
     }
 }

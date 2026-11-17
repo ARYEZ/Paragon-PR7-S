@@ -67,6 +67,8 @@ namespace pr7s
     juce::StringArray sectionApproaches (RiffFlavour, ComposerLayer);
     juce::StringArray sectionApproaches (const ComposerState&, ComposerLayer);   // by the state's flavour
     juce::StringArray baseSectionApproaches (const ComposerState&, ComposerLayer);   // (0.145.0) without the extras
+    // (0.161.0) The versions added to one type's own list (round four's type-bound versions).
+    juce::StringArray typeVersionsOf (const juce::String& type, ComposerLayer);
     juce::StringArray extraApproaches (ComposerLayer);   // (0.145.0) drums and keys options under every named type
     juce::StringArray preChorusApproaches (const juce::String& type, ComposerLayer);   // (0.102.0)
     juce::StringArray bridgeApproaches (const juce::String& type, ComposerLayer);      // (0.105.0)
