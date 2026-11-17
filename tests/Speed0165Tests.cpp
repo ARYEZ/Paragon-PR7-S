@@ -259,7 +259,9 @@ TEST_CASE ("0.165.0: timings", "[.perf-165]")
         }
         std::printf ("A frame of Stationary Cursor at 5760 wide, %s: %.2f ms\n", kept ? "kept as a picture" : "drawn whole", ms (t0, clock::now()) / 60.0);
     }
-    // Undo steps: a note edited on one track of 30 (each step copies the song).
+    // Undo steps: a note edited on one track of 30 (each step copies the song). Without the tests' guard (it copies
+    // the last steps' notes to check them).
+    const juce::ScopedValueSetter<bool> unguarded (Studio::guardUndoSharing, false);
     const auto id = studio.getProject().tracks[3].id;
     const auto t0 = clock::now();
     for (int i = 0; i < 50; ++i)
