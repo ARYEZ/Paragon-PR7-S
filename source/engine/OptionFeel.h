@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Lines.h"
+#include "SectionTypes.h"
 
 #include <juce_core/juce_core.h>
 
@@ -29,6 +30,21 @@ namespace pr7s
     // `drums`: the notes are General MIDI drums (a part of the drums lane).
     OptionMeasure measureOption (const LineIdea&, double beatsPerBar, bool drums);
     juce::String energyName (int energy);   // "CALM", "MEDIUM", "HEAVY"
+
+    // (0.157.0) Groups for the long lists, our own sorting by what each one is:
+    //   section types   by the kind of section they were made for: CHORUS / VERSE / PRE-CHORUS / BRIDGE / BREAKDOWN /
+    //                   INTERLUDE / INTRO & OUTRO TYPES, and RIFF TYPES (DRONING, DRIVING and the first kinds).
+    //   INTO THE NEXT   by the words in its name: STOPS & SILENCES, SHORT BARS, ROLLS & BUILDS, WALKS & SLIDES,
+    //                   DROP-OUTS, HELD CHORDS, HITS TOGETHER (the first rule that fits).
+    //   solo styles     by their main technique: TAPPING & LEGATO, TREMOLO & TRILLS, WHAMMY & SQUEALS, FAST RUNS &
+    //                   CELLS, BENDS, MELODIC, OTHER.
+    juce::String typeGroupOf (const SectionType&);
+    juce::String transitionGroupOf (const juce::String& transitionName);
+    juce::String soloGroupOf (SoloStyle);
+    // The groups in the order shown (for menus with a heading per group).
+    juce::StringArray typeGroupOrder();
+    juce::StringArray transitionGroupOrder();
+    juce::StringArray soloGroupOrder();
 
     // The favourites and the last few used, per list ("lane:drums", "type:chorus", ...), by name. Kept by Studio in the
     // settings file as lines "list|name".

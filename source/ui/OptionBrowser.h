@@ -47,6 +47,9 @@ public:
     void setFeel (pr7s::OptionFeel);       // unknown: any
     void setEnergy (int energy);           // 0: any
     void choose (int id);
+    // (0.157.0) No HEAR key (a list that can't be tried in place: INTO THE NEXT from the block menu).
+    void setHearable (bool);
+    bool isMeasured() const { return measured; }   // any option has a feel: the FEEL / ENERGY keys show
     void hear();
     void use();
     void toggleFavourite (int id);
@@ -72,6 +75,7 @@ private:
     int energy = 0;
     int chosen = 0;
     float scroll = 0.0f;
+    bool measured = false, drawn = false, hearable = true;
 
     juce::TextEditor search;
     std::vector<std::unique_ptr<juce::TextButton>> feelKeys, energyKeys;

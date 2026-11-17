@@ -1,3 +1,4 @@
+#include "engine/OptionFeel.h"
 #include "ui/SectionEditor.h"
 
 #include "engine/SectionTypes.h"
@@ -167,9 +168,21 @@ SectionEditor::SectionEditor (pr7s::Studio& s, int id) : studio (s), blockId (id
     for (auto* box : { &nameBox, &typeBox, &lengthBox, &keyBox, &transitionBox })
         addAndMakeVisible (*box);
     {
+        // (0.157.0) Grouped under headings.
         const auto& transitions = pr7s::sectionTransitions();
-        for (int i = 0; i < (int) transitions.size(); ++i)
-            transitionBox.addItem (transitions[(size_t) i].name, i + 1);
+        transitionBox.addItem (transitions.front().name, 1);
+        for (const auto& group : pr7s::transitionGroupOrder())
+        {
+            auto headed = false;
+            for (int i = 1; i < (int) transitions.size(); ++i)
+                if (pr7s::transitionGroupOf (transitions[(size_t) i].name) == group)
+                {
+                    if (! headed)
+                        transitionBox.addSectionHeading (group);
+                    headed = true;
+                    transitionBox.addItem (transitions[(size_t) i].name, i + 1);
+                }
+        }
     }
     transitionBox.setTooltip ("How this block hands over to the next one: its last bar (or two)");
     transitionBox.onChange = [this]
@@ -267,8 +280,18 @@ void SectionEditor::refresh()
     typeBox.clear (juce::dontSendNotification);
     typeBox.addItem (pr7s::standardSectionType, 1);
     const auto kinds = pr7s::sectionTypesFor (b.name);
-    for (int i = 0; i < (int) kinds.size(); ++i)
-        typeBox.addItem (kinds[(size_t) i].name, i + 2);
+    for (const auto& group : pr7s::typeGroupOrder())   // (0.157.0: grouped under headings)
+    {
+        auto headed = false;
+        for (int i = 0; i < (int) kinds.size(); ++i)
+            if (pr7s::typeGroupOf (kinds[(size_t) i]) == group)
+            {
+                if (! headed)
+                    typeBox.addSectionHeading (group);
+                headed = true;
+                typeBox.addItem (kinds[(size_t) i].name, i + 2);
+            }
+    }
     auto typeId = 1;
     for (int i = 0; i < (int) kinds.size(); ++i)
         if (kinds[(size_t) i].name == b.type)

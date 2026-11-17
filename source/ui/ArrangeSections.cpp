@@ -1,3 +1,4 @@
+#include "engine/OptionFeel.h"
 #include "ui/SectionEditor.h"
 // The arrangement's SECTIONS row (0.90.0, the owner's song engine): the song as blocks, each a section's name and
 // its length in bars, end to end from bar 1. Clicked, dragged to another place in the order (the music in it goes
@@ -318,16 +319,44 @@ void ArrangeView::showSectionMenu (int index)
         juce::PopupMenu types;
         types.addItem (4000, juce::String (pr7s::standardSectionType) + "  (every lane its own styles)", true, b.type.isEmpty());
         const auto kinds = pr7s::sectionTypesFor (b.name);
-        for (int i = 0; i < (int) kinds.size(); ++i)
-            types.addItem (4001 + i, kinds[(size_t) i].name + "  (" + kinds[(size_t) i].description + ")", true, kinds[(size_t) i].name == b.type);
+        // (0.157.0) In groups, a submenu each (the lists had grown past fifty).
+        for (const auto& group : pr7s::typeGroupOrder())
+        {
+            juce::PopupMenu sub;
+            auto count = 0;
+            auto holds = false;
+            for (int i = 0; i < (int) kinds.size(); ++i)
+                if (pr7s::typeGroupOf (kinds[(size_t) i]) == group)
+                {
+                    sub.addItem (4001 + i, kinds[(size_t) i].name + "  (" + kinds[(size_t) i].description + ")", true, kinds[(size_t) i].name == b.type);
+                    ++count;
+                    holds = holds || kinds[(size_t) i].name == b.type;
+                }
+            if (count > 0)
+                types.addSubMenu (group + " (" + juce::String (count) + ")", sub, true, nullptr, holds);
+        }
         menu.addSubMenu ("Type: " + (b.type.isNotEmpty() ? b.type : juce::String (pr7s::standardSectionType)), types, ! kinds.empty());
         // (0.104.0) How it hands over to the next block.
         juce::PopupMenu transitions;
         {
             const auto& list = pr7s::sectionTransitions();
-            for (int i = 0; i < (int) list.size(); ++i)
-                transitions.addItem (4200 + i, list[(size_t) i].name + "  (" + list[(size_t) i].description + ")", true,
-                                     i == 0 ? b.transition.isEmpty() : list[(size_t) i].name == b.transition);
+            transitions.addItem (4200, list.front().name + "  (" + list.front().description + ")", true, b.transition.isEmpty());
+            // (0.157.0) In groups, a submenu each.
+            for (const auto& group : pr7s::transitionGroupOrder())
+            {
+                juce::PopupMenu sub;
+                auto count = 0;
+                auto holds = false;
+                for (int i = 1; i < (int) list.size(); ++i)
+                    if (pr7s::transitionGroupOf (list[(size_t) i].name) == group)
+                    {
+                        sub.addItem (4200 + i, list[(size_t) i].name + "  (" + list[(size_t) i].description + ")", true, list[(size_t) i].name == b.transition);
+                        ++count;
+                        holds = holds || list[(size_t) i].name == b.transition;
+                    }
+                if (count > 0)
+                    transitions.addSubMenu (group + " (" + juce::String (count) + ")", sub, true, nullptr, holds);
+            }
         }
         menu.addSubMenu ("Into the Next: " + (b.transition.isNotEmpty() ? b.transition : juce::String (pr7s::noTransition)), transitions);
         juce::PopupMenu rename, length, before, after;

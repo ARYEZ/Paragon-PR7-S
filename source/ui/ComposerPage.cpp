@@ -525,20 +525,13 @@ bool ComposerPage::typeWouldWrite (ComposerLayer l) const
 
 void ComposerPage::showTypeMenu()
 {
-    const auto name = typeSectionName();
-    juce::PopupMenu menu;
-    menu.addSectionHeader ("TYPE OF " + name.toUpperCase());
-    menu.addItem (1, juce::String (pr7s::standardSectionType) + "  (every lane its own styles)", true, state.sectionType.isEmpty());
-    const auto types = pr7s::sectionTypesFor (name);
-    for (int i = 0; i < (int) types.size(); ++i)
-        menu.addItem (2 + i, types[(size_t) i].name + "  (" + types[(size_t) i].description + ")", true, types[(size_t) i].name == state.sectionType);
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (typeKey),
-                        [safe = juce::Component::SafePointer<ComposerPage> (this), types] (int chosen)
-                        {
-                            if (safe == nullptr || chosen <= 0)
-                                return;
-                            safe->setSectionType (chosen == 1 ? juce::String() : types[(size_t) (chosen - 2)].name);
-                        });
+    // (0.157.0) The short list; MORE TYPES... the browser.
+    makeTypeMenu().showMenuAsync (juce::PopupMenu::Options().withTargetComponent (typeKey),
+                                  [safe = juce::Component::SafePointer<ComposerPage> (this)] (int chosen)
+                                  {
+                                      if (safe != nullptr && chosen > 0)
+                                          safe->typeMenuChosen (chosen);
+                                  });
 }
 
 void ComposerPage::clearTargetSection()
@@ -1929,13 +1922,25 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
     // same setting as IDEAS' SOLO box).
     if (l == ComposerLayer::lead)
     {
+        // (0.157.0) The short list: the one playing, favourites and recent; the rest in the browser.
         juce::PopupMenu solos;
         const auto now = studio.getSoloStyle();
-        for (int i = 0; i < (int) pr7s::soloStyles().size(); ++i)
-        {
-            const auto st = pr7s::soloStyles()[(size_t) i];
-            solos.addItem (soloItems + i, pr7s::soloStyleName (st) + "  (" + pr7s::soloStyleDescription (st) + ")", true, st == now);
-        }
+        const auto memory = studio.getOptionMemory();
+        juce::StringArray named { pr7s::soloStyleName (now) };
+        for (const auto& n : memory.favouritesOf (soloListKey))
+            named.addIfNotAlreadyThere (n);
+        for (const auto& n : memory.recentOf (soloListKey))
+            named.addIfNotAlreadyThere (n);
+        for (const auto& n : named)
+            for (int i = 0; i < (int) pr7s::soloStyles().size(); ++i)
+            {
+                const auto st = pr7s::soloStyles()[(size_t) i];
+                if (pr7s::soloStyleName (st) == n)
+                    solos.addItem (soloItems + i, (memory.isFavourite (soloListKey, n) ? juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 ")) : juce::String()) + n
+                                                      + "  (" + pr7s::soloStyleDescription (st) + ")", true, st == now);
+            }
+        solos.addSeparator();
+        solos.addItem (moreSolosItem, "MORE SOLO STYLES... (all " + juce::String ((int) pr7s::soloStyles().size()) + ", with search and feel filters)");
         menu.addSeparator();
         menu.addSubMenu ("Solo Style: " + pr7s::soloStyleName (now), solos);
     }
@@ -2041,6 +2046,13 @@ void ComposerPage::styleMenuChosen (ComposerLayer l, int chosen)
         showOptionBrowser (l);
         return;
     }
+    if (chosen == moreSolosItem)
+    {
+        auto browser = makeSoloBrowser();
+        if (getPeer() != nullptr || getTopLevelComponent()->getPeer() != nullptr)
+            juce::CallOutBox::launchAsynchronously (std::move (browser), lanes[(size_t) l].style.getScreenBounds(), nullptr);
+        return;
+    }
     if (chosen >= libraryItems && chosen < libraryItems + 400)
     {
         if (chosen == libraryItems)
@@ -2077,7 +2089,7 @@ void ComposerPage::styleMenuChosen (ComposerLayer l, int chosen)
     else if (chosen >= flavourItems && chosen < writtenRiffsItem)
         setRiffFlavour (chosen - flavourItems);
     else if (chosen >= soloItems)
-        setSoloStyle (pr7s::soloStyles()[(size_t) juce::jlimit (0, (int) pr7s::soloStyles().size() - 1, chosen - soloItems)]);
+        useSoloStyle (pr7s::soloStyles()[(size_t) juce::jlimit (0, (int) pr7s::soloStyles().size() - 1, chosen - soloItems)]);
     else
         useOption (l, chosen - 1);
 }
@@ -2185,13 +2197,23 @@ void ComposerPage::useOption (ComposerLayer l, int id)
     setStyle (l, id);
 }
 
+void ComposerPage::beginTrial (const juce::String& list, std::function<void()> restore)
+{
+    if (trial.active && trial.list == list)
+        return;   // (the first thing tried is what goes back)
+    endTrial (false);
+    trial = { true, list, std::move (restore), hearing };
+}
+
 void ComposerPage::tryOption (ComposerLayer l, int id)
 {
-    if (! trial.active || trial.layer != l)
+    const auto approach = state.lane (l).approach, style = state.lane (l).style;
+    beginTrial (optionListKey (l), [this, l, approach, style]
     {
-        endTrial (false);
-        trial = { true, l, state.lane (l).approach, state.lane (l).style, hearing };
-    }
+        state.lane (l).approach = approach;
+        taken[(size_t) l].reset();
+        setStyle (l, style);
+    });
     if (id >= approachId)
         setApproach (l, id - approachId);
     else
@@ -2212,11 +2234,234 @@ void ComposerPage::endTrial (bool keep)
     trial = {};
     if (keep)
         return;
-    state.lane (was.layer).approach = was.approach;
-    taken[(size_t) was.layer].reset();
-    setStyle (was.layer, was.style);
+    if (was.restore)
+        was.restore();
     if (! was.wasHearing)
         stop();
+}
+
+//==============================================================================
+std::vector<OptionBrowser::Option> ComposerPage::typeOptions() const
+{
+    std::vector<OptionBrowser::Option> out;
+    const auto name = typeSectionName();
+    const auto types = pr7s::sectionTypesFor (name);
+    // Each type measured by the drums it writes (the library's grooves off: they'd be the same under every type).
+    const auto measure = [this, &name] (const juce::String& type, OptionBrowser::Option& o)
+    {
+        if (spans.empty())
+            return;
+        auto each = state;
+        each.libraryDrums = false;
+        each.lane (ComposerLayer::drums).on = true;
+        pr7s::applySectionType (each, name, type);
+        const auto layers = pr7s::composeLayers (each, spans, context);
+        o.idea = layers[(size_t) ComposerLayer::drums];
+        o.drums = true;
+        o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, true);
+    };
+    {
+        OptionBrowser::Option o;
+        o.id = 0;
+        o.name = pr7s::standardSectionType;
+        o.description = "Every lane plays its own styles";
+        o.group = "STANDARD";
+        measure ({}, o);
+        out.push_back (std::move (o));
+    }
+    for (int i = 0; i < (int) types.size(); ++i)
+    {
+        OptionBrowser::Option o;
+        o.id = i + 1;
+        o.name = types[(size_t) i].name;
+        o.description = types[(size_t) i].description;
+        o.group = pr7s::typeGroupOf (types[(size_t) i]);
+        measure (o.name, o);
+        out.push_back (std::move (o));
+    }
+    return out;
+}
+
+std::vector<OptionBrowser::Option> ComposerPage::soloOptions() const
+{
+    std::vector<OptionBrowser::Option> out;
+    const auto& profile = context.leadProfile.has_value() ? context.leadProfile : context.guitarProfile;
+    const auto tuning = profile.has_value() ? profile->tuning() : context.tuning;
+    const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : context.velocities;
+    const auto shortest = profile.has_value() ? profile->shortestNote : 0.0;
+    for (const auto st : pr7s::soloStyles())
+    {
+        OptionBrowser::Option o;
+        o.id = (int) st;
+        o.name = pr7s::soloStyleName (st);
+        o.description = pr7s::soloStyleDescription (st);
+        o.group = st == pr7s::SoloStyle::automatic ? juce::String ("BY STYLE") : pr7s::soloGroupOf (st);
+        if (! spans.empty())
+        {
+            const auto chosen = st == pr7s::SoloStyle::automatic ? pr7s::soloStyleForGuitarStyle ((int) context.style) : st;
+            o.idea = pr7s::composeSolo (chosen, spans, context.beatsPerBar, tuning, velocities, 0, shortest, context.bpm);
+            o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, false);
+        }
+        out.push_back (std::move (o));
+    }
+    return out;
+}
+
+bool ComposerPage::canTryType() const
+{
+    const auto index = studio.getSongSections().indexOf (targetBlock);
+    return index < 0 || ! studio.isSongSectionBuilt (index);
+}
+
+void ComposerPage::useType (const juce::String& name)
+{
+    studio.noteOptionUsed (typeListKey, name.isEmpty() ? juce::String (pr7s::standardSectionType) : name);
+    setSectionType (name);
+}
+
+void ComposerPage::useSoloStyle (pr7s::SoloStyle st)
+{
+    studio.noteOptionUsed (soloListKey, pr7s::soloStyleName (st));
+    setSoloStyle (st);
+}
+
+juce::PopupMenu ComposerPage::makeTypeMenu()
+{
+    const auto name = typeSectionName();
+    const auto types = pr7s::sectionTypesFor (name);
+    const auto memory = studio.getOptionMemory();
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("TYPE OF " + name.toUpperCase());
+    menu.addItem (1, juce::String (pr7s::standardSectionType) + "  (every lane its own styles)", true, state.sectionType.isEmpty());
+    juce::StringArray shown;
+    const auto add = [&] (const juce::String& n, const juce::String& prefix)
+    {
+        for (int i = 0; i < (int) types.size(); ++i)
+            if (types[(size_t) i].name == n && ! shown.contains (n))
+            {
+                menu.addItem (2 + i, prefix + n + "  (" + types[(size_t) i].description + ")", true, n == state.sectionType);
+                shown.add (n);
+            }
+    };
+    if (state.sectionType.isNotEmpty())
+        add (state.sectionType, {});
+    if ((int) types.size() <= shortListMost)
+        for (const auto& t : types)
+            add (t.name, {});
+    else
+    {
+        bool headed = false;
+        for (const auto& n : memory.favouritesOf (typeListKey))
+        {
+            if (! headed && ! shown.contains (n))
+            {
+                menu.addSectionHeader (juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 FAVOURITES & RECENT")));
+                headed = true;
+            }
+            add (n, juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 ")));
+        }
+        for (const auto& n : memory.recentOf (typeListKey))
+        {
+            if (! headed && ! shown.contains (n))
+            {
+                menu.addSectionHeader (juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 FAVOURITES & RECENT")));
+                headed = true;
+            }
+            add (n, {});
+        }
+    }
+    menu.addSeparator();
+    menu.addItem (moreTypesItem, "MORE TYPES... (all " + juce::String ((int) types.size()) + ", with search and feel filters)");
+    return menu;
+}
+
+void ComposerPage::typeMenuChosen (int item)
+{
+    if (item <= 0)
+        return;
+    if (item == moreTypesItem)
+    {
+        auto browser = makeTypeBrowser();
+        if (getPeer() != nullptr || getTopLevelComponent()->getPeer() != nullptr)
+            juce::CallOutBox::launchAsynchronously (std::move (browser), typeKey.getScreenBounds(), nullptr);
+        return;
+    }
+    const auto types = pr7s::sectionTypesFor (typeSectionName());
+    if (item == 1)
+        useType ({});
+    else if (juce::isPositiveAndBelow (item - 2, (int) types.size()))
+        useType (types[(size_t) (item - 2)].name);
+}
+
+std::unique_ptr<OptionBrowser> ComposerPage::makeTypeBrowser()
+{
+    const auto types = pr7s::sectionTypesFor (typeSectionName());
+    auto chosen = 0;
+    for (int i = 0; i < (int) types.size(); ++i)
+        if (types[(size_t) i].name == state.sectionType)
+            chosen = i + 1;
+    auto browser = std::make_unique<OptionBrowser> ("TYPE OF " + typeSectionName().toUpperCase(), typeOptions(), chosen,
+                                                    studio.getOptionMemory(), typeListKey);
+    juce::Component::SafePointer<ComposerPage> safe (this);
+    const auto nameOf = [types] (int id) { return id <= 0 || id > (int) types.size() ? juce::String() : types[(size_t) id - 1].name; };
+    browser->setHearable (canTryType());
+    browser->onHear = [safe, nameOf] (int id)
+    {
+        if (safe == nullptr || ! safe->canTryType())
+            return;
+        const auto was = safe->state.sectionType;
+        safe->beginTrial (typeListKey, [safe, was] { if (safe != nullptr) safe->setSectionType (was); });
+        safe->setSectionType (nameOf (id));
+        if (! safe->hearing)
+            safe->hear();
+    };
+    browser->onUse = [safe, nameOf] (int id)
+    {
+        if (safe == nullptr)
+            return;
+        safe->endTrial (true);
+        safe->useType (nameOf (id));
+    };
+    browser->onFavourite = [safe] (const juce::String& name, bool on) { if (safe != nullptr) safe->studio.setOptionFavourite (typeListKey, name, on); };
+    browser->onClosed = [safe] { if (safe != nullptr) safe->endTrial (false); };
+    return browser;
+}
+
+std::unique_ptr<OptionBrowser> ComposerPage::makeSoloBrowser()
+{
+    auto browser = std::make_unique<OptionBrowser> ("SOLO STYLE", soloOptions(), (int) studio.getSoloStyle(), studio.getOptionMemory(), soloListKey);
+    juce::Component::SafePointer<ComposerPage> safe (this);
+    browser->onHear = [safe] (int id)
+    {
+        if (safe == nullptr)
+            return;
+        const auto was = safe->studio.getSoloStyle();
+        const auto lead = safe->state.lane (ComposerLayer::lead);
+        safe->beginTrial (soloListKey, [safe, was, lead]
+        {
+            if (safe == nullptr)
+                return;
+            safe->studio.setSoloStyle (was);
+            safe->state.lane (ComposerLayer::lead) = lead;
+            safe->taken[(size_t) ComposerLayer::lead].reset();
+            safe->refresh();
+        });
+        if (! safe->state.lane (ComposerLayer::lead).on)
+            safe->state.lane (ComposerLayer::lead).on = true;
+        safe->setSoloStyle ((pr7s::SoloStyle) id);
+        if (! safe->hearing)
+            safe->hear();
+    };
+    browser->onUse = [safe] (int id)
+    {
+        if (safe == nullptr)
+            return;
+        safe->endTrial (true);
+        safe->useSoloStyle ((pr7s::SoloStyle) id);
+    };
+    browser->onFavourite = [safe] (const juce::String& name, bool on) { if (safe != nullptr) safe->studio.setOptionFavourite (soloListKey, name, on); };
+    browser->onClosed = [safe] { if (safe != nullptr) safe->endTrial (false); };
+    return browser;
 }
 
 void ComposerPage::setLibraryDrums (bool on)

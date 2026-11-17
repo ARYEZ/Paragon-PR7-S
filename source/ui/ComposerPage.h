@@ -149,6 +149,20 @@ public:
     void useOption (pr7s::ComposerLayer, int id);     // an option's id chosen (noted as used)
     void tryOption (pr7s::ComposerLayer, int id);     // HEAR: chosen for now and heard; put back unless used
     void endTrial (bool keep);
+    // (0.157.0) TYPE and the solo style: a short menu and the browser (types measured by the drums each writes, the
+    // library's grooves left out; solos by the solo each writes). Ids: a type's place in sectionTypesFor + 1 (0:
+    // STANDARD); a solo style's number.
+    std::vector<OptionBrowser::Option> typeOptions() const;
+    std::vector<OptionBrowser::Option> soloOptions() const;
+    juce::PopupMenu makeTypeMenu();
+    void typeMenuChosen (int item);
+    std::unique_ptr<OptionBrowser> makeTypeBrowser();
+    std::unique_ptr<OptionBrowser> makeSoloBrowser();
+    bool canTryType() const;   // HEAR can try a type (not on a block already built: that would rebuild the song)
+    void useType (const juce::String& name);
+    void useSoloStyle (pr7s::SoloStyle);
+    static inline const juce::String typeListKey = "type", soloListKey = "solo";
+    static constexpr int moreTypesItem = 4801, moreSolosItem = 4802;
     static constexpr int moreOptionsItem = 4800;
     static constexpr int approachItems = 6300;    // (0.94.0) the type's approaches: 6300 automatic, 6301 + i (0.156.0: up to 6399)
     static inline const juce::String typeOwnGroup = "THIS TYPE'S OWN", songsGroup = "FROM YOUR SONGS", stylesGroup = "STYLES";
@@ -245,7 +259,9 @@ private:
     static constexpr int libraryItems = 7000;     // (0.106.0) the drums' style menu: 7000 on/off, 7001 automatic, 7002 + i a groove
     static constexpr int ownStylesItem = 6290;
     static constexpr int syncToItems = 6260;      // (0.126.0) SYNC TO: 6260 none, 6261 + layer    // (0.126.0) the type's lanes: Play Its Own Styles / Follow Again
-    struct Trial { bool active = false; pr7s::ComposerLayer layer {}; int approach = -1, style = 0; bool wasHearing = false; };
+    // (0.157.0) HEAR in a browser: what to put back (the list it was tried from) unless USE IT.
+    struct Trial { bool active = false; juce::String list; std::function<void()> restore; bool wasHearing = false; };
+    void beginTrial (const juce::String& list, std::function<void()> restore);
     Trial trial;
     void showTypeMenu();
     void applyBlockType();   // the target block's type onto the state (when it differs)

@@ -41,6 +41,15 @@ OptionBrowser::OptionBrowser (const juce::String& t, std::vector<Option> list, i
         addAndMakeVisible (*k);
     if (find (chosen) == nullptr && ! options.empty())
         chosen = options.front().id;
+    for (const auto& o : options)
+    {
+        measured = measured || o.measure.feel != pr7s::OptionFeel::unknown;
+        drawn = drawn || ! o.idea.notes.empty();
+    }
+    for (auto& k : feelKeys)
+        k->setVisible (measured);
+    for (auto& k : energyKeys)
+        k->setVisible (measured);
     for (auto* k : getChildren())
         if (auto* b = dynamic_cast<juce::Button*> (k))
         {
@@ -255,6 +264,13 @@ void OptionBrowser::refreshKeys()
 }
 
 //==============================================================================
+void OptionBrowser::setHearable (bool can)
+{
+    hearable = can;
+    hearKey.setVisible (can);
+    resized();
+}
+
 void OptionBrowser::resized()
 {
     auto r = getLocalBounds().reduced (12);
@@ -266,13 +282,16 @@ void OptionBrowser::resized()
     auto middle = r;
     search.setBounds (middle.removeFromTop (30));
     middle.removeFromTop (6);
-    auto feelRow = middle.removeFromTop (26);
+    if (! measured)
+        middle.removeFromTop (-6);   // (no FEEL / ENERGY rows: the list right under the search)
+    auto feelRow = measured ? middle.removeFromTop (26) : juce::Rectangle<int>();
     feelRow.removeFromLeft (64);
     const auto feelW = feelRow.getWidth() / 4;
     for (auto& k : feelKeys)
         k->setBounds (feelRow.removeFromLeft (feelW).reduced (2, 0));
-    middle.removeFromTop (4);
-    auto energyRow = middle.removeFromTop (26);
+    if (measured)
+        middle.removeFromTop (4);
+    auto energyRow = measured ? middle.removeFromTop (26) : juce::Rectangle<int>();
     energyRow.removeFromLeft (64);
     for (auto& k : energyKeys)
         k->setBounds (energyRow.removeFromLeft (feelW).reduced (2, 0));
@@ -281,12 +300,13 @@ void OptionBrowser::resized()
 
     auto d = detailArea.reduced (12);
     auto keys = d.removeFromBottom (32);
-    const auto kw = keys.getWidth() / 3;
-    hearKey.setBounds (keys.removeFromLeft (kw).reduced (3, 0));
+    const auto kw = keys.getWidth() / (hearable ? 3 : 2);
+    if (hearable)
+        hearKey.setBounds (keys.removeFromLeft (kw).reduced (3, 0));
     useKey.setBounds (keys.removeFromLeft (kw).reduced (3, 0));
     favouriteKey.setBounds (keys.reduced (3, 0));
     d.removeFromBottom (10);
-    pictureArea = d.removeFromBottom (120);
+    pictureArea = drawn ? d.removeFromBottom (120) : juce::Rectangle<int> (d.getX(), d.getBottom(), d.getWidth(), 0);
     showChosen();
 }
 
@@ -346,9 +366,9 @@ void OptionBrowser::paint (juce::Graphics& g)
     // Labels for the key rows.
     g.setColour (ParagonColours::textDim);
     g.setFont (heading (16.0f));
-    if (! feelKeys.empty())
+    if (measured && ! feelKeys.empty())
         g.drawText ("FEEL", feelKeys.front()->getBounds().withX (listArea.getX()).withWidth (60), juce::Justification::centredLeft);
-    if (! energyKeys.empty())
+    if (measured && ! energyKeys.empty())
         g.drawText ("ENERGY", energyKeys.front()->getBounds().withX (listArea.getX()).withWidth (62), juce::Justification::centredLeft);
 
     // The list.
@@ -362,7 +382,7 @@ void OptionBrowser::paint (juce::Graphics& g)
             g.setFont (words (14.0f, juce::Font::plain));
             g.drawFittedText (group == favouritesGroup && search.isEmpty() && feel == pr7s::OptionFeel::unknown && energy == 0
                                   ? "NO FAVOURITES YET: CLICK THE STAR BESIDE AN OPTION TO ADD IT"
-                                  : "NOTHING PASSES: CLEAR THE SEARCH OR A FEEL / ENERGY KEY",
+                                  : measured ? "NOTHING PASSES: CLEAR THE SEARCH OR A FEEL / ENERGY KEY" : "NOTHING PASSES: CLEAR THE SEARCH",
                               listArea.reduced (16), juce::Justification::centredTop, 3);
         }
         for (int i = 0; i < (int) shown.size(); ++i)
@@ -385,7 +405,7 @@ void OptionBrowser::paint (juce::Graphics& g)
             g.setColour (fav ? ParagonColours::accent : starOff);
             g.setFont (words (16.0f, juce::Font::plain));
             g.drawText (juce::String (juce::CharPointer_UTF8 (fav ? "\xe2\x98\x85" : "\xe2\x98\x86")), r.removeFromLeft (22), juce::Justification::centredLeft);
-            const auto tag = ! search.isEmpty() ? o.group
+            const auto tag = ! search.isEmpty() || ! measured ? o.group
                              : o.measure.feel == pr7s::OptionFeel::unknown ? juce::String()
                              : pr7s::optionFeelName (o.measure.feel) + ", " + pr7s::energyName (o.measure.energy);
             g.setColour (ParagonColours::textDim);
@@ -418,7 +438,8 @@ void OptionBrowser::paint (juce::Graphics& g)
         g.setFont (words (13.0f, juce::Font::plain));
         g.drawFittedText (o->description.isNotEmpty() ? o->description : juce::String ("(no description)"),
                           d.withBottom (pictureArea.getY() - 6), juce::Justification::topLeft, 7);
-        paintPicture (g, *o, pictureArea);
+        if (drawn)
+            paintPicture (g, *o, pictureArea);
     }
 }
 

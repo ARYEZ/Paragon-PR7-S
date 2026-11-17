@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.157.0
+
+**The same short menus and browser for TYPE, the solo styles and INTO THE NEXT** (the second half of the option picker you chose).
+
+- **TYPE in ARCHITECT:** the menu now shows STANDARD, the type you're on, your ★ favourites and the last four types you used. **MORE TYPES...** opens the browser with every type for that kind of section (a chorus has about 46), in groups: CHORUS TYPES, VERSE TYPES, RIFF TYPES and so on. Each type's FEEL and ENERGY are measured from the drums it writes (the library grooves are left out of that, or every type would measure the same). The browser draws two bars of those drums. **HEAR** tries the type with your lanes and puts the old one back if you close without **USE IT**. On a block that's already built, HEAR is hidden, because changing a built block's type rebuilds its music.
+- **Solo styles:** the lead lane's **Solo Style** submenu now holds the style you're on, your favourites and the recent ones. **MORE SOLO STYLES...** opens all 92 in the browser, grouped by their main technique: BENDS, MELODIC, FAST RUNS & CELLS, TAPPING & LEGATO, TREMOLO & TRILLS, WHAMMY & SQUEALS, OTHER. Each solo's feel and energy are measured from the solo it writes, and HEAR tries it.
+- **INTO THE NEXT** (the block menu and the block editor) and the block menu's **Type** list are now in groups. The 62 transitions are sorted into STOPS & SILENCES, SHORT BARS, ROLLS & BUILDS, WALKS & SLIDES, DROP-OUTS, HELD CHORDS and HITS TOGETHER, each its own submenu (or a heading in the block editor's list). Transitions only change a block's last bar or two, so there's no feel to filter by. The groups do that job here.
+
+The groups are our own sorting, made from the words in each name, so a few could sit better elsewhere. Tell me which and I'll move them.
+
 ## 0.156.0
 
 **A shorter style menu and a browser for every option** (you chose mock-up D with C's feel filters). The lanes' option lists had grown to 30 and more, so each lane's style key in ARCHITECT now opens a short menu:

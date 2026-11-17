@@ -1,4 +1,5 @@
 #include "OptionFeel.h"
+#include "SoloEngine.h"
 
 #include <algorithm>
 #include <array>
@@ -197,6 +198,93 @@ namespace pr7s
         const auto score = (backbone + 0.4 * others) * meanVelocity (onsets);
         m.energy = score < 1.0 ? 1 : score < 1.9 ? 2 : 3;
         return m;
+    }
+
+    //==============================================================================
+    juce::StringArray typeGroupOrder()
+    {
+        return { "CHORUS TYPES", "VERSE TYPES", "PRE-CHORUS TYPES", "BRIDGE TYPES", "BREAKDOWN TYPES", "INTERLUDE TYPES",
+                 "INTRO & OUTRO TYPES", "RIFF TYPES" };
+    }
+
+    juce::String typeGroupOf (const SectionType& t)
+    {
+        using B = SectionType::Band;
+        switch (t.band)
+        {
+            case B::chorus: return "CHORUS TYPES";
+            case B::verse: case B::staccato: case B::split: case B::clean: return "VERSE TYPES";
+            case B::preChorus: return "PRE-CHORUS TYPES";
+            case B::bridge: return "BRIDGE TYPES";
+            case B::breakdown: return "BREAKDOWN TYPES";
+            case B::interlude: return "INTERLUDE TYPES";
+            case B::bookend: return "INTRO & OUTRO TYPES";
+            case B::none: break;
+        }
+        return "RIFF TYPES";
+    }
+
+    namespace
+    {
+        // Whole words from their start ("RUN" finds RUNS, not GRUNGE; "SHORT BAR" a phrase).
+        bool hasWord (const juce::String& text, std::initializer_list<const char*> words)
+        {
+            juce::String norm (" ");
+            for (auto c : text.toUpperCase())
+                norm += juce::CharacterFunctions::isLetterOrDigit (c) ? juce::String::charToString (c) : juce::String (" ");
+            for (const auto* w : words)
+                if (norm.contains (" " + juce::String (w).trim().toUpperCase()))
+                    return true;
+            return false;
+        }
+    }
+
+    juce::StringArray transitionGroupOrder()
+    {
+        return { "STOPS & SILENCES", "SHORT BARS", "ROLLS & BUILDS", "WALKS & SLIDES", "DROP-OUTS", "HELD CHORDS", "HITS TOGETHER" };
+    }
+
+    juce::String transitionGroupOf (const juce::String& n)
+    {
+        if (hasWord (n, { "SHORT BAR" }))
+            return "SHORT BARS";
+        if (hasWord (n, { "STOP", "SILEN", "BREATH", "CUT" }))
+            return "STOPS & SILENCES";
+        if (hasWord (n, { "ROLL", "BUILD", "FILL", "PICKUP", "SWELL", "RISER", "CLIMB", "RUMBLE", "RAMP", "CASCADE", "GROWING" }))
+            return "ROLLS & BUILDS";
+        if (hasWord (n, { "WALK", "SLIDE", "LINK", "BASS FIGURE", "PINCH", "RUN UP", "SCALE" }))
+            return "WALKS & SLIDES";
+        if (hasWord (n, { "DROP", "ALONE", "BREAK", "OUT" }))
+            return "DROP-OUTS";
+        if (hasWord (n, { "RING", "RUNG", "HELD", "HOLD", "CHORD ON", "SUSTAIN" }))
+            return "HELD CHORDS";
+        return "HITS TOGETHER";
+    }
+
+    juce::StringArray soloGroupOrder()
+    {
+        return { "BENDS", "MELODIC", "FAST RUNS & CELLS", "TAPPING & LEGATO", "TREMOLO & TRILLS", "WHAMMY & SQUEALS", "OTHER" };
+    }
+
+    juce::String soloGroupOf (SoloStyle style)
+    {
+        const auto n = soloStyleName (style) + " " + soloStyleDescription (style);
+        const auto name = soloStyleName (style);
+        if (hasWord (name, { "TAP", "LEGATO", "PULL-OFF", "PULL OFF", "THROW" }))
+            return "TAPPING & LEGATO";
+        if (hasWord (name, { "TREMOLO", "TRILL" }))
+            return "TREMOLO & TRILLS";
+        if (hasWord (name, { "DIVE", "WHAMMY", "SQUEAL", "SCREAM", "WAIL" }))
+            return "WHAMMY & SQUEALS";
+        if (hasWord (name, { "SEXTUPLET", "RUN", "SHRED", "SWEEP", "FIRE", "STREAM", "CELL", "SEQUENCE", "BURST", "ARPEGGIO", "FLASH", "CLIMB", "STAIR" }))
+            return "FAST RUNS & CELLS";
+        if (hasWord (name, { "BEND" }))
+            return "BENDS";
+        if (hasWord (n, { "MELOD", "HOOK", "BALLAD", "THEME", "SING", "HYMN", "CHANT", "HEAD", "LINE" }))
+            return "MELODIC";
+        if (hasWord (n, { "BEND" }))
+            return "BENDS";
+        return "OTHER";
     }
 
     //==============================================================================

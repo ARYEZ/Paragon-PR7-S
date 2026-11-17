@@ -8,6 +8,8 @@
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/Finish.h"
 #include <iostream>
+#include <map>
+#include <set>
 
 using namespace pr7s;
 using L = ComposerLayer;
@@ -258,8 +260,8 @@ TEST_CASE ("0.156.0: the option browser drawn", "[snapshot-optionbrowser]")
         for (const auto& o : options)
             if (o.name == "BREAKBEAT" || o.name == "TOM ROLL CARPET")
                 studio.setOptionFavourite (page.optionListKey (L::drums), o.name, true);
-        auto browser = page.makeOptionBrowser (L::drums);
         const auto what = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FEEL", {});
+        auto browser = what == "type" ? page.makeTypeBrowser() : what == "solo" ? page.makeSoloBrowser() : page.makeOptionBrowser (L::drums);
         if (what == "half")
             browser->setFeel (OptionFeel::half);
         else if (what == "search")
@@ -301,4 +303,146 @@ TEST_CASE ("0.156.0: every drums option's measure printed", "[.optiondump]")
         }
         std::cout << o.name << "  " << optionFeelName (o.measure.feel) << " " << o.measure.energy << " hpb " << o.measure.hitsPerBeat << "\n   S " << snare << "\n   K " << kick << "\n";
     }
+}
+
+TEST_CASE ("0.157.0: the long lists in groups", "[options]")
+{
+    // Every transition, type and solo style in one of its list's groups, none of them holding nearly everything.
+    std::map<juce::String, int> transitions, solos;
+    for (size_t i = 1; i < sectionTransitions().size(); ++i)
+    {
+        const auto g = transitionGroupOf (sectionTransitions()[i].name);
+        CHECK (transitionGroupOrder().contains (g));
+        ++transitions[g];
+    }
+    for (const auto& [g, n] : transitions)
+        CHECK (n * 2 < (int) sectionTransitions().size());
+    CHECK (transitions.size() >= 6);
+    for (const auto st : soloStyles())
+    {
+        const auto g = soloGroupOf (st);
+        CHECK (soloGroupOrder().contains (g));
+        ++solos[g];
+    }
+    for (const auto& [g, n] : solos)
+        CHECK (n * 2 < (int) soloStyles().size());
+    CHECK (solos.size() >= 5);
+    for (const auto* name : { "Intro", "Verse", "Pre-Chorus", "Chorus", "Bridge", "Breakdown", "Interlude", "Outro" })
+        for (const auto& t : sectionTypesFor (name))
+            CHECK (typeGroupOrder().contains (typeGroupOf (t)));
+}
+
+TEST_CASE ("0.157.0: every group printed", "[.groupdump]")
+{
+    for (const auto& g : transitionGroupOrder())
+    {
+        std::cout << "TRANSITIONS " << g << ":";
+        for (size_t i = 1; i < sectionTransitions().size(); ++i)
+            if (transitionGroupOf (sectionTransitions()[i].name) == g)
+                std::cout << " | " << sectionTransitions()[i].name;
+        std::cout << "\n";
+    }
+    for (const auto& g : soloGroupOrder())
+    {
+        std::cout << "SOLOS " << g << ":";
+        for (const auto st : soloStyles())
+            if (soloGroupOf (st) == g)
+                std::cout << " | " << soloStyleName (st);
+        std::cout << "\n";
+    }
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (3);
+    page.setSection (DrumSection::chorus);
+    const auto t0 = juce::Time::getMillisecondCounterHiRes();
+    const auto types = page.typeOptions();
+    const auto t1 = juce::Time::getMillisecondCounterHiRes();
+    const auto solosMeasured = page.soloOptions();
+    const auto t2 = juce::Time::getMillisecondCounterHiRes();
+    std::cout << types.size() << " chorus types measured in " << (t1 - t0) << " ms, " << solosMeasured.size() << " solos in " << (t2 - t1) << " ms\n";
+    for (const auto& o : types)
+        std::cout << o.group << " / " << o.name << ": " << optionFeelName (o.measure.feel) << " " << energyName (o.measure.energy) << "\n";
+}
+
+TEST_CASE ("0.157.0: TYPE's short menu and browser", "[options][composer][ui]")
+{
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (3);
+    page.setSection (DrumSection::chorus);
+    const auto types = sectionTypesFor (page.typeSectionName());
+    REQUIRE (types.size() > (size_t) ComposerPage::shortListMost);
+
+    auto options = page.typeOptions();
+    REQUIRE (options.size() == types.size() + 1);
+    std::set<OptionFeel> feels;
+    auto unmeasured = 0;   // (a type with no drums of its own: ACOUSTIC STRUM CHORUS)
+    for (const auto& o : options)
+    {
+        unmeasured += o.measure.feel == OptionFeel::unknown ? 1 : 0;
+        feels.insert (o.measure.feel);
+    }
+    CHECK (unmeasured <= 2);
+    CHECK (feels.size() >= 3);
+
+    // The short menu: STANDARD, MORE TYPES; a favourite shows.
+    auto menu = page.makeTypeMenu();
+    CHECK (hasItem (menu, ComposerPage::moreTypesItem));
+    CHECK (countItems (menu, [] (const juce::PopupMenu::Item& i) { return i.itemID >= 2 && i.itemID < 1000; }) == 0);
+    studio.setOptionFavourite (ComposerPage::typeListKey, types[3].name, true);
+    menu = page.makeTypeMenu();
+    CHECK (hasItem (menu, 2 + 3));
+    page.typeMenuChosen (2 + 3);
+    CHECK (page.getSectionType() == types[3].name);
+    CHECK (studio.getOptionMemory().recentOf (ComposerPage::typeListKey)[0] == types[3].name);
+
+    // The browser: HEAR tries one, closing puts the type back; USE IT keeps it.
+    auto browser = page.makeTypeBrowser();
+    CHECK (browser->isMeasured());
+    CHECK (browser->getChosen() == 4);
+    browser->choose (6);
+    browser->hear();
+    CHECK (page.getSectionType() == types[5].name);
+    browser.reset();
+    CHECK (page.getSectionType() == types[3].name);
+    browser = page.makeTypeBrowser();
+    browser->choose (6);
+    browser->use();
+    browser.reset();
+    CHECK (page.getSectionType() == types[5].name);
+    page.stop();
+}
+
+TEST_CASE ("0.157.0: the solo style's short menu and browser", "[options][composer][ui]")
+{
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (3);
+    page.setOn (L::lead, true);
+    const auto menu = page.makeStyleMenu (L::lead);
+    CHECK (hasItem (menu, ComposerPage::moreSolosItem));
+    // Not all 92 in the menu: the one playing, then the browser.
+    CHECK (countItems (menu, [] (const juce::PopupMenu::Item& i) { return i.itemID >= 5000 && i.itemID < 6000; }) < 5);
+
+    const auto before = studio.getSoloStyle();
+    auto browser = page.makeSoloBrowser();
+    const auto options = page.soloOptions();
+    CHECK (options.size() == soloStyles().size());
+    auto measured = 0;
+    for (const auto& o : options)
+        measured += o.measure.feel != OptionFeel::unknown ? 1 : 0;
+    CHECK (measured == (int) options.size());
+    const auto pick = (int) soloStyles()[10];
+    browser->choose (pick);
+    browser->hear();
+    CHECK ((int) studio.getSoloStyle() == pick);
+    browser.reset();
+    CHECK (studio.getSoloStyle() == before);
+    browser = page.makeSoloBrowser();
+    browser->choose (pick);
+    browser->use();
+    browser.reset();
+    CHECK ((int) studio.getSoloStyle() == pick);
+    CHECK (studio.getOptionMemory().recentOf (ComposerPage::soloListKey)[0] == soloStyleName (soloStyles()[10]));
+    page.stop();
 }
