@@ -87,12 +87,7 @@ void ArrangeView::paintSignature (juce::Graphics& g, const Timeline::Row& row)
         g.setFont (font);
         g.drawText (signatureText (segment.event), label.reduced (6.0f, 0.0f), juce::Justification::centredLeft, false);
     }
-    if (project.signatureLocked)
-    {
-        g.setColour (ParagonColours::textDim);
-        g.setFont (ParagonLookAndFeel::titleFont (11.0f));
-        g.drawText ("LOCKED", area.reduced (8.0f, 0.0f), juce::Justification::centredRight, false);
-    }
+    // (LOCKED: paintPinned, 0.165.0)
 }
 
 bool ArrangeView::signatureDown (const juce::MouseEvent& event)

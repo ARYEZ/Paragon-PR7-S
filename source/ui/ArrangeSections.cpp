@@ -107,9 +107,7 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
     const auto selected = getSelectedSection();
     if (blocks.empty())
     {
-        g.setColour (ParagonColours::textDim);
-        g.setFont (ParagonLookAndFeel::titleFont (14.0f));
-        g.drawText ("DOUBLE-CLICK HERE OR + SECTION TO ADD THE SONG'S FIRST PART", area.reduced (12.0f, 0.0f), juce::Justification::centredLeft, false);
+        // (0.165.0: its words in paintPinned: they stay put on the screen)
         return;
     }
     for (int i = 0; i < (int) blocks.size(); ++i)

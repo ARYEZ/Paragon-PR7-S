@@ -1205,9 +1205,29 @@ void ArrangeView::paintPinned (juce::Graphics& g)
     const auto& project = studio.getProject();
     const auto bounds = getLocalBounds().toFloat();
     if (rowsInPaint != nullptr)
+    {
+        // (Lanes' words under the ruler, as the lanes themselves: a lane scrolled up behind it stays hidden.)
+        juce::Graphics::ScopedSaveState saved (g);
+        g.reduceClipRegion (0, Timeline::rulerHeight, getWidth(), juce::jmax (0, getHeight() - Timeline::rulerHeight));
+        const auto words = [&] (const Timeline::Row& row, float inset, const juce::String& text, float height, juce::Justification where, float side)
+        {
+            const auto area = juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height).reduced (0.0f, inset);
+            if (! g.clipRegionIntersects (area.toNearestIntEdges()))
+                return;
+            g.setColour (ParagonColours::textDim);
+            g.setFont (ParagonLookAndFeel::titleFont (height));
+            g.drawText (text, area.reduced (side, 0.0f), where, false);
+        };
         for (const auto& row : *rowsInPaint)
             if (row.kind == Timeline::Row::Kind::tempo)
                 paintTempoLabels (g, row);
+            else if (row.kind == Timeline::Row::Kind::sections && studio.getSongSections().blocks.empty())
+                words (row, 3.0f, "DOUBLE-CLICK HERE OR + SECTION TO ADD THE SONG'S FIRST PART", 14.0f, juce::Justification::centredLeft, 12.0f);
+            else if (row.kind == Timeline::Row::Kind::markers && studio.getMarkerTrack().locked)
+                words (row, 2.0f, "LOCKED", 11.0f, juce::Justification::topRight, 8.0f);
+            else if (row.kind == Timeline::Row::Kind::signature && project.signatureLocked)
+                words (row, 2.0f, "LOCKED", 11.0f, juce::Justification::centredRight, 8.0f);
+    }
 
     // The playhead: a line down the lanes and a marker on the ruler (where it's drawn: it glides, 0.17.4).
     const auto x = timeline.xForBeat (shownBeat);
@@ -3361,7 +3381,8 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
         const auto begin = [&] (float x, float y) { runs.push_back ({}); runs.back().at.push_back ({ x, y }); };
         const auto to = [&] (float x, float y) { runs.back().at.push_back ({ x, y }); };
         const auto inView = [&] (float x) { return x >= left && x <= right; };
-        begin (gaps ? timeline.xForBeat (pts.front().beat) : 0.0f, yForValue (area, pts.front().value));
+        // (0.165.0) The flat ends well past the screen's edges: the glow's round caps were drawn at them.
+        begin (gaps ? timeline.xForBeat (pts.front().beat) : juce::jmin (0.0f, timeline.xForBeat (pts.front().beat)) - 1000.0f, yForValue (area, pts.front().value));
         for (size_t i = 0; i < pts.size(); ++i)
         {
             const auto x = timeline.xForBeat (pts[i].beat);
@@ -3395,7 +3416,7 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
             to (x, yForValue (area, pts[i].value));
         }
         if (! gaps)
-            to (area.getRight(), yForValue (area, pts.back().value));
+            to (juce::jmax (area.getRight(), timeline.xForBeat (pts.back().beat)) + 1000.0f, yForValue (area, pts.back().value));
         for (const auto& run : runs)
         {
             const auto& at = run.at;
@@ -3527,7 +3548,7 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
     for (int i = 0; i < (int) points.size(); ++i)
     {
         const auto at = juce::Point<float> (timeline.xForBeat (points[(size_t) i].beat), yForValue (area, points[(size_t) i].value));
-        if (at.x < -pointSize || at.x > (float) getWidth() + pointSize || at.x < left || at.x > right)
+        if (at.x < left || at.x > right)   // (0.165.0: by what's redrawn, not the screen's edges: a glow reaching in from past them)
             continue;
         const auto box = juce::Rectangle<float> (pointSize, pointSize).withCentre (at);
         const auto selected = selectedHere && std::binary_search (pointSelection.points.begin(), pointSelection.points.end(), i);
@@ -4635,11 +4656,12 @@ void ArrangeView::paintTempo (juce::Graphics& g, const Timeline::Row& row) const
     g.strokePath (curve, juce::PathStrokeType (1.6f));
 
     // The events, their tempo beside them.
+    const auto redrawnNow = g.getClipBounds().toFloat();
     g.setFont (ParagonLookAndFeel::textFont (9.5f));
     for (int i = 0; i < (int) events.size(); ++i)
     {
         const juce::Point<float> at (timeline.xForBeat (events[(size_t) i].beat), yForBpm (area, events[(size_t) i].bpm));
-        if (at.x < -60.0f || at.x > (float) getWidth() + pointSize)
+        if (at.x < redrawnNow.getX() - 60.0f || at.x > redrawnNow.getRight() + pointSize)
             continue;
         const auto box = juce::Rectangle<float> (pointSize, pointSize).withCentre (at);
         const auto selected = std::find (tempoSelection.begin(), tempoSelection.end(), i) != tempoSelection.end();
