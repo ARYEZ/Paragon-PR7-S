@@ -73,6 +73,7 @@ namespace pr7s
         // How long a helper keeps looking for the next wave of work before it sleeps: a block's
         // waves come microseconds apart; the next block, milliseconds later.
         constexpr double spinSeconds = 0.0002;
+        constexpr double finishSpinSeconds = 0.00005;   // (0.164.0) the audio thread spins 50 microseconds at a wave's end, then sleeps
     }
 
     class AudioWorkers::Helper final : public juce::Thread
@@ -156,18 +157,29 @@ namespace pr7s
             if (! state.compare_exchange_weak (now, now + 1, std::memory_order_acq_rel, std::memory_order_relaxed))
                 continue;
             invoke (task, index);
-            done.fetch_add (1, std::memory_order_release);
+            // (0.164.0) The last task done wakes the audio thread if it went to sleep waiting (finish).
+            if (done.fetch_add (1, std::memory_order_acq_rel) + 1 >= job.count.load (std::memory_order_relaxed))
+                done.notify_all();
         }
     }
 
     void AudioWorkers::finish (int count)
     {
-        for (int spins = 0; done.load (std::memory_order_acquire) < count; ++spins)
+        // (0.164.0) A short spin (most waves end within it), then asleep until the last task is done: the audio
+        // thread kept a whole core busy while a heavy instrument finished on a helper (tens of milliseconds), crowding
+        // the helpers and the plug-ins' own threads on a 4-core machine. The output is the same.
+        const auto until = juce::Time::getHighResolutionTicks() + juce::Time::secondsToHighResolutionTicks (finishSpinSeconds);
+        for (int spins = 0;; ++spins)
         {
-            if (spins < 4096)
+            const auto now = done.load (std::memory_order_acquire);
+            if (now >= count)
+                return;
+            if ((spins & 63) != 63 || juce::Time::getHighResolutionTicks() < until)
+            {
                 relax();
-            else
-                std::this_thread::yield();
+                continue;
+            }
+            done.wait (now, std::memory_order_acquire);
         }
     }
 

@@ -386,6 +386,9 @@ void KeyEditor::changeListenerCallback (juce::ChangeBroadcaster*)
     if (studio.getChangeVersion() == seenChange)
         return;
     seenChange = studio.getChangeVersion();
+    if (studio.getContentVersion() == seenContent)
+        return;   // (0.164.0: a track clicked: nothing the editor shows changed; it repainted whole, docked at 200%)
+    seenContent = studio.getContentVersion();
     refresh();
 }
 

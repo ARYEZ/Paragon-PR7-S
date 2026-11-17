@@ -153,14 +153,37 @@ namespace pr7s
 
     juce::String pr7dCopiesFingerprint (const std::vector<Part>& copies)
     {
-        juce::String text;
+        // (0.164.0) A 64-bit FNV-1a over the same fields in the same order (it was text: every note's numbers
+        // formatted on every change to the song, a few milliseconds on a long drum part). Kept in memory only.
+        juce::uint64 hash = 14695981039346656037ull;
+        const auto mix = [&hash] (const void* data, size_t size)
+        {
+            const auto* bytes = static_cast<const unsigned char*> (data);
+            for (size_t i = 0; i < size; ++i)
+                hash = (hash ^ bytes[i]) * 1099511628211ull;
+        };
+        const auto number = [&mix] (auto value) { mix (&value, sizeof (value)); };
+        size_t count = 0;
         for (const auto* p : inOrder (copies))
         {
-            text << p->start << "/" << p->length << "/" << p->name << "/" << p->transpose << "/" << p->velocityOffset << "|";
+            number (p->start);
+            number (p->length);
+            const auto name = p->name.toStdString();
+            mix (name.data(), name.size());
+            number ((juce::int32) name.size());
+            number ((juce::int32) p->transpose);
+            number ((juce::int32) p->velocityOffset);
             for (const auto& n : p->notes)
-                text << n.start << ":" << n.pitch << ":" << n.velocity << ":" << n.length << (n.muted ? "m" : "") << ",";
-            text << ";";
+            {
+                number (n.start);
+                number ((juce::int32) n.pitch);
+                number ((double) n.velocity);
+                number (n.length);
+                number ((juce::int32) (n.muted ? 1 : 0));
+                ++count;
+            }
+            number ((juce::int32) -1);
         }
-        return juce::String::toHexString (text.hashCode64()) + "-" + juce::String (text.length());
+        return juce::String::toHexString ((juce::int64) hash) + "-" + juce::String ((int) count);
     }
 }

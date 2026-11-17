@@ -76,6 +76,11 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
     if (studio.getChangeVersion() == seenChange)
         return;
     seenChange = studio.getChangeVersion();
+    // (0.164.0) A track clicked: only the rows whose shade it moved (the selected track's, and the alternating ones
+    // between it and the one before). It repainted the whole arrangement, across three screens, on every click.
+    if (studio.getContentVersion() == seenContent)
+        return repaintSelectionChange();
+    seenContent = studio.getContentVersion();
     // A range keeps only the tracks still there.
     if (range)
     {
@@ -499,6 +504,31 @@ const std::vector<Timeline::Row>& ArrangeView::rowsNow (std::vector<Timeline::Ro
     return made;
 }
 
+void ArrangeView::repaintSelectionChange()
+{
+    const auto now = studio.getSelectedTrack();
+    if (now == paintedSelection)
+        return;
+    std::vector<Timeline::Row> made;
+    const auto& rows = rowsNow (made);
+    auto top = -1.0f, bottom = -1.0f;
+    auto found = 0;
+    for (const auto& row : rows)
+        if (row.kind == Timeline::Row::Kind::track && (row.busId == now || row.busId == paintedSelection))
+        {
+            const auto y = rowTop (row);
+            top = found == 0 ? y : juce::jmin (top, y);
+            bottom = found == 0 ? y + (float) row.height : juce::jmax (bottom, y + (float) row.height);
+            ++found;
+        }
+    const auto expected = (now != 0 ? 1 : 0) + (paintedSelection != 0 ? 1 : 0);
+    if (found < expected || found == 0)
+        return repaint();   // (one isn't on a row here: all of it, as before)
+    // Every track row from the higher to the lower: their alternating shades follow the selected one's place.
+    repaint (juce::Rectangle<float> (0.0f, top, (float) getWidth(), bottom - top).getSmallestIntegerContainer().expanded (0, 1));
+    paintedSelection = now;
+}
+
 float ArrangeView::trackTop (int trackId) const
 {
     std::vector<Timeline::Row> made;
@@ -723,6 +753,7 @@ void ArrangeView::paint (juce::Graphics& g)
     // its automation lanes, the master's row.
     const auto rows = timeline.layout (studio);
     rowsInPaint = &rows;
+    paintedSelection = studio.getSelectedTrack();   // (0.164.0: what a selection-only change starts from)
     const struct Forget { const std::vector<Timeline::Row>*& rows; ~Forget() { rows = nullptr; } } forget { rowsInPaint };
     auto trackNumber = 0;
     for (const auto& row : rows)
@@ -1225,16 +1256,23 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
                 const auto lane = twoSides ? (side == 0 ? wave.withHeight (wave.getHeight() * 0.5f).withTrimmedBottom (1.0f)
                                                         : wave.withTrimmedTop (wave.getHeight() * 0.5f).withTrimmedTop (1.0f))
                                            : wave;
-                for (auto x = std::floor (clip.getX()); x < clip.getRight(); x += 1.0f)
+                // (0.164.0) Each pixel's end is the next one's start (worked out once, not twice), and the bars
+                // gathered and filled in one call (one fill a pixel across three screens of clips before).
+                juce::RectangleList<float> bars;
+                auto x = std::floor (clip.getX());
+                auto from = secondsAtX (x);
+                for (; x < clip.getRight(); x += 1.0f)
                 {
-                    const auto from = secondsAtX (x), to = secondsAtX (x + 1.0f);
+                    const auto to = secondsAtX (x + 1.0f);
                     const auto first = (int) (from * peaksPerSecond), last = juce::jmax (first + 1, (int) (to * peaksPerSecond));
                     auto peak = 0.0f;
                     for (int i = juce::jmax (0, first); i < juce::jmin (last, (int) list.size()); ++i)
                         peak = juce::jmax (peak, list[(size_t) i]);
                     const auto height = juce::jmin (1.0f, peak * part.gain()) * lane.getHeight() * 0.5f;
-                    g.fillRect (juce::Rectangle<float> (x, lane.getCentreY() - height, 1.0f, juce::jmax (0.5f, height * 2.0f)));
+                    bars.addWithoutMerging (juce::Rectangle<float> (x, lane.getCentreY() - height, 1.0f, juce::jmax (0.5f, height * 2.0f)));
+                    from = to;
                 }
+                g.fillRectList (bars);
             }
             if (twoSides)
             {

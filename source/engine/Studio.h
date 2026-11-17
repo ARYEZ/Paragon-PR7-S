@@ -1383,6 +1383,9 @@ namespace pr7s
         void setCycle (double start, double end, bool undoable = true);
         void finishCycleDrag();
         juce::uint64 getCycleVersion() const noexcept { return cycleVersion; }
+        // (0.164.0) Bumped by every change but a selection (a track clicked): the arrangement and the MIDI editor show
+        // nothing else of it, so they repaint only the rows it moved instead of everything.
+        juce::uint64 getContentVersion() const noexcept { return contentVersion; }
         void setCycleOn (bool);
         // Snap on/off (J) and the quantize value in beats (4: 1/1 ... 1/16: 1/64), the toolbar's (0.9.10).
         void setSnap (bool);
@@ -1840,6 +1843,8 @@ namespace pr7s
         bool cycleStepped = false;
         std::vector<int> sectionPassTracks;   // (0.123.0) the tracks when the sections were last looked at
         bool mixOnlyAsked = false, mixOnlyBroken = false;
+        bool selectionOnlyAsked = false;   // (0.164.0)
+        juce::uint64 contentVersion = 1;
         AlignSettings alignSettings;   // (without a settings file: the tests)
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)
         void pruneLinkGroups();

@@ -2724,6 +2724,8 @@ void ComposerPage::timerCallback()
         hearKey.setToggleState (false, juce::dontSendNotification);
         repaint();
     }
+    if (! isShowing())
+        return;   // (0.164.0: behind the IDEAS tab or a closed window it rebuilt on every change; it catches up when shown)
     // The song changed (tracks added or renamed, the chord track): the lanes' tracks and chords again.
     if (! hearing && studio.getChangeVersion() != seenChange)
         refresh (false);

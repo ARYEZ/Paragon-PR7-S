@@ -143,8 +143,11 @@ namespace pr7s
         sampleRate = newSampleRate > 0.0 ? newSampleRate : 48000.0;
         maxBlockSize = juce::jmax (1, newMaxBlockSize);
         midiInput.reset (sampleRate);
-        live.ensureSize (2048);
-        liveMapped.ensureSize (2048);
+        // (0.164.0) Room made here, not grown on the audio thread: the incoming queue (the MIDI devices' thread grows it
+        // holding the lock the audio thread takes) and a block's live messages, more with bigger blocks.
+        midiInput.ensureStorageAllocated (64 * 1024);
+        live.ensureSize ((size_t) juce::jmax (2048, maxBlockSize * 8));
+        liveMapped.ensureSize ((size_t) juce::jmax (2048, maxBlockSize * 8));
         deviceBuffer.setSize (2, maxBlockSize);
         silence.assign ((size_t) maxBlockSize, 0.0f);
         effectMidi.ensureSize (4096);   // (an effect may send MIDI out: room for it, not grown on the audio thread)
@@ -622,8 +625,28 @@ namespace pr7s
 
         struct Prepared { int id; std::vector<Event> events; std::vector<Event> controllerEvents; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
                           std::vector<LaneState> automation; bool mixAutomated = false; bool eventsKept = false; bool clipsKept = false;
-                          std::array<juce::int16, 128> drumOut {}; std::array<juce::int8, 128> drumChannel {}; std::array<juce::uint8, 128> drumIn {}; };
+                          std::array<juce::int16, 128> drumOut {}; std::array<juce::int8, 128> drumChannel {}; std::array<juce::uint8, 128> drumIn {};
+                          size_t midiRoom = 0; };
         std::vector<Prepared> prepared;
+        // (0.164.0) The bytes a track's MIDI buffers need for its busiest block (grown here, under the lock, never on the
+        // audio thread): the most events in any stretch of a block's beats at the song's fastest tempo, twice over (a cycle's
+        // wrap joins two stretches), with room for the controllers chased at a jump and notes ended (each event 9 bytes in JUCE's
+        // buffer; 12 counted). Controller ramps are written every 1/128 beat, so three lanes overran the 4096 bytes made at start.
+        auto fastest = 0.0;
+        for (const auto& e : tempo.getEvents())
+            fastest = juce::jmax (fastest, e.bpm);
+        const auto blockBeats = juce::jmax (1.0e-3, (double) maxBlockSize / juce::jmax (1.0, sampleRate) * juce::jmax (fastest, project.bpm) / 60.0);
+        const auto midiRoomFor = [blockBeats] (const std::vector<Event>& events)
+        {
+            size_t most = 0;
+            for (size_t from = 0, to = 0; to < events.size(); ++to)
+            {
+                while (events[to].beat - events[from].beat > blockBeats)
+                    ++from;
+                most = juce::jmax (most, to - from + 1);
+            }
+            return juce::jmax ((size_t) 4096, (most * 2 + 300) * 12);
+        };
         for (const auto& track : project.tracks)
         {
             Prepared p { track.id, {}, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, false, false, {}, {}, {} };
@@ -760,7 +783,9 @@ namespace pr7s
                 p.drumIn[(size_t) n] = (juce::uint8) (map != nullptr ? map->pitchForInput (n) : n);
             }
             // (0.34.1) Built from exactly what it was last time: kept (the same events would come out).
-            const auto mapNow = map != nullptr ? std::optional<DrumMap> (*map) : std::nullopt;
+            // (0.164.0) Compared where they are; copied only when the track is built again (a drum map's 128 names and
+            // the chord track were copied for every MIDI track on every update).
+            const auto sameMap = [&map] (const std::optional<DrumMap>& kept) { return map == nullptr ? ! kept.has_value() : kept.has_value() && *kept == *map; };
             // (0.36.0) Following the chord track: the chords it follows count as what it's built from.
             const auto follows = track.follow != FollowMode::off && ! project.chordTrack.events.empty();
             // (0.44.0) Performing a pattern over the chord track.
@@ -769,7 +794,8 @@ namespace pr7s
             const auto patternNow = performIndex >= 0 ? track.performPattern : juce::String();
             const auto followNow = follows ? track.follow : FollowMode::off;
             const auto referenceNow = follows ? track.followReference : FollowReference {};
-            const auto chordsNow = follows || performIndex >= 0 ? project.chordTrack : ChordTrack {};
+            static const ChordTrack noChords {};
+            const ChordTrack& chordsNow = follows || performIndex >= 0 ? project.chordTrack : noChords;
             const auto fallbackNow = follows ? project.chordPads.key() : Key {};
             const auto voiceNow = follows ? track.followVoice : Voice::soprano;
             const auto voicingNow = follows ? track.followVoicing : std::nullopt;
@@ -777,15 +803,16 @@ namespace pr7s
             {
                 auto& built = engineTrack->builtFrom;
                 if (built.valid && built.midiChannel == track.midiChannel && built.soloLane == track.soloLane
-                    && built.map == mapNow && built.parts == track.parts && built.follow == followNow
+                    && sameMap (built.map) && built.parts == track.parts && built.follow == followNow
                     && built.reference == referenceNow && built.chords == chordsNow && built.fallback == fallbackNow
                     && built.voice == voiceNow && built.voicing == voicingNow && built.pattern == patternNow)
                 {
                     p.eventsKept = true;
+                    p.midiRoom = midiRoomFor (engineTrack->events);   // (message thread: they change only here)
                     prepared.push_back (std::move (p));
                     continue;
                 }
-                built = { true, track.parts, track.midiChannel, track.soloLane, mapNow, followNow, referenceNow, chordsNow, fallbackNow,
+                built = { true, track.parts, track.midiChannel, track.soloLane, map != nullptr ? std::optional<DrumMap> (*map) : std::nullopt, followNow, referenceNow, chordsNow, fallbackNow,
                           voiceNow, voicingNow, patternNow };
             }
             ++eventBuilds;
@@ -863,6 +890,7 @@ namespace pr7s
                 if (kind == 0xb0 || kind == 0xe0 || kind == 0xd0 || kind == 0xc0)
                     p.controllerEvents.push_back (e);
             }
+            p.midiRoom = midiRoomFor (p.events);
             prepared.push_back (std::move (p));
         }
 
@@ -909,6 +937,11 @@ namespace pr7s
         for (auto& p : prepared)
             if (auto* track = findTrack (p.id))
             {
+                if (p.midiRoom > 0)
+                {
+                    track->midi.ensureSize (p.midiRoom);   // (no allocation when the room is there)
+                    track->effectMidi.ensureSize (p.midiRoom);
+                }
                 if (! p.eventsKept)
                 {
                     std::swap (track->events, p.events);   // the old list goes out with `prepared`
@@ -1306,6 +1339,11 @@ namespace pr7s
         if (track->id == liveId)
             for (const auto metadata : live)   // played live: on the track's channel, as its notes
             {
+                if (metadata.numBytes > 3)
+                {
+                    track->midi.addEvent (metadata.data, metadata.numBytes, metadata.samplePosition);   // (0.164.0: SysEx as it came: a MidiMessage of it allocates)
+                    continue;
+                }
                 auto message = metadata.getMessage();
                 if (message.getChannel() > 0)
                     message.setChannel (track->midiChannel);
@@ -1503,6 +1541,11 @@ namespace pr7s
         liveMapped.clear();
         for (const auto metadata : live)
         {
+            if (metadata.numBytes > 3)
+            {
+                liveMapped.addEvent (metadata.data, metadata.numBytes, metadata.samplePosition);   // (0.164.0: SysEx untouched, not copied)
+                continue;
+            }
             auto message = metadata.getMessage();
             if (message.isNoteOnOrOff())
             {
@@ -1668,7 +1711,7 @@ namespace pr7s
                 // Recording: each note played, at its beat in the song.
                 if (isRecording)
                     for (const auto metadata : live)
-                        if (metadata.samplePosition >= done && metadata.samplePosition < done + length)
+                        if (metadata.samplePosition >= done && metadata.samplePosition < done + length && metadata.numBytes <= 3)   // (0.164.0: SysEx isn't recorded: not copied either)
                         {
                             const auto message = metadata.getMessage();
                             if (! message.isNoteOnOrOff() && ! message.isController() && ! message.isPitchWheel()
@@ -1851,7 +1894,8 @@ namespace pr7s
             track->nowPan = now.pan;
             track->nowMute = now.mute;
         }
-        nowMasterVolumeDb = mixAt (masterAutomation, { settings.masterVolumeDb, 0.0f, false }, endBeat, settings.virginTerritory).volumeDb;
+        nowMasterVolumeDb = masterAutomated ? mixAt (masterAutomation, { settings.masterVolumeDb, 0.0f, false }, endBeat, settings.virginTerritory).volumeDb
+                                            : settings.masterVolumeDb;   // (0.164.0: no lanes, the same value without the walk)
 
         // The click: a short tone at each beat, higher on the bar's first.
         for (int i = 0, next = 0; i < numSamples; ++i)

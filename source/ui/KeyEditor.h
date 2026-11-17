@@ -325,6 +325,7 @@ public:
 
 private:
     juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
+    juce::uint64 seenContent = 0;   // (0.164.0) a track clicked: nothing here changed
     // (0.123.0) The cycle as last drawn: a cycle drag's step repaints only the strips that changed.
     juce::uint64 seenCycle = 0;
     double shownCycleStart = -1.0, shownCycleEnd = -1.0;

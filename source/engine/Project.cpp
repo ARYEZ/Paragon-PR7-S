@@ -51,6 +51,18 @@ namespace pr7s
 
         const char* targetNames[] = { "volume", "pan", "mute", "instrument", "insert", "send" };
 
+        // (0.164.0) A fresh element's children gathered, then put in back to front in one go: JUCE's
+        // createNewChildElement walks the list for every child, so a part of thousands of notes and controller
+        // points took tens of milliseconds to write (the MediaBay's save, 0.163.0, was the same). The element must
+        // have no children before; the order comes out as added.
+        struct Children
+        {
+            juce::XmlElement& parent;
+            std::vector<juce::XmlElement*> made {};
+            juce::XmlElement* createNewChildElement (juce::StringRef tag) { made.push_back (new juce::XmlElement (tag)); return made.back(); }
+            ~Children() { for (auto i = made.rbegin(); i != made.rend(); ++i) parent.prependChildElement (*i); }
+        };
+
         void lanesToXml (const std::vector<AutomationLane>& lanes, juce::XmlElement& parent)
         {
             for (const auto& lane : lanes)
@@ -66,9 +78,10 @@ namespace pr7s
                 }
                 e->setAttribute ("shown", lane.shown);
                 e->setAttribute ("muted", lane.muted);
+                Children kids { *e };
                 for (const auto& point : lane.points)
                 {
-                    auto* p = e->createNewChildElement (pointTag);
+                    auto* p = kids.createNewChildElement (pointTag);
                     p->setAttribute ("beat", point.beat);
                     p->setAttribute ("value", point.value);
                     if (std::abs (point.curve) > 1.0e-6f)
@@ -78,7 +91,7 @@ namespace pr7s
                 }
                 for (const auto& point : lane.trim)
                 {
-                    auto* p = e->createNewChildElement ("Trim");
+                    auto* p = kids.createNewChildElement ("Trim");
                     p->setAttribute ("beat", point.beat);
                     p->setAttribute ("value", point.value);
                     if (std::abs (point.curve) > 1.0e-6f)
@@ -815,9 +828,10 @@ namespace pr7s
                     p->setAttribute ("muted", true);
                 if (part.linkCopy)
                     p->setAttribute ("linkCopy", true);
+                Children kids { *p };
                 for (const auto& m : part.warp)
                 {
-                    auto* w = p->createNewChildElement ("Warp");
+                    auto* w = kids.createNewChildElement ("Warp");
                     w->setAttribute ("beat", m.beat);
                     w->setAttribute ("seconds", m.seconds);
                 }
@@ -840,7 +854,7 @@ namespace pr7s
                     p->setAttribute ("velocityOffset", part.velocityOffset);
                 for (const auto& note : part.notes)
                 {
-                    auto* n = p->createNewChildElement (noteTag);
+                    auto* n = kids.createNewChildElement (noteTag);
                     n->setAttribute ("start", note.start);
                     n->setAttribute ("length", note.length);
                     n->setAttribute ("pitch", note.pitch);
@@ -850,7 +864,7 @@ namespace pr7s
                 }
                 for (const auto& c : part.controllers)
                 {
-                    auto* e = p->createNewChildElement ("Controller");
+                    auto* e = kids.createNewChildElement ("Controller");
                     e->setAttribute ("kind", ControllerKinds::toText (ControllerKinds::codeOf (c)));
                     e->setAttribute ("start", c.start);
                     e->setAttribute ("value", c.value);

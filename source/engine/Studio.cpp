@@ -491,7 +491,8 @@ namespace pr7s
                 track.pan = then->pan;
                 track.mute = then->mute;
                 track.solo = then->solo && ! track.hidden && ! track.disabled;   // (hiding or disabling a track ended its solo: undo doesn't bring it back)
-                track.parts = then->parts;
+                if (track.parts != then->parts)   // (0.164.0: an undo copied every track's notes, changed or not)
+                    track.parts = then->parts;
                 restoreLanes (track.automation, then->automation);
                 track.output = then->output;
                 track.sends = then->sends;
@@ -1019,6 +1020,7 @@ namespace pr7s
                 selectedTracks.erase (std::remove (selectedTracks.begin(), selectedTracks.end(), id), selectedTracks.end());
             if (std::find (group.begin(), group.end(), selectedTrack) != group.end())
                 selectedTrack = selectedTracks.back();
+            if (! mirroring) selectionOnlyAsked = true;   // (0.164.0: only the selection changed)
             changed (false);
             return;
         }
@@ -1026,6 +1028,7 @@ namespace pr7s
             if (! isTrackSelected (id))
                 selectedTracks.push_back (id);
         selectedTrack = trackId;
+        if (! mirroring) selectionOnlyAsked = true;   // (0.164.0: only the selection changed)
         changed (false);
     }
 
@@ -1052,6 +1055,7 @@ namespace pr7s
             if (! isTrackSelected (project.tracks[(size_t) i].id))
                 selectedTracks.push_back (project.tracks[(size_t) i].id);
         selectedTrack = trackId;
+        if (! mirroring) selectionOnlyAsked = true;   // (0.164.0: only the selection changed)
         changed (false);
     }
 
@@ -1877,6 +1881,7 @@ namespace pr7s
         // The master's row (0.9.12): the Inspector shows the master; no track selected.
         masterSelected = true;
         selectedTracks.clear();   // (no track looks chosen; recording still goes to the one last chosen)
+        if (! mirroring) selectionOnlyAsked = true;   // (0.164.0: only the selection changed)
         announce();
     }
 
@@ -1897,6 +1902,7 @@ namespace pr7s
         if (! engine.isRecording() && (selected == nullptr || (! selected->isChannel() && ! selected->disabled && ! selected->frozen)))
             for (auto& track : project.tracks)
                 track.armed = track.id == trackId;
+        if (! mirroring) selectionOnlyAsked = true;   // (0.164.0: only the selection changed)
         changed (false);
     }
 
@@ -2626,10 +2632,13 @@ namespace pr7s
         }
 
         // What of a part lies between two beats (none if nothing).
-        std::optional<Part> slice (Part part, double start, double end, const TempoMap& tempo)
+        std::optional<Part> slice (const Part& whole, double start, double end, const TempoMap& tempo)
         {
-            if (part.end() <= start + edge || part.start >= end - edge)
+            // (0.164.0) The overlap first: a part was copied whole (every note) before the test, and the
+            // linked-sections check slices every part of the song on each undo step.
+            if (whole.end() <= start + edge || whole.start >= end - edge)
                 return std::nullopt;
+            auto part = whole;
             if (start > part.start + edge)
                 part = cutPart (part, start - part.start, tempo);
             if (end < part.end() - edge)
@@ -13718,8 +13727,13 @@ namespace pr7s
         // (0.34.3) Every change counts, but a fader, pan or send level moved (nothing written, nothing
         // else changed with it): the views skip their full rebuild then, their timers following the mix.
         if (! mixOnlyAsked || mixOnlyBroken)
+        {
             ++changeVersion;
+            if (! selectionOnlyAsked)
+                ++contentVersion;
+        }
         mixOnlyAsked = mixOnlyBroken = false;
+        selectionOnlyAsked = false;
         sendChangeMessage();
     }
     //==========================================================================
@@ -14489,7 +14503,7 @@ namespace pr7s
         }
         // The chords: what was in the block cut out, the others' put in.
         auto& ct = project.chordTrack;
-        if (sectionContent (place).chords != content.chords)
+        if (sectionChords (place) != content.chords)
         {
             std::vector<ChordEvent> events;
             for (const auto& e : withLengths (ct, project.beatsPerBar()))
