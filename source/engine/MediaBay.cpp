@@ -1587,92 +1587,122 @@ namespace pr7s
         }
     }
 
+    namespace
+    {
+        // (0.163.0) What a save writes: the database's own lists (a save now), or copies of them (a save on its thread).
+        template <typename Source>
+        std::unique_ptr<juce::XmlElement> buildMediaXml (const Source& src)
+    {
+            // (0.163.0) The children gathered, then put in back to front: JUCE's createNewChildElement walks to the end
+            // of the list for every child, so 120,000 items took four minutes to save (and a save came after every
+            // scan and every rating).
+            auto xml = std::make_unique<juce::XmlElement> ("MediaBay");
+            std::vector<juce::XmlElement*> children;
+            children.reserve (src.items.size() + src.ratings.size() + src.tags.size() + src.locations.size() + 64);
+            struct Adder
+            {
+                std::vector<juce::XmlElement*>& to;
+                juce::XmlElement* createNewChildElement (const char* tag) { to.push_back (new juce::XmlElement (tag)); return to.back(); }
+            } adder { children };
+            auto* to = &adder;
+            for (const auto& location : src.locations)
+                to->createNewChildElement ("Location")->setAttribute ("path", location);
+            for (const auto& folder : src.exclusions)
+                to->createNewChildElement ("Exclude")->setAttribute ("path", folder);
+            for (const auto& [path, stars] : src.ratings)
+            {
+                auto* e = to->createNewChildElement ("Rating");
+                e->setAttribute ("path", path);
+                e->setAttribute ("stars", stars);
+            }
+            for (const auto& [path, t] : src.tags)
+            {
+                auto* e = to->createNewChildElement ("Tags");
+                e->setAttribute ("path", path);
+                const auto put = [e] (const char* name, const juce::String& v) { if (v.isNotEmpty()) e->setAttribute (name, v); };
+                put ("category", t.category);
+                put ("subCategory", t.subCategory);
+                put ("style", t.style);
+                put ("subStyle", t.subStyle);
+                put ("comment", t.comment);
+                put ("key", t.key);
+                if (t.bpm > 0.0) e->setAttribute ("bpm", t.bpm);
+                put ("character", t.character.joinIntoString (","));
+                for (const auto& [name, value] : t.user)
+                {
+                    auto* u = e->createNewChildElement ("User");
+                    u->setAttribute ("name", name);
+                    u->setAttribute ("value", value);
+                }
+            }
+            const auto writeLists = [&] (const char* tag, const std::vector<AttributeList>& lists)
+            {
+                for (const auto& list : lists)
+                {
+                    auto* e = to->createNewChildElement (tag);
+                    e->setAttribute ("name", list.name);
+                    for (const auto& sub : list.subs)
+                        e->createNewChildElement ("Sub")->setAttribute ("name", sub);
+                }
+            };
+            writeLists ("UserCategory", src.userCategories);
+            writeLists ("UserStyle", src.userStyles);
+            for (const auto& a : src.userAttributes)
+            {
+                auto* e = to->createNewChildElement ("UserAttribute");
+                e->setAttribute ("name", a.name);
+                e->setAttribute ("type", a.type == UserAttributeType::number ? "number" : a.type == UserAttributeType::yesNo ? "yesNo" : "text");
+                if (a.precision > 0) e->setAttribute ("precision", a.precision);
+            }
+            for (const auto& item : src.items)
+            {
+                auto* e = to->createNewChildElement ("Item");
+                e->setAttribute ("path", item.file.getFullPathName());
+                e->setAttribute ("size", juce::String (item.size));
+                e->setAttribute ("modified", juce::String (item.modified.toMilliseconds()));
+                if (item.seconds > 0.0) e->setAttribute ("seconds", item.seconds);
+                if (item.sampleRate > 0.0) e->setAttribute ("rate", item.sampleRate);
+                if (item.channels > 0) e->setAttribute ("channels", item.channels);
+                if (item.bpm > 0.0) e->setAttribute ("bpm", item.bpm);
+                if (item.key.isNotEmpty()) e->setAttribute ("key", item.key);
+                if (item.beats > 0.0) e->setAttribute ("beats", item.beats);
+                if (item.notes > 0) e->setAttribute ("notes", item.notes);
+                if (item.info.isNotEmpty()) e->setAttribute ("info", item.info);
+                if (item.presetClass.isNotEmpty()) e->setAttribute ("class", item.presetClass);
+                if (item.presetPlugin.isNotEmpty()) e->setAttribute ("plugin", item.presetPlugin);
+                if (item.presetInstrument) e->setAttribute ("instrument", true);
+                if (item.type == MediaType::pluginPreset && item.name != item.file.getFileNameWithoutExtension()) e->setAttribute ("name", item.name);
+                e->setAttribute ("read", item.readVersion);
+            }
+            for (auto i = children.rbegin(); i != children.rend(); ++i)
+                xml->prependChildElement (*i);
+            return xml;
+        }
+
+
+        struct MediaSaveCopy
+        {
+            juce::StringArray locations, exclusions;
+            std::vector<MediaItem> items;
+            std::map<juce::String, int> ratings;
+            std::map<juce::String, MediaTags> tags;
+            std::vector<AttributeList> userCategories, userStyles;
+            std::vector<UserAttribute> userAttributes;
+        };
+    }
+
     std::unique_ptr<juce::XmlElement> MediaDatabase::makeXml() const
     {
-        // (0.163.0) The children gathered, then put in back to front: JUCE's createNewChildElement walks to the end
-        // of the list for every child, so 120,000 items took four minutes to save (and a save came after every
-        // scan and every rating).
-        auto xml = std::make_unique<juce::XmlElement> ("MediaBay");
-        std::vector<juce::XmlElement*> children;
-        children.reserve (items.size() + ratings.size() + tags.size() + locations.size() + 64);
-        struct Adder
+        // (The private lists through references: a template outside the class can't read them.)
+        struct Lists
         {
-            std::vector<juce::XmlElement*>& to;
-            juce::XmlElement* createNewChildElement (const char* tag) { to.push_back (new juce::XmlElement (tag)); return to.back(); }
-        } adder { children };
-        auto* to = &adder;
-        for (const auto& location : locations)
-            to->createNewChildElement ("Location")->setAttribute ("path", location);
-        for (const auto& folder : exclusions)
-            to->createNewChildElement ("Exclude")->setAttribute ("path", folder);
-        for (const auto& [path, stars] : ratings)
-        {
-            auto* e = to->createNewChildElement ("Rating");
-            e->setAttribute ("path", path);
-            e->setAttribute ("stars", stars);
-        }
-        for (const auto& [path, t] : tags)
-        {
-            auto* e = to->createNewChildElement ("Tags");
-            e->setAttribute ("path", path);
-            const auto put = [e] (const char* name, const juce::String& v) { if (v.isNotEmpty()) e->setAttribute (name, v); };
-            put ("category", t.category);
-            put ("subCategory", t.subCategory);
-            put ("style", t.style);
-            put ("subStyle", t.subStyle);
-            put ("comment", t.comment);
-            put ("key", t.key);
-            if (t.bpm > 0.0) e->setAttribute ("bpm", t.bpm);
-            put ("character", t.character.joinIntoString (","));
-            for (const auto& [name, value] : t.user)
-            {
-                auto* u = e->createNewChildElement ("User");
-                u->setAttribute ("name", name);
-                u->setAttribute ("value", value);
-            }
-        }
-        const auto writeLists = [&] (const char* tag, const std::vector<AttributeList>& lists)
-        {
-            for (const auto& list : lists)
-            {
-                auto* e = to->createNewChildElement (tag);
-                e->setAttribute ("name", list.name);
-                for (const auto& sub : list.subs)
-                    e->createNewChildElement ("Sub")->setAttribute ("name", sub);
-            }
+            const juce::StringArray& locations; const juce::StringArray& exclusions;
+            const std::vector<MediaItem>& items; const std::map<juce::String, int>& ratings;
+            const std::map<juce::String, MediaTags>& tags;
+            const std::vector<AttributeList>& userCategories; const std::vector<AttributeList>& userStyles;
+            const std::vector<UserAttribute>& userAttributes;
         };
-        writeLists ("UserCategory", userCategories);
-        writeLists ("UserStyle", userStyles);
-        for (const auto& a : userAttributes)
-        {
-            auto* e = to->createNewChildElement ("UserAttribute");
-            e->setAttribute ("name", a.name);
-            e->setAttribute ("type", a.type == UserAttributeType::number ? "number" : a.type == UserAttributeType::yesNo ? "yesNo" : "text");
-            if (a.precision > 0) e->setAttribute ("precision", a.precision);
-        }
-        for (const auto& item : items)
-        {
-            auto* e = to->createNewChildElement ("Item");
-            e->setAttribute ("path", item.file.getFullPathName());
-            e->setAttribute ("size", juce::String (item.size));
-            e->setAttribute ("modified", juce::String (item.modified.toMilliseconds()));
-            if (item.seconds > 0.0) e->setAttribute ("seconds", item.seconds);
-            if (item.sampleRate > 0.0) e->setAttribute ("rate", item.sampleRate);
-            if (item.channels > 0) e->setAttribute ("channels", item.channels);
-            if (item.bpm > 0.0) e->setAttribute ("bpm", item.bpm);
-            if (item.key.isNotEmpty()) e->setAttribute ("key", item.key);
-            if (item.beats > 0.0) e->setAttribute ("beats", item.beats);
-            if (item.notes > 0) e->setAttribute ("notes", item.notes);
-            if (item.info.isNotEmpty()) e->setAttribute ("info", item.info);
-            if (item.presetClass.isNotEmpty()) e->setAttribute ("class", item.presetClass);
-            if (item.presetPlugin.isNotEmpty()) e->setAttribute ("plugin", item.presetPlugin);
-            if (item.presetInstrument) e->setAttribute ("instrument", true);
-            if (item.type == MediaType::pluginPreset && item.name != item.file.getFileNameWithoutExtension()) e->setAttribute ("name", item.name);
-            e->setAttribute ("read", item.readVersion);
-        }
-        for (auto i = children.rbegin(); i != children.rend(); ++i)
-            xml->prependChildElement (*i);
-        return xml;
+        return buildMediaXml (Lists { locations, exclusions, items, ratings, tags, userCategories, userStyles, userAttributes });
     }
 
     void MediaDatabase::save() const
@@ -1693,10 +1723,13 @@ namespace pr7s
         unsaved = false;
         if (store == juce::File())
             return;
-        std::shared_ptr<juce::XmlElement> xml = makeXml();
+        // (Copied here: building the XML of 120,000 files took half a second, now on the save's thread.)
+        auto copy = std::make_shared<MediaSaveCopy> (MediaSaveCopy { locations, exclusions, items, ratings, tags,
+                                                                     userCategories, userStyles, userAttributes });
         const auto file = store;
-        saving = std::async (std::launch::async, [xml, file]
+        saving = std::async (std::launch::async, [copy, file]
         {
+            const auto xml = buildMediaXml (*copy);
             file.getParentDirectory().createDirectory();
             xml->writeTo (file);
         });
