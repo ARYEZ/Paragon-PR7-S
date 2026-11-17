@@ -528,6 +528,7 @@ private:
     } cacheKey;
     bool cacheValid = false;
     juce::int64 cacheFrom = 0, cacheTo = 0;   // the song's screen pixels the ring holds
+    juce::int64 cacheBase = 0;                // the song's screen pixel at the ring's first column (set at each full redraw)
     std::vector<std::pair<juce::int64, juce::int64>> cacheDirty;   // stretches to draw again
     int cacheColumnsDrawn = 0;
     float lastPaintScale = 1.0f;

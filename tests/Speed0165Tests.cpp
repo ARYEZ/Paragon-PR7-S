@@ -186,7 +186,8 @@ TEST_CASE ("0.165.0: the arrangement kept as a picture while it scrolls draws wh
         arrange.setScrollCacheForTests (true);
         timeline.firstBeat = 0.0;
         render (false);
-        CHECK (arrange.getScrollCacheColumnsDrawn() == width);   // (the first: all of it)
+        const auto ringColumns = (int) std::floor ((float) arrange.getWidth() * scale + 1.0e-3f);   // (whole screen pixels)
+        CHECK (arrange.getScrollCacheColumnsDrawn() == ringColumns);   // (the first: all of it)
         const auto step = arrange.scrollStep();
         REQUIRE (step > 0.0);
         for (const auto steps : { 7, 1, 30, 113 })
@@ -218,7 +219,7 @@ TEST_CASE ("0.165.0: the arrangement kept as a picture while it scrolls draws wh
         studio.updatePart (studio.getProject().tracks[2].id, 0, moved);
         studio.dispatchPendingMessages();
         const auto edited = render (false);
-        CHECK (arrange.getScrollCacheColumnsDrawn() == width);
+        CHECK (arrange.getScrollCacheColumnsDrawn() == ringColumns);
         CHECK (farPixels (edited, render (true), 24) == 0);
         studio.undo();
         studio.dispatchPendingMessages();

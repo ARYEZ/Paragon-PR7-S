@@ -1342,7 +1342,8 @@ void ArrangeView::paint (juce::Graphics& g)
     }
 
     CacheKey key;
-    key.width = juce::roundToInt (std::ceil ((float) getWidth() * scale));
+    // (Whole screen pixels only: at 150 % the view's last pixel is half outside it, drawn fresh below.)
+    key.width = juce::roundToInt (std::floor ((float) getWidth() * scale + 1.0e-3f));
     key.height = juce::roundToInt (std::ceil ((float) getHeight() * scale));
     key.scrollY = timeline.scrollY;
     key.scale = scale;
@@ -1362,7 +1363,10 @@ void ArrangeView::paint (juce::Graphics& g)
     // What has to be drawn into the ring: all of it, or what the scroll uncovered and what was asked for again.
     std::vector<std::pair<juce::int64, juce::int64>> draw;
     if (! cacheValid || cacheTo <= viewFrom || cacheFrom >= viewTo)
+    {
         draw.emplace_back (viewFrom, viewTo);
+        cacheBase = viewFrom;   // (all of it: in one piece from the ring's first column, no cut through the view)
+    }
     else
     {
         if (viewFrom < cacheFrom)
@@ -1375,7 +1379,7 @@ void ArrangeView::paint (juce::Graphics& g)
     }
     cacheDirty.clear();
     {
-        const auto ringOf = [ring] (juce::int64 p) { return ((p % ring) + ring) % ring; };
+        const auto ringOf = [ring, base = cacheBase] (juce::int64 p) { return (((p - base) % ring) + ring) % ring; };
         juce::Graphics into (cacheImage);
         const juce::ScopedValueSetter<bool> inPicture (paintingCache, true);
         for (const auto& [a, b] : draw)
@@ -1398,7 +1402,7 @@ void ArrangeView::paint (juce::Graphics& g)
     cacheTo = viewTo;
 
     // The picture onto the screen: its two pieces, each on whole screen pixels (copied, not resampled).
-    const auto start = (int) (((origin % ring) + ring) % ring);
+    const auto start = (int) ((((origin - cacheBase) % ring) + ring) % ring);
     const auto place = [&] (int fromColumn, int columns, int atScreen)
     {
         if (columns <= 0)
@@ -1408,6 +1412,15 @@ void ArrangeView::paint (juce::Graphics& g)
     };
     place (start, key.width - start, 0);
     place (0, start, key.width - start);
+    // What's left at the right (less than a screen pixel's worth, at a scale like 150 %): drawn as it is.
+    if ((float) key.width < (float) getWidth() * scale - 1.0e-3f)
+    {
+        juce::Graphics::ScopedSaveState saved (g);
+        const auto from = (int) std::floor ((float) key.width / scale);
+        g.reduceClipRegion (from, 0, getWidth() - from, getHeight());
+        g.excludeClipRegion ({ 0, 0, from, getHeight() });
+        paintContent (g);
+    }
 
     const auto rows = timeline.layout (studio);
     rowsInPaint = &rows;
