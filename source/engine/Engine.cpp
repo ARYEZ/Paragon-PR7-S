@@ -261,6 +261,26 @@ namespace pr7s
         effect.prepareToPlay (sampleRate, maxBlockSize);
     }
 
+    namespace
+    {
+        // (0.164.0) The bytes a track's MIDI buffers need for its busiest block: the most events in any stretch of `blockBeats`,
+        // twice over (a cycle's wrap joins two stretches), with room for the controllers chased at a jump and notes ended
+        // (an event is 9 bytes in JUCE's buffer; 12 counted). Controller ramps are written every 1/128 beat, so three lanes
+        // overran the 4096 bytes once made, and the buffer grew on the audio thread.
+        template <typename Events>
+        size_t midiRoomOf (const Events& events, double blockBeats)
+        {
+            size_t most = 0;
+            for (size_t from = 0, to = 0; to < events.size(); ++to)
+            {
+                while (events[to].beat - events[from].beat > blockBeats)
+                    ++from;
+                most = juce::jmax (most, to - from + 1);
+            }
+            return juce::jmax ((size_t) 4096, (most * 2 + 300) * 12);
+        }
+    }
+
     void Engine::prepareTrack (TrackState& track)
     {
         if (track.instrument != nullptr)
@@ -272,8 +292,10 @@ namespace pr7s
         }
         track.buffer.setSize (channelsNeeded (track), maxBlockSize);
         track.bus.setSize (2, maxBlockSize);
-        track.midi.ensureSize (4096);
-        track.effectMidi.ensureSize (4096);   // (0.34.5: each track's own: effects may run on several cores at once)
+        // (0.164.0) Room for its busiest block at this block size (at up to 300 BPM; update makes it again when its events change).
+        const auto room = midiRoomOf (track.events, (double) maxBlockSize / juce::jmax (1.0, sampleRate) * 5.0);
+        track.midi.ensureSize (room);
+        track.effectMidi.ensureSize (room);   // (0.34.5: each track's own: effects may run on several cores at once)
         track.preFaderCopy.setSize (2, maxBlockSize);
         track.left.reset (sampleRate, gainRampSeconds);
         track.right.reset (sampleRate, gainRampSeconds);
@@ -636,17 +658,7 @@ namespace pr7s
         for (const auto& e : tempo.getEvents())
             fastest = juce::jmax (fastest, e.bpm);
         const auto blockBeats = juce::jmax (1.0e-3, (double) maxBlockSize / juce::jmax (1.0, sampleRate) * juce::jmax (fastest, project.bpm) / 60.0);
-        const auto midiRoomFor = [blockBeats] (const std::vector<Event>& events)
-        {
-            size_t most = 0;
-            for (size_t from = 0, to = 0; to < events.size(); ++to)
-            {
-                while (events[to].beat - events[from].beat > blockBeats)
-                    ++from;
-                most = juce::jmax (most, to - from + 1);
-            }
-            return juce::jmax ((size_t) 4096, (most * 2 + 300) * 12);
-        };
+        const auto midiRoomFor = [blockBeats] (const std::vector<Event>& events) { return midiRoomOf (events, blockBeats); };
         for (const auto& track : project.tracks)
         {
             Prepared p { track.id, {}, {}, sideGains (track, ! track.mute && ! track.disabled && ! soloedOut (track)), {}, {}, {}, false, false, false, {}, {}, {} };
@@ -807,8 +819,7 @@ namespace pr7s
                     && built.reference == referenceNow && built.chords == chordsNow && built.fallback == fallbackNow
                     && built.voice == voiceNow && built.voicing == voicingNow && built.pattern == patternNow)
                 {
-                    p.eventsKept = true;
-                    p.midiRoom = midiRoomFor (engineTrack->events);   // (message thread: they change only here)
+                    p.eventsKept = true;   // (their room made when they were built, or by prepareTrack at a new block size)
                     prepared.push_back (std::move (p));
                     continue;
                 }

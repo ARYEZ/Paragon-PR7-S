@@ -2,6 +2,46 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.164.0
+
+**Speed, round five** (you asked: another optimization pass on the whole studio). Three reviewers read the code (the audio thread, what happens on each edit, the screen). I checked every finding in the code before changing anything, and every change was checked to give the same result as before.
+
+**The audio thread** (fewer chances of a dropout, at your 2048 buffer especially):
+- **Each track's MIDI buffer had a fixed size of about 450 events.** Controller ramps are written 128 times a beat, so a track with pitch bend, vibrato and a swell (what the Architect writes for solos) could pass that in one large block. The buffer then grew while the audio was playing. Now each track's buffer is sized for its busiest block whenever its notes change, or when the audio device's block size changes, never during playback.
+- **The MIDI input queue** is now made big enough when the audio device starts. Before, it first grew while holding the lock the audio thread waits on.
+- **SysEx coming in from a controller** was copied for every track on every block. It's now passed through as it came.
+- **The audio thread used to spin at full speed** while it waited for the other cores to finish their tracks (tens of milliseconds behind a heavy instrument). That kept a whole core busy, competing with the helpers and the plug-ins' own threads on your 4-core machine. Now it waits briefly, then sleeps until the last track is done. The sound is the same.
+
+**Editing:**
+- **The song file is written in one pass.** The same slow way of adding lines that made the MediaBay's save take minutes was also used for parts and automation lanes. A part of thousands of notes and controller points wrote slowly on every save, backup and track preset.
+- **Undo copies only the tracks whose parts changed.** It used to copy every track's notes on every undo.
+- **The check for linked SECTIONS copies** used to copy the whole song several times on each undo step. It now copies only the parts inside each block.
+- **The check whether PR7-D's song needs sending again** used to write every drum note out as text on every change. It now uses a quick number made from the same notes.
+- **Each update** no longer copies every MIDI track's drum map and the chord track just to compare them.
+
+**The screen** (your window spans three screens):
+- **Waveforms are drawn in one go per clip**, not one rectangle at a time, and each pixel's position is worked out once.
+- **Clicking a track repaints only the rows it changes**: the selected row, and the alternating shades between it and the track selected before. It used to repaint the whole arrangement.
+- **The Inspector** (when hidden with F1) and **the Architect's page** (behind its IDEAS tab, or with its window closed) no longer keep updating themselves every frame.
+
+Measured on the test songs here, before and after:
+
+| | Before | After |
+|---|---|---|
+| The whole window at 5760 px wide | 47 ms | 29 ms |
+| The arrangement at 5760 px wide | 17 ms | 10 ms |
+| The window at 1500 px | 27 ms | 14 ms |
+| Saving a song with 100 MB of plug-in settings | about 1.7 s | about 1.5 s |
+
+The screens were compared pixel by pixel with the last version: identical at 5760 wide, and at most one colour level apart in a few pixels elsewhere.
+
+Not done this round, and why:
+- **Finding each track's output and sends by a stored link instead of a search:** a few microseconds a block, with a risk of a link left pointing nowhere.
+- **Combining the channel EQ's filter stages into one pass:** about 3% of a core with 30 EQs on, a larger rewrite.
+- **A stored picture of the arrangement while Stationary Cursor scrolls it:** the largest screen cost left, and a big change.
+
+Not checked here: your plug-ins and your interface (the audio-thread changes can only be heard and measured on your machine).
+
 ## 0.163.0
 
 **The MediaBay at 120,000 files** (you: "the lag is insane and makes it basically unusable"). Measured with 120,000 made-up files, before and after this release:
