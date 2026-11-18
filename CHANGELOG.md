@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.170.0
+
+Three new post-chorus / interlude types from your 12 songs (round five, the third of five releases). Shapes only, our names; under TYPE on a Post-Chorus, Interlude or Instrumental block.
+
+- **NINTH CLASH IN EIGHTHS:** the root, its ninth and the ninth an octave up on every eighth, in the second half every third eighth's ninth rising to the third, every fourth bar ending on a held tritone; the bass plays a whole step above the guitar's root, rocking a half step in the last two bars of four. Drums: a crash on every beat with the kick on the off-eighths, or the snare on every dotted eighth. Keys: the key's fifth high every two bars.
+- **ONE CHORD RUNG OVER THE INTRO BEAT:** one open chord struck and left ringing eight bars (or four), the bass holding the root, over a half-time hat groove or the ride.
+- **HELD SECOND CLUSTER, SIXTEENTH PICKUP:** a ninth-and-third cluster held three beats, then a sixteenth pickup of the next chord on beat 4 (the bass with it), over a tom groove with splashes on the beats.
+
+Not checked here: how they sound.
+
 ## 0.169.0
 
 Seven new chorus types from your 12 songs (round five, the second of five releases). Shapes only, our names; under TYPE on a chorus block (the hook, post-chorus and interlude lists take the chorus types too).

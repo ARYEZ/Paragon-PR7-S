@@ -2916,13 +2916,13 @@ TEST_CASE ("0.110.0: interlude and post-chorus types, every lane's options a dif
                                             "STAB & ANSWER", "TREMOLO OVER CHUGS", "CLEAN BREATH", "TRITONE AIR & BUILD", "CHROMATIC WOBBLE" };
     // A post-chorus: these, then the chorus's; an interlude or instrumental: these, then the bridge's.
     const auto post = sectionTypesFor ("Post-Chorus");
-    REQUIRE (post.size() == names.size() + 6 + 3 + sectionTypesFor ("Chorus").size());
+    REQUIRE (post.size() == names.size() + 6 + 3 + 3 + sectionTypesFor ("Chorus").size());
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (post[i].name == names[i]);
-    CHECK (post[names.size() + 6 + 3].name == "DRIVING");   // (0.141.0: six more first)
+    CHECK (post[names.size() + 6 + 3 + 3].name == "DRIVING");   // (0.141.0: six more first)
     const auto interlude = sectionTypesFor ("Interlude 2");
-    REQUIRE (interlude.size() == names.size() + 6 + 3 + sectionTypesFor ("Bridge").size());
-    CHECK (interlude[names.size() + 6 + 3].name == "HALF-TIME MELODIC");
+    REQUIRE (interlude.size() == names.size() + 6 + 3 + 3 + sectionTypesFor ("Bridge").size());
+    CHECK (interlude[names.size() + 6 + 3 + 3].name == "HALF-TIME MELODIC");
     CHECK (sectionTypeNamed ("Instrumental", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Chorus", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Hook", "HOOK RIFF").has_value());
@@ -6487,5 +6487,90 @@ TEST_CASE ("0.169.0: round five's chorus types, every lane's options a different
         for (const auto& n : layers[(size_t) ComposerLayer::guitar].notes)
             if (n.beat >= 4.0 && n.beat < 8.0)
                 CHECK (std::abs (n.beat - 6.0) < 1.0e-6);
+    }
+}
+
+TEST_CASE ("0.170.0: round five's post-chorus and interlude types, every lane's options a different part", "[sections][types][post170]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars; the guitar's low A 33)
+    const std::vector<juce::String> names { "NINTH CLASH IN EIGHTHS", "ONE CHORD RUNG OVER THE INTRO BEAT", "HELD SECOND CLUSTER, SIXTEENTH PICKUP" };
+    const auto post = sectionTypesFor ("Post-Chorus");
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        INFO (names[i]);
+        CHECK (post[11 + 6 + 3 + i].name == names[i]);
+        CHECK (sectionTypesFor ("Interlude")[11 + 6 + 3 + i].name == names[i]);
+        CHECK (sectionTypeCalled (names[i])->band == SectionType::Band::interlude);
+        ComposerState s;
+        applySectionType (s, "Post-Chorus", names[i]);
+        REQUIRE (s.sectionType == names[i]);
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                INFO (composerLayerName (l) << " " << o << " " << sectionApproaches (s, l)[(int) o]);
+                CHECK (seen.insert (key (choices[o])).second);
+                const auto name = sectionApproaches (s, l)[(int) o];
+                if (name != "OUT" && name != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+    }
+
+    const auto layersOf = [&] (const juce::String& type, int guitar, int bass, int drums)
+    {
+        ComposerState s;
+        applySectionType (s, "Post-Chorus", type);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::bass).approach = bass;
+        s.lane (ComposerLayer::drums).approach = drums;
+        return composeLayers (s, spans, c);
+    };
+    const auto at = [] (const LineIdea& idea, double beat)
+    {
+        std::vector<int> pitches;
+        for (const auto& n : idea.notes)
+            if (std::abs (n.beat - beat) < 1.0e-6 && ! n.keyswitch)
+                pitches.push_back (n.pitch);
+        std::sort (pitches.begin(), pitches.end());
+        return pitches;
+    };
+    // NINTH CLASH: the root, its ninth and the ninth an octave up; the bass a whole step above the root.
+    {
+        const auto layers = layersOf ("NINTH CLASH IN EIGHTHS", 1, 0, 0);
+        CHECK (at (layers[(size_t) ComposerLayer::guitar], 0.5) == std::vector<int> { 33, 47, 59 });
+        const auto& b = layers[(size_t) ComposerLayer::bass];
+        REQUIRE (! b.notes.empty());
+        CHECK ((b.notes.front().pitch - 33) % 12 == 2);
+    }
+    // ONE CHORD RUNG: struck once, held eight bars.
+    {
+        const auto layers = layersOf ("ONE CHORD RUNG OVER THE INTRO BEAT", 0, 0, 0);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        REQUIRE (g.notes.size() == 4u);
+        CHECK (g.notes.front().length > 30.0);
+    }
+    // HELD SECOND CLUSTER: the next chord's pickup in sixteenths on beat 4 (F after A minor).
+    {
+        const auto layers = layersOf ("HELD SECOND CLUSTER, SIXTEENTH PICKUP", 0, 0, 0);
+        CHECK (at (layers[(size_t) ComposerLayer::guitar], 3.0) == std::vector<int> { 41, 48 });
     }
 }

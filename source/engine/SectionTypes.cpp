@@ -103,7 +103,11 @@ namespace pr7s
                 // (0.149.0) Round four (shapes only, our names).
                 { "OFF-BEAT LOW DYADS UNDER A HIGH DRONE", "Muted low dyads on off-beat sixteenths, the root rung high, the bass busy round the root and flat seven", r, {}, i },
                 { "CLAPS AND ONE GUITAR", "No kick: the snare and claps on every beat with a tambourine, one guitar's hook figure; keys and bass come in late", r, {}, i },
-                { "BASS RIFF ALONE UNDER A HELD HIGH NOTE", "The bass's riff alone under one held high note, then the guitar joins", r, {}, i } };
+                { "BASS RIFF ALONE UNDER A HELD HIGH NOTE", "The bass's riff alone under one held high note, then the guitar joins", r, {}, i },
+                // (0.170.0) Round five (the owner's 12 songs; shapes only, our names).
+                { "NINTH CLASH IN EIGHTHS", "A root-and-ninth cluster on every eighth with the bass a whole step above it, crashes on the beats", r, {}, i },
+                { "ONE CHORD RUNG OVER THE INTRO BEAT", "One open chord struck and rung eight bars over a half-time hat groove, the bass holding the root", r, {}, i },
+                { "HELD SECOND CLUSTER, SIXTEENTH PICKUP", "A ninth-and-third cluster held each bar, a sixteenth pickup into the next chord, a tom groove", r, {}, i } };
             const auto before = sectionTypesFor (base == "Post-Chorus" ? juce::String ("Chorus") : juce::String ("Bridge"));
             types.insert (types.end(), before.begin(), before.end());
             return types;
@@ -1094,6 +1098,13 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "BUSY KICK, RIDE BELL, CHINA ON FOUR", "BUSY KICK, CRASH EVERY BAR" }, {} },
                 { "CHANGES ON THREE", { "OPEN EIGHTHS, CHANGING ON THREE", "WITH A PASSING CHORD ON TWO" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "HELD PADS", "SILENT" }, { "FOUR ON THE FLOOR, BACKBEAT", "FOUR ON THE FLOOR, PICKUP SIXTEENTH" }, {} },
+                // (0.170.0) Round five's post-choruses and interludes.
+                { "NINTH CLASH IN EIGHTHS", { "NINTH CLUSTER, TRITONE ENDING", "NINTH CLUSTER IN EIGHTHS" }, { "A WHOLE STEP ABOVE THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HIGH FIFTH EVERY TWO BARS", "SILENT" }, { "CRASH QUARTERS, KICK OFF THE BEAT", "SNARE ON THE DOTTED EIGHTHS" }, {} },
+                { "ONE CHORD RUNG OVER THE INTRO BEAT", { "ONE CHORD RUNG EIGHT BARS", "ONE CHORD RUNG FOUR BARS" }, { "ROOT HELD UNDER IT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF-TIME HAT QUARTERS, KICK CYCLE", "RIDE QUARTERS, SNARE ON THREE" }, {} },
+                { "HELD SECOND CLUSTER, SIXTEENTH PICKUP", { "HELD SECOND CLUSTER, PICKUP", "HELD SECOND CLUSTER ONLY" }, { "ROOT HELD, THEN THE PICKUP", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "TOM GROOVE, SPLASH QUARTERS", "BACKBEAT, CLOSED HATS" }, {} },
                 // (0.169.0) Round five's choruses.
                 { "HALF-STEP GRIND IN THREES, HIGH TONIC TREMOLO", { "GRIND IN THREES, HIGH TONIC TREMOLO", "GRIND IN THREES ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HIGH TONIC PEDAL" }, { "KICK ON THE GRIND, CRASH PAIRS", "BACKBEAT, OPEN HAT OFF-BEATS" }, {} },

@@ -10429,6 +10429,62 @@ namespace pr7s
                     if (chord.type == Chord::Type::sus2 || chord.type == Chord::Type::sus4) return 2;
                     return chord.type == Chord::Type::minor || chord.type == Chord::Type::diminished ? 3 : 4;
                 };
+                // (0.170.0) Round five's post-choruses and interludes.
+                if (n == "NINTH CLUSTER IN EIGHTHS" || n == "NINTH CLUSTER, TRITONE ENDING")
+                {
+                    text (n == "NINTH CLUSTER IN EIGHTHS" ? "The root, its ninth and the ninth an octave up on every eighth"
+                                                         : "The ninth cluster on every eighth, in the second half every third eighth's ninth rising to the third, every fourth bar ending on a held tritone");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        const auto t = thirdUp (chordOfBar (bar));
+                        const auto tail = n == "NINTH CLUSTER, TRITONE ENDING" && bar % 4 == 3;
+                        for (int k = 0; k < 8; ++k)
+                        {
+                            const auto at = bar * bpb + k * e;
+                            if (tail && k >= 6)
+                            {
+                                if (k == 6)
+                                {
+                                    add (out, at, q * 0.95, root, open());
+                                    add (out, at, q * 0.95, root + 6, open());
+                                }
+                                continue;
+                            }
+                            const auto top = n == "NINTH CLUSTER, TRITONE ENDING" && k >= 4 && k % 3 == 2 ? 12 + t : 14;
+                            for (const auto p : { root, root + top, root + top + 12 })
+                                add (out, at, e * 0.88, p, open());
+                        }
+                    }
+                    return out;
+                }
+                if (n == "ONE CHORD RUNG EIGHT BARS" || n == "ONE CHORD RUNG FOUR BARS")
+                {
+                    const auto span = n == "ONE CHORD RUNG EIGHT BARS" ? 8 : 4;
+                    text (n == "ONE CHORD RUNG EIGHT BARS" ? "An open voicing (the root, octave, fifth over it and two octaves) struck once and rung eight bars"
+                                                           : "The open voicing struck every four bars and rung");
+                    for (int bar = 0; bar < bars; bar += span)
+                        for (const auto p : { 0, 12, 19, 24 })
+                            add (out, bar * bpb, juce::jmin (span, bars - bar) * bpb * 0.97, barRoot (bar) + p, open());
+                    return out;
+                }
+                if (n == "HELD SECOND CLUSTER, PICKUP" || n == "HELD SECOND CLUSTER ONLY")
+                {
+                    text (n == "HELD SECOND CLUSTER ONLY" ? "A cluster of the chord's ninth and third held each bar"
+                                                          : "A cluster of the chord's ninth and third held three beats, then a sixteenth pickup of the next chord on beat 4");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        const auto t = thirdUp (chordOfBar (bar));
+                        const auto held = n == "HELD SECOND CLUSTER ONLY" ? 16 : 12;
+                        add (out, bar * bpb, held * s16 * 0.95, root + 14, open());
+                        add (out, bar * bpb, held * s16 * 0.95, root + 12 + t, open());
+                        if (held == 12)
+                            for (int k = 12; k < 16; ++k)
+                                power (out, bar * bpb + k * s16, s16 * 0.85, nextRoot (bar), tight(), false);
+                    }
+                    return out;
+                }
                 // (0.169.0) Round five's choruses.
                 if (n == "GRIND IN THREES, HIGH TONIC TREMOLO" || n == "GRIND IN THREES ONLY")
                 {
@@ -12492,6 +12548,36 @@ namespace pr7s
                 if (n == "OUT") return silent (b, "bass");
                 if (n == "ROOTS HELD") return pattern ("x---------------", "Each bar's root held");
                 if (n == "3+3+2 EIGHTHS") return pattern ("x-----x-----x---", "The root on a 3+3+2 figure of eighths, each held to the next");
+                // (0.170.0) Round five's post-choruses and interludes.
+                if (n == "A WHOLE STEP ABOVE THE GUITAR")
+                {
+                    out.description = "The bass a whole step above the guitar's root (X---x-x-X---x-x-), rocking a half step in the last two bars of every four";
+                    for (int bar = 0; bar < bars; ++bar)
+                        each16 ("x---x-x-x---x-x-", bar * bpb, [&] (double t, int k)
+                        {
+                            const auto up = bar % 4 >= 2 && (k / 4) % 2 == 1 ? 1 : 2;
+                            add (out, t, (k % 8 == 0 ? 4 : 2) * s16 * 0.9, bassRoot (bar * bpb) + up, k % 8 == 0 ? 0.86f : 0.76f);
+                        });
+                    return out;
+                }
+                if (n == "ROOT HELD UNDER IT")
+                {
+                    out.description = "The root held as long as the rung chord, eight bars at a time";
+                    for (int bar = 0; bar < bars; bar += 8)
+                        add (out, bar * bpb, juce::jmin (8, bars - bar) * bpb * 0.97, bassRoot (bar * bpb), 0.78f);
+                    return out;
+                }
+                if (n == "ROOT HELD, THEN THE PICKUP")
+                {
+                    out.description = "The root held three beats, then the guitar's sixteenth pickup into the next chord";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        add (out, bar * bpb, 12 * s16 * 0.95, bassRoot (bar * bpb), 0.8f);
+                        for (int k = 12; k < 16; ++k)
+                            add (out, bar * bpb + k * s16, s16 * 0.85, bassRoot ((bar + 1 < bars ? bar + 1 : 0) * bpb), 0.78f);
+                    }
+                    return out;
+                }
                 // (0.169.0) Round five's choruses.
                 if (n == "WHOLE NOTES, FIFTH THEN ROOT")
                 {
@@ -12948,6 +13034,14 @@ namespace pr7s
                 const auto k = LineIdea::Part::chords;
                 if (n == "SILENT")
                     return silent (k, "keys");
+                if (n == "HIGH FIFTH EVERY TWO BARS")   // (0.170.0)
+                {
+                    auto out = idea (k, "high fifth every two bars", "The key's fifth high, struck and held every two bars");
+                    const auto p = pitchOfClassIn ((key.pitchClass() + 7) % 12, 74, 85);
+                    for (int bar = 0; bar < bars; bar += 2)
+                        add (out, bar * bpb, juce::jmin (2, bars - bar) * bpb * 0.96, p, 0.42f);
+                    return out;
+                }
                 // (0.169.0) Round five's choruses.
                 if (n == "HIGH TONIC PEDAL")
                 {
@@ -13542,6 +13636,26 @@ namespace pr7s
                         bar (b);
                     return out;
                 };
+                // (0.170.0) Round five's post-choruses and interludes.
+                if (n == "CRASH QUARTERS, KICK OFF THE BEAT" || n == "SNARE ON THE DOTTED EIGHTHS")
+                    return every (n == "CRASH QUARTERS, KICK OFF THE BEAT" ? "A crash on every beat, the kick on every off-eighth, the snare on 1 and 3, a fill to end"
+                                                                           : "A crash on every beat, the kick on the off-eighths, the snare on every dotted eighth", [&] (int b)
+                    {
+                        kit (out, b, offEighths, n == "CRASH QUARTERS, KICK OFF THE BEAT" ? "x-------x-------" : "x--x--x--x--x---", GmDrum::crash, quarters, 0);
+                        fillLast (out, b);
+                    });
+                if (n == "RIDE QUARTERS, SNARE ON THREE")
+                    return every ("Half time: the ride on the beats, the snare on 3, the kick on 1 and the and of 2", [&] (int b)
+                    {
+                        kit (out, b, "x-----x---------", "--------x-------", GmDrum::ride, quarters, 8);
+                    });
+                if (n == "TOM GROOVE, SPLASH QUARTERS")
+                    return every ("Toms on the and of 2 and beat 3, the kick in pairs, a splash on every beat, a snare pickup to end the bar", [&] (int b)
+                    {
+                        kit (out, b, "xx-x----xx------", "--------------xx", GmDrum::crash2, quarters, 0);
+                        hit (out, b * bpb + 6 * s16, GmDrum::tomMid, 0.78f);
+                        hit (out, b * bpb + 8 * s16, GmDrum::tomFloor, 0.8f);
+                    });
                 // (0.169.0) Round five's choruses.
                 if (n == "KICK ON THE GRIND, CRASH PAIRS" || n == "BACKBEAT, OPEN HAT OFF-BEATS")
                     return every (n == "KICK ON THE GRIND, CRASH PAIRS" ? "The kick on every hit of the grind, the snare on 2 and 4, open hats on the off-beats, crashes in sixteenth pairs on 1 and 3"
