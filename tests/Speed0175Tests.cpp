@@ -100,6 +100,7 @@ TEST_CASE ("0.175.0: chasing walks back from where playing starts and finds each
         engine.stop();
         renderSamples (engine, 512);
         probe->received.clear();
+        const auto playedFrom = probe->samplesSoFar;   // (the probe counts samples from the start)
         engine.setPosition (start);
         engine.play();
         renderSamples (engine, 64);
@@ -107,8 +108,8 @@ TEST_CASE ("0.175.0: chasing walks back from where playing starts and finds each
         auto bendValue = -1;
         for (const auto& r : probe->received)
         {
-            if (r.sample != 0)
-                continue;
+            if (r.sample != playedFrom)
+                continue;   // (only what's sent where playing starts: the chase)
             CHECK (r.message.getChannel() == 3);
             if (r.message.isController())
                 cc[r.message.getControllerNumber()] = r.message.getControllerValue();
