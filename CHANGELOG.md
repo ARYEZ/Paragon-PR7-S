@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.174.0
+
+Speed, round seven: the two look changes you OK'd and the riskier redraw changes left over from 0.173.0.
+
+**The two look changes:**
+- **The cycle's tint is drawn solid** in each row instead of as a see-through layer over the whole arrangement (3-4 ms a redraw on a wide window). It looks the same as before: the same colour, over the grid lines too.
+- **Notes inside parts sit on whole pixels.** In-between positions made the drawing smooth every note's edges, more than twice the work (46,000 notes: 17 ms down to 7). At normal zoom you won't see a difference.
+
+**Redraws:**
+- **An edit to one part redraws only its track's row** (and the folder it's in), not the whole arrangement across your three screens. This covers editing notes or controllers, resizing, muting, and the info line's fields.
+- **The MIDI editor isn't redrawn when another track's parts change.** Moving or muting parts in the arrangement redrew the whole editor (52 ms at 200 % across three screens).
+- **Muting parts copies only their own tracks' parts.** Before, every track's parts were copied, which also made every row redraw.
+- **The transport's screens** (POSITION, TIME, CPU, OUT, TEMPO, SIGNATURE) keep their frames and glass as pictures. Only the numbers are drawn each frame.
+- **The EQ window** keeps its grid and its curve as pictures while the spectrum moves between them. The curve is drawn again only when the EQ changes.
+- **The Media rack does nothing while it's hidden.** It used to check for scans ten times a second even with the right zone closed.
+
+**Fixed along the way:** a finished MediaBay scan was taken in by whichever of the MediaBay window and the Media rack asked first, and the other one never refreshed. Both see it now.
+
 ## 0.173.0
 
 Speed, round six (you asked for another full pass). Three reviewers looked at the audio, the screen, and the edits / ARCHITECT, every finding was checked in the code and measured, and only changes that give exactly the same sound and picture went in.
