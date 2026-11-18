@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.173.0
+
+Speed, round six (you asked for another full pass). Three reviewers looked at the audio, the screen, and the edits / ARCHITECT, every finding was checked in the code and measured, and only changes that give exactly the same sound and picture went in.
+
+**ARCHITECT, much quicker:**
+- **Section types were built again on every question.** Every time ARCHITECT asked "what types does a chorus have?" it made the whole list of about 280 types afresh, up to nine times per lane. Now each section's list is made once and kept. Opening the TYPE options went from about 1 second to 23 ms, a lane's option menu from 32 ms to under 1 ms, and composing a section's lanes from 10-21 ms to about 0.4 ms. What it writes is identical (checked note for note).
+- **The shared options lists** (the FROM YOUR SONGS ones) are made once, not on every call.
+- **The melody lane composed six melodies to use one.** Now it composes only the one asked for (the same notes as before, tested).
+- **The library-groove pools** were kept for 6 sections, fewer than a song has, so they were thrown away and worked out again all the time. Now 16 are kept.
+- **The lane menu** no longer works out every option's music just to show their names.
+
+**Editing:**
+- **Linked sections checked on every undo step.** The SECTIONS row compared every linked block's music after every edit (about 2 ms of every 3). Now it skips the check when the song has no linked blocks, or when nothing they're made from changed.
+- The PR7-D link no longer copies every track's parts to look at them.
+
+**Audio:**
+- **The channel EQ works on both sides at once** (the processor's two-number registers): about 1.6 times quicker on stereo channels, bit for bit the same sound. Channels with no EQ bands on skip it entirely.
+- The click's loop runs only while a click is sounding.
+
+**The screen:**
+- **Recording no longer redraws the whole window** several times a second: only the take's row, from where it started to the playhead. Before, the arrangement (24-31 ms), the MIDI editor (52 ms) and the track list were all redrawn while you recorded.
+- **Waveforms are drawn bar by bar** again: with software drawing, the way 0.164.0 batched them was about 13 times slower on long recordings (31,000 bars: 42 ms down to 3 ms). The picture is the same (at most one shade out of 255 at a bar's anti-aliased edge).
+
+**Not done, and why:**
+- Two would change the look slightly, so they're your call: the cycle's tint drawn solid instead of see-through (saves 3-4 ms a redraw), and notes in parts placed on whole pixels (16 ms down to 6 on a busy song).
+- Riskier ones left for another round: the MIDI editor and the arrangement redrawing only rows that changed, keeping the transport screens' frames and the EQ window's curve layers as pictures, and the Media rack's timer while it's hidden.
+
 ## 0.172.0
 
 The last of the five releases from your 12 songs (round five): the smaller additions. These are shared options, offered in the lane's menu under every section type after the type's own (they're in the option browser's FROM YOUR SONGS group), plus six transitions. Shapes only, our names.
