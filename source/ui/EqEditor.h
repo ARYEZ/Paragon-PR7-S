@@ -95,6 +95,7 @@ private:
     void paintFront (juce::Graphics&);
 public:
     int getPicturesMade() const noexcept { return backPicture.made + frontPicture.made; }
+    void refreshForTests() { if (const auto now = current(); ! (now == shown)) { shown = now; repaint(); } }
 private:
 };
 
