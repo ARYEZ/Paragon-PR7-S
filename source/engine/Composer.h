@@ -202,6 +202,7 @@ namespace pr7s
     bool sectionTypeWritesLane (ComposerLayer, const ComposerState&, const ComposerContext&);
     // Every layer's idea, the lanes switched off too (shown dimmed), humanized as IDEAS' HUMANIZE.
     std::array<LineIdea, composerLayerCount> composeLayers (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+    LineIdea composeLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);   // (0.175.0: one of them)
     // (0.120.0) OCTAVE: every note but keyswitches moved by whole octaves (kept in 0-127; the drums never).
     void moveByOctaves (LineIdea&, ComposerLayer, int octaves);
 

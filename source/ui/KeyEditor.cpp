@@ -2963,7 +2963,13 @@ void KeyEditor::paintRuler (juce::Graphics& g)
 {
     const auto& project = studio.getProject();
     const auto ruler = juce::Rectangle<float> ((float) sideWidth, (float) infoHeight, (float) (getWidth() - sideWidth), (float) rulerHeight);
-    paintInfoLine (g);   // (the info line over the ruler: 0.38.0)
+    // (0.175.0) Only what the redraw reaches: the playhead's strips start at the top and came here
+    // 60 times a second, laying out the whole info line and every bar across the width.
+    const auto clip = g.getClipBounds();
+    if (clip.getY() < infoHeight)
+        paintInfoLine (g);   // (the info line over the ruler: 0.38.0)
+    if (clip.getBottom() <= infoHeight)
+        return;
     g.setColour (juce::Colour (0xff151116));
     g.fillRect (ruler);
     g.setColour (ParagonColours::panelEdge);
@@ -2972,8 +2978,9 @@ void KeyEditor::paintRuler (juce::Graphics& g)
     juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (rulerArea().getSmallestIntegerContainer());
     const auto signatures = project.signatures();
-    const auto last = beatForX ((float) getWidth());
-    for (auto b = signatures.barAt (firstBeat); signatures.beatOfBar (b) <= last; ++b)
+    const auto last = beatForX ((float) juce::jmin (getWidth(), clip.getRight() + 50));
+    const auto first = juce::jmax (firstBeat, beatForX ((float) clip.getX() - 50.0f));   // (a bar's number reaches 44 px right of it)
+    for (auto b = signatures.barAt (first); signatures.beatOfBar (b) <= last; ++b)
     {
         const auto& signature = signatures.segmentOfBar (b).event;
         if (signature.unit() * pixelsPerBeat < 10.0)
@@ -2988,7 +2995,7 @@ void KeyEditor::paintRuler (juce::Graphics& g)
     while (signatures.barLengthAt (firstBeat) * every * pixelsPerBeat < 36.0 && every < 4096)
         every *= 2;
     g.setFont (font (11.0f));
-    for (auto b = signatures.barAt (firstBeat); signatures.beatOfBar (b) <= last; ++b)
+    for (auto b = signatures.barAt (first); signatures.beatOfBar (b) <= last; ++b)
     {
         if (b % every != 0 && signatures.segmentOfBar (b).event.bar != b)
             continue;

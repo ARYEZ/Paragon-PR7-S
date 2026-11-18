@@ -204,3 +204,35 @@ TEST_CASE ("0.106.0: library grooves over a section type's drums; SYNC still mak
     s.syncLane = (int) ComposerLayer::drums;
     CHECK (composeLayers (s, spans, c)[(size_t) ComposerLayer::drums].style.startsWith ("My library"));
 }
+
+TEST_CASE ("0.175.0: under a type, the library's groove made once is every drums option's, as each made alone", "[composer][library][speed175]")
+{
+    Library library;
+    ComposerContext c;
+    c.libraryGrooves = library.grooves;
+    const auto spans = eightBars();
+    ComposerState s;
+    s.fitKicks = false;
+    s.lane (ComposerLayer::drums).style = 1;
+    const auto types = sectionTypesFor ("Verse");
+    REQUIRE_FALSE (types.empty());
+    applySectionType (s, "Verse", types.front().name);
+    REQUIRE (sectionTypeWritesLane (ComposerLayer::drums, s, c));
+    const auto choices = composerChoices (ComposerLayer::drums, s, spans, c);
+    REQUIRE (choices.size() > 3);
+    for (size_t i = 0; i < choices.size(); ++i)
+    {
+        auto each = s;
+        each.lane (ComposerLayer::drums).approach = (int) i;
+        const auto alone = composeLayer (ComposerLayer::drums, each, spans, c);
+        INFO ("option " << i);
+        CHECK (choices[i].style.startsWith ("My library"));
+        CHECK (choices[i].style == alone.style);
+        REQUIRE (choices[i].notes.size() == alone.notes.size());
+        for (size_t n = 0; n < alone.notes.size(); ++n)
+        {
+            CHECK (choices[i].notes[n].beat == alone.notes[n].beat);
+            CHECK (choices[i].notes[n].pitch == alone.notes[n].pitch);
+        }
+    }
+}

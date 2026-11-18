@@ -152,6 +152,17 @@ namespace pr7s
     //==========================================================================
     std::vector<int> composerProgressions (const ComposerState& s)
     {
+        // (0.175.0) Kept by key, genre and mood (the library never changes): ARCHITECT's header asked on every
+        // repaint, and each answer checked every chord of 157 progressions against the key.
+        static std::mutex keptLock;
+        static std::map<juce::String, std::vector<int>> kept;
+        const auto keyText = juce::String (s.key.letter) + ":" + juce::String (s.key.accidental) + ":" + (s.key.minor ? "m" : "M")
+                           + "|" + s.genre + "|" + s.mood;
+        {
+            const std::lock_guard<std::mutex> sl (keptLock);
+            if (const auto found = kept.find (keyText); found != kept.end())
+                return found->second;
+        }
         ProgressionFilter filter;
         filter.genre = s.genre;
         filter.mood = s.mood;
@@ -164,6 +175,10 @@ namespace pr7s
                                  return true;
                          return false;
                      }), found.end());
+        const std::lock_guard<std::mutex> sl (keptLock);
+        if (kept.size() > 256)
+            kept.clear();
+        kept[keyText] = found;
         return found;
     }
 
@@ -19831,10 +19846,17 @@ namespace pr7s
         if (sectionTypeWritesLane (l, s, c))
         {
             const auto approaches = sectionApproaches (s, l);
+            // (0.175.0) The library's groove plays over every drums option (syncedLayerOwn takes it before the
+            // options are looked at): made once and copied, not worked out again 50-80 times (each a riff).
+            const auto leader = s.leaderOf (l);
+            const auto sameForAll = l == ComposerLayer::drums && s.libraryDrums && (! leader.has_value() || *leader == ComposerLayer::drums);
             for (int i = 0; i < approaches.size(); ++i)
             {
                 each.lane (l).approach = i;
-                out.push_back (syncedLayer (l, each, spans, c));
+                if (sameForAll && i > 0 && out.front().style.startsWith ("My library: "))
+                    out.push_back (out.front());
+                else
+                    out.push_back (syncedLayer (l, each, spans, c));
             }
             return out;
         }
@@ -21313,19 +21335,19 @@ namespace pr7s
             Transition (*t, spans, c).apply (l, idea);
     }
 
-    std::array<LineIdea, composerLayerCount> composeLayers (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+    // (0.175.0) One lane as composeLayers makes it (each lane is made on its own: the TYPE browser asks for the
+    // drums alone, and a section's rewrite for the lanes it still holds).
+    LineIdea composeLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
     {
-        std::array<LineIdea, composerLayerCount> out;
         if (spans.empty())
-            return out;
-        for (const auto l : composerLayers())
+            return {};
         {
             if (c.myRiff.has_value() && s.riffLayer() == l)
             {
                 // (0.114.0) Your riff: nothing done to it (the others follow it through SYNC).
-                out[(size_t) l] = rawLayer (l, s, spans, c);
-                moveByOctaves (out[(size_t) l], l, s.lane (l).octave);
-                continue;
+                auto riff = rawLayer (l, s, spans, c);
+                moveByOctaves (riff, l, s.lane (l).octave);
+                return riff;
             }
             auto idea = syncedLayer (l, s, spans, c);
             idea.part = composerPartOf (l);
@@ -21364,8 +21386,17 @@ namespace pr7s
                               spans.back().end - spans.front().start, on.profile != nullptr ? on.profile->releaseKey() : -1);
             }
             moveByOctaves (idea, l, s.lane (l).octave);   // (0.120.0: OCTAVE, last)
-            out[(size_t) l] = std::move (idea);
+            return idea;
         }
+    }
+
+    std::array<LineIdea, composerLayerCount> composeLayers (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+    {
+        std::array<LineIdea, composerLayerCount> out;
+        if (spans.empty())
+            return out;
+        for (const auto l : composerLayers())
+            out[(size_t) l] = composeLayer (l, s, spans, c);
         return out;
     }
 

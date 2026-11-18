@@ -2274,8 +2274,7 @@ std::vector<OptionBrowser::Option> ComposerPage::typeOptions() const
         each.libraryDrums = false;
         each.lane (ComposerLayer::drums).on = true;
         pr7s::applySectionType (each, name, type);
-        const auto layers = pr7s::composeLayers (each, spans, context);
-        o.idea = layers[(size_t) ComposerLayer::drums];
+        o.idea = pr7s::composeLayer (ComposerLayer::drums, each, spans, context);   // (0.175.0: the drums alone)
         o.drums = true;
         o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, true);
     };
@@ -2776,6 +2775,11 @@ juce::String ComposerPage::summary() const
 void ComposerPage::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0c0a0d));
+    // (0.175.0) Only what the redraw reaches: while it plays, the playhead's 8 px strips in every lane
+    // came here 30 times a second and laid out the header, the song strip and every lane's header.
+    const auto clip = g.getClipBounds();
+    if (clip.getY() < headerHeight)
+    {
     g.setColour (ParagonColours::accent);
     g.fillRect (0, 0, getWidth(), 3);
     auto head = getLocalBounds().removeFromTop (headerHeight).reduced (gap, 8);
@@ -2785,16 +2789,18 @@ void ComposerPage::paint (juce::Graphics& g)
     g.setColour (ParagonColours::textDim);
     g.setFont (interFont (12.5f));
     g.drawText (status.isNotEmpty() ? summary() + "     " + status : summary(), head.withTrimmedRight (1100), juce::Justification::centredLeft, true);
+    }
 
     // The labels in the controls row.
     g.setFont (ParagonLookAndFeel::titleFont (12.0f));
     g.setColour (ParagonColours::textDim);
     g.drawText ("CHORDS FROM", controlsLabels, juce::Justification::centredRight, false);
 
-    paintSong (g);
+    if (clip.intersects (songArea))
+        paintSong (g);
 
     // The ruler: bars, and the chords' names where each starts.
-    if (! spans.empty() && ! ruler.isEmpty())
+    if (! spans.empty() && ! ruler.isEmpty() && clip.intersects (ruler))
     {
         const auto first = spans.front().start, total = spans.back().end - first;
         const auto xFor = [&] (double beat) { return (float) ruler.getX() + (float) ((beat - first) / total) * (float) ruler.getWidth(); };
@@ -2829,7 +2835,8 @@ void ComposerPage::paint (juce::Graphics& g)
     g.drawText ("CHORDS: CLICK TO SWAP. NOTES: CLICK TO HEAR, DRAG OUT AS MIDI",
                 juce::Rectangle<int> (gap, ruler.getY(), laneHeaderWidth, ruler.getHeight()), juce::Justification::centredLeft, true);
     for (const auto l : pr7s::composerLayers())
-        paintLane (g, l, lanes[(size_t) l]);
+        if (const auto& lane = lanes[(size_t) l]; clip.intersects (lane.header.getUnion (lane.notes).getUnion (lane.note)))
+            paintLane (g, l, lane);
 }
 
 void ComposerPage::paintSong (juce::Graphics& g) const
@@ -2954,6 +2961,7 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
     const auto& s = state.lane (l);
     const auto colour = colourOf (l);
     // The header: the layer's name over its keys.
+    if (g.clipRegionIntersects (lane.header.getUnion (lane.note)))
     {
         const auto r = lane.header.toFloat();
         g.setColour (juce::Colour (0xff141015));
@@ -3025,10 +3033,13 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
     high += 2;
     const auto body = r.reduced (0.0f, 4.0f);
     const auto row = body.getHeight() / (float) juce::jmax (1, high - low + 1);
+    const auto clipX = (float) g.getClipBounds().getX(), clipRight = (float) g.getClipBounds().getRight();
     for (const auto& n : notes)
     {
         if (n.keyswitch)
             continue;   // (a keyswitch held: named on the lane instead)
+        if (xFor (n.beat + n.length) < clipX - 2.0f || xFor (n.beat) > clipRight + 2.0f)
+            continue;   // (0.175.0: outside the redrawn strip)
         const auto y = body.getBottom() - (float) (n.pitch - low + 1) * row;
         g.setColour (colour.withAlpha ((s.on ? 0.45f + 0.55f * n.velocity : 0.18f)));
         g.fillRoundedRectangle (juce::Rectangle<float> (xFor (n.beat), y, juce::jmax (2.0f, xFor (n.beat + n.length) - xFor (n.beat) - 1.0f),

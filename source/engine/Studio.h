@@ -1744,7 +1744,7 @@ namespace pr7s
         std::map<const juce::AudioProcessor*, bool> editorAnswers;   // hasEditor's
         void unloadPlugins (Track&);   // their settings kept first (disable, freeze)
         void loadPlugins (Track&);     // from the kept settings (enable, unfreeze)
-        std::map<int, std::vector<Part>> frozenParts;   // the parts as they were frozen (locked)
+        std::map<int, PartList> frozenParts;   // the parts as they were frozen (locked; 0.175.0: shared with the song, so the check every change is one look)
         void punchOut (size_t pass, double endBeat, bool returnToOld = true);
         void startPass (int busId, const AutomationLane& control);
         static void freezeTrimOf (AutomationLane&);
