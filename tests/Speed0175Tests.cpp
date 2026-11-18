@@ -111,9 +111,10 @@ TEST_CASE ("0.175.0: chasing walks back from where playing starts and finds each
             if (r.sample != playedFrom)
                 continue;   // (only what's sent where playing starts: the chase)
             CHECK (r.message.getChannel() == 3);
+            // (the first of each: an event exactly where playing starts plays on that sample too, after the chase)
             if (r.message.isController())
-                cc[r.message.getControllerNumber()] = r.message.getControllerValue();
-            if (r.message.isPitchWheel())
+                cc.emplace (r.message.getControllerNumber(), r.message.getControllerValue());
+            if (r.message.isPitchWheel() && bendValue < 0)
                 bendValue = r.message.getPitchWheelValue();
         }
         // The last of each kind before the start, worked out the slow way.
@@ -127,7 +128,12 @@ TEST_CASE ("0.175.0: chasing walks back from where playing starts and finds each
                 else if (c.type == Controller::Type::pitchbend)
                     expectedBend = c.value;
             }
-        CHECK (cc == expected);
+        for (const auto& [n, v] : expected)
+        {
+            INFO ("CC " << n);
+            CHECK (cc[n] == v);
+        }
+        CHECK (cc.size() == expected.size());
         CHECK (bendValue == expectedBend);
     }
 }
