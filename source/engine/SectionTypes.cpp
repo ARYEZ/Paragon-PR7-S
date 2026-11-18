@@ -258,7 +258,15 @@ namespace pr7s
                          { "BASS SIXTEENTHS, GUITARS OUT", "The bass on root sixteenths under a keys ostinato and a hip-hop break; the guitars out, stabbing or in a wall", r, {}, c },
                          { "THREE CHORDS, THEN A HELD BAR", "Three chords on 1, the and of 2 and 4, the next bar holding the last; the snare on 3 only", r, {}, c },
                          { "HELD CHORD WITH A RINGING TOP, BUSY KICK", "A chord struck and held with its ninth ringing on top, pushed into the next, over a busy sixteenth kick", r, {}, c },
-                         { "CHANGES ON THREE", "Open eighths with each chord arriving on beat 3 over four on the floor", r, {}, c } };
+                         { "CHANGES ON THREE", "Open eighths with each chord arriving on beat 3 over four on the floor", r, {}, c ,
+                         // (0.169.0) Round five (the owner's 12 songs; shapes only, our names).
+                         { "HALF-STEP GRIND IN THREES, HIGH TONIC TREMOLO", "Low power chords grinding in threes between the root and the half step over it, the key's root high in sixteenths over them", r, {}, c },
+                         { "FIXED DISSONANT CHORD, BASS ROCKS UNDER IT", "One dissonant cluster struck on every beat all chorus, the bass moving under it, a china on the eighths", r, {}, c },
+                         { "LOW CHORD, HIGH CLASH, WALK BAR", "A low power chord answered by a high triad a half step over it, every third bar a chromatic walk down", r, {}, c },
+                         { "RINGING, THEN DRIVING", "Four-bar phrases going from a rung chord to a syncopated figure to driving eighths, half time under them", r, {}, c },
+                         { "TONIC BAR, CHROMATIC FALL BAR", "A bar of the key's root on 3+3+2, then a bar falling by half steps, a high seesaw over it", r, {}, c },
+                         { "CALL, AIR, DRIVE", "A bar of hits, a bar of air with one soft high chord, two driving bars", r, {}, c },
+                         { "RING THE OCTAVE OVER A MOVING BASS", "One high octave rung a bar, every fourth bar empty, the bass doing the moving, a half-time ride", r, {}, c } };
             }
             case 3:
             {
@@ -1086,6 +1094,21 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "BUSY KICK, RIDE BELL, CHINA ON FOUR", "BUSY KICK, CRASH EVERY BAR" }, {} },
                 { "CHANGES ON THREE", { "OPEN EIGHTHS, CHANGING ON THREE", "WITH A PASSING CHORD ON TWO" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "HELD PADS", "SILENT" }, { "FOUR ON THE FLOOR, BACKBEAT", "FOUR ON THE FLOOR, PICKUP SIXTEENTH" }, {} },
+                // (0.169.0) Round five's choruses.
+                { "HALF-STEP GRIND IN THREES, HIGH TONIC TREMOLO", { "GRIND IN THREES, HIGH TONIC TREMOLO", "GRIND IN THREES ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HIGH TONIC PEDAL" }, { "KICK ON THE GRIND, CRASH PAIRS", "BACKBEAT, OPEN HAT OFF-BEATS" }, {} },
+                { "FIXED DISSONANT CHORD, BASS ROCKS UNDER IT", { "FIXED CLUSTER ON THE BEATS", "FIXED CLUSTER, PLAIN VOICING UNDER" }, { "WHOLE NOTES, FIFTH THEN ROOT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "CLUSTER TOP AS A PAD" }, { "CHINA EIGHTHS, FLOOR TOM ACCENTS", "BACKBEAT, CLOSED HATS" }, {} },
+                { "LOW CHORD, HIGH CLASH, WALK BAR", { "LOW CHORD, HIGH CLASH, WALK BAR", "LOW CHORD AND HIGH CLASH ONLY" }, { "ROOTS UNDER THE CLASH", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CRASH ON THE KICKS, RIDE BETWEEN", "BACKBEAT, CLOSED HATS" }, {} },
+                { "RINGING, THEN DRIVING", { "RINGING, THEN DRIVING", "DRIVING EIGHTHS ALL THROUGH" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, OPEN HATS, THEN CRASH QUARTERS", "BACKBEAT, CLOSED HATS" }, {} },
+                { "TONIC BAR, CHROMATIC FALL BAR", { "TONIC BAR, CHROMATIC FALL BAR", "TONIC BAR EVERY BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SEESAW OVER IT", "SILENT" }, { "RIDE EIGHTHS, CRASH ON THE FALL", "BACKBEAT, CLOSED HATS" }, {} },
+                { "CALL, AIR, DRIVE", { "CALL, AIR, DRIVE", "CALL AND DRIVE, NO AIR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CALL, AIR, INTERLOCKING DRIVE", "BACKBEAT, CLOSED HATS" }, {} },
+                { "RING THE OCTAVE OVER A MOVING BASS", { "HIGH OCTAVE RUNG A BAR", "HIGH OCTAVE IN EIGHTHS" }, { "WHOLE AND HALF NOTES, MOVING", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF-TIME RIDE QUARTERS", "BACKBEAT, CLOSED HATS" }, {} },
                 // (0.168.0) Round five's verses.
                 { "PEDAL STUTTER UNDER OCTAVE THIRDS", { "STUTTER UNDER OCTAVE THIRDS", "STUTTER, CHORDS RUNG OVER IT" }, { "SIXTEENTH ROOTS WITH TWO HOLES", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "SYNCOPATED KICK PAIR, OPEN HATS", "CHINA EIGHTHS, SYNCOPATED KICK" }, {} },
