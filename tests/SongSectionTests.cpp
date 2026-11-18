@@ -5093,9 +5093,9 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const auto drums = extraApproaches (ComposerLayer::drums);
     const auto keys = extraApproaches (ComposerLayer::chords);
-    CHECK (drums.size() == 9 + 11 + 12);   // (0.155.0: eleven more drums, fifteen more keys)
-    CHECK (keys.size() == 5 + 15 + 12);
-    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27);   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
+    CHECK (drums.size() == 9 + 11 + 12 + 7);   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
+    CHECK (keys.size() == 5 + 15 + 12 + 2);
+    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12);   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
     CHECK (extraApproaches (ComposerLayer::bass).size() == 8);   // (0.160.0: in front of LOCKED WITH THE KICK)
 
     // Under STANDARD (no named type) nothing is added.
@@ -6659,5 +6659,101 @@ TEST_CASE ("0.171.0: round five's bridge types, every lane's options a different
         const auto layers = layersOf ("PEDAL CELL, FALLING TOP, CHORDS IN THE GAP", 1, 0, 0);
         const auto& g = layers[(size_t) ComposerLayer::guitar];
         CHECK (at (g, 0.0) == std::vector<int> { 33, 40, 52 });
+    }
+}
+
+TEST_CASE ("0.172.0: round five's shared options and transitions", "[sections][types][shared172]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars; the guitar's low A 33)
+    ComposerState s;
+    applySectionType (s, "Chorus", "DRIVING");
+    const auto play = [&] (ComposerLayer l, const juce::String& name)
+    {
+        auto t = s;
+        const auto all = sectionApproaches (t, l);
+        REQUIRE (all.contains (name));
+        t.lane (l).approach = all.indexOf (name);
+        return composeLayers (t, spans, c)[(size_t) l];
+    };
+    const auto at = [] (const LineIdea& idea, double beat)
+    {
+        std::vector<int> pitches;
+        for (const auto& n : idea.notes)
+            if (std::abs (n.beat - beat) < 1.0e-6 && ! n.keyswitch)
+                pitches.push_back (n.pitch);
+        std::sort (pitches.begin(), pitches.end());
+        return pitches;
+    };
+    // Every new shared option under a type that isn't one of round five's plays, each its own part.
+    {
+        std::set<juce::String> seen;
+        const juce::StringArray guitar { "HALF-STEP DROP IN THREES", "SIXTEENTH NEIGHBOURS, CLASH AT THE END", "PEDAL RIFF WITH A CHROMATIC PICKUP",
+                                         "FLAT-FIVE CHORD HAMMERED", "CHROMATIC QUARTET INTO THE TONIC", "OCTAVE POWER CHORDS IN 3+3+2",
+                                         "CLEAN HELD CHORD, PUSHED INTO FOUR", "FLAT-THREE OCTAVE BURST EVERY FOURTH BAR", "RING THE FLAT TWO",
+                                         "HIGH NOTE SEESAW, TWO BARS EACH", "FOUR-NOTE CHROMATIC CELL, OCTAVE DYADS", "OUT, THEN THE BASS'S ROCKING LINE" };
+        const juce::StringArray drums { "CRASH ON THE KICKS, RIDE BETWEEN", "HAND ON THE BEATS, FOOT ON THE ANDS", "SNARE ON THE DOTTED CHAIN, KICKS BETWEEN",
+                                        "SNARE DOUBLES THE UNISON CELL", "BACKBEAT, HAT RUFF EVERY SECOND BAR", "CRASH AND CHINA EIGHTHS, SNARE THICKENS",
+                                        "RIDE ON THE DOTTED LINE" };
+        for (const auto& [l, names] : { std::pair<ComposerLayer, juce::StringArray> { ComposerLayer::guitar, guitar }, { ComposerLayer::drums, drums },
+                                        { ComposerLayer::chords, juce::StringArray { "HIGH COLOUR TONE", "HIGH TONIC PEDAL" } } })
+            for (const auto& name : names)
+            {
+                INFO (name);
+                const auto idea = play (l, name);
+                CHECK (! idea.notes.empty());
+                juce::String k;
+                for (const auto& n : idea.notes)
+                    k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << ";";
+                CHECK (seen.insert (k).second);
+            }
+    }
+    // HALF-STEP DROP IN THREES: the half step over the root first, then the root.
+    {
+        const auto g = play (ComposerLayer::guitar, "HALF-STEP DROP IN THREES");
+        CHECK (at (g, 0.0) == std::vector<int> { 34, 41 });
+        CHECK (at (g, 0.5) == std::vector<int> { 33, 40 });
+    }
+    // SNARE ON THE DOTTED CHAIN: no backbeat, the snare every three sixteenths.
+    {
+        const auto d = play (ComposerLayer::drums, "SNARE ON THE DOTTED CHAIN, KICKS BETWEEN");
+        CHECK (at (d, 0.75) == std::vector<int> { GmDrum::snare });
+        CHECK (at (d, 1.0).empty());
+    }
+
+    // The transitions: each written, and only at the section's end.
+    const auto withTransition = [&] (const juce::String& name)
+    {
+        auto t = s;
+        t.transition = name;
+        return composeLayers (t, spans, c);
+    };
+    const auto plain = composeLayers (s, spans, c);
+    for (const auto* name : { "UNISON HIT BAR A HALF STEP UNDER", "THREE SILENT BARS, KICK PICKUP", "TWO STABS AND A SILENT BAR",
+                              "HALF-BAR TOM FILL", "MUTED BREATH BAR", "HIGH SOFT NOTES, BAND OUT" })
+    {
+        INFO (name);
+        REQUIRE (sectionTransitionNamed (name).has_value());
+        const auto layers = withTransition (name);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        const auto& p = plain[(size_t) ComposerLayer::guitar];
+        std::vector<LineNote> before, plainBefore;
+        for (const auto& n : g.notes) if (n.beat < 16.0 - 1.0e-6) before.push_back (n);
+        for (const auto& n : p.notes) if (n.beat < 16.0 - 1.0e-6) plainBefore.push_back (n);
+        CHECK (before.size() == plainBefore.size());
+        bool differs = g.notes.size() != p.notes.size();
+        for (size_t i = 0; ! differs && i < g.notes.size(); ++i)
+            differs = g.notes[i].pitch != p.notes[i].pitch || std::abs (g.notes[i].beat - p.notes[i].beat) > 1.0e-6;
+        CHECK (differs);
+    }
+    // UNISON HIT BAR: the chord a half step under (G-sharp under the last bar's G... the A minor key's last chord G: F-sharp).
+    {
+        const auto layers = withTransition ("UNISON HIT BAR A HALF STEP UNDER");
+        const auto& b = layers[(size_t) ComposerLayer::bass];
+        bool found = false;
+        for (const auto& n : b.notes)
+            if (std::abs (n.beat - 28.0) < 1.0e-6)
+                found = (n.pitch % 12) == 6;
+        CHECK (found);
     }
 }

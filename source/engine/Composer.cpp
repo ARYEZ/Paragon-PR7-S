@@ -10306,6 +10306,8 @@ namespace pr7s
             double length, bpb, s16, e, q;
             int bars;
             Key key;
+            juce::String forcedName;   // (0.172.0) set by extraOptionLayer: this lane plays that option whatever the type
+            ComposerLayer forcedLayer = ComposerLayer::melody;
 
             Round3 (const ComposerState& state, const std::vector<ChordSpan>& sp, const ComposerContext& context)
                 : s (state), spans (sp), c (context), type (state.sectionType.trim().toUpperCase()),
@@ -10315,6 +10317,8 @@ namespace pr7s
 
             juce::String name (ComposerLayer l) const
             {
+                if (forcedName.isNotEmpty() && l == forcedLayer)   // (0.172.0: a shared option written here)
+                    return forcedName;
                 const auto names = round3Approaches (type, l);
                 if (names.isEmpty())
                     return {};
@@ -10429,6 +10433,204 @@ namespace pr7s
                     if (chord.type == Chord::Type::sus2 || chord.type == Chord::Type::sus4) return 2;
                     return chord.type == Chord::Type::minor || chord.type == Chord::Type::diminished ? 3 : 4;
                 };
+                // (0.172.0) Round five's versions of riffs we have (shared options under every type: extraApproaches).
+                if (n == "HALF-STEP DROP IN THREES")
+                {
+                    text ("Groups of 3+3+2: the chord a half step over the root, then the root short, then held; every second bar ending on three root eighths");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        const auto o = bar * bpb;
+                        const std::vector<std::pair<int, int>> groups = bar % 2 == 0 ? std::vector<std::pair<int, int>> { { 0, 6 }, { 6, 6 }, { 12, 4 } }
+                                                                                       : std::vector<std::pair<int, int>> { { 0, 6 }, { 6, 4 } };
+                        for (const auto& [g, size] : groups)
+                        {
+                            power (out, o + g * s16, 2 * s16 * 0.9, root + 1, open(), false);
+                            power (out, o + (g + 2) * s16, s16 * 0.6, root, tight(), false);
+                            power (out, o + (g + 3) * s16, (size - 3) * s16 * 0.92, root, open(), false);
+                        }
+                        if (bar % 2 == 1)
+                            for (const auto k : { 10, 12, 14 })
+                                power (out, o + k * s16, 2 * s16 * 0.88, root, open(), false);
+                    }
+                    return out;
+                }
+                if (n == "SIXTEENTH NEIGHBOURS, CLASH AT THE END")
+                {
+                    text ("Fourteen sixteenths round the root (the root, the half step over it, the root, the whole step under), then a high minor triad a half step over the root rung over the bar line");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar) + 12;
+                        const int around[] { 0, 1, 0, -2 };
+                        for (int k = 0; k < 14; ++k)
+                            add (out, bar * bpb + k * s16, s16 * 0.85, root + around[k % 4], k % 4 == 0 ? open() : tight());
+                        for (const auto p : { 13, 16, 20 })
+                            add (out, bar * bpb + 14 * s16, 2 * s16 * 0.95, root + 12 + p, open());
+                    }
+                    return out;
+                }
+                if (n == "PEDAL RIFF WITH A CHROMATIC PICKUP")
+                {
+                    text ("The root on every other sixteenth with chord shapes between, a held note and a rest, then a pickup onto the power chord a major third up across the bar line");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        const int between[] { 12, 19, 20, 17, 15, 19 };
+                        for (int k = 0; k < 12; ++k)
+                            add (out, bar * bpb + k * s16, s16 * 0.85, k % 2 == 0 ? root : root + between[(k / 2) % 6], k % 2 == 0 ? muted() : open());
+                        add (out, bar * bpb + 12 * s16, 2 * s16 * 0.9, root + 12, open());
+                        power (out, bar * bpb + 15 * s16, s16 * 0.95, root + 4, open(), false);
+                    }
+                    return out;
+                }
+                if (n == "FLAT-FIVE CHORD HAMMERED")
+                {
+                    text ("A power chord with the tritone over it on every sixteenth for two bars, then a bar turning round (the root, the fourth, the flat six, the root)");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        if (bar % 3 == 2)
+                        {
+                            const int turn[] { 0, 5, 8, 0 };
+                            for (int b = 0; b < 4; ++b)
+                                power (out, bar * bpb + b * q, q * 0.9, root + turn[b], open());
+                            continue;
+                        }
+                        for (int k = 0; k < 16; ++k)
+                        {
+                            power (out, bar * bpb + k * s16, s16 * 0.85, root, k % 4 == 0 ? open() : tight());
+                            add (out, bar * bpb + k * s16, s16 * 0.85, root + 18, k % 4 == 0 ? open() : tight());
+                        }
+                    }
+                    return out;
+                }
+                if (n == "CHROMATIC QUARTET INTO THE TONIC")
+                {
+                    text ("Four power chords a beat each, an eighth long, climbing by half steps from a minor third under the key's root into it");
+                    const auto t = tonicIn (tuning().lowest() + 3, tuning().lowest() + 14);
+                    for (int bar = 0; bar < bars; ++bar)
+                        for (int b = 0; b < 4; ++b)
+                            power (out, bar * bpb + b * q, e * 0.9, t - 3 + b, open());
+                    return out;
+                }
+                if (n == "OCTAVE POWER CHORDS IN 3+3+2")
+                {
+                    text ("Power chords with the octave on every eighth, the roots grouped 3+3+2 (the root three, the flat seven three, the root two); every second bar ending on the half step over the root held");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        const int moves[] { 0, 0, 0, 10, 10, 10, 0, 0 };
+                        for (int k = 0; k < 8; ++k)
+                        {
+                            if (bar % 2 == 1 && k >= 6)
+                            {
+                                if (k == 6)
+                                    power (out, bar * bpb + k * e, q * 0.95, root + 1, open());
+                                continue;
+                            }
+                            power (out, bar * bpb + k * e, e * 0.88, moves[k] > 0 ? (root - 2 < tuning().lowest() ? root + 10 : root - 2) : root, open());
+                        }
+                    }
+                    return out;
+                }
+                if (n == "CLEAN HELD CHORD, PUSHED INTO FOUR")
+                {
+                    text ("A clean open chord struck on 1 and held, the chord over its fifth on the last sixteenth of beat 3, the chord a major third under on beat 4");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar) + 12;
+                        const auto t = thirdUp (chordOfBar (bar));
+                        const auto o = bar * bpb;
+                        for (const auto p : { 0, 7, 12, 12 + t })
+                            add (out, o, 11 * s16 * 0.96, root + p, soft());
+                        for (const auto p : { 7, 12, 12 + t })
+                            add (out, o + 11 * s16, s16 * 0.96, root + p, soft());
+                        for (const auto p : { 8, 15, 20 })
+                            add (out, o + 12 * s16, 4 * s16 * 0.96, root + p - 12, soft());
+                    }
+                    return out;
+                }
+                if (n == "FLAT-THREE OCTAVE BURST EVERY FOURTH BAR")
+                {
+                    text ("Three bars of the root on 1, 2, 2-and and 3 with the chord a major third under on 4; every fourth bar an octave on the key's flat third, high, in eighths and then sixteenths");
+                    const auto three = pitchOfClassIn ((key.pitchClass() + 3) % 12, 55, 66);
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        const auto o = bar * bpb;
+                        if (bar % 4 == 3)
+                        {
+                            for (int k = 0; k < 8; k += 2)
+                            {
+                                add (out, o + k * s16, e * 0.88, three, open());
+                                add (out, o + k * s16, e * 0.88, three + 12, open());
+                            }
+                            for (int k = 8; k < 16; ++k)
+                            {
+                                add (out, o + k * s16, s16 * 0.85, three, open());
+                                add (out, o + k * s16, s16 * 0.85, three + 12, open());
+                            }
+                            continue;
+                        }
+                        std::vector<int> ks { 0, 4, 6, 8 };
+                        for (std::size_t i = 0; i < ks.size(); ++i)
+                            power (out, o + ks[i] * s16, ((i + 1 < ks.size() ? ks[i + 1] : 12) - ks[i]) * s16 * 0.92, root, open());
+                        power (out, o + 12 * s16, 4 * s16 * 0.94, root + 8 - (root + 8 > tuning().lowest() + 11 ? 12 : 0), open());
+                    }
+                    return out;
+                }
+                if (n == "RING THE FLAT TWO")
+                {
+                    text ("Four-bar phrases of single notes: the key's root twice and its fifth on the beats, then the half step over the root on beat 4 left ringing nine beats");
+                    const auto t = tonicIn (tuning().lowest() + 12, tuning().lowest() + 23);
+                    for (int bar = 0; bar + 1 <= bars; bar += 4)
+                    {
+                        const auto o = bar * bpb;
+                        add (out, o, q * 0.95, t, open());
+                        add (out, o + q, q * 0.95, t, open());
+                        add (out, o + 2 * q, q * 0.95, t + 7, open());
+                        add (out, o + 3 * q, juce::jmin (9.0 * q, length - o - 3 * q) * 0.97, t + 1, open());
+                    }
+                    return out;
+                }
+                if (n == "HIGH NOTE SEESAW, TWO BARS EACH")
+                {
+                    text ("One high note held two bars at a time, the key's flat sixth and its fifth in turn");
+                    const auto five = pitchOfClassIn ((key.pitchClass() + 7) % 12, 67, 78);
+                    for (int bar = 0; bar < bars; bar += 2)
+                        add (out, bar * bpb, juce::jmin (2, bars - bar) * bpb * 0.97, (bar / 2) % 2 == 0 ? five + 1 : five, soft());
+                    return out;
+                }
+                if (n == "FOUR-NOTE CHROMATIC CELL, OCTAVE DYADS")
+                {
+                    text ("A low four-note cell falling by half steps (the flat seven, the sixth twice, the flat six) three times with rests, ending on two falling octave dyads");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        const int cell[] { 10, 9, 9, 8 };
+                        for (const auto start : { 0, 5, 10 })
+                            for (int i = 0; i < 4; ++i)
+                                add (out, bar * bpb + (start + i) * s16, s16 * 0.85, root + cell[i], tight());
+                        for (const auto& [k, p] : { std::pair<int, int> { 14, 7 }, { 15, 5 } })
+                        {
+                            add (out, bar * bpb + k * s16, s16 * 0.9, root + p, open());
+                            add (out, bar * bpb + k * s16, s16 * 0.9, root + p + 12, open());
+                        }
+                    }
+                    return out;
+                }
+                if (n == "OUT, THEN THE BASS'S ROCKING LINE")
+                {
+                    text ("Out for the first half (the bass alone), then power chords in eighths rocking between the root and the flat seven, every second bar ending on the half step over the root");
+                    for (int bar = juce::jmax (1, bars / 2); bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        const auto seven = root - 2 < tuning().lowest() ? root + 10 : root - 2;
+                        for (int k = 0; k < 8; ++k)
+                            power (out, bar * bpb + k * e, e * 0.88, bar % 2 == 1 && k == 7 ? root + 1 : (k % 2 == 0 ? root : seven), k % 2 == 0 ? open() : muted(), false);
+                    }
+                    return out;
+                }
                 // (0.171.0) Round five's bridges.
                 if (n == "FALLING TOP, CHORDS IN THE GAP" || n == "PEDAL CELL, FALLING TOP")
                 {
@@ -13800,6 +14002,54 @@ namespace pr7s
                         bar (b);
                     return out;
                 };
+                // (0.172.0) Round five's drum options (shared under every type: extraApproaches).
+                if (n == "HAND ON THE BEATS, FOOT ON THE ANDS")
+                    return every ("Half time: the closed hat by hand on 1, 2 and 4, the hat pedal on every off-eighth, the snare and an open hat on 3, the kick on 1 (and its and every second bar)", [&] (int b)
+                    {
+                        kit (out, b, b % 2 == 1 ? "x-x-------------" : "x---------------", "--------x-------", GmDrum::closedHat, "x---x-------x---", 4);
+                        hit (out, b * bpb + 8 * s16, GmDrum::openHat, 0.6f);
+                        for (const auto k : { 2, 6, 10, 14, 15 })
+                            hit (out, b * bpb + k * s16, GmDrum::pedalHat, 0.5f);
+                    });
+                if (n == "SNARE ON THE DOTTED CHAIN, KICKS BETWEEN")
+                    return every ("No backbeat: the snare on every dotted eighth, the kick on the sixteenths between, crashes on the first and last of the chain", [&] (int b)
+                    {
+                        kit (out, b, "--x--x--x--x----", "x--x--x--x---xx-", GmDrum::crash, nullptr, 0);
+                        for (const auto k : { 0, 13 })
+                            hit (out, b * bpb + k * s16, GmDrum::crash, 0.78f);
+                    });
+                if (n == "SNARE DOUBLES THE UNISON CELL")
+                    return every ("Bars in pairs: the snare on every note of the band's cell with a splash on the eighths, then kick bursts on 1 and 3 and the snare on the ands and as of 2 and 4", [&] (int b)
+                    {
+                        if (b % 2 == 0)
+                        {
+                            kit (out, b, "x---------------", "xx-xx-xx-xx-x-xx", GmDrum::crash2, eighths, 0);
+                            return;
+                        }
+                        kit (out, b, "xxxx----xxxx----", "------xx------xx", GmDrum::closedHat, quarters, 0);
+                    });
+                if (n == "CRASH AND CHINA EIGHTHS, SNARE THICKENS")
+                    return every ("A crash and a china on every eighth, the kick on 1 and 3, the snare thickening by thirds of the section: the backbeat, then the eighths, then sixteenths to end", [&] (int b)
+                    {
+                        const auto stage = thirdOf (b);
+                        kit (out, b, "x-------x-------", stage == 0 ? backbeat : (b == bars - 1 ? "xxxxxxxxxxxxxxxx" : eighths), GmDrum::crash, eighths, 0);
+                        each16 (eighths, b * bpb, [&] (double t, int) { hit (out, t, GmDrum::china, 0.56f); });
+                    });
+                if (n == "RIDE ON THE DOTTED LINE")
+                    return every ("The ride on the bass's dotted line only (3+3+3+3+2+2), the kick on 1; every fourth bar three dotted hits with the kick and a crash, then silence", [&] (int b)
+                    {
+                        if (b % 4 == 3)
+                        {
+                            for (const auto k : { 0, 3, 6 })
+                            {
+                                hit (out, b * bpb + k * s16, GmDrum::kick, 0.86f);
+                                hit (out, b * bpb + k * s16, GmDrum::crash, 0.8f);
+                                hit (out, b * bpb + k * s16, GmDrum::snare, 0.8f);
+                            }
+                            return;
+                        }
+                        kit (out, b, "x---------------", nullptr, GmDrum::ride, "x--x--x--x--x-x-", 0);
+                    });
                 // (0.171.0) Round five's bridges.
                 if (n == "SOFT CRASH QUARTERS, SNARE ON THREE")
                     return every ("Soft crashes on the beats, the kick with the cell's hits and the a of 3, the snare on 3 with a pickup, a tom fill every fourth bar", [&] (int b)
@@ -15230,6 +15480,39 @@ namespace pr7s
             if (base == 0 || a < from || a >= to)
                 return std::nullopt;
             const auto n = names[a];
+            // (0.172.0) Round five's shared options are written by Round3 (as its types' own are): the lane plays that one.
+            {
+                static const juce::StringArray round3Written {
+                    "HALF-STEP DROP IN THREES", "SIXTEENTH NEIGHBOURS, CLASH AT THE END", "PEDAL RIFF WITH A CHROMATIC PICKUP", "FLAT-FIVE CHORD HAMMERED",
+                    "CHROMATIC QUARTET INTO THE TONIC", "OCTAVE POWER CHORDS IN 3+3+2", "CLEAN HELD CHORD, PUSHED INTO FOUR",
+                    "FLAT-THREE OCTAVE BURST EVERY FOURTH BAR", "RING THE FLAT TWO", "HIGH NOTE SEESAW, TWO BARS EACH",
+                    "FOUR-NOTE CHROMATIC CELL, OCTAVE DYADS", "OUT, THEN THE BASS'S ROCKING LINE",
+                    "CRASH ON THE KICKS, RIDE BETWEEN", "HAND ON THE BEATS, FOOT ON THE ANDS", "SNARE ON THE DOTTED CHAIN, KICKS BETWEEN",
+                    "SNARE DOUBLES THE UNISON CELL", "BACKBEAT, HAT RUFF EVERY SECOND BAR", "CRASH AND CHINA EIGHTHS, SNARE THICKENS",
+                    "RIDE ON THE DOTTED LINE", "HIGH COLOUR TONE", "HIGH TONIC PEDAL" };
+                if (round3Written.contains (n))
+                {
+                    Round3 forced (s, spans, c);
+                    forced.forcedName = n;
+                    forced.forcedLayer = l;
+                    std::optional<LineIdea> written;
+                    if (l == ComposerLayer::guitar)
+                    {
+                        written = forced.guitar();
+                        if (c.guitarProfile.has_value())
+                            keepInRange (*written, c.guitarProfile->rangeLow(), c.guitarProfile->rangeHigh());
+                    }
+                    else if (l == ComposerLayer::drums)
+                        written = forced.drums();
+                    else if (l == ComposerLayer::chords)
+                        written = forced.keys();
+                    if (written.has_value())
+                    {
+                        sortNotes (*written);
+                        return written;
+                    }
+                }
+            }
             const Round3 r (s, spans, c);
             const auto bpb = r.bpb, s16 = r.s16, e = r.e, q = r.q;
             juce::ignoreUnused (e);
@@ -20534,6 +20817,92 @@ namespace pr7s
                 }
                 else if (name == "CUT AT THE HALF BAR")
                     cutAt (idea, lastBar + bar * 0.5);
+                // (0.172.0) Round five's transitions (the owner's 12 songs; shapes only, our names).
+                else if (name == "UNISON HIT BAR A HALF STEP UNDER")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    const auto root = (chordAt (lastBar).root + 11) % 12;
+                    for (const auto k : { 0, 3, 6, 8, 10, 13, 14, 15 })
+                    {
+                        const auto at = lastBar + k * s16;
+                        const auto loud = k >= 13;
+                        if (l == ComposerLayer::guitar)
+                            for (const auto o : { 0, 7, 12 })
+                                add (idea, at, s16 * 0.9, guitarRoot (root) + o, loud ? open() : GuitarVelocity::of (c.velocities.muteLoose));
+                        else if (l == ComposerLayer::bass)
+                            add (idea, at, s16 * 0.9, bassRoot (root), loud ? 0.9f : 0.78f);
+                        else if (l == ComposerLayer::drums)
+                        {
+                            add (idea, at, s16, 38, loud ? 0.95f : 0.78f);
+                            add (idea, at, s16, k % 2 == 0 ? 45 : 41, loud ? 0.9f : 0.7f);
+                        }
+                    }
+                }
+                else if (name == "THREE SILENT BARS, KICK PICKUP")
+                {
+                    const auto from = juce::jmax (0.0, end - 3.0 * bar);
+                    cutAt (idea, from);
+                    if (! playing)
+                        return;
+                    hit (l, idea, chordAt (from), from, bar * 0.9, true);
+                    if (l == ComposerLayer::drums)
+                        add (idea, end - bar / 16.0, bar / 16.0, 36, 0.9f);
+                }
+                else if (name == "TWO STABS AND A SILENT BAR")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    hit (l, idea, chordAt (lastBar), lastBar, s16 * 0.9, true);
+                    hit (l, idea, chordAt (lastBar), lastBar + s16, s16 * 0.9, false);
+                }
+                else if (name == "HALF-BAR TOM FILL")
+                {
+                    const auto half = lastBar + bar * 0.5;
+                    if (l != ComposerLayer::drums)
+                    {
+                        cutAt (idea, half);
+                        return;
+                    }
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    for (int k = 0; k < 8; ++k)
+                        add (idea, lastBar + k * s16, s16, k < 3 ? 38 : (k < 5 ? 48 : (k < 7 ? 45 : 41)), 0.72f + 0.03f * (float) k);
+                }
+                else if (name == "MUTED BREATH BAR")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto e = bar / 8.0;
+                    const auto& chord = chordAt (lastBar);
+                    if (l == ComposerLayer::guitar)
+                        for (int k = 0; k < 8; ++k)
+                            for (const auto o : { 0, 7 })
+                                add (idea, lastBar + k * e, e * 0.6, guitarRoot (chord.root) + o, GuitarVelocity::of (c.velocities.muteTight) * 0.6f);
+                    else if (l == ComposerLayer::drums)
+                    {
+                        add (idea, lastBar, e, 38, 0.6f);
+                        add (idea, lastBar + bar * 0.5, e, 42, 0.5f);
+                    }
+                }
+                else if (name == "HIGH SOFT NOTES, BAND OUT")
+                {
+                    cutAt (idea, lastBar);
+                    if (l != ComposerLayer::guitar || ! playing)
+                        return;
+                    const auto tonic = spans.front().key.pitchClass();
+                    const auto q = bar / 4.0;
+                    const int degrees[] { 9, 5, 1, 10 };
+                    for (int i = 0; i < 4; ++i)
+                        add (idea, lastBar + i * q, q * 0.96, pitchOfClassIn ((tonic + degrees[i]) % 12, 67, 78), 0.4f);
+                }
                 std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
             }
         };

@@ -1462,7 +1462,11 @@ namespace pr7s
                      "DOTTED KICK CHAIN, CRASH QUARTERS", "PULSE, SNARE CREEPS IN", "SPLASH QUARTERS, SNARE ON THREE",
                      "LOOP AND SIDESTICK SIXTEENTHS", "DISPLACED SNARE, RIDE BELL", "BROKEN BEAT, CRASH EIGHTHS",
                      "LAYERED DOUBLE KICK", "THE STOMP JOINS", "CARVED KICK, CHINA SIXTEENTHS",
-                     "QUARTER HATS, BUSY KICK", "TOM GROOVE, SNARE ON THREE", "SNARE ON THE A OF TWO, CRASH EIGHTHS" };
+                     "QUARTER HATS, BUSY KICK", "TOM GROOVE, SNARE ON THREE", "SNARE ON THE A OF TWO, CRASH EIGHTHS",
+                     // (0.172.0) Round five (the owner's 12 songs).
+                     "CRASH ON THE KICKS, RIDE BETWEEN", "HAND ON THE BEATS, FOOT ON THE ANDS", "SNARE ON THE DOTTED CHAIN, KICKS BETWEEN",
+                     "SNARE DOUBLES THE UNISON CELL", "BACKBEAT, HAT RUFF EVERY SECOND BAR", "CRASH AND CHINA EIGHTHS, SNARE THICKENS",
+                     "RIDE ON THE DOTTED LINE" };
         if (layer == ComposerLayer::bass)   // (0.160.0) round four's bass versions: put in front of LOCKED WITH THE KICK
             return { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                      "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
@@ -1477,7 +1481,12 @@ namespace pr7s
                      "SIXTEENTH PEDAL OVER LATE HITS", "RUNG SYNCOPATION, TONIC AND HALF STEP", "DOTTED CHORDS, HIGH OCTAVE FIGURE",
                      "PEDAL WALL, CHORDS MOVING ON TOP", "ONE-NOTE SCRATCH RHYTHM", "PEDAL-TOP FINGERPICKING",
                      "FIXED FIGURE OVER HALF TIME", "TWO GUITARS IN TWO RHYTHMS", "ROCKING UP A STEP IN THREES",
-                     "UNISON CELL ACROSS THE BAR", "DOUBLE HITS WITH SCRATCHES", "PEDAL IN THREES, CLIMBING" };
+                     "UNISON CELL ACROSS THE BAR", "DOUBLE HITS WITH SCRATCHES", "PEDAL IN THREES, CLIMBING",
+                     // (0.172.0) Round five's versions of riffs we have.
+                     "HALF-STEP DROP IN THREES", "SIXTEENTH NEIGHBOURS, CLASH AT THE END", "PEDAL RIFF WITH A CHROMATIC PICKUP",
+                     "FLAT-FIVE CHORD HAMMERED", "CHROMATIC QUARTET INTO THE TONIC", "OCTAVE POWER CHORDS IN 3+3+2",
+                     "CLEAN HELD CHORD, PUSHED INTO FOUR", "FLAT-THREE OCTAVE BURST EVERY FOURTH BAR", "RING THE FLAT TWO",
+                     "HIGH NOTE SEESAW, TWO BARS EACH", "FOUR-NOTE CHROMATIC CELL, OCTAVE DYADS", "OUT, THEN THE BASS'S ROCKING LINE" };
         if (layer == ComposerLayer::chords)
             return { "SYNTH BASS SIXTEENTHS", "STRINGS ON THE QUARTERS", "PIANO ARPEGGIO IN 3+3+2", "PIZZICATO ARPEGGIO", "TIMPANI ROLL RISER",
                      // (0.155.0) Round four.
@@ -1489,7 +1498,9 @@ namespace pr7s
                      "FIXED TOP, ROOT UNDER IT", "FALLING FOUR-NOTE CELL", "CHOIR STABS ON THE ACCENTS",
                      "STRINGS QUARTER, EIGHTH, EIGHTH", "STRINGS DOTTED-QUARTER LINE", "HIGH STAB HOOK, FIXED",
                      "FIVE-NOTE CHORDS ON ONE AND THREE", "HIGH STRINGS MOTIF", "TONIC AND STEP SIXTEENTH LOOP",
-                     "PIANO TRIADS ON THE QUARTERS", "TONIC EIGHTH PULSE", "PAD CHORDS IN HALF NOTES" };
+                     "PIANO TRIADS ON THE QUARTERS", "TONIC EIGHTH PULSE", "PAD CHORDS IN HALF NOTES",
+                     // (0.172.0) Round five.
+                     "HIGH COLOUR TONE", "HIGH TONIC PEDAL" };
         return {};
     }
 
@@ -1611,6 +1622,13 @@ namespace pr7s
             { "SIX-SIXTEENTH TURNAROUND", "The last bar a six-sixteenth cell twice, then a hit held to the bar line" },
             { "DROP TO KEYS AND LEAD", "The last bar only the keys and the lead" },
             { "CUT AT THE HALF BAR", "Everyone stops halfway through the last bar" },
+            // (0.172.0) Round five (the owner's 12 songs; shapes only, our names).
+            { "UNISON HIT BAR A HALF STEP UNDER", "The last bar everyone hitting together in threes and twos on the chord a half step under, the snare and toms on every hit" },
+            { "THREE SILENT BARS, KICK PICKUP", "One hit, three empty bars, then a lone kick on the last sixteenth" },
+            { "TWO STABS AND A SILENT BAR", "The last bar two stabs on its first two sixteenths, then nothing" },
+            { "HALF-BAR TOM FILL", "The band stops halfway through the last bar, the drums filling the first half on the snare and toms" },
+            { "MUTED BREATH BAR", "The last bar only a palm-muted root in eighths, a snare on 1 and a hat on 3" },
+            { "HIGH SOFT NOTES, BAND OUT", "The last bar the band out, four soft high notes held a beat each" },
         };
         return list;
     }
