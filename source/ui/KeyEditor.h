@@ -398,7 +398,7 @@ private:
     void paintPanel (juce::Graphics&);
     void paintKeys (juce::Graphics&);
     void paintNotes (juce::Graphics&);
-    static constexpr float glowReach = 5.0f;    // (0.166.0) how far a note's glow reaches
+    static constexpr float glowReach = 3.0f;    // (0.166.0) how far a note reaches past its box (0.167.0: only the guides' pearl glow, 3 px)
     void paintFollowStamp (juce::Graphics&);   // (0.166.0: pinned to the notes' corner, drawn over the picture)
     void paintBody (juce::Graphics&);           // (0.166.0) everything but the playhead and the frame
     void paintOver (juce::Graphics&);           // the playhead and the frame
@@ -419,6 +419,7 @@ private:
     juce::int64 cacheFrom = 0, cacheTo = 0, cacheBase = 0;
     std::vector<std::pair<juce::int64, juce::int64>> cacheDirty;
     int cacheColumnsDrawn = 0;
+    int wholeFramesInARow = 0;   // (0.167.0) paints in a row that drew (nearly) all of the picture
     float lastPaintScale = 1.0f;
     void paintVelocities (juce::Graphics&);
     void paintRuler (juce::Graphics&);

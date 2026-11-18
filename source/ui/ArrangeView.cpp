@@ -136,7 +136,7 @@ void ArrangeView::timerCallback()
     // so every frame redraws all of it (at 5760 wide); 30 a second as before 0.78.3.
     const auto stationary = playing && timeline.autoScroll.on && timeline.autoScroll.stationary && ! timeline.autoScroll.suspended;
     // (0.165.0) With the picture kept, a frame is a copy and a thin strip: 60 a second again, smoothly.
-    const auto rate = gliding || (playing && ! stationary) || (stationary && isScrollCacheActive() && scrollStep() > 0.0) ? 60 : 30;
+    const auto rate = gliding || (playing && ! stationary) || (stationary && isScrollCacheActive() && scrollStep() > 0.0 && wholeFramesInARow < 3) ? 60 : 30;
     if (getTimerInterval() != 1000 / rate)
         startTimerHz (rate);
 }
@@ -1329,6 +1329,7 @@ void ArrangeView::paint (juce::Graphics& g)
     // Not now (or the scroll isn't on whole screen pixels): drawn as it always was, the picture let go.
     if (! isScrollCacheActive() || std::abs (exact - (double) origin) > 0.02 || getWidth() <= 0 || getHeight() <= 0)
     {
+        wholeFramesInARow = isScrollCacheActive() ? wholeFramesInARow + 1 : 0;   // (0.167.0: off whole pixels: no 60 a second)
         if (cacheImage.isValid())
             cacheImage = {};
         cacheValid = false;
@@ -1400,6 +1401,8 @@ void ArrangeView::paint (juce::Graphics& g)
     cacheValid = true;
     cacheFrom = viewFrom;
     cacheTo = viewTo;
+    // (0.167.0) A picture drawn whole frame after frame isn't saving anything: the timer drops back to 30.
+    wholeFramesInARow = (juce::int64) cacheColumnsDrawn * 4 >= ring * 3 ? wholeFramesInARow + 1 : 0;
 
     // The picture onto the screen: its two pieces, each on whole screen pixels (copied, not resampled).
     const auto start = (int) ((((origin - cacheBase) % ring) + ring) % ring);

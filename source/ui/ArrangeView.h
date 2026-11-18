@@ -531,6 +531,7 @@ private:
     juce::int64 cacheBase = 0;                // the song's screen pixel at the ring's first column (set at each full redraw)
     std::vector<std::pair<juce::int64, juce::int64>> cacheDirty;   // stretches to draw again
     int cacheColumnsDrawn = 0;
+    int wholeFramesInARow = 0;   // (0.167.0) paints in a row that drew (nearly) all of the picture
     float lastPaintScale = 1.0f;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;

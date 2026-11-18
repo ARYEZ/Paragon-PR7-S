@@ -588,7 +588,7 @@ void KeyEditor::timerCallback()
     // so every frame redraws all of it (at 5760 wide); 30 a second as before 0.78.3.
     const auto stationary = playing && autoScroll.on && autoScroll.stationary && ! autoScroll.suspended;
     // (0.166.0) With the picture kept, a frame is a copy and a thin strip: 60 a second.
-    const auto rate = gliding || (playing && ! stationary) || (stationary && isScrollCacheActive() && scrollStep() > 0.0) ? 60 : 30;
+    const auto rate = gliding || (playing && ! stationary) || (stationary && isScrollCacheActive() && scrollStep() > 0.0 && wholeFramesInARow < 3) ? 60 : 30;
     if (getTimerInterval() != 1000 / rate)
         startTimerHz (rate);
 }
@@ -2320,6 +2320,7 @@ void KeyEditor::paint (juce::Graphics& g)
     if (! isScrollCacheActive() || std::abs (exact - (double) origin) > 0.02 || key.width <= 0 || key.height <= 0)
     {
         // Not now: drawn as it always was, the picture let go.
+        wholeFramesInARow = isScrollCacheActive() ? wholeFramesInARow + 1 : 0;   // (0.167.0: off whole pixels: no 60 a second)
         if (cacheImage.isValid())
             cacheImage = {};
         cacheValid = false;
@@ -2384,6 +2385,8 @@ void KeyEditor::paint (juce::Graphics& g)
     cacheValid = true;
     cacheFrom = viewFrom;
     cacheTo = viewTo;
+    // (0.167.0) A picture drawn whole frame after frame isn't saving anything: the timer drops back to 30.
+    wholeFramesInARow = cacheColumnsDrawn * 4 >= key.width * 3 ? wholeFramesInARow + 1 : 0;
 
     // What stays put (the panel, the keys, the lane headers, the info line, the picture's edges): drawn as
     // always, round the picture.
@@ -2758,39 +2761,22 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             const auto c = bounds.getCentre();
             const auto r = bounds.getWidth() * 0.5f;
             diamond.addQuadrilateral (c.x, c.y - r, c.x + r, c.y, c.x, c.y + r, c.x - r, c.y);
-            if (! muted && ! note.muted)
-            {
-                // (0.166.0) A soft glow round the hit, in its colour.
-                g.setColour (fill.withAlpha (0.10f));
-                g.fillEllipse (juce::Rectangle<float> (r + 4.5f, r + 4.5f).withCentre (c).expanded (r * 0.5f + 2.0f));
-                g.setColour (fill.withAlpha (0.20f));
-                g.fillEllipse (juce::Rectangle<float> (2.0f * r + 4.0f, 2.0f * r + 4.0f).withCentre (c));
-            }
             g.setColour ((isSelected ? fill.brighter (0.35f) : fill).withAlpha (muted || note.muted ? 0.25f : 1.0f));
             g.fillPath (diamond);
             g.setColour (isSelected ? juce::Colours::white : juce::Colours::black.withAlpha (0.55f));
             g.strokePath (diamond, juce::PathStrokeType (isSelected ? 1.5f : 1.0f));
             continue;
         }
-        // (0.166.0, the owner: "make the notes glow a bit like we do with automation") Soft halos in the note's
-        // own colour, widest and faintest outside (as the automation lines' neon, 0.153.0). With CHORD GUIDES on
-        // (0.125.0) the inner halo is pearl, so the note still stands out from the guides behind it.
-        static const int glowMode = juce::SystemStats::getEnvironmentVariable ("PARAGON_NOTE_GLOW", "2").getIntValue();   // TEMP: measuring
-        if (! note.muted && glowMode == 2)
+        // (0.166.0, the owner: "make the notes glow a bit like we do with automation") A brighter body and a
+        // hot line along its top. (0.167.0, the owner: the soft halos round every note made the editor lag:
+        // three see-through rounded shapes a note, drawn every redraw. Gone; the body and line cost nothing.
+        // 0.125.0's pearl glow with CHORD GUIDES on stays as it was before 0.166.0.)
+        if (guidesShown && ! note.muted)
         {
-            g.setColour (fill.withAlpha (0.08f));
-            g.fillRoundedRectangle (bounds.expanded (glowReach), 6.0f);
-            g.setColour (fill.withAlpha (0.16f));
-            g.fillRoundedRectangle (bounds.expanded (3.0f), 4.5f);
-            g.setColour ((guidesShown ? juce::Colour (0xfff4eeea) : fill.brighter (0.35f)).withAlpha (guidesShown ? 0.30f : 0.34f));
+            g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.12f));
+            g.fillRoundedRectangle (bounds.expanded (3.0f), 4.0f);
+            g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.28f));
             g.fillRoundedRectangle (bounds.expanded (1.5f), 3.0f);
-        }
-        if (! note.muted && glowMode == 1)
-        {
-            g.setColour (fill.withAlpha (0.12f));
-            g.fillRect (bounds.expanded (3.0f).toNearestInt());
-            g.setColour ((guidesShown ? juce::Colour (0xfff4eeea) : fill.brighter (0.35f)).withAlpha (guidesShown ? 0.30f : 0.34f));
-            g.fillRect (bounds.expanded (1.5f).toNearestInt());
         }
         // (0.77.1) A muted note: faded, with a pearl outline (still there, not played).
         g.setColour ((isSelected ? fill.brighter (0.35f) : fill.brighter (note.muted ? 0.0f : 0.12f)).withAlpha (note.muted ? 0.22f : 1.0f));

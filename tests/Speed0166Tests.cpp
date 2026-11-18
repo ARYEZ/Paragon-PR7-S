@@ -131,7 +131,7 @@ TEST_CASE ("0.166.0: the MIDI editor kept as a picture while it scrolls draws wh
     CHECK (editor.getScrollCacheColumnsDrawn() == 0);
 }
 
-TEST_CASE ("0.166.0: the MIDI editor's notes glow in their own colour", "[speed166][ui]")
+TEST_CASE ("0.167.0: the MIDI editor's notes have no halo (it made the editor lag), the hot line along their top stays", "[speed166][ui]")
 {
     Song song (1);
     auto& editor = song.editor();
@@ -146,13 +146,16 @@ TEST_CASE ("0.166.0: the MIDI editor's notes glow in their own colour", "[speed1
         juce::Graphics g (image);
         editor.paintFreshForTests (g);
     }
-    // Just outside the note's edge (above it, in the middle): lit by its red, not the plain row.
+    // Just outside the note's edge (above it, in the middle): the plain row, as before 0.166.0.
     const auto bounds = editor.getNoteBounds (0);
     REQUIRE (! bounds.isEmpty());
-    const auto glow = image.getPixelAt ((int) bounds.getCentreX(), (int) bounds.getY() - 2);
+    const auto above = image.getPixelAt ((int) bounds.getCentreX(), (int) bounds.getY() - 2);
     const auto row = image.getPixelAt ((int) bounds.getCentreX(), (int) bounds.getY() - 12);
-    CHECK (glow.getRed() > row.getRed() + 15);
-    CHECK (glow.getRed() > glow.getBlue() + 10);   // (red, not grey or blue: the family's colours)
+    CHECK (std::abs ((int) above.getRed() - (int) row.getRed()) <= 12);
+    // The line along its top: lighter than the body under it.
+    const auto line = image.getPixelAt ((int) bounds.getCentreX(), (int) bounds.getY() + 1);
+    const auto body = image.getPixelAt ((int) bounds.getCentreX(), (int) bounds.getCentreY());
+    CHECK (line.getGreen() > body.getGreen() + 20);
 }
 
 TEST_CASE ("0.166.0: timings", "[.perf-166]")
