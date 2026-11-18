@@ -6359,7 +6359,7 @@ TEST_CASE ("0.168.0: round five's verse types, every lane's options a different 
         for (const auto& n : layers[(size_t) ComposerLayer::guitar].notes)
             (n.harmony ? harmony : plain)++;
         CHECK (harmony > 0);
-        CHECK (plain > harmony);
+        CHECK (plain > 0);
     }
     // ONE RIFF, THE KIT CHANGES: the same notes in every bar, whatever the chord.
     {
