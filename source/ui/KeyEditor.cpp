@@ -386,7 +386,22 @@ void KeyEditor::changeListenerCallback (juce::ChangeBroadcaster*)
     if (studio.getChangeVersion() == seenChange)
         return;
     seenChange = studio.getChangeVersion();
+    const auto content = studio.getContentVersion(), layout = studio.getLayoutVersion();
+    const auto partsOnly = content != seenEditorContent && layout == seenEditorLayout;
+    seenEditorContent = content;
+    seenEditorLayout = layout;
+    if (partsOnly && shownPartsTrack != 0 && shownPartsTrack == getTrackId())
+        if (const auto* track = studio.getProject().findTrack (shownPartsTrack); track != nullptr && track->parts.sharesWith (shownParts))
+        {
+            ++refreshesSkipped;
+            return;
+        }
     refresh();   // (a selection too: a part chosen in the arrangement selects its track, and the editor follows it here)
+    shownPartsTrack = getTrackId();
+    if (const auto* track = studio.getProject().findTrack (shownPartsTrack))
+        shownParts = track->parts;
+    else
+        shownParts = {};
 }
 
 void KeyEditor::setSoloEditor (bool on)

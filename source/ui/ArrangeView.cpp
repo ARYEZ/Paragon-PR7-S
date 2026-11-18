@@ -86,6 +86,8 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
     if (studio.getContentVersion() == seenContent)
         return repaintSelectionChange();
     seenContent = studio.getContentVersion();
+    const auto partsOnly = studio.getLayoutVersion() == seenLayout;
+    seenLayout = studio.getLayoutVersion();
     // A range keeps only the tracks still there.
     if (range)
     {
@@ -120,7 +122,59 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
         if (lane == nullptr || ! lane->shown || (! pointSelection.points.empty() && pointSelection.points.back() >= (int) lane->points.size()))
             pointSelection = {};
     }
+    if (partsOnly && repaintPartChanges())
+        return;
+    lastPartRepaints.clear();
+    noteDrawnParts();
     repaint();
+}
+
+void ArrangeView::noteDrawnParts()
+{
+    const auto& project = studio.getProject();
+    drawnParts.clear();
+    drawnParts.reserve (project.tracks.size());
+    for (const auto& track : project.tracks)
+        drawnParts.emplace_back (track.id, track.parts);   // (shared: nothing copied)
+    drawnChords = project.chordTrack;
+}
+
+bool ArrangeView::repaintPartChanges()
+{
+    const auto& project = studio.getProject();
+    if (project.tracks.size() != drawnParts.size() || ! (project.chordTrack == drawnChords))
+        return false;
+    std::vector<int> changedIds;
+    for (size_t i = 0; i < project.tracks.size(); ++i)
+    {
+        const auto& track = project.tracks[i];
+        if (track.id != drawnParts[i].first)
+            return false;
+        if (! track.parts.sharesWith (drawnParts[i].second))
+            changedIds.push_back (track.id);
+    }
+    // The folders holding a changed track draw its parts on their rows too.
+    for (size_t k = 0; k < changedIds.size(); ++k)
+        if (const auto* track = project.findTrack (changedIds[k]); track != nullptr && track->folder != 0
+            && std::find (changedIds.begin(), changedIds.end(), track->folder) == changedIds.end())
+            changedIds.push_back (track->folder);
+    std::vector<Timeline::Row> made;
+    const auto& rows = rowsNow (made);
+    std::vector<juce::Rectangle<int>> areas;
+    for (const auto& row : rows)
+        if ((row.kind == Timeline::Row::Kind::track || row.kind == Timeline::Row::Kind::take)
+            && std::find (changedIds.begin(), changedIds.end(), row.busId) != changedIds.end())
+        {
+            const auto area = juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height)
+                                  .getSmallestIntegerContainer().expanded (0, 2).getIntersection (getLocalBounds());
+            if (! area.isEmpty())
+                areas.push_back (area);
+        }
+    noteDrawnParts();
+    lastPartRepaints = areas;
+    for (const auto& area : areas)
+        repaint (area);
+    return true;
 }
 
 void ArrangeView::repaintRecording()
@@ -793,18 +847,51 @@ void ArrangeView::paintContent (juce::Graphics& g)
     paintedSelection = studio.getSelectedTrack();   // (0.164.0: what a selection-only change starts from)
     const struct Forget { const std::vector<Timeline::Row>*& rows; ~Forget() { rows = nullptr; } } forget { rowsInPaint };
     auto trackNumber = 0;
+    const auto cycleTint = ParagonColours::accent.withAlpha (project.loopOn ? 0.07f : 0.025f);
+    const auto cycleFrom = juce::jmax (0.0f, (float) timeline.xForBeat (project.loopStart));
+    const auto cycleTo = juce::jmin (bounds.getWidth(), (float) timeline.xForBeat (project.loopEnd));
+    if (cycleTo > cycleFrom)
+    {
+        g.setColour (laneDark.overlaidWith (cycleTint));
+        g.fillRect (juce::Rectangle<float> (cycleFrom, (float) Timeline::rulerHeight, cycleTo - cycleFrom, bounds.getHeight()));
+    }
     for (const auto& row : rows)
     {
         const auto lane = juce::Rectangle<float> (0.0f, rowTop (row), bounds.getWidth(), (float) row.height);
+        juce::Colour rowColour;
         if (row.kind == Timeline::Row::Kind::track)
-            g.setColour (row.busId == studio.getSelectedTrack() ? juce::Colour (0xff1c151b) : (trackNumber++ % 2 == 0 ? laneDark : laneLight));
+            rowColour = row.busId == studio.getSelectedTrack() ? juce::Colour (0xff1c151b) : (trackNumber++ % 2 == 0 ? laneDark : laneLight);
         else if (row.kind == Timeline::Row::Kind::take)
-            g.setColour (juce::Colour (0xff0e0b0e));   // (a lane of takes: darker than its track, lighter than automation)
+            rowColour = juce::Colour (0xff0e0b0e);   // (a lane of takes: darker than its track, lighter than automation)
         else
-            g.setColour (juce::Colour (0xff09070a));
+            rowColour = juce::Colour (0xff09070a);
+        g.setColour (rowColour);
         g.fillRect (lane);
+        // (0.174.0) The cycle's tint as solid colour in each row (the owner's choice: a see-through fill
+        // over the whole height cost 3-4 ms a redraw on the software renderer).
+        const auto tinted = [&] (juce::Colour c) { return c.overlaidWith (cycleTint); };
+        if (cycleTo > cycleFrom)
+        {
+            g.setColour (tinted (rowColour));
+            g.fillRect (juce::Rectangle<float> (cycleFrom, lane.getY(), cycleTo - cycleFrom, lane.getHeight()));
+        }
         g.setColour (juce::Colour (0xff050405));
         g.fillRect (lane.withHeight (1.0f).withY (lane.getBottom() - 1.0f));
+        if (cycleTo > cycleFrom)
+        {
+            g.setColour (tinted (juce::Colour (0xff050405)));
+            g.fillRect (juce::Rectangle<float> (cycleFrom, lane.getBottom() - 1.0f, cycleTo - cycleFrom, 1.0f));
+        }
+    }
+    if (cycleTo > cycleFrom && rows.size() > 0)
+    {
+        // What lies under the last row (the empty part of the view).
+        const auto last = rowTop (rows.back()) + (float) rows.back().height;
+        if (last < bounds.getBottom())
+        {
+            g.setColour (laneDark.overlaidWith (cycleTint));
+            g.fillRect (juce::Rectangle<float> (cycleFrom, juce::jmax ((float) Timeline::rulerHeight, last), cycleTo - cycleFrom, bounds.getBottom() - last));
+        }
     }
 
     // The grid: bars brighter than beats (beats only when there's room), bar by bar by the
@@ -853,12 +940,7 @@ void ArrangeView::paintContent (juce::Graphics& g)
     paintMarkerLines (g);
     paintFolders (g);   // (0.50.0) folders' blocks
 
-    // The cycle range over the lanes, faintly.
-    {
-        const auto x1 = timeline.xForBeat (project.loopStart), x2 = timeline.xForBeat (project.loopEnd);
-        g.setColour (ParagonColours::accent.withAlpha (project.loopOn ? 0.07f : 0.025f));
-        g.fillRect (juce::Rectangle<float> (x1, (float) Timeline::rulerHeight, x2 - x1, bounds.getHeight()));
-    }
+    // The cycle range over the lanes, faintly: since 0.174.0 drawn solid in the rows' own fills above.
 
     // The parts (the one being dragged drawn where it's going; several selected: all of them).
     // (0.173.0) The take being recorded: only when its row is in what's being drawn (it walked every recorded
@@ -1631,6 +1713,7 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
         const auto rowHeight = notesArea.getHeight() / (float) span;
         g.setColour (colour.brighter (0.6f));
         const auto clipX = g.getClipBounds().toFloat().expanded (2.0f, 0.0f);   // only the notes in what's being redrawn
+        const auto wholeNotesArea = notesArea.toNearestInt();
         for (const auto& note : part.notes)
         {
             const auto nx = area.getX() + (float) (note.start * timeline.pixelsPerBeat);
@@ -1639,7 +1722,12 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
                 continue;
             const auto ny = notesArea.getBottom() - (float) (note.pitch - lowest + 1) * rowHeight
                           - (float) (span - (highest - lowest + 1)) * rowHeight * 0.5f;
-            g.fillRect (juce::Rectangle<float> (nx, ny, nw, juce::jmax (1.5f, rowHeight - 0.5f)).getIntersection (notesArea));
+            // (0.174.0) On whole pixels (the owner's choice): the software renderer's anti-aliased edges made
+            // fractional notes cost more than twice as much (46,000 notes: 17 ms against 7).
+            const auto x0 = juce::roundToInt (nx), y0 = juce::roundToInt (ny);
+            const auto x1 = juce::jmax (x0 + 1, juce::roundToInt (nx + nw));
+            const auto y1 = juce::jmax (y0 + 1, juce::roundToInt (ny + juce::jmax (1.5f, rowHeight - 0.5f)));
+            g.fillRect (juce::Rectangle<int> (x0, y0, x1 - x0, y1 - y0).getIntersection (wholeNotesArea));
         }
     }
 

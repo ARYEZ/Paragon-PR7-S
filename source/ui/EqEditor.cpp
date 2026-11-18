@@ -290,36 +290,14 @@ int EqCurve::bandAt (juce::Point<float> p) const
 
 void EqCurve::paint (juce::Graphics& g)
 {
+    // (0.174.0) The grid and its labels, and the curve with its points and keys, kept as pictures: with
+    // the spectrum on, all of it was drawn again 30 times a second (0.7-0.9 ms a frame) for the spectrum
+    // moving between them. Each is drawn afresh only when what it shows changes.
     const auto a = plotArea();
-    g.setColour (juce::Colour (0xff0d0a0e));
-    g.fillRoundedRectangle (getLocalBounds().toFloat(), 4.0f);
-
-    // The grid: decades and their halves; every 6 dB.
-    g.setFont (interFont (compact ? 8.5f : 10.0f));
-    for (const auto hz : { 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0 })
-    {
-        const auto x = xForFrequency (hz);
-        g.setColour (ParagonColours::panelEdge.withAlpha (hz == 100.0 || hz == 1000.0 || hz == 10000.0 ? 0.9f : 0.5f));
-        g.fillRect (x, a.getY(), 1.0f, a.getHeight());
-        if (! compact)
-        {
-            g.setColour (ParagonColours::textDim);
-            g.drawText (hz >= 1000.0 ? juce::String (juce::roundToInt (hz / 1000.0)) + "k" : juce::String (juce::roundToInt (hz)),
-                        juce::Rectangle<float> (x - 20.0f, a.getBottom() + 4.0f, 40.0f, 14.0f), juce::Justification::centred, false);
-        }
-    }
-    for (auto db = -18; db <= 18; db += 6)
-    {
-        const auto y = yForDb (db);
-        g.setColour (ParagonColours::panelEdge.withAlpha (db == 0 ? 1.0f : 0.45f));
-        g.fillRect (a.getX(), y, a.getWidth(), db == 0 ? 1.5f : 1.0f);
-        if (! compact && db != 0)
-        {
-            g.setColour (ParagonColours::textDim);
-            g.drawText ((db > 0 ? "+" : "") + juce::String (db), juce::Rectangle<float> (0.0f, y - 7.0f, 32.0f, 14.0f), juce::Justification::centredRight, false);
-        }
-    }
-
+    const auto whole = getLocalBounds().toFloat();
+    const auto backStale = backKeys != showKeys;
+    backKeys = showKeys;
+    backPicture.draw (g, whole, backStale, [this] (juce::Graphics& into) { paintBack (into); });
     // (0.46.0) The channel's sound after the EQ, behind the curve: -90 to 0 dB over the height.
     if (! compact && showSpectrum && ! levels.empty())
     {
@@ -351,6 +329,59 @@ void EqCurve::paint (juce::Graphics& g)
         g.strokePath (spectrum, juce::PathStrokeType (1.0f));
     }
 
+    const auto frontKey = FrontKey { shown, dragging, showKeys };
+    const auto frontStale = ! (frontKey == frontShown);
+    frontShown = frontKey;
+    frontPicture.draw (g, whole, frontStale, [this] (juce::Graphics& into) { paintFront (into); });
+
+    // Where the mouse is: frequency, note, level (the manual's cross-hair readout).
+    if (! compact && hover.x >= a.getX() && a.contains (hover))
+    {
+        const auto hz = frequencyForX (hover.x);
+        // (0.71.0, the owner's: the ordinary pointer, no cross-hair lines; the readout stays.)
+        g.setColour (ParagonColours::text);
+        g.setFont (interFont (12.0f));
+        g.drawText (pr7s::frequencyText (hz) + "   " + noteOf (hz) + "   " + dbText (dbForY (hover.y)),
+                    juce::Rectangle<float> (a.getX(), 0.0f, a.getWidth(), 18.0f), juce::Justification::centredRight, false);
+    }}
+
+void EqCurve::paintBack (juce::Graphics& g)
+{
+    const auto a = plotArea();
+    g.setColour (juce::Colour (0xff0d0a0e));
+    g.fillRoundedRectangle (getLocalBounds().toFloat(), 4.0f);
+
+    // The grid: decades and their halves; every 6 dB.
+    g.setFont (interFont (compact ? 8.5f : 10.0f));
+    for (const auto hz : { 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0 })
+    {
+        const auto x = xForFrequency (hz);
+        g.setColour (ParagonColours::panelEdge.withAlpha (hz == 100.0 || hz == 1000.0 || hz == 10000.0 ? 0.9f : 0.5f));
+        g.fillRect (x, a.getY(), 1.0f, a.getHeight());
+        if (! compact)
+        {
+            g.setColour (ParagonColours::textDim);
+            g.drawText (hz >= 1000.0 ? juce::String (juce::roundToInt (hz / 1000.0)) + "k" : juce::String (juce::roundToInt (hz)),
+                        juce::Rectangle<float> (x - 20.0f, a.getBottom() + 4.0f, 40.0f, 14.0f), juce::Justification::centred, false);
+        }
+    }
+    for (auto db = -18; db <= 18; db += 6)
+    {
+        const auto y = yForDb (db);
+        g.setColour (ParagonColours::panelEdge.withAlpha (db == 0 ? 1.0f : 0.45f));
+        g.fillRect (a.getX(), y, a.getWidth(), db == 0 ? 1.5f : 1.0f);
+        if (! compact && db != 0)
+        {
+            g.setColour (ParagonColours::textDim);
+            g.drawText ((db > 0 ? "+" : "") + juce::String (db), juce::Rectangle<float> (0.0f, y - 7.0f, 32.0f, 14.0f), juce::Justification::centredRight, false);
+        }
+    }
+
+}
+
+void EqCurve::paintFront (juce::Graphics& g)
+{
+    const auto a = plotArea();
     // The curve as it plays (EQ and Pre); the EQ alone in grey when bypassed.
     const auto design = pr7s::designEq (shown, displayRate);
     const auto pathOf = [&] (const pr7s::EqDesign& d, bool withPre)
@@ -447,16 +478,6 @@ void EqCurve::paint (juce::Graphics& g)
             }
     }
 
-    // Where the mouse is: frequency, note, level (the manual's cross-hair readout).
-    if (! compact && hover.x >= a.getX() && a.contains (hover))
-    {
-        const auto hz = frequencyForX (hover.x);
-        // (0.71.0, the owner's: the ordinary pointer, no cross-hair lines; the readout stays.)
-        g.setColour (ParagonColours::text);
-        g.setFont (interFont (12.0f));
-        g.drawText (pr7s::frequencyText (hz) + "   " + noteOf (hz) + "   " + dbText (dbForY (hover.y)),
-                    juce::Rectangle<float> (a.getX(), 0.0f, a.getWidth(), 18.0f), juce::Justification::centredRight, false);
-    }
 }
 
 void EqCurve::mouseMove (const juce::MouseEvent& e)

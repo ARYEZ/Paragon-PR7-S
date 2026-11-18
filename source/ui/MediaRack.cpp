@@ -1158,8 +1158,16 @@ void MediaRack::timerCallback()
         typedAt = -1.0;
         setSearch (typedSearch);
     }
-    if (database.takeScanResults())
+    // (0.174.0) Hidden (the right zone closed): nothing to follow. It looked for scans, read the settings
+    // and checked the previewer ten times a second all the same.
+    if (! isShowing())
+        return;
+    database.takeScanResults();
+    if (database.getScansTaken() != scansSeen)
+    {
+        scansSeen = database.getScansTaken();
         rebuild();
+    }
     // Favorites added in the MediaBay window's file browser (0.22.1) show here too.
     if (auto* settings = studio.getSettings(); settings != nullptr && ++favoritesCheck % 20 == 0)
     {

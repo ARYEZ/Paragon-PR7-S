@@ -340,6 +340,16 @@ public:
 
 private:
     juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
+    // (0.174.0) A change of other tracks' parts alone (the layout version unchanged, this track's parts
+    // the ones shown): nothing here to redraw. It redrew the whole editor (52 ms at 200 % across three
+    // screens) for every part moved or muted in the arrangement.
+    juce::uint64 seenEditorContent = 0, seenEditorLayout = 0;
+    int shownPartsTrack = 0;
+    pr7s::PartList shownParts;
+    int refreshesSkipped = 0;
+public:
+    int getRefreshesSkipped() const noexcept { return refreshesSkipped; }
+private:
     juce::uint64 seenContent = 0;   // (0.164.0) a track clicked: nothing here changed
     // (0.123.0) The cycle as last drawn: a cycle drag's step repaints only the strips that changed.
     juce::uint64 seenCycle = 0;

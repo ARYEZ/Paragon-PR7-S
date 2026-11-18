@@ -272,6 +272,7 @@ namespace pr7s
     //==========================================================================
     void Studio::changed (bool undoable)
     {
+        const auto partsOnly = std::exchange (partsOnlyAsked, false);   // (0.174.0: taken at once, never left behind)
         if (mirroring)
             return;   // (a linked change: the change it came from does all this once, after)
         // (0.76.0, the owner: the composer's instruments too loud, the mixer couldn't be used while hearing them)
@@ -327,7 +328,7 @@ namespace pr7s
         if (undoable)
             recordUndoState();
         updateLiveTrack();
-        announce();
+        announce (partsOnly);
     }
 
     bool Studio::hasEditor (const juce::AudioProcessor* plugin)
@@ -2114,6 +2115,7 @@ namespace pr7s
             const auto old = part;
             part.length = juce::jmax (0.25, newLength);
             rebaseWarp (old, part, project.tempoMap());   // (0.32.0: a warped clip's end pinned where it now is)
+            partsOnlyAsked = true;
             changed();
         }
     }
@@ -2450,6 +2452,7 @@ namespace pr7s
                                                         && track->parts[(size_t) index].muted != muted)
         {
             track->parts[(size_t) index].muted = muted;
+            partsOnlyAsked = true;
             changed();
         }
     }
@@ -2457,15 +2460,26 @@ namespace pr7s
     void Studio::setPartsMuted (const std::vector<int>& partIds, bool muted)
     {
         auto any = false;
+        const auto wanted = [&] (const Part& part) { return part.muted != muted && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end(); };
         for (auto& track : project.tracks)
+        {
+            // (0.174.0) Looked at first without writing: only the tracks with a part to change are copied
+            // (written through, every track's shared parts were copied, and every row redrawn).
+            const auto& parts = std::as_const (track.parts);
+            if (std::none_of (parts.begin(), parts.end(), wanted))
+                continue;
             for (auto& part : track.parts)
-                if (std::find (partIds.begin(), partIds.end(), part.id) != partIds.end() && part.muted != muted)
+                if (wanted (part))
                 {
                     part.muted = muted;
                     any = true;
                 }
+        }
         if (any)
+        {
+            partsOnlyAsked = true;
             changed();
+        }
     }
 
     std::optional<double> Studio::getPartField (int partId, PartField field) const
@@ -2917,6 +2931,7 @@ namespace pr7s
         if (part.notes == notes)
             return;   // nothing changed: no undo step
         part.notes = std::move (notes);
+        partsOnlyAsked = true;
         changed();
     }
 
@@ -2937,6 +2952,7 @@ namespace pr7s
         if (part.controllers == events)
             return;   // nothing changed: no undo step
         part.controllers = std::move (events);
+        partsOnlyAsked = true;
         changed();
     }
 
@@ -3409,6 +3425,7 @@ namespace pr7s
             existing.audioOffset = juce::jmax (0.0, existing.audioOffset);
             existing.fadeIn = juce::jmax (0.0, existing.fadeIn);
             existing.fadeOut = juce::jmax (0.0, existing.fadeOut);
+            partsOnlyAsked = true;
             changed();
         }
     }
@@ -13768,7 +13785,7 @@ namespace pr7s
         mixOnlyBroken = mixOnlyBroken || ! onlyTheMix;
     }
 
-    void Studio::announce()
+    void Studio::announce (bool partsOnly)
     {
         // (0.34.3) Every change counts, but a fader, pan or send level moved (nothing written, nothing
         // else changed with it): the views skip their full rebuild then, their timers following the mix.
@@ -13776,7 +13793,11 @@ namespace pr7s
         {
             ++changeVersion;
             if (! selectionOnlyAsked)
+            {
                 ++contentVersion;
+                if (! partsOnly)
+                    ++layoutVersion;
+            }
         }
         mixOnlyAsked = mixOnlyBroken = false;
         selectionOnlyAsked = false;

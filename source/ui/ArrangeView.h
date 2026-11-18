@@ -550,6 +550,17 @@ private:
 
     juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
     juce::uint64 seenContent = 0;   // (0.164.0) the content version: unchanged, a change was only a selection
+    // (0.174.0) What the rows were drawn from, for a change of parts alone (the layout version unchanged):
+    // only the rows of the tracks whose parts changed are redrawn (and the folders holding them).
+    juce::uint64 seenLayout = 0;
+    std::vector<std::pair<int, pr7s::PartList>> drawnParts;
+    pr7s::ChordTrack drawnChords;
+    void noteDrawnParts();
+    bool repaintPartChanges();
+    std::vector<juce::Rectangle<int>> lastPartRepaints;   // (tests)
+public:
+    const std::vector<juce::Rectangle<int>>& getPartRepaints() const noexcept { return lastPartRepaints; }
+private:
     juce::uint64 seenRecording = 0;   // (0.173.0)
     juce::Rectangle<int> recordingDrawn;
     void repaintRecording();

@@ -1673,8 +1673,10 @@ void MediaBayPage::timerCallback()
         typedAt = -1.0;
         setSearch (typedSearch);
     }
-    if (database.takeScanResults())
+    database.takeScanResults();
+    if (database.getScansTaken() != scansSeen)
     {
+        scansSeen = database.getScansTaken();
         browser->repaint();
         refresh();
     }

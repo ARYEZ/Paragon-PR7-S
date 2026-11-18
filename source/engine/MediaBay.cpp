@@ -973,6 +973,7 @@ namespace pr7s
         }
         if (! result)
             return false;
+        ++scansTaken;
         scanning = false;
         {
             const juce::ScopedLock sl (pendingLock);   // (a scan in another thread reads `items`)

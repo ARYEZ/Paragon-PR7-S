@@ -1386,6 +1386,10 @@ namespace pr7s
         // (0.164.0) Bumped by every change but a selection (a track clicked): the arrangement and the MIDI editor show
         // nothing else of it, so they repaint only the rows it moved instead of everything.
         juce::uint64 getContentVersion() const noexcept { return contentVersion; }
+        // (0.174.0) Bumped by every content change but those declared to change only some tracks' parts
+        // (a part's notes, controllers, length, mute, an event's fields): the views then redraw only the rows
+        // whose parts changed (found by PartList::sharesWith against what they drew).
+        juce::uint64 getLayoutVersion() const noexcept { return layoutVersion; }
         // (0.173.0) While recording the take grows: this goes up (and a change message goes out) instead of the
         // change version, so only the arrangement's recording row is drawn again, not every view in full.
         juce::uint64 getRecordingVersion() const noexcept { return recordingVersion; }
@@ -1859,7 +1863,7 @@ namespace pr7s
         juce::String ideasDrummer;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;
-        void announce();               // (0.34.3) sendChangeMessage, the version counted
+        void announce (bool partsOnly = false);   // (0.34.3) sendChangeMessage, the version counted
         void mixOnly (bool onlyTheMix);
         juce::uint64 changeVersion = 1;
         juce::uint64 cycleVersion = 1;   // (0.123.0) the locators moved by a drag's step
@@ -1868,6 +1872,8 @@ namespace pr7s
         bool mixOnlyAsked = false, mixOnlyBroken = false;
         bool selectionOnlyAsked = false;   // (0.164.0)
         juce::uint64 contentVersion = 1;
+        bool partsOnlyAsked = false;   // (0.174.0) set just before changed() by an edit of parts alone
+        juce::uint64 layoutVersion = 1;
         juce::uint64 recordingVersion = 0;   // (0.173.0)
         AlignSettings alignSettings;   // (without a settings file: the tests)
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)

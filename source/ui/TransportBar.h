@@ -117,6 +117,25 @@ private:
     mutable std::vector<juce::Rectangle<float>> glasses;
     juce::Image satin;
     Pearl::UnitCache unitCache;   // (0.83.1)
+    // (0.174.0) Each screen's frame (its shadow, bezel and empty glass) and the reflection drawn over its
+    // glass, kept as pictures at the screen's pixel scale: the POSITION and TIME screens drew both again
+    // 30 times a second while playing (about 0.8 ms a frame). Index: the screen's place in `screenCaches`.
+public:
+    struct ScreenPicture
+    {
+        juce::Image image;
+        juce::Rectangle<float> screen, area;
+        float scale = 0.0f, size = 0.0f;
+    };
+private:
+    mutable std::array<ScreenPicture, 6> screenCaches, glassCaches;
+    mutable std::vector<std::pair<int, juce::Rectangle<float>>> glassIndex;   // (each glass's screen)
+    juce::Rectangle<float> paintScreenCached (juce::Graphics&, int index, juce::Rectangle<float> screen) const;
+    void paintGlassCached (juce::Graphics&, int index, juce::Rectangle<float> glass) const;
+    int screenPicturesMade = 0;
+public:
+    int getScreenPicturesMade() const noexcept { return screenPicturesMade; }
+private:
     double dragStartBpm = 120.0;
     bool draggingTempo = false;
 };

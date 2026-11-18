@@ -151,6 +151,7 @@ private:
     juce::File selectedFolder;
     juce::StringArray localFavorites;   // (without a settings file: the tests)
     int scanFrames = 0;
+    int scansSeen = 0;   // (0.174.0)
     bool autoPlay = true, cycle = false;
     juce::File previewing;   // the file the previewer holds
 

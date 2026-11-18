@@ -161,6 +161,7 @@ private:
     bool filtersShown = false, autoPlay = true, byVendor = false, refreshing = false;
     juce::File previewing;
     int favoritesCheck = 0;
+    int scansSeen = 0;   // (0.174.0) the database's scans taken in when last rebuilt
 
     juce::TextEditor search;
     juce::TextButton resetSearchKey { "X" }, allKey { "ALL" }, backKey { "BACK" }, homeKey { "HOME" },

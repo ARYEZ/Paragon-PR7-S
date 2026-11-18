@@ -233,6 +233,9 @@ namespace pr7s
         // ratings or tags change (the Media rack's tiles count again only then).
         int indexOf (const juce::File&) const;
         juce::uint32 getGeneration() const noexcept { return generation; }
+        // (0.174.0) How many scans' results have been taken in: every view that shows the items compares
+        // this (takeScanResults answers true once, so only one of the MediaBay window and the rack saw a scan).
+        int getScansTaken() const noexcept { return scansTaken; }
 
         // (0.163.0, the owner asked) A file renamed on the disk: its rating and tags go with it. `newName` without
         // the extension (it stays). False (and why) if it can't be: no such file, the name's taken, the disk said no.
@@ -264,6 +267,7 @@ namespace pr7s
         mutable std::vector<juce::String> searchTexts;
         mutable std::vector<char> searchMade;
         mutable std::vector<int> nameRank, folderRank;
+        int scansTaken = 0;
         juce::uint32 generation = 0;
         mutable std::future<void> saving;
         std::unique_ptr<Scanner> scanner;

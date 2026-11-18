@@ -400,7 +400,7 @@ void TransportBar::paint (juce::Graphics& g)
         {
             if (outside (screen))
                 return;
-            const auto glass = LedDisplay::paintScreen (g, screen, screenSize);
+            const auto glass = paintScreenCached (g, screen == positionScreen ? 0 : 1, screen);
             glasses.push_back (glass);
             auto inside = glass.reduced (12.0f, 6.0f);
             g.setColour (orange.withAlpha (0.6f));
@@ -417,7 +417,7 @@ void TransportBar::paint (juce::Graphics& g)
     // takes (the average, big; the peak, small); OVER lit after an overload.
     if (! outside (cpuScreen))
     {
-        const auto glass = LedDisplay::paintScreen (g, cpuScreen, screenSize);
+        const auto glass = paintScreenCached (g, 2, cpuScreen);
         glasses.push_back (glass);
         auto inside = glass.reduced (9.0f, 6.0f);
         auto top = inside.removeFromTop (12.0f);
@@ -438,7 +438,7 @@ void TransportBar::paint (juce::Graphics& g)
     // TEMPO and SIGNATURE.
     if (! outside (tempoScreen))
     {
-        const auto glass = LedDisplay::paintScreen (g, tempoScreen, screenSize);
+        const auto glass = paintScreenCached (g, 3, tempoScreen);
         glasses.push_back (glass);
         auto inside = glass.reduced (10.0f, 6.0f);
         g.setColour (orange.withAlpha (0.6f));
@@ -452,7 +452,7 @@ void TransportBar::paint (juce::Graphics& g)
     }
     if (! outside (signatureScreen))
     {
-        const auto glass = LedDisplay::paintScreen (g, signatureScreen, screenSize);
+        const auto glass = paintScreenCached (g, 4, signatureScreen);
         glasses.push_back (glass);
         auto inside = glass.reduced (10.0f, 6.0f);
         g.setColour (orange.withAlpha (0.6f));
@@ -469,7 +469,7 @@ void TransportBar::paint (juce::Graphics& g)
     // 0.73.2: the loudest peak since OUT was last clicked; 0.131.0: the loudest of every 5 s; red over 0 dB).
     if (! outside (outScreen))
     {
-        const auto glass = LedDisplay::paintScreen (g, outScreen, screenSize);
+        const auto glass = paintScreenCached (g, 5, outScreen);
         glasses.push_back (glass);
         auto inside = glass.reduced (9.0f, 6.0f);
         auto top = inside.removeFromTop (12.0f);
@@ -490,7 +490,62 @@ void TransportBar::paint (juce::Graphics& g)
 void TransportBar::paintOverChildren (juce::Graphics& g)
 {
     for (const auto& glass : glasses)
-        LedDisplay::paintGlassOverlay (g, glass, screenSize);
+    {
+        auto index = -1;
+        for (const auto& [i, screen] : glassIndex)
+            if (LedDisplay::glassOf (screen, screenSize) == glass)
+                index = i;
+        if (index >= 0)
+            paintGlassCached (g, index, glass);
+        else
+            LedDisplay::paintGlassOverlay (g, glass, screenSize);
+    }
+}
+
+namespace
+{
+    // A picture drawn at the context's pixel scale, placed back where it was drawn (as Pearl's unit cache).
+    template <typename Draw>
+    void keepPicture (juce::Graphics& g, TransportBar::ScreenPicture& picture, juce::Rectangle<float> area, float size,
+                      juce::Rectangle<float> key, Draw&& draw, int& made)
+    {
+        const auto scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+        if (! picture.image.isValid() || picture.screen != key || picture.scale != scale || picture.size != size)
+        {
+            const auto w = juce::jmax (1, juce::roundToInt (area.getWidth() * scale)), h = juce::jmax (1, juce::roundToInt (area.getHeight() * scale));
+            picture.image = juce::Image (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
+            juce::Graphics into (picture.image);
+            into.addTransform (juce::AffineTransform::translation (-area.getX(), -area.getY()).scaled (scale));
+            draw (into);
+            picture.screen = key;
+            picture.area = area;
+            picture.scale = scale;
+            picture.size = size;
+            ++made;
+        }
+        g.drawImageTransformed (picture.image, juce::AffineTransform::scale (1.0f / scale).translated (picture.area.getX(), picture.area.getY()));
+    }
+}
+
+juce::Rectangle<float> TransportBar::paintScreenCached (juce::Graphics& g, int index, juce::Rectangle<float> screen) const
+{
+    const auto area = screen.expanded (LedDisplay::screenReach (screenSize)).getSmallestIntegerContainer().toFloat();
+    auto made = screenPicturesMade;
+    keepPicture (g, screenCaches[(size_t) index], area, screenSize, screen,
+                 [&] (juce::Graphics& into) { LedDisplay::paintScreen (into, screen, screenSize); }, made);
+    const_cast<TransportBar*> (this)->screenPicturesMade = made;
+    glassIndex.erase (std::remove_if (glassIndex.begin(), glassIndex.end(), [index] (const auto& p) { return p.first == index; }), glassIndex.end());
+    glassIndex.emplace_back (index, screen);
+    return LedDisplay::glassOf (screen, screenSize);
+}
+
+void TransportBar::paintGlassCached (juce::Graphics& g, int index, juce::Rectangle<float> glass) const
+{
+    const auto area = glass.expanded (2.0f).getSmallestIntegerContainer().toFloat();
+    auto made = screenPicturesMade;
+    keepPicture (g, glassCaches[(size_t) index], area, screenSize, glass,
+                 [&] (juce::Graphics& into) { LedDisplay::paintGlassOverlay (into, glass, screenSize); }, made);
+    const_cast<TransportBar*> (this)->screenPicturesMade = made;
 }
 
 void TransportBar::showRecordModes()
