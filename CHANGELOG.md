@@ -2,6 +2,38 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.172.0
+
+The last of the five releases from your 12 songs (round five): the smaller additions. These are shared options, offered in the lane's menu under every section type after the type's own (they're in the option browser's FROM YOUR SONGS group), plus six transitions. Shapes only, our names.
+
+**Riff versions (the guitar lane; the bass's DOUBLES THE GUITAR follows them):**
+- **HALF-STEP DROP IN THREES:** groups of 3+3+2, the chord a half step over the root dropping onto the root.
+- **SIXTEENTH NEIGHBOURS, CLASH AT THE END:** fourteen sixteenths round the root, then a high minor triad a half step over it rung over the bar line.
+- **PEDAL RIFF WITH A CHROMATIC PICKUP:** the root on every other sixteenth, then a pickup onto the chord a major third up.
+- **FLAT-FIVE CHORD HAMMERED:** a power chord with the tritone over it in sixteenths for two bars, then a turnaround bar.
+- **CHROMATIC QUARTET INTO THE TONIC:** four power chords climbing by half steps into the key's root, a beat each.
+- **OCTAVE POWER CHORDS IN 3+3+2:** the root three eighths, the flat seven three, the root two; every second bar ending on the half step over the root.
+- **CLEAN HELD CHORD, PUSHED INTO FOUR:** a clean chord held, the change pushed into beat 4.
+- **FLAT-THREE OCTAVE BURST EVERY FOURTH BAR:** three bars of the chorus rhythm, then a high octave burst on the key's flat third.
+- **RING THE FLAT TWO:** single notes, then the half step over the root left ringing nine beats.
+- **HIGH NOTE SEESAW, TWO BARS EACH:** one high note held two bars, the flat sixth and the fifth in turn.
+- **FOUR-NOTE CHROMATIC CELL, OCTAVE DYADS:** a low four-note cell falling by half steps, ending on two falling octave dyads.
+- **OUT, THEN THE BASS'S ROCKING LINE:** the guitar out for the first half, then rocking between the root and the flat seven.
+
+**Drums:** CRASH ON THE KICKS, RIDE BETWEEN; HAND ON THE BEATS, FOOT ON THE ANDS (the hat by hand on the beats, the hat pedal on the ands); SNARE ON THE DOTTED CHAIN, KICKS BETWEEN; SNARE DOUBLES THE UNISON CELL; BACKBEAT, HAT RUFF EVERY SECOND BAR; CRASH AND CHINA EIGHTHS, SNARE THICKENS; RIDE ON THE DOTTED LINE.
+
+**Keys:** HIGH COLOUR TONE and HIGH TONIC PEDAL, now under every type.
+
+**Transitions (INTO THE NEXT):**
+- **UNISON HIT BAR A HALF STEP UNDER:** the last bar everyone hitting together in threes and twos on the chord a half step under, the snare and toms on every hit.
+- **A HIT, TWO SILENT BARS, KICK PICKUP:** one hit, silence, then a lone kick on the last sixteenth.
+- **TWO STABS AND A SILENT BAR.**
+- **HALF-BAR TOM FILL:** the band stops halfway through the last bar, the drums filling the first half.
+- **MUTED BREATH BAR:** only a palm-muted root in eighths, a snare on 1 and a hat on 3.
+- **HIGH SOFT NOTES, BAND OUT:** four soft high notes held a beat each.
+
+Not checked here: how they sound.
+
 ## 0.171.0
 
 Six new bridge types from your 12 songs (round five, the fourth of five releases). Shapes only, our names; under TYPE on a Bridge, Middle 8 or Break block (the interlude and instrumental lists take them too).
