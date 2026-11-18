@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.175.0
+
+Speed, round eight. Three reviewers read the audio thread, the screen and the edit path again. I checked every finding in the code before changing anything, and each change is tested to give exactly what it gave before.
+
+**The screen:**
+- **The MIDI editor's playhead** no longer lays out the whole info line and every bar of the ruler on every frame while playing (60 times a second). With many notes selected, that was the biggest cost left in the editor.
+- **The arrangement** only sorts the parts that the playhead's strip touches. Before, every track sorted all of its parts 60 times a second.
+- **ARCHITECT while it plays** only redraws what the playhead passes over. Before, every frame laid out its header, the song strip and all seven lanes' headers.
+
+**ARCHITECT:**
+- **The drums options with library drums on** are worked out once, not 50 to 80 times. While library drums are on, every drums option plays your library's groove, and each one used to generate the riff again to fit it.
+- **The TYPE browser** builds only the drums for each type, not every lane (lead and solo included).
+- **The chord progressions** for a key, genre and mood are found once and kept. The header looked them up again on every redraw.
+- **A block's chords changed:** only the lanes still as built are composed again, and only the tracks whose notes actually move are copied.
+
+**The edit path:**
+- **Frozen tracks** are now checked with one quick look on every change. Before, their parts were compared note by note, even on every step of a fader drag.
+
+**Audio:**
+- **Starting playback, jumping and the cycle coming round:** each controller's value is now found by looking back from the playhead, not by walking every controller event from the song's start. A drawn CC or pitch-bend lane makes tens of thousands of events, and they were all walked again at every cycle wrap, in the same audio block.
+- **The click** stops working through the block once its sound has finished.
+
 ## 0.174.0
 
 Speed, round seven: the two look changes you OK'd and the riskier redraw changes left over from 0.173.0.
