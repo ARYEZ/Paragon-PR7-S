@@ -2551,7 +2551,7 @@ TEST_CASE ("0.105.0: a bridge's own types, every lane's options a different part
     REQUIRE (bridge.size() == names.size() + 9 + 11 + 14 + 1 + 6 + 3);   // (0.171.0: six more)   // (0.161.0: RISING BASS before the old three)   // (0.142.0: eleven more)   // (0.122.0: nine more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (bridge[i].name == names[i]);
-    CHECK (bridge[names.size() + 20 + 14 + 1].name == "CREEP");   // (the old three kept after them)
+    CHECK (bridge[names.size() + 20 + 14 + 1 + 6].name == "CREEP");   // (the old three kept after them; 0.171.0: six more before it)
     CHECK (sectionTypeNamed ("Middle 8", "CLEAN BRIDGE").has_value());
     CHECK_FALSE (sectionTypeNamed ("Verse", "HEAVY BUILD").has_value());
     CHECK (sectionTypeCalled ("SLIDING CHORDS")->band == SectionType::Band::bridge);
