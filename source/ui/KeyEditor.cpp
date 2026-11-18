@@ -2775,7 +2775,8 @@ void KeyEditor::paintNotes (juce::Graphics& g)
         // (0.166.0, the owner: "make the notes glow a bit like we do with automation") Soft halos in the note's
         // own colour, widest and faintest outside (as the automation lines' neon, 0.153.0). With CHORD GUIDES on
         // (0.125.0) the inner halo is pearl, so the note still stands out from the guides behind it.
-        if (! note.muted)
+        static const int glowMode = juce::SystemStats::getEnvironmentVariable ("PARAGON_NOTE_GLOW", "2").getIntValue();   // TEMP: measuring
+        if (! note.muted && glowMode == 2)
         {
             g.setColour (fill.withAlpha (0.08f));
             g.fillRoundedRectangle (bounds.expanded (glowReach), 6.0f);
@@ -2783,6 +2784,13 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             g.fillRoundedRectangle (bounds.expanded (3.0f), 4.5f);
             g.setColour ((guidesShown ? juce::Colour (0xfff4eeea) : fill.brighter (0.35f)).withAlpha (guidesShown ? 0.30f : 0.34f));
             g.fillRoundedRectangle (bounds.expanded (1.5f), 3.0f);
+        }
+        if (! note.muted && glowMode == 1)
+        {
+            g.setColour (fill.withAlpha (0.12f));
+            g.fillRect (bounds.expanded (3.0f).toNearestInt());
+            g.setColour ((guidesShown ? juce::Colour (0xfff4eeea) : fill.brighter (0.35f)).withAlpha (guidesShown ? 0.30f : 0.34f));
+            g.fillRect (bounds.expanded (1.5f).toNearestInt());
         }
         // (0.77.1) A muted note: faded, with a pearl outline (still there, not played).
         g.setColour ((isSelected ? fill.brighter (0.35f) : fill.brighter (note.muted ? 0.0f : 0.12f)).withAlpha (note.muted ? 0.22f : 1.0f));

@@ -21,7 +21,7 @@ TEST_CASE ("0.167.0: points stacked on one spot draw the same dot as a single po
     p.push_back ({ 2.0, 0.6f });                                                               // alone
     p.push_back ({ 6.0, 0.6f }); p.push_back ({ 6.0, 0.6f }); p.push_back ({ 6.0, 0.6f });     // three on one spot
     p.push_back ({ 10.0, 0.6f }); p.push_back ({ 10.01, 0.6f });                               // a hair apart
-    p.push_back ({ 14.0, 0.6f }); p.push_back ({ 14.5, 0.6f });                                // apart: two dots
+    p.push_back ({ 14.0, 0.6f }); p.push_back ({ 16.0, 0.6f });                                // apart: two dots
     studio.setAutomationPoints (trackId, 0, p);
     studio.setAutomationRead (trackId, true);
     MainView view (studio);
@@ -63,6 +63,6 @@ TEST_CASE ("0.167.0: points stacked on one spot draw the same dot as a single po
         const auto single = lightAround (2.0);
         CHECK (std::abs (lightAround (6.0) - single) < single * 0.02);
         CHECK (std::abs (lightAround (10.0) - single) < single * 0.02);
-        CHECK (lightAround (14.25) < lightAround (14.0) + 1.0);   // (between the two apart: no dot of its own)
+        CHECK (std::abs (lightAround (16.0) - single) < single * 0.02);   // (the second of two apart still drawn)
     }
 }
