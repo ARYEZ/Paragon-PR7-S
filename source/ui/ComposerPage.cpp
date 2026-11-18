@@ -1849,7 +1849,7 @@ juce::Button* ComposerPage::keyNamed (const juce::String& name)
 //==============================================================================
 juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
 {
-    const auto choices = pr7s::composerChoices (l, state, spans, context);
+    // (0.173.0: the lane's choices were worked out here and never used: laneOptions makes them)
     juce::PopupMenu menu;
     // (0.97.1) A lane the section type writes: its options are the type's approaches, each a different part.
     const auto typeWrites = pr7s::sectionTypeWritesLane (l, state, context);

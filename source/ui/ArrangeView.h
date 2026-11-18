@@ -550,6 +550,9 @@ private:
 
     juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
     juce::uint64 seenContent = 0;   // (0.164.0) the content version: unchanged, a change was only a selection
+    juce::uint64 seenRecording = 0;   // (0.173.0)
+    juce::Rectangle<int> recordingDrawn;
+    void repaintRecording();
     int paintedSelection = 0;       // the selected track as last painted
     void repaintSelectionChange();
     // (0.123.0) The cycle as last drawn: a cycle drag's step repaints only the strips that changed.

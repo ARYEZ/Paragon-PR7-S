@@ -1386,6 +1386,10 @@ namespace pr7s
         // (0.164.0) Bumped by every change but a selection (a track clicked): the arrangement and the MIDI editor show
         // nothing else of it, so they repaint only the rows it moved instead of everything.
         juce::uint64 getContentVersion() const noexcept { return contentVersion; }
+        // (0.173.0) While recording the take grows: this goes up (and a change message goes out) instead of the
+        // change version, so only the arrangement's recording row is drawn again, not every view in full.
+        juce::uint64 getRecordingVersion() const noexcept { return recordingVersion; }
+        int getRecordTrackId() const noexcept { return recordTrack; }
         void setCycleOn (bool);
         // Snap on/off (J) and the quantize value in beats (4: 1/1 ... 1/16: 1/64), the toolbar's (0.9.10).
         void setSnap (bool);
@@ -1658,6 +1662,22 @@ namespace pr7s
         void writeSectionContent (const SectionPlace&, const SectionContent&);
         void syncLinkedSections();
         std::map<int, SectionContent> linkSnapshots;   // by block id: each linked block's music as last seen
+        // (0.173.0) What linkSnapshots were made from: every track's parts (their shared lists: one pointer to compare),
+        // the chord track, the tempo, the first signature and the blocks. All the same: nothing to look at again.
+        struct LinkInputs
+        {
+            struct TrackIn { int id = 0; bool skipped = false; PartList parts; };
+            std::vector<TrackIn> tracks;
+            ChordTrack chords;
+            double bpm = 0.0;
+            bool tempoOn = false;
+            std::vector<TempoEvent> tempo;
+            int numerator = 0, denominator = 0;
+            std::vector<std::tuple<int, int, int, double, double>> blocks;   // id, link, bars, start, end
+        };
+        std::optional<LinkInputs> linkInputs;
+        LinkInputs currentLinkInputs() const;
+        static bool sameLinkInputs (const LinkInputs&, const LinkInputs&);
         bool linksReset = false;   // the next look only notes what's there (undo, open, new)
         int linkedCopyOf (const juce::String& name) const;   // the last block of that name (-1: none)
         // (0.92.0) Each block's chords (relative, with lengths) and length as last seen, by block id.
@@ -1848,6 +1868,7 @@ namespace pr7s
         bool mixOnlyAsked = false, mixOnlyBroken = false;
         bool selectionOnlyAsked = false;   // (0.164.0)
         juce::uint64 contentVersion = 1;
+        juce::uint64 recordingVersion = 0;   // (0.173.0)
         AlignSettings alignSettings;   // (without a settings file: the tests)
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)
         void pruneLinkGroups();

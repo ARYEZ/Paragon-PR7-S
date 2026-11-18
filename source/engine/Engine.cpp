@@ -1909,7 +1909,7 @@ namespace pr7s
                                             : settings.masterVolumeDb;   // (0.164.0: no lanes, the same value without the walk)
 
         // The click: a short tone at each beat, higher on the bar's first.
-        for (int i = 0, next = 0; i < numSamples; ++i)
+        for (int i = 0, next = 0; (numTicks > 0 || clickRemaining > 0) && i < numSamples; ++i)   // (0.173.0: no tick, nothing sounding: no walk)
         {
             if (next < numTicks && ticks[(size_t) next].sample == i)
             {

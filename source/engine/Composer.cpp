@@ -513,7 +513,13 @@ namespace pr7s
                 {
                     auto melody = c.melody;
                     melody.density = lane.busy * 0.9f;   // (BUSY: the MELODY SETTINGS' density; 0.5: its default 0.45)
-                    return pick (composedMelodies (spans, c.beatsPerBar, melody, lane.variation), lane.style);
+                    // (0.173.0) Only the chosen form composed (each has its own seed: the same melody as
+                    // composedMelodies' at that place, without making the other five).
+                    const auto& forms = melodyForms();
+                    if (forms.empty())
+                        return {};
+                    const auto i = juce::jlimit (0, (int) forms.size() - 1, lane.style);
+                    return composeMelody (spans, c.beatsPerBar, melody, forms[(size_t) i], (juce::uint32) (lane.variation * 31 + i * 7 + 1));
                 }
                 case ComposerLayer::guitar: return guitarOf (s, spans, c);
                 case ComposerLayer::clean: return cleanLaneOf (s, spans, c);
@@ -21148,7 +21154,7 @@ namespace pr7s
             pool.back().score = juce::roundToInt (score);
         }
         const std::lock_guard<std::mutex> sl (poolLock);
-        if (keptPools.size() >= 6)
+        if (keptPools.size() >= 16)   // (0.173.0: 6 missed every time: the drums menu asks for 7 sections in turn)
             keptPools.erase (keptPools.begin());
         keptPools.push_back ({ key, pool });
         return pool;

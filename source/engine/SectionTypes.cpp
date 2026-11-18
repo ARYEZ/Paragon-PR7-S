@@ -1,10 +1,12 @@
 #include "engine/SectionTypes.h"
 
 #include "engine/SongSections.h"
+#include <map>
+#include <mutex>
 
 namespace pr7s
 {
-    std::vector<SectionType> sectionTypesFor (const juce::String& sectionName)
+    static std::vector<SectionType> sectionTypesUncached (const juce::String& sectionName)
     {
         // composerSectionFor: intro 0, verse 1, chorus 2, bridge 3, breakdown 4, ending 5, solo 6.
         const SectionType driving { "DRIVING", "Eighth notes driving the chorus on", RiffFlavour::drivingEighths };
@@ -405,10 +407,33 @@ namespace pr7s
         return {};
     }
 
+    static const std::vector<SectionType>& cachedTypesFor (const juce::String& sectionName)
+    {
+        static std::recursive_mutex lock;
+        static std::map<juce::String, std::vector<SectionType>> kept;
+        const std::lock_guard<std::recursive_mutex> l (lock);
+        auto found = kept.find (sectionName);
+        if (found == kept.end())
+            found = kept.emplace (sectionName, sectionTypesUncached (sectionName)).first;
+        return found->second;   // (never erased: the reference stays good)
+    }
+
+    std::vector<SectionType> sectionTypesFor (const juce::String& sectionName) { return cachedTypesFor (sectionName); }
+
     std::optional<SectionType> sectionTypeNamed (const juce::String& sectionName, const juce::String& type)
     {
-        for (const auto& t : sectionTypesFor (sectionName))
+        for (const auto& t : cachedTypesFor (sectionName))
             if (t.name.equalsIgnoreCase (type.trim()))
+                return t;
+        return std::nullopt;
+    }
+
+    static std::optional<SectionType> sectionTypeCalledUncached (const juce::String& type)
+    {
+        if (type.isEmpty())
+            return std::nullopt;
+        for (const auto* name : { "Intro", "Verse", "Chorus", "Bridge", "Breakdown", "Ending", "Solo", "Pre-Chorus", "Interlude" })
+            if (auto t = sectionTypeNamed (name, type))
                 return t;
         return std::nullopt;
     }
@@ -417,10 +442,13 @@ namespace pr7s
     {
         if (type.isEmpty())
             return std::nullopt;
-        for (const auto* name : { "Intro", "Verse", "Chorus", "Bridge", "Breakdown", "Ending", "Solo", "Pre-Chorus", "Interlude" })
-            if (auto t = sectionTypeNamed (name, type))
-                return t;
-        return std::nullopt;
+        static std::mutex lock;
+        static std::map<juce::String, std::optional<SectionType>> kept;
+        const std::lock_guard<std::mutex> l (lock);
+        auto found = kept.find (type);
+        if (found == kept.end())
+            found = kept.emplace (type, sectionTypeCalledUncached (type)).first;
+        return found->second;
     }
 
     std::optional<RiffFlavour> typedGuitarFlavour (const ComposerState& s)
@@ -1447,7 +1475,7 @@ namespace pr7s
         return names;
     }
 
-    juce::StringArray extraApproaches (ComposerLayer layer)
+    static juce::StringArray extraApproachesUncached (ComposerLayer layer)
     {
         // (0.145.0) From the owner's 61 song files (shapes only, our names), offered under every named section type after
         // its own options.
@@ -1502,6 +1530,21 @@ namespace pr7s
                      // (0.172.0) Round five.
                      "HIGH COLOUR TONE", "HIGH TONIC PEDAL" };
         return {};
+    }
+
+    // (0.173.0) Built once (the lists never change): every lane idea under a type asked for them, strings and all.
+    juce::StringArray extraApproaches (ComposerLayer layer)
+    {
+        static const juce::StringArray drums = extraApproachesUncached (ComposerLayer::drums), bass = extraApproachesUncached (ComposerLayer::bass),
+                                       guitar = extraApproachesUncached (ComposerLayer::guitar), chords = extraApproachesUncached (ComposerLayer::chords);
+        switch (layer)
+        {
+            case ComposerLayer::drums: return drums;
+            case ComposerLayer::bass: return bass;
+            case ComposerLayer::guitar: return guitar;
+            case ComposerLayer::chords: return chords;
+            default: return {};
+        }
     }
 
     juce::StringArray sectionApproaches (const ComposerState& s, ComposerLayer layer)

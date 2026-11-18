@@ -73,6 +73,11 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
     }
     // (0.34.3) Only the mix moved (a fader, a pan, a send level): nothing here shows it. It repainted
     // the whole arrangement, across three screens, on every step of a fader drag.
+    if (studio.getRecordingVersion() != seenRecording)   // (0.173.0: the take grew: its row alone)
+    {
+        seenRecording = studio.getRecordingVersion();
+        repaintRecording();
+    }
     if (studio.getChangeVersion() == seenChange)
         return;
     seenChange = studio.getChangeVersion();
@@ -116,6 +121,25 @@ void ArrangeView::changeListenerCallback (juce::ChangeBroadcaster*)
             pointSelection = {};
     }
     repaint();
+}
+
+void ArrangeView::repaintRecording()
+{
+    // (0.173.0) The take's row from where it began to the playhead (and what was drawn last time, in case it
+    // moved back round the cycle).
+    juce::Rectangle<int> area;
+    if (const auto preview = studio.getRecordingPreview())
+    {
+        const auto& [trackId, part] = *preview;
+        const auto top = trackTop (trackId);
+        const auto x1 = timeline.xForBeat (part.start) - 4.0f;
+        const auto x2 = juce::jmax (timeline.xForBeat (part.start + part.length), timeline.xForBeat (studio.getEngine().getPosition())) + 6.0f;
+        area = juce::Rectangle<float> (x1, top, x2 - x1, (float) timeline.trackRowHeight()).getSmallestIntegerContainer().getIntersection (getLocalBounds());
+    }
+    const auto both = recordingDrawn.isEmpty() ? area : area.isEmpty() ? recordingDrawn : area.getUnion (recordingDrawn);
+    recordingDrawn = area;
+    if (! both.isEmpty())
+        repaint (both);
 }
 
 void ArrangeView::timerCallback()
@@ -837,7 +861,16 @@ void ArrangeView::paintContent (juce::Graphics& g)
     }
 
     // The parts (the one being dragged drawn where it's going; several selected: all of them).
-    const auto recording = studio.getRecordingPreview();
+    // (0.173.0) The take being recorded: only when its row is in what's being drawn (it walked every recorded
+    // event for every playhead strip and scrolled frame).
+    std::optional<std::pair<int, pr7s::Part>> recording;
+    if (studio.getEngine().isRecording() && studio.getRecordTrackId() != 0)
+    {
+        const auto top = trackTop (studio.getRecordTrackId());
+        const auto clipArea = g.getClipBounds().toFloat();
+        if (top + (float) timeline.trackRowHeight() >= clipArea.getY() && top <= clipArea.getBottom())
+            recording = studio.getRecordingPreview();
+    }
     const auto multiDrag = drag == Drag::move && dragMoved && getSelectedParts().size() > 1;
     for (size_t t = 0; t < project.tracks.size(); ++t)
     {
@@ -1484,9 +1517,10 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
                 const auto lane = twoSides ? (side == 0 ? wave.withHeight (wave.getHeight() * 0.5f).withTrimmedBottom (1.0f)
                                                         : wave.withTrimmedTop (wave.getHeight() * 0.5f).withTrimmedTop (1.0f))
                                            : wave;
-                // (0.164.0) Each pixel's end is the next one's start (worked out once, not twice), and the bars
-                // gathered and filled in one call (one fill a pixel across three screens of clips before).
-                juce::RectangleList<float> bars;
+                // (0.164.0) Each pixel's end is the next one's start (worked out once, not twice). (0.173.0) Each
+                // bar filled on its own: gathering them into one RectangleList<float> for fillRectList was about 13
+                // times slower in JUCE's software renderer (31,000 bars: 42 ms against 3 ms); the bars sit on whole
+                // pixels side by side, so the coverage is the same.
                 auto x = std::floor (clip.getX());
                 auto from = secondsAtX (x);
                 for (; x < clip.getRight(); x += 1.0f)
@@ -1497,10 +1531,9 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
                     for (int i = juce::jmax (0, first); i < juce::jmin (last, (int) list.size()); ++i)
                         peak = juce::jmax (peak, list[(size_t) i]);
                     const auto height = juce::jmin (1.0f, peak * part.gain()) * lane.getHeight() * 0.5f;
-                    bars.addWithoutMerging (juce::Rectangle<float> (x, lane.getCentreY() - height, 1.0f, juce::jmax (0.5f, height * 2.0f)));
+                    g.fillRect (juce::Rectangle<float> (x, lane.getCentreY() - height, 1.0f, juce::jmax (0.5f, height * 2.0f)));
                     from = to;
                 }
-                g.fillRectList (bars);
             }
             if (twoSides)
             {

@@ -3189,7 +3189,7 @@ namespace pr7s
             if (track.frozen || track.disabled || ! playsPr7d (track.id))
                 continue;
             std::vector<Part> copies;
-            for (const auto& p : track.parts)
+            for (const auto& p : std::as_const (track.parts))   // (0.173.0: const: a shared list isn't copied)
                 if (p.linkCopy)
                     copies.push_back (p);
             if (copies.empty() && track.drumLink.isEmpty())
@@ -3234,7 +3234,7 @@ namespace pr7s
             auto copies = pr7dPartsFromSong (*xml, track.drumMap == DrumMap::pr7d().name);
             const auto fingerprint = pr7dCopiesFingerprint (copies);
             std::vector<Part> mine;
-            for (const auto& p : track.parts)
+            for (const auto& p : std::as_const (track.parts))
                 if (p.linkCopy)
                     mine.push_back (p);
             pr7dSent[track.id] = fingerprint;   // (what PR7-D has: not sent back)
@@ -8718,7 +8718,9 @@ namespace pr7s
             if (recorded.size() != before || ++quietRecordingTicks >= 6)
             {
                 quietRecordingTicks = 0;
-                announce();
+                // (0.173.0) Not a change to the song (that comes when recording stops): only the take's row.
+                ++recordingVersion;
+                sendChangeMessage();
             }
         }
         else if (wasRecording)
@@ -14573,8 +14575,55 @@ namespace pr7s
         }
     }
 
+    Studio::LinkInputs Studio::currentLinkInputs() const
+    {
+        LinkInputs in;
+        in.tracks.reserve (project.tracks.size());
+        for (const auto& track : project.tracks)
+            in.tracks.push_back ({ track.id, track.frozen || track.isChannel(), track.parts });
+        in.chords = project.chordTrack;
+        in.bpm = project.bpm;
+        in.tempoOn = project.tempoTrackOn;
+        in.tempo = project.tempoEvents;
+        in.numerator = project.numerator;
+        in.denominator = project.denominator;
+        const auto places = getSongSectionPlaces();
+        for (size_t i = 0; i < project.songSections.blocks.size(); ++i)
+        {
+            const auto& b = project.songSections.blocks[i];
+            in.blocks.emplace_back (b.id, b.link, b.bars, i < places.size() ? places[i].start : -1.0, i < places.size() ? places[i].end : -1.0);
+        }
+        return in;
+    }
+
+    bool Studio::sameLinkInputs (const LinkInputs& a, const LinkInputs& b)
+    {
+        if (a.tracks.size() != b.tracks.size() || ! (a.chords == b.chords) || a.bpm != b.bpm || a.tempoOn != b.tempoOn || a.tempo != b.tempo
+            || a.numerator != b.numerator || a.denominator != b.denominator || a.blocks != b.blocks)
+            return false;
+        for (size_t i = 0; i < a.tracks.size(); ++i)
+            if (a.tracks[i].id != b.tracks[i].id || a.tracks[i].skipped != b.tracks[i].skipped || ! a.tracks[i].parts.sharesWith (b.tracks[i].parts))
+                return false;
+        return true;
+    }
+
     void Studio::syncLinkedSections()
     {
+        // (0.173.0) No linked blocks: nothing to keep. The music they're made of all as last seen (every track's
+        // parts the very same list): the snapshots still hold, so nothing is sliced again. It re-sliced every
+        // linked block's every part on every undo step (a fader's release, a mute, a rename: ~2 ms on a big song).
+        const auto anyLinks = std::any_of (project.songSections.blocks.begin(), project.songSections.blocks.end(),
+                                           [] (const SongSection& b) { return b.link > 0; });
+        if (! anyLinks)
+        {
+            linksReset = false;
+            linkSnapshots.clear();
+            linkInputs.reset();
+            return;
+        }
+        auto inputs = currentLinkInputs();
+        if (! linksReset && linkInputs.has_value() && sameLinkInputs (*linkInputs, inputs))
+            return;
         const auto& blocks = project.songSections.blocks;
         const auto places = getSongSectionPlaces();
         std::map<int, std::vector<int>> groups;
@@ -14617,6 +14666,8 @@ namespace pr7s
                 for (const auto i : members)
                     seen[blocks[(size_t) i].id] = sectionContent (places[(size_t) i]);
         linkSnapshots = std::move (seen);
+        // What they were made from: after writing into the links, the song as it is now.
+        linkInputs = currentLinkInputs();
     }
     //==========================================================================
     // Blocks whose chords change (0.92.0)
