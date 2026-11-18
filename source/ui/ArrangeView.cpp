@@ -913,7 +913,14 @@ void ArrangeView::paintContent (juce::Graphics& g)
         for (int b = 0; b < (showBeats ? signature.numerator : 1); ++b)
         {
             g.setColour (b == 0 ? gridBar : gridBeat);
-            g.fillRect (juce::Rectangle<float> (timeline.xForBeat (start + b * signature.unit()), (float) Timeline::rulerHeight, 1.0f, bounds.getHeight()));
+            const auto line = juce::Rectangle<float> (timeline.xForBeat (start + b * signature.unit()), (float) Timeline::rulerHeight, 1.0f, bounds.getHeight());
+            g.fillRect (line);
+            if (line.getRight() > cycleFrom && line.getX() < cycleTo)
+            {
+                // (0.174.0) The tint over the line, as the see-through fill drawn over everything did.
+                g.setColour (cycleTint);
+                g.fillRect (line);
+            }
         }
     }
 
