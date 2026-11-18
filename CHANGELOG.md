@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.168.0
+
+Six new verse types from the 12 songs you uploaded, the first of the five releases for them (then choruses, post-choruses, bridges, and the smaller additions). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a verse block (they're also under the pre-chorus's list, which takes every verse type).
+
+- **PEDAL STUTTER UNDER OCTAVE THIRDS:** the low root on sixteenths broken up by a high dyad of the chord's third, two octaves apart, with a root-and-fifth pickup into each change. Its second guitar option adds the chords rung over it on a syncopated figure (on a second track when the lane has two). Bass: sixteenth roots with two holes. Drums: a two-bar syncopated kick with open hats or a china on the eighths.
+- **CHOKED EIGHTHS, HIGH COLOUR TONE HELD:** two bars of short choked chords on every eighth (root, octave and third, no fifth), then two of a power chord with its top note moving 9, 3, 9. A high note held over each chord: the seventh, then the third (a second guitar, or the keys). A half-time kit with a four-bar kick cycle.
+- **BASS RUNS UNDER HELD CHORDS:** one power chord held a bar, a minor sixth on top every second bar and a half step up every fourth, three high notes answering in the second half, while the bass runs sixteenths round the root. Drums: a plain backbeat with a hat ruff every second bar.
+- **ONE RIFF, THE KIT CHANGES:** one double-picked riff of eight scale notes, the same every bar whatever the chord; the bass plays it two octaves down in eighths, then sixteenths for the last two bars. Drums: the ride on every sixteenth with kick pairs and a kick-and-snare run into the next section, or a busier kick with a crash on every beat.
+- **OPEN OCTAVE BAR, FALLING TRITONE ANSWER:** bars in pairs: an open voicing on the eighths with beat 3 left empty, then a bar stepping down to the flat seven and the tritone. A half-time kit with hats on the beats.
+- **PEDAL CELL WITH A HIGH ANSWER:** the low root on a 3+3+2 cell for half the bar, then high notes answering it, falling from the third to the root over four bars. A half-time kit with a few syncopated hats.
+
+Not checked here: how they sound (listening is yours).
+
 ## 0.167.0
 
 Two fixes from your reports.

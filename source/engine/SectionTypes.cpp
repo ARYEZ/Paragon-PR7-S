@@ -199,6 +199,13 @@ namespace pr7s
                          { "STRINGS ALONE VERSE", "The band out: strings over a walking pad", r, {}, v },
                          { "TREMOLO LINE IN GROUPS", "A single-note line, each note a sixteenth burst in groups of 4, 3, 3 and 6, over root sixteenths", r, {}, v },
                          { "RIFF BARS AND THIN BARS IN TURN", "Two bars of a chug cell, two thin bars, a tom rumble every fourth pair", r, {}, v },
+                         // (0.168.0) Round five (the owner's 12 songs; shapes only, our names).
+                         { "PEDAL STUTTER UNDER OCTAVE THIRDS", "The low root on sixteenths broken up by a high two-octave dyad of the chord's third, chords rung over it", r, {}, v },
+                         { "CHOKED EIGHTHS, HIGH COLOUR TONE HELD", "Short choked chords on every eighth, a high colour note held over each chord, a half-time kit", r, {}, v },
+                         { "BASS RUNS UNDER HELD CHORDS", "One power chord held a bar with three high notes answering, the bass running sixteenths round the root", r, {}, v },
+                         { "ONE RIFF, THE KIT CHANGES", "One double-picked riff the same every bar; the drums and the bass's density do the changing", r, {}, v },
+                         { "OPEN OCTAVE BAR, FALLING TRITONE ANSWER", "An open-voiced bar with two beats left empty, answered by a bar stepping down to the tritone", r, {}, v },
+                         { "PEDAL CELL WITH A HIGH ANSWER", "A low pedal on a 3+3+2 cell for half the bar, high notes answering it, falling a step a bar", r, {}, v },
                          droning, sparse };
             }
             case 2:
@@ -1079,6 +1086,19 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "BUSY KICK, RIDE BELL, CHINA ON FOUR", "BUSY KICK, CRASH EVERY BAR" }, {} },
                 { "CHANGES ON THREE", { "OPEN EIGHTHS, CHANGING ON THREE", "WITH A PASSING CHORD ON TWO" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "HELD PADS", "SILENT" }, { "FOUR ON THE FLOOR, BACKBEAT", "FOUR ON THE FLOOR, PICKUP SIXTEENTH" }, {} },
+                // (0.168.0) Round five's verses.
+                { "PEDAL STUTTER UNDER OCTAVE THIRDS", { "STUTTER UNDER OCTAVE THIRDS", "STUTTER, CHORDS RUNG OVER IT" }, { "SIXTEENTH ROOTS WITH TWO HOLES", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SYNCOPATED KICK PAIR, OPEN HATS", "CHINA EIGHTHS, SYNCOPATED KICK" }, {} },
+                { "CHOKED EIGHTHS, HIGH COLOUR TONE HELD", { "CHOKED EIGHTHS", "CHOKED EIGHTHS, HIGH COLOUR TONE" }, { "ROOTS HELD", "EIGHTHS", "LOCKED WITH THE KICK" },
+                  { "HIGH COLOUR TONE", "SILENT" }, { "HALF TIME, FOUR-BAR KICK CYCLE", "BACKBEAT, CLOSED HATS" }, {} },
+                { "BASS RUNS UNDER HELD CHORDS", { "HELD CHORD, THREE HIGH ANSWERS", "HELD CHORD ONLY" }, { "SIXTEENTHS CIRCLING THE ROOT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BACKBEAT, HAT RUFF EVERY SECOND BAR", "BACKBEAT, CLOSED HATS" }, {} },
+                { "ONE RIFF, THE KIT CHANGES", { "DOUBLE-PICKED RIFF", "DOUBLE-PICKED RIFF, OUT FOR FOUR BARS" }, { "THE RIFF IN EIGHTHS, THEN SIXTEENTHS", "THE RIFF IN SIXTEENTHS", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE SIXTEENTHS, KICK PAIRS", "KICK RUN, CRASH QUARTERS" }, {} },
+                { "OPEN OCTAVE BAR, FALLING TRITONE ANSWER", { "OPEN OCTAVE BAR, TRITONE ANSWER", "OPEN OCTAVE BAR EVERY BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF-TIME HAT QUARTERS, KICK CYCLE", "BACKBEAT, CLOSED HATS" }, {} },
+                { "PEDAL CELL WITH A HIGH ANSWER", { "PEDAL CELL, HIGH ANSWER", "PEDAL CELL ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, SPARSE HATS", "HALF TIME, OPEN HAT QUARTERS" }, {} },
                 // (0.147.0) Round four's verses.
                 { "HOOK OVER THE BEAT, GUITARS OUT", { "OUT", "PICKUP CHORD EVERY FOURTH BAR" }, { "WHOLE NOTES", "PICKUPS ONLY", "LOCKED WITH THE KICK" },
                   { "TWO-NOTE EIGHTH OSTINATO", "STAB HOOK ON 4+2+4+2+4", "HELD PADS" }, { "SPARSE KICK BACKBEAT", "SNARE ON TWO AND THE AND OF THREE" }, {} },
