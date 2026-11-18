@@ -180,8 +180,8 @@ TEST_CASE ("0.174.0: the cycle's tint is solid colour in the rows", "[speed174][
     }
     // Under the last row, inside the cycle and outside it.
     const auto y = arrange.getHeight() - 20;
-    const auto inside = image.getPixelAt (juce::roundToInt (timeline.xForBeat (10.0)), y);
-    const auto outside = image.getPixelAt (juce::roundToInt (timeline.xForBeat (20.0)), y);
+    const auto inside = image.getPixelAt (juce::roundToInt (timeline.xForBeat (10.4)), y);
+    const auto outside = image.getPixelAt (juce::roundToInt (timeline.xForBeat (22.4)), y);
     const auto tint = ParagonColours::accent.withAlpha (0.07f);
     const auto expected = outside.overlaidWith (tint);
     if (const auto file = juce::SystemStats::getEnvironmentVariable ("PARAGON_TINT_PNG", {}); file.isNotEmpty())
@@ -190,7 +190,7 @@ TEST_CASE ("0.174.0: the cycle's tint is solid colour in the rows", "[speed174][
         out.setPosition (0); out.truncate();
         juce::PNGImageFormat().writeImageToStream (image, out);
         std::printf ("inside %s outside %s expected %s at y %d x %d/%d\n", inside.toString().toRawUTF8(), outside.toString().toRawUTF8(),
-                     expected.toString().toRawUTF8(), y, juce::roundToInt (timeline.xForBeat (10.0)), juce::roundToInt (timeline.xForBeat (20.0)));
+                     expected.toString().toRawUTF8(), y, juce::roundToInt (timeline.xForBeat (10.4)), juce::roundToInt (timeline.xForBeat (22.4)));
     }
     CHECK (std::abs (inside.getRed() - expected.getRed()) <= 2);
     CHECK (std::abs (inside.getGreen() - expected.getGreen()) <= 2);
