@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.171.0
+
+Six new bridge types from your 12 songs (round five, the fourth of five releases). Shapes only, our names; under TYPE on a Bridge, Middle 8 or Break block (the interlude and instrumental lists take them too).
+
+- **PEDAL CELL, FALLING TOP, CHORDS IN THE GAP:** power chords on a pedal cell (x--x--x-x-------), a top note falling each bar (fifth, third, second, root), a push from the half step under every fourth bar; from halfway the last hit becomes a high chord in fourths rung in the gap, climbing a step each bar. Drums: soft crashes on the beats, the snare on 3.
+- **BASS AND RIDE ALONE, THE GUITAR DRIFTS IN:** the bass's four-bar cell (two bars playing, two empty) and the ride alone; the guitar comes in late with single held notes that clash with the chord (its major third, the half step over the root, the major seventh, the tritone), ending on a chord rung. A china ends every eighth bar.
+- **LOW HIT, HIGH MAJOR-7TH DYAD, CHROMATIC CLIMB:** low hits on 1 and its and answered by a high dyad of the major third and seventh, then power chords climbing by half steps in sixteenths every second bar. Drums: the crash, china and kick together.
+- **FLAT-SEVEN OCTAVES, SUS TO MAJOR TOP:** octave dyads round the key's flat seven, its top note going from the fourth to the major third, then the root and the half step over it; the next bar the root, the flat seven and the flat six.
+- **FLAT-TWO DRIVE TO THE SEVEN:** the power chord a half step over the key's root on every eighth, landing on the flat seven held for the last bar, over a driving beat (the song's file had only the guitar: the bass and drums are ours).
+- **GUITAR ALONE: A BAR OF LINE, A BAR RUNG:** one guitar with the band out: a bar of single-note line, a bar of the fifth, third and fifth held, then a power chord rung two bars (or a line bar and a rung bar in turn).
+
+Not checked here: how they sound.
+
 ## 0.170.0
 
 Three new post-chorus / interlude types from your 12 songs (round five, the third of five releases). Shapes only, our names; under TYPE on a Post-Chorus, Interlude or Instrumental block.
