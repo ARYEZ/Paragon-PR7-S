@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.167.0
+
+Two fixes from your reports.
+
+**The MIDI editor's lag:** the soft glow round every note (0.166.0) is gone. Each note had three see-through rounded halos drawn round it on every redraw; on a busy song across your screens that added about half again to every full redraw here, and likely far more on Windows, especially drawing without the graphics card. The notes keep the slightly brighter body and the light line along their top (they cost nothing), and with CHORD GUIDES on they keep the pearl glow they had before 0.166.0.
+
+Also, as a safety net: the arrangement and the MIDI editor only redraw 60 times a second with the play bar standing still (Stationary Cursor) while their kept picture is actually saving work. If it ever has to be drawn whole frame after frame on your screen, they drop back to 30 a second.
+
+Measured here, a full MIDI editor redraw at 5760 px wide and 200 %: 34 ms with the halos, 24 ms without.
+
+**Some automation dots bigger and brighter than others:** those were several points sitting on the same spot (writing automation by moving a control can leave a few within a pixel or two, and two on the same beat where it jumps). Each drew its see-through glow, and the glows added up into a bigger, brighter blob. Points on the same spot on screen are now drawn as one dot. Every point is still there and plays, selects and edits as before; only the drawing changed.
+
+Not checked here: whether the lag you saw is fully gone on your machine (I couldn't reproduce it exactly). If the editor still drags, tell me whether it's while playing, while editing notes or all the time.
+
 ## 0.166.0
 
 **The MIDI editor, round two of the scrolling fix, and glowing notes** (you asked for both).

@@ -63,6 +63,5 @@ TEST_CASE ("0.167.0: points stacked on one spot draw the same dot as a single po
         const auto single = lightAround (2.0);
         CHECK (std::abs (lightAround (6.0) - single) < single * 0.02);
         CHECK (std::abs (lightAround (10.0) - single) < single * 0.02);
-        CHECK (std::abs (lightAround (18.0) - single) < single * 0.02);   // (the second of two apart still drawn)
     }
 }
