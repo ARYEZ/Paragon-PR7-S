@@ -119,6 +119,30 @@ namespace pr7s
         }
     }
 
+    std::optional<juce::PluginDescription> PluginHost::findBackline (const char* file)
+    {
+        std::optional<juce::PluginDescription> best;
+        juce::VST3PluginFormat vst3;
+        // Beside the app (the release ships it there; on macOS beside the .app), then the VST3 folders.
+        juce::Array<juce::File> places;
+        const auto app = juce::File::getSpecialLocation (juce::File::currentApplicationFile);
+        places.add (app.getParentDirectory().getChildFile (file));
+        const auto folders = vst3.getDefaultLocationsToSearch();
+        for (int i = 0; i < folders.getNumPaths(); ++i)
+            places.add (folders.getRawString (i).isNotEmpty() ? juce::File (folders.getRawString (i)).getChildFile (file) : juce::File());
+        for (const auto& place : places)
+        {
+            if (place == juce::File() || ! place.exists())
+                continue;
+            juce::OwnedArray<juce::PluginDescription> found;
+            vst3.findAllTypesForFile (found, place.getFullPathName());
+            for (auto* description : found)
+                if (description->isInstrument && (! best || newer (description->version, best->version)))
+                    best = *description;
+        }
+        return best;
+    }
+
     const juce::PluginDescription* PluginHost::getStudioSynth()
     {
         if (! findStudioSynth)
@@ -126,26 +150,23 @@ namespace pr7s
         if (! studioSynthLooked)
         {
             studioSynthLooked = true;
-            juce::VST3PluginFormat vst3;
-            // Beside the app (the release ships it there; on macOS beside the .app), then the VST3 folders.
-            juce::Array<juce::File> places;
-            const auto app = juce::File::getSpecialLocation (juce::File::currentApplicationFile);
-            places.add (app.getParentDirectory().getChildFile (studioSynthFile));
-            const auto folders = vst3.getDefaultLocationsToSearch();
-            for (int i = 0; i < folders.getNumPaths(); ++i)
-                places.add (folders.getRawString (i).isNotEmpty() ? juce::File (folders.getRawString (i)).getChildFile (studioSynthFile) : juce::File());
-            for (const auto& place : places)
-            {
-                if (place == juce::File() || ! place.exists())
-                    continue;
-                juce::OwnedArray<juce::PluginDescription> found;
-                vst3.findAllTypesForFile (found, place.getFullPathName());
-                for (auto* description : found)
-                    if (description->isInstrument && (! studioSynth || newer (description->version, studioSynth->version)))
-                        studioSynth = *description;
-            }
+            studioSynth = findBackline (studioSynthFile);
         }
         return studioSynth ? &*studioSynth : nullptr;
+    }
+
+    const juce::PluginDescription* PluginHost::getStudioDrums()
+    {
+        if (! findStudioSynth)
+            return nullptr;
+        if (! studioDrumsLooked)
+        {
+            studioDrumsLooked = true;
+            studioDrums = findBackline (studioDrumsFile);
+            if (studioDrums)
+                SessionLog::note ("The studio's drums: " + describe (*studioDrums));
+        }
+        return studioDrums ? &*studioDrums : nullptr;
     }
 
     std::unique_ptr<juce::AudioPluginInstance> PluginHost::create (const Instrument& instrument, double sampleRate, int blockSize,

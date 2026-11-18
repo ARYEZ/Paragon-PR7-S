@@ -2,6 +2,7 @@
 #include "ui/DrumLearnPage.h"
 
 #include "ui/ChordUi.h"
+#include "engine/Composer.h"
 #include "ui/ParagonLookAndFeel.h"
 
 namespace
@@ -424,7 +425,7 @@ LinesPage::LinesPage (pr7s::Studio& s, std::vector<pr7s::ChordSpan> chords) : st
     addAndMakeVisible (buildKey);
     composerKey.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     composerKey.setWantsKeyboardFocus (false);
-    composerKey.setTooltip ("The composer: every layer stacked, each locked or rolled, one GENERATE");
+    composerKey.setTooltip ("The Architect: every layer stacked, each locked or rolled, one GENERATE");
     composerKey.onClick = [this] { if (onComposer) onComposer(); };
     addAndMakeVisible (composerKey);
 
@@ -587,8 +588,16 @@ void LinesPage::showRiffSettings()
 void LinesPage::lookForGrooves()
 {
     groovesLooked = true;
-    const auto bpm = spans.empty() ? studio.getProject().bpm : studio.getProject().bpmAt (spans.front().start);
-    libraryGrooves = pr7s::findLibraryGrooves (studio.getMediaBay().getItems(), studio.getGuitarStyle(), bpm);
+    // (0.138.0, the owner: "pulling low quality Ghosthack midi from media bay. THIS IS ABSOLUTELY NOT WHAT WE WANT")
+    // The composer's own pool (0.137.0's rules): PR7-D's groove library first (the MediaBay's drum MIDI only when
+    // PR7-D has none), two thirds from the Toontrack folder, the BUILD SECTION's section, 4 to 16 bars, no left-out
+    // styles, best fit to the guitar first. Before, this tab ranked every drum MIDI file in the MediaBay by its name.
+    const auto context = studio.getComposerContext (spans.empty() ? 0.0 : spans.front().start);
+    auto state = pr7s::ComposerState::fromString (studio.getComposerState());
+    state.lane (pr7s::ComposerLayer::drums).style = (int) buildChoice.section;
+    state.libraryDrums = true;
+    state.libraryGroove = {};
+    libraryGrooves = pr7s::composerGroovePool (state, spans, context);
     groovePage = 0;
 }
 
@@ -804,9 +813,15 @@ void BuildSectionPanel::resized()
 
 void LinesPage::setBuildChoice (const BuildChoice& c)
 {
+    const auto sectionChanged = c.section != buildChoice.section;
     buildChoice = c;
     if (auto* settings = studio.getSettings())
         settings->setValue ("ideasBuild", c.toString());
+    if (sectionChanged && groovesLooked)   // (0.138.0: the library's grooves are the section's)
+    {
+        lookForGrooves();
+        rebuild();
+    }
 }
 
 std::vector<pr7s::LineIdea> LinesPage::sectionIdeas (const BuildChoice& c) const
@@ -1164,7 +1179,8 @@ const std::vector<pr7s::LineIdea>& LinesPage::rawIdeas (pr7s::LineIdea::Part par
             if (! profile.has_value())
                 profile = studio.profileFor (pr7s::Studio::ProfileUse::guitar);
             list = pr7s::guitarLeadIdeas (spans, barBeats, variation, getTuning(), studio.getGuitarVelocities(), studio.getGuitarStyle(),
-                                          studio.getSoloStyle(), profile.has_value() ? profile->shortestNote : 0.0);
+                                          studio.getSoloStyle(), profile.has_value() ? profile->shortestNote : 0.0,
+                                          studio.getProject().bpmAt (spans.empty() ? 0.0 : spans.front().start));
         }
             break;
         case P::pattern: list = pr7s::patternIdeas (spans, barBeats, patternGroup); break;
@@ -1348,7 +1364,7 @@ void LinesPage::showUseMenu (pr7s::LineIdea::Part part, int index, Card& card)
     }
     juce::PopupMenu menu;
     if (lane.isNotEmpty())   // (0.74.0) first: the composer is where a song is put together
-        menu.addItem (3, "Into the Composer's " + lane + " lane (kept and locked there)");
+        menu.addItem (3, "Into the Architect's " + lane + " lane (kept and locked there)");
     if (studio.canTakeMidi (selected))
         menu.addItem (1, "Onto " + studio.getProject().findTrack (selected)->name + " (the selected track)");
     menu.addItem (2, "Onto a new track (" + pr7s::Studio::linePartName (part) + ")");

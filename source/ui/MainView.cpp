@@ -431,8 +431,15 @@ MainView::MainView (pr7s::Studio& studioToUse)
     arrange.onOpenAudioAlignment = [this] { if (alignmentWindow == nullptr) toggleAudioAlignment(); else alignmentWindow->toFront (true); };
     // (0.45.0) Signatures, tap tempo, tempo detection.
     arrange.onTempoDetection = [this] (int partId) { openTempoDetection (partId); };
+    arrange.onKeyCheck = [this] { openKeyCheck(); };
+    arrange.onBlueprints = [this] { openBlueprints(); };
     arrange.onOpenMarkers = [this] { toggleMarkersWindow (true); };
     trackList.onMarkerMenu = [this] { arrange.showMarkerMenu (-1); };
+    // (0.90.0) The SECTIONS row: a block double-clicked opens the composer on it.
+    trackList.onSectionsMenu = [this] { arrange.showSectionMenu (-1); };
+    trackList.onBlueprints = [this] { openBlueprints(); };
+    trackList.onAddSection = [this] { arrange.showAddSectionMenu (-1); };
+    arrange.onOpenSection = [this] (int index) { openSectionInComposer (index); };
     trackList.onMarkerZoom = [this] (int index)
     {
         const auto& markers = studio.getMarkerTrack().markers;
@@ -1013,6 +1020,26 @@ bool MainView::handleKey (const juce::KeyPress& key)
             return true;
         }
     }
+    // (0.85.3) Chords selected on the chord track: Ctrl+C / X / D on them, Ctrl+V pastes them at the playhead
+    // when they were copied last.
+    if (! (isKeyEditorOpen() && keysToEditor))
+    {
+        const auto cmd = mods.isCommandDown();
+        if (cmd && ! mods.isShiftDown() && (letter == 'C' || letter == 'X') && arrange.hasSelectedChordEvents())
+        {
+            arrange.copySelectedChords (letter == 'X');
+            copiedLast = Copied::chords;
+            rangeCopiedLast = false;
+            return true;
+        }
+        if (cmd && ! mods.isShiftDown() && letter == 'D' && arrange.hasSelectedChordEvents())
+        {
+            arrange.duplicateSelectedChords();
+            return true;
+        }
+        if (cmd && ! mods.isShiftDown() && letter == 'V' && copiedLast == Copied::chords && arrange.hasChordClip())
+            return arrange.pasteChords();
+    }
     // Parts (0.9.2): Ctrl+C / X with parts selected (unless the last click was
     // in the key editor) copies or cuts them; Ctrl+V pastes what was copied
     // last (parts at the playhead on the selected track), Alt+V at its origin.
@@ -1155,6 +1182,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
     if (key.getKeyCode() == juce::KeyPress::F4Key && ! mods.isAltDown()) { toggleZone (padsZone); return true; }
     if (key.getKeyCode() == juce::KeyPress::F5Key && ! mods.isAltDown()) { toggleMediaBay(); return true; }   // (the manual's MediaBay key)
     if (key.getKeyCode() == juce::KeyPress::F6Key && ! mods.isAltDown()) { toggleAutomationPanel(); return true; }   // (the manual's: 0.28.0)
+    if (key.getKeyCode() == juce::KeyPress::F7Key && ! mods.isAltDown()) { openComposer(); return true; }   // (0.152.1, the owner: F7 straight into ARCHITECT)
     if (isKeyEditorOpen() && key == juce::KeyPress::escapeKey) { closeKeyEditor(); return true; }
     if (isMixerOpen() && key == juce::KeyPress::escapeKey)     { closeMixer(); return true; }
     if (key.getKeyCode() == juce::KeyPress::spaceKey && mods.isShiftDown() && ! mods.isCommandDown() && ! mods.isAltDown())
@@ -1236,7 +1264,10 @@ bool MainView::handleKey (const juce::KeyPress& key)
     }
     if (mods.isAltDown() && ! mods.isCommandDown() && letter == 'X')
     {
-        arrange.splitAtCursor();
+        if (arrange.hasSelectedChordEvents())   // (0.85.3) the selected chords, at the playhead
+            arrange.splitChordsAt (studio.getEngine().getPosition());
+        else
+            arrange.splitAtCursor();
         return true;
     }
     // Zoom and Auto-Scroll (the manual's keys: H in, G out, Shift+F the whole song, F Auto-Scroll).
@@ -1464,6 +1495,9 @@ void MainView::openEffectWindow (int busId, int slot)
     {
         juce::MessageManager::callAsync ([safe, instance] { if (safe != nullptr) safe->effectWindows.erase (instance); });
     };
+    // (0.130.0) Auto-save asks a plug-in for its settings again once its window has been open.
+    studio.notePluginWindow (instance, true);
+    window->onGone = [this, instance] { studio.notePluginWindow (instance, false); };
     effectWindows[instance] = std::move (window);
 }
 
@@ -2155,6 +2189,9 @@ void MainView::openInstrumentWindow (int trackId)
     {
         juce::MessageManager::callAsync ([safe, trackId] { if (safe != nullptr) safe->instrumentWindows.erase (trackId); });
     };
+    // (0.130.0) Auto-save asks a plug-in for its settings again once its window has been open.
+    studio.notePluginWindow (instance, true);
+    window->onGone = [this, instance] { studio.notePluginWindow (instance, false); };
     instrumentWindows[trackId] = std::move (window);
 }
 
@@ -2477,6 +2514,86 @@ void MainView::openEq (int busId)
     eqWindow->setVisible (true);
 }
 
+void MainView::openBlueprints()
+{
+    if (blueprintsWindow != nullptr)
+    {
+        blueprintsWindow->getPage().refreshList();
+        blueprintsWindow->toFront (true);
+        return;
+    }
+    blueprintsWindow = std::make_unique<BlueprintsWindow> (studio);
+    blueprintsWindow->onClose = [this]
+    {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)]
+        {
+            if (safe != nullptr)
+                safe->blueprintsWindow.reset();
+        });
+    };
+    blueprintsWindow->centreAroundComponent (this, blueprintsWindow->getWidth(), blueprintsWindow->getHeight());
+    blueprintsWindow->setVisible (true);
+}
+
+void MainView::openKeyCheck()
+{
+    if (keyCheckWindow != nullptr)
+    {
+        keyCheckWindow->toFront (true);
+        return;
+    }
+    keyCheckWindow = std::make_unique<KeyCheckWindow> (studio);
+    keyCheckWindow->onClose = [this]
+    {
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)]
+        {
+            if (safe != nullptr)
+            {
+                safe->keyCheckWindow.reset();
+                safe->keyEditor.setKeyMarks (nullptr);
+            }
+        });
+    };
+    // A row clicked: its part in the MIDI editor with the note selected (a chord: the playhead to it).
+    keyCheckWindow->getPage().onShowIssue = [this] (const pr7s::KeyIssue& issue)
+    {
+        if (issue.kind == pr7s::KeyIssue::Kind::chord)
+        {
+            studio.setPosition (issue.beat);
+            return;
+        }
+        const auto* track = studio.getProject().findTrack (issue.trackId);
+        if (track == nullptr)
+            return;
+        for (int i = 0; i < (int) track->parts.size(); ++i)
+            if (track->parts[(size_t) i].id == issue.partId)
+            {
+                arrange.select (issue.trackId, i);
+                openKeyEditor();
+                studio.dispatchPendingMessages();
+                keyEditor.selectNotes ({ issue.noteIndex });
+                studio.setPosition (issue.beat);
+                return;
+            }
+    };
+    // While it's open the MIDI editor rings the notes outside the key (its own colours are the velocities).
+    // (Worked out once per change of the song or the key chosen: the guess reads every note.)
+    keyEditor.setKeyMarks ([this, version = juce::uint64 (-1), chosen = std::optional<pr7s::Key>(), keys = pr7s::KeyAt()] () mutable
+    {
+        const auto now = keyCheckWindow != nullptr ? keyCheckWindow->getPage().getChosenKey() : std::nullopt;
+        if (keys == nullptr || version != studio.getChangeVersion() || chosen != now)
+        {
+            keys = pr7s::keyCheckKeys (studio.getProject(), now);
+            version = studio.getChangeVersion();
+            chosen = now;
+        }
+        return keys;
+    });
+    keyCheckWindow->getPage().onKeyChange = [this] { keyEditor.repaint(); };
+    keyCheckWindow->centreAroundComponent (this, keyCheckWindow->getWidth(), keyCheckWindow->getHeight());
+    keyCheckWindow->setVisible (true);
+}
+
 void MainView::openProgressions()
 {
     if (progressionsWindow != nullptr)
@@ -2511,8 +2628,22 @@ void MainView::openComposer()
             w->toFront (true);
     };
     composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
+    composerWindow->getPage().aimAtSectionsRow();   // (0.93.0: a song with a SECTIONS row: its first block not built yet)
     composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
     composerWindow->setVisible (true);
+}
+
+void MainView::openSectionInComposer (int index)
+{
+    const auto& blocks = studio.getSongSections().blocks;
+    if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+        return;
+    openComposer();
+    if (composerWindow == nullptr)
+        return;
+    composerWindow->getSuite().showTab (ComposerSuite::Tab::compose);
+    composerWindow->getPage().targetSection (blocks[(size_t) index].id);
+    composerWindow->toFront (true);
 }
 
 void MainView::openBandRecord()
@@ -2729,9 +2860,24 @@ void MainView::openHub()
     hub.setKeyCommands (&keyMap);   // (HUMANIZE's key, 0.20.1)
     const auto closeHub = [safe = juce::Component::SafePointer<MainView> (this)]
     {
-        juce::MessageManager::callAsync ([safe] { if (safe != nullptr) safe->hubWindow.reset(); });
+        juce::MessageManager::callAsync ([safe]
+        {
+            if (safe == nullptr)
+                return;
+            safe->hubWindow.reset();
+            if (safe->atHub)   // (0.85.3) a song chosen in the Hub: the studio comes back with it
+                safe->showStudioAgain();
+        });
     };
-    window->onClose = closeHub;
+    // (0.85.3) The Hub's X: with the studio hidden (its own X brought you here), the program ends;
+    // opened over a song (HUB), it only closes.
+    window->onClose = [safe = juce::Component::SafePointer<MainView> (this), closeHub]
+    {
+        if (safe != nullptr && safe->atHub && safe->onQuit)
+            safe->whenSongCanGo ([safe] { if (safe != nullptr && safe->onQuit) safe->onQuit(); });
+        else
+            closeHub();
+    };
     hub.onOpen = [this, closeHub] (const juce::File& file)
     {
         whenSongCanGo ([this, file, closeHub] { openSong (file); closeHub(); });
@@ -2771,6 +2917,58 @@ void MainView::openHub()
     hub.onSettings = [this] { openSettings(); };
     hub.onSaveTemplate = [this] { saveAsTemplate(); };   // (0.78.2)
     hubWindow = std::move (window);
+}
+
+void MainView::closeToHub()
+{
+    whenSongCanGo ([safe = juce::Component::SafePointer<MainView> (this)]
+    {
+        if (safe == nullptr)
+            return;
+        if (safe->studio.getEngine().isPlaying() || safe->studio.getEngine().isRecording())
+            safe->studio.stop();
+        safe->studio.newProject (false);   // (the song closes: what's left is empty, unchanged; no track loaded for nothing)
+        safe->showHubAlone();
+    });
+}
+
+void MainView::showHubAlone()
+{
+    // The song's tool windows close (they'd float over the Hub with nothing behind them); the
+    // MIDI editor's, the mixer's and the pads' own windows hide and come back with the studio.
+    for (auto* w : { &keysWindow, &tempoEditorWindow, &drumMapWindow, &automationWindow, &alignmentWindow, &variAudioWindow,
+                     &tempoDetectionWindow, &markersWindow, &historyWindow })
+        w->reset();
+    progressionsWindow.reset();
+    keyCheckWindow.reset();
+    blueprintsWindow.reset();
+    composerWindow.reset();
+    bandRecordWindow.reset();
+    eqWindow.reset();
+    mediaBayWindow.reset();
+    for (auto* zone : zones())
+        if (zone->window != nullptr)
+            zone->window->setVisible (false);
+    atHub = true;
+    if (auto* top = getTopLevelComponent(); top != nullptr && top != this)
+        top->setVisible (false);
+    openHub();
+}
+
+void MainView::showStudioAgain()
+{
+    atHub = false;
+    if (studio.getProject().tracks.empty() && studio.getFile() == juce::File())
+        studio.newProject();   // (0.113.0: closed to the Hub with no track: back with the usual new song)
+    if (auto* top = getTopLevelComponent(); top != nullptr && top != this)
+    {
+        top->setVisible (true);
+        top->toFront (true);
+    }
+    for (auto* zone : zones())
+        if (zone->window != nullptr && zone->open && zone->inWindow)
+            zone->window->setVisible (true);
+    grabKeyboardFocus();
 }
 
 void MainView::saveAsTemplate()

@@ -3,6 +3,7 @@
 #include "ui/InfoEntry.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
+#include "engine/FollowChords.h"
 #include "engine/Studio.h"
 #include "ui/ArrangeView.h"
 
@@ -128,6 +129,9 @@ public:
     // (0.78.0, the owner: the other DAW's Solo Editor) While on, only the track of the part being edited is heard;
     // it follows the part, and goes off when the editor closes. Not saved.
     void setSoloEditor (bool on);
+    // (0.84.0) KEY CHECK: while set, notes outside the key (the hook gives the key at each beat) get a pearl ring.
+    void setKeyMarks (std::function<std::function<pr7s::Key (double)>()> hook) { keyMarks = std::move (hook); repaint(); }
+    bool hasKeyMarks() const noexcept { return keyMarks != nullptr; }
     bool isSoloEditorOn() const noexcept { return soloOn; }
     juce::TextButton& getSoloKey() noexcept { return soloKey; }
     // (0.81.0, the owner asked) The cycle in the editor's ruler: its top strip shows the locators as the
@@ -142,6 +146,14 @@ public:
     void setSnap (bool on);
     bool isSnapOn() const noexcept { return snapOn; }
     juce::TextButton& getSnapKey() noexcept { return snapKey; }
+    // (0.121.0, the owner asked) CHORD GUIDES: the chord track's chord under each stretch of the notes lights its rows
+    // (root strongest, then its 3rd and 5th, then added notes), the key's other notes a faint tint; the keys light
+    // for the chord at the playhead. 0 nothing, 1 the key, 2 an added note, 3 a 3rd / 5th (or a slash bass), 4 the root.
+    // By the pitch as heard (the part's transpose counted). Never in the drum view or on a drum track.
+    int chordGuideLevel (int writtenPitch, double songBeat) const;
+    void setChordGuides (bool on);
+    bool isChordGuidesOn() const noexcept { return chordGuidesOn; }
+    juce::TextButton& getChordGuidesKey() noexcept { return chordGuidesKey; }
     void visibilityChanged() override;
     void setInWindow (bool);   // the button's name follows
     bool isInWindow() const noexcept { return inWindow; }
@@ -165,6 +177,7 @@ public:
     void followPlayhead();
     double getPixelsPerBeat() const noexcept { return pixelsPerBeat; }
     double getFirstBeat() const noexcept { return firstBeat; }
+    void setFirstBeatForTests (double beat) { firstBeat = beat; }
     juce::ScrollBar& getScrollBarAcross() noexcept { return across; }
     juce::ScrollBar& getScrollBarDown() noexcept { return down; }
 
@@ -303,6 +316,20 @@ public:
     static constexpr float minRowHeight = 6.0f, maxRowHeight = 36.0f;
 
     void paint (juce::Graphics&) override;
+
+    // (0.166.0) While Stationary Cursor moves the notes under the playing playhead, the part that scrolls
+    // (the notes, the ruler under the info line, the lanes) is kept as a picture, as the arrangement's
+    // (ArrangeView, 0.165.0): each frame copies it and draws only the strip the scroll uncovered. These
+    // overloads hide Component's so every redraw asked for redraws those columns of the picture too.
+    void repaint();
+    void repaint (int x, int y, int width, int height);
+    void repaint (juce::Rectangle<int>);
+    bool isScrollCacheActive() const;
+    void setScrollCacheForTests (std::optional<bool> on) { scrollCacheForced = on; }
+    int getScrollCacheColumnsDrawn() const noexcept { return cacheColumnsDrawn; }   // (tests) screen columns drawn last paint
+    double scrollStep() const;   // (the smallest scroll that moves the picture by whole screen pixels; 0: none)
+    void paintFreshForTests (juce::Graphics&);   // (tests) drawn whole, as without the picture
+
     void resized() override;
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
@@ -313,6 +340,22 @@ public:
 
 private:
     juce::uint64 seenChange = 0;   // (0.57.1) the studio's change version last acted on
+    // (0.174.0) A change of other tracks' parts alone (the layout version unchanged, this track's parts
+    // the ones shown): nothing here to redraw. It redrew the whole editor (52 ms at 200 % across three
+    // screens) for every part moved or muted in the arrangement.
+    juce::uint64 seenEditorContent = 0, seenEditorLayout = 0;
+    int shownPartsTrack = 0;
+    pr7s::PartList shownParts;
+    int refreshesSkipped = 0;
+public:
+    int getRefreshesSkipped() const noexcept { return refreshesSkipped; }
+private:
+    juce::uint64 seenContent = 0;   // (0.164.0) a track clicked: nothing here changed
+    // (0.123.0) The cycle as last drawn: a cycle drag's step repaints only the strips that changed.
+    juce::uint64 seenCycle = 0;
+    double shownCycleStart = -1.0, shownCycleEnd = -1.0;
+    bool shownCycleOn = false;
+    void repaintCycleChange();
     enum class Gesture { none, position, audition, band, muteBand, move, resize, resizeStart, draw, erase, velocity, velocityHandle,
                          controllerDraw, controllerErase, controllerBand, controllerMove, controllerHandle, controllerLine, laneResize,
                          cycle, cycleLeft, cycleRight, cycleMove };   // (0.81.0) the ruler's cycle strip
@@ -365,6 +408,29 @@ private:
     void paintPanel (juce::Graphics&);
     void paintKeys (juce::Graphics&);
     void paintNotes (juce::Graphics&);
+    static constexpr float glowReach = 3.0f;    // (0.166.0) how far a note reaches past its box (0.167.0: only the guides' pearl glow, 3 px)
+    void paintFollowStamp (juce::Graphics&);   // (0.166.0: pinned to the notes' corner, drawn over the picture)
+    void paintBody (juce::Graphics&);           // (0.166.0) everything but the playhead and the frame
+    void paintOver (juce::Graphics&);           // the playhead and the frame
+    juce::Rectangle<float> notesPaintArea() const;   // the notes' area; into the picture: to the right edge
+    void dirtyCache (juce::Rectangle<int>);
+    std::optional<bool> scrollCacheForced;
+    bool paintingCache = false, playheadScroll = false;
+    juce::Image cacheImage;   // the ring (RGB, screen pixels) of the part that scrolls
+    struct CacheKey
+    {
+        int width = 0, height = 0, left = 0, top = 0, list = 0, lanes = 0, finish = 0;
+        float scale = 0.0f, scrollY = 0.0f, rowHeight = 0.0f, lanesTop = 0.0f;
+        double pixelsPerBeat = 0.0, barLength = 0.0;
+        bool drums = false;
+        bool operator== (const CacheKey&) const = default;
+    } cacheKey;
+    bool cacheValid = false;
+    juce::int64 cacheFrom = 0, cacheTo = 0, cacheBase = 0;
+    std::vector<std::pair<juce::int64, juce::int64>> cacheDirty;
+    int cacheColumnsDrawn = 0;
+    int wholeFramesInARow = 0;   // (0.167.0) paints in a row that drew (nearly) all of the picture
+    float lastPaintScale = 1.0f;
     void paintVelocities (juce::Graphics&);
     void paintRuler (juce::Graphics&);
     // The lanes (KeyEditorLanes.cpp).
@@ -422,6 +488,14 @@ private:
     pr7s::Studio& studio;
     ArrangeView& arrange;
     int partId = 0;                          // the part shown (0: none yet)
+    struct FollowCache   // (0.83.1) where a following part's notes sound, kept for the redraws
+    {
+        juce::uint64 version = 0;
+        int partId = 0;
+        std::vector<pr7s::Note> notes;
+        std::vector<pr7s::FollowedNote> heard;
+    } followCache;
+    std::function<std::function<pr7s::Key (double)>()> keyMarks;   // (0.84.0) KEY CHECK open
     int lastArrangeTrack = 0, lastArrangeIndex = -1;
     std::vector<pr7s::Note> knownNotes;      // its notes as last seen, to notice changes from elsewhere (undo)
     std::vector<int> selected;
@@ -485,6 +559,11 @@ private:
     void refreshSolo();
     juce::TextButton snapKey { "SNAP" };   // (0.81.0)
     bool snapOn = true;
+    bool chordGuidesOn = true;           // (0.121.0) settings midiEditorChordGuides
+    juce::TextButton chordGuidesKey { "CHORD GUIDES" };
+    int shownGuideChord = -2;            // the chord the keys were lit for (the timer repaints them when it changes)
+    bool guidesApply() const;            // a pitched part, not the drum view, guides on
+    void paintChordGuides (juce::Graphics&, juce::Rectangle<float> area);
     double cycleDownBeat = 0.0, cycleOriginalStart = 0.0, cycleOriginalLength = 0.0;   // (0.81.0) a cycle drag's start
     bool cycleMoved = false;
     bool inWindow = false;

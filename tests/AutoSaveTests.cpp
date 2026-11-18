@@ -107,3 +107,106 @@ TEST_CASE ("0.72.0: an automation lane's X removes that lane only", "[automation
     studio.undo();
     CHECK (studio.getAutomation (trackId)->size() == 2);
 }
+
+namespace
+{
+    struct Knob final : juce::HostedAudioProcessorParameter
+    {
+        float value = 0.5f;
+        float getValue() const override { return value; }
+        void setValue (float v) override { value = v; }
+        float getDefaultValue() const override { return 0.5f; }
+        juce::String getName (int) const override { return "Knob"; }
+        juce::String getLabel() const override { return {}; }
+        float getValueForText (const juce::String& t) const override { return t.getFloatValue(); }
+        juce::String getParameterID() const override { return "knob"; }
+    };
+
+    // An instrument that counts how often it's asked for its settings, with one parameter to move.
+    struct CountingInstrument final : TestPlugin
+    {
+        CountingInstrument() : TestPlugin (BusesProperties().withOutput ("Output", juce::AudioChannelSet::stereo(), true))
+        {
+            instrument = true;
+            name = "Counting";
+            state = "first";
+            auto owned = std::make_unique<Knob>();
+            knob = owned.get();
+            addHostedParameter (std::move (owned));
+        }
+        void processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer&) override { buffer.clear(); }
+        void getStateInformation (juce::MemoryBlock& block) override
+        {
+            ++asked;
+            TestPlugin::getStateInformation (block);
+        }
+        int asked = 0;
+        Knob* knob = nullptr;
+    };
+}
+
+TEST_CASE ("0.130.0: auto-save asks a plug-in for its settings only when something may have changed them", "[autosave]")
+{
+    const auto folder = juce::File::createTempFile ("pr7s-autosave130");
+    folder.createDirectory();
+    Studio studio (false);
+    studio.setAutoSaveKeep (50);
+    const auto trackId = studio.getProject().tracks[0].id;
+    auto owned = std::make_unique<CountingInstrument>();
+    auto* plugin = owned.get();
+    studio.getEngine().setInstrument (trackId, std::move (owned));
+    studio.renameTrack (trackId, "Watched");   // (a change: the studio starts watching the new plug-in)
+    REQUIRE (studio.save (folder.getChildFile ("Song.pr7s")));   // (SAVE asks)
+    const auto askedBySave = plugin->asked;
+    CHECK (askedBySave >= 1);
+
+    // An edit elsewhere (a rename): a backup is written, but the plug-in isn't asked again.
+    studio.renameTrack (trackId, "Renamed");
+    REQUIRE (studio.writeBackup());
+    CHECK (plugin->asked == askedBySave);
+    CHECK (studio.getReusedStates() >= 1);
+    REQUIRE (studio.waitForSaves (5000));
+    CHECK (juce::File (studio.getLastBackup()).loadFileAsString().contains ("Renamed"));
+
+    // A parameter moved: asked again, and its new settings are in the backup.
+    plugin->state = "second";
+    plugin->knob->setValueNotifyingHost (0.9f);
+    studio.renameTrack (trackId, "Renamed again");
+    REQUIRE (studio.writeBackup());
+    CHECK (plugin->asked == askedBySave + 1);
+    CHECK (studio.getProject().tracks[0].instrument.state.toString() == "second");
+
+    // Its window opened: asked while it's open, and once more after it closes.
+    studio.notePluginWindow (plugin, true);
+    plugin->state = "third";
+    studio.renameTrack (trackId, "Three");
+    REQUIRE (studio.writeBackup());
+    CHECK (plugin->asked == askedBySave + 2);
+    studio.renameTrack (trackId, "Four");
+    REQUIRE (studio.writeBackup());
+    CHECK (plugin->asked == askedBySave + 3);
+    studio.notePluginWindow (plugin, false);
+    studio.renameTrack (trackId, "Five");
+    REQUIRE (studio.writeBackup());
+    CHECK (plugin->asked == askedBySave + 4);
+    studio.renameTrack (trackId, "Six");
+    REQUIRE (studio.writeBackup());
+    CHECK (plugin->asked == askedBySave + 4);   // (closed and untouched since)
+    CHECK (studio.getProject().tracks[0].instrument.state.toString() == "third");
+
+    // The studio giving it settings, or the plug-in saying it changed: asked again.
+    studio.notePluginChanged (plugin);
+    studio.renameTrack (trackId, "Seven");
+    REQUIRE (studio.writeBackup());
+    CHECK (plugin->asked == askedBySave + 5);
+    plugin->updateHostDisplay (juce::AudioProcessor::ChangeDetails().withNonParameterStateChanged (true));
+    studio.renameTrack (trackId, "Eight");
+    REQUIRE (studio.writeBackup());
+    CHECK (plugin->asked == askedBySave + 6);
+
+    // SAVE always asks.
+    REQUIRE (studio.save (folder.getChildFile ("Song.pr7s")));
+    CHECK (plugin->asked == askedBySave + 7);
+    REQUIRE (studio.waitForSaves (5000));
+    folder.deleteRecursively();
+}

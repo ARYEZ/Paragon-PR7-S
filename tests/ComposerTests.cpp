@@ -6,6 +6,7 @@
 #include "engine/Composer.h"
 #include "engine/DrumIdeas.h"
 #include "ui/ComposerPage.h"
+#include "ui/MainView.h"
 #include "ui/Finish.h"
 #include "ui/ParagonLookAndFeel.h"
 
@@ -356,7 +357,18 @@ TEST_CASE ("Snapshot: the composer (0.58.0)", "[.][snapshot-composer]")
         page.generate();
         page.setLocked (L::bass, true);
         page.setOn (L::lead, false);
-        page.setSize (1500, 900);
+        // (0.86.0) PARAGON_SNAPSHOT_SYNC=1: a tritone chug riff leading, the bass and drums doubling it.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SYNC", {}) == "1")
+        {
+            for (int i = 0; i < (int) riffFlavours().size(); ++i)
+                if (riffFlavours()[(size_t) i] == RiffFlavour::tritone)
+                    page.setRiffFlavour (i);
+            page.setLocked (L::bass, false);
+            page.setSync (L::guitar);
+            page.setDoubleSync (L::bass, true);
+            page.setDoubleSync (L::drums, true);
+        }
+        page.setSize (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SYNC", {}) == "1" ? 1700 : 1500, 900);
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
@@ -829,6 +841,40 @@ TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snaps
             page.setChord (1, Chord { 2, Chord::Type::minor, Chord::Tension::none, -1 });
             page.buildSection();
         }
+        else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SECTIONS", {}) == "1")
+        {
+            // (0.93.0) A SECTIONS row (the verse and chorus coming back linked); the intro and verse built: on to the chorus.
+            for (const auto& [name, bars] : std::vector<std::pair<juce::String, int>> { { "Intro", 4 }, { "Verse", 8 }, { "Chorus", 8 }, { "Verse", 8 }, { "Chorus", 8 }, { "Outro", 4 } })
+                studio.appendSongSection (name, bars);
+            page.aimAtSectionsRow();
+            page.buildSection();
+            page.buildSection();
+            // (0.94.0) The chorus DRONING, its drums half time. (0.95.0) =staccato: the verse STACCATO CHUG on Stricken's chugs.
+            if (const auto clean = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_CLEAN", {}); clean.isNotEmpty())
+            {
+                studio.setSongSectionType (1, "CLEAN VERSE");
+                page.targetSection (studio.getSongSections().blocks[1].id);
+                page.setApproach (ComposerLayer::guitar, clean.getIntValue());
+            }
+            else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SPLIT", {}).isNotEmpty())
+            {
+                studio.setSongSectionType (1, "SPLIT CHUG");
+                page.targetSection (studio.getSongSections().blocks[1].id);
+                page.setApproach (ComposerLayer::guitar, 2);
+            }
+            else if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STACCATO", {}).isNotEmpty())
+            {
+                studio.setSongSectionType (1, "STACCATO CHUG");
+                page.targetSection (studio.getSongSections().blocks[1].id);
+                page.setApproach (ComposerLayer::guitar, 1);
+            }
+            else
+            {
+                studio.setSongSectionType (2, "DRONING");
+                page.targetSection (studio.getSongSections().blocks[2].id);
+                page.setApproach (ComposerLayer::drums, 1);
+            }
+        }
         else
         {
         page.setSection (DrumSection::intro);
@@ -844,6 +890,8 @@ TEST_CASE ("Snapshot: the composer suite with a song built (0.74.0)", "[.][snaps
         else
             suite.showTab (ComposerSuite::Tab::compose);
         suite.setSize (1700, 980);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_PARTDROP", {}) == "1")
+            suite.partDragHover (true);   // (0.83.4: a part held over it)
         const auto image = suite.createComponentSnapshot (suite.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
@@ -895,4 +943,145 @@ TEST_CASE ("0.76.0: the mixer while the composer is heard: faders follow, hearin
     page.setTrack (L::chords, piano);   // (a refresh)
     CHECK (page.getLaneVolume (L::chords).getValue() == -6.0);
     REQUIRE (page.keyNamed ("MIXER") != nullptr);
+}
+
+// 0.83.4 (the owner: drag a MIDI part or file into MY RIFF and it builds that part).
+namespace
+{
+    struct FakePartTarget final : juce::Component, PartDropTarget
+    {
+        bool isInterestedInPart (int) override { return true; }
+        void partDragHover (bool over) override { hovering = over; if (over) ++hovers; }
+        void partDropped (int id) override { dropped = id; }
+        bool hovering = false;
+        int hovers = 0, dropped = 0;
+    };
+
+    juce::MouseEvent mouseAt (juce::Component& target, juce::Point<float> at, juce::Point<float> downAt)
+    {
+        const auto now = juce::Time::getCurrentTime();
+        return juce::MouseEvent (juce::Desktop::getInstance().getMainMouseSource(), at, juce::ModifierKeys (juce::ModifierKeys::leftButtonModifier),
+                                 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, &target, &target, now, downAt, now, 1, at != downAt);
+    }
+}
+
+TEST_CASE ("0.83.4: a riff dropped in builds the section around it", "[composer][riff]")
+{
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (5);
+    page.setOn (L::lead, false);
+    const auto guitar = studio.addTrack (Instrument {});
+    Part part;
+    part.start = 0.0;
+    part.length = 8.0;
+    part.notes = aMinorRiff();
+    studio.addPart (guitar, part);
+    const auto partId = studio.getProject().findTrack (guitar)->parts.front().id;
+    CHECK (page.canTakePart (partId));
+    const auto tracksBefore = studio.getProject().tracks.size();
+
+    const auto tracks = page.buildFromPart (partId, DrumSection::chorus);
+    REQUIRE_FALSE (tracks.empty());
+    CHECK (page.isPlayingMyRiff());
+    CHECK (studio.getComposerRiff().has_value());
+    REQUIRE (studio.getBuiltSections().size() == 1);
+    CHECK (studio.getBuiltSections().front().kind == DrumSection::chorus);
+    CHECK (studio.getProject().tracks.size() > tracksBefore);
+    // The built guitar plays the riff's notes (its pitches), and drums were written.
+    auto drums = false;
+    for (const auto id : tracks)
+        if (const auto* t = studio.getProject().findTrack (id); t != nullptr && t->name == "Drums")
+            drums = ! t->parts.empty();
+    CHECK (drums);
+    CHECK (page.getStatus().contains ("built at bar"));
+
+    // A part without notes (or not MIDI) isn't taken.
+    Part empty;
+    empty.start = 40.0;
+    empty.length = 4.0;
+    studio.addPart (guitar, empty);
+    CHECK_FALSE (page.canTakePart (studio.getProject().findTrack (guitar)->parts.back().id));
+
+    // A MIDI file dropped in builds too.
+    const auto file = juce::File::createTempFile (".mid");
+    {
+        juce::MidiMessageSequence seq;
+        for (const auto& n : aMinorRiff())
+        {
+            seq.addEvent (juce::MidiMessage::noteOn (1, n.pitch, n.velocity), n.start * 480.0);
+            seq.addEvent (juce::MidiMessage::noteOff (1, n.pitch), (n.start + n.length) * 480.0);
+        }
+        seq.updateMatchedPairs();
+        juce::MidiFile midi;
+        midi.setTicksPerQuarterNote (480);
+        midi.addTrack (seq);
+        juce::FileOutputStream out (file);
+        REQUIRE (midi.writeTo (out));
+    }
+    CHECK_FALSE (page.buildFromFile (file, DrumSection::verse).empty());
+    CHECK (studio.getBuiltSections().size() == 2);
+    file.deleteFile();
+}
+
+TEST_CASE ("0.83.4: a part dragged from the arrangement onto the composer is handed over and doesn't move", "[composer][riff][ui]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    MainView view (studio);
+    view.setSize (1500, 900);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.addPart (trackId, { 4.0, 4.0, "Riff", { { 0.0, 1.0, 40, 0.8f } } });
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    arrange.select (trackId, 0);
+    FakePartTarget target;
+    auto overTarget = false;
+    arrange.findPartTarget = [&] (juce::Point<float>) -> PartDropTarget* { return overTarget ? &target : nullptr; };
+    const auto partId = studio.getProject().tracks[0].parts[0].id;
+    const auto bounds = arrange.getPartBounds (trackId, 0);
+    const auto from = bounds.getCentre();
+    arrange.mouseDown (mouseAt (arrange, from, from));
+    overTarget = true;
+    const auto to = from.translated (200.0f, 0.0f);
+    arrange.mouseDrag (mouseAt (arrange, to, from));
+    CHECK (target.hovering);
+    CHECK (arrange.isOverPartTarget());
+    arrange.mouseUp (mouseAt (arrange, to, from));
+    CHECK (target.dropped == partId);
+    CHECK_FALSE (target.hovering);
+    // It stayed where it was.
+    CHECK (studio.getProject().tracks[0].parts[0].start == 4.0);
+    CHECK_FALSE (arrange.isDraggingOut());
+
+    // Off the target: an ordinary move.
+    overTarget = false;
+    target.dropped = 0;
+    const auto from2 = arrange.getPartBounds (trackId, 0).getCentre();
+    arrange.mouseDown (mouseAt (arrange, from2, from2));
+    arrange.mouseDrag (mouseAt (arrange, from2.translated (0.0f, 0.0f), from2));
+    CHECK (target.dropped == 0);
+}
+
+TEST_CASE ("0.83.4: the composer suite takes a MIDI part and lights while one is held over it", "[composer][riff][ui]")
+{
+    Studio studio (false);
+    ComposerSuite suite (studio);
+    suite.setSize (1700, 940);
+    const auto trackId = studio.getProject().tracks[0].id;
+    studio.addPart (trackId, { 0.0, 8.0, "Riff", aMinorRiff() });
+    const auto partId = studio.getProject().tracks[0].parts[0].id;
+    CHECK (suite.isInterestedInPart (partId));
+    suite.showTab (ComposerSuite::Tab::ideas);
+    suite.partDragHover (true);
+    CHECK (suite.isPartHovering());
+    CHECK (suite.createComponentSnapshot (suite.getLocalBounds()).isValid());
+    suite.partDropped (partId);   // (the section asked for in a menu: shown on the message loop)
+    CHECK_FALSE (suite.isPartHovering());
+    CHECK (suite.getTab() == ComposerSuite::Tab::compose);
+    // (0.86.0) Close what it left on the message loop (a menu, a dialog): with the tests in random order it took a later test's clicks.
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
+    juce::PopupMenu::dismissAllActiveMenus();
+    juce::ModalComponentManager::getInstance()->cancelAllModalComponents();
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (20);
 }

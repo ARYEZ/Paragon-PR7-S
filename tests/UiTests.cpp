@@ -66,6 +66,7 @@ TEST_CASE ("The studio's window: transport, tracks lined up with their lanes, pa
 {
     Finish::set (Finish::Type::pearlWhite, false);
     Studio studio (false);
+    studio.removeSongSectionTrack();   // (0.103.0: the SECTIONS row is there by default; the rows below count without it)
     MainView view (studio);
     view.setSize (1500, 900);
 
@@ -793,6 +794,7 @@ TEST_CASE ("Dragging as the manual has it: Ctrl keeps a part to one direction, A
 {
     Finish::set (Finish::Type::pearlWhite, false);
     Studio studio (false);
+    studio.removeSongSectionTrack();   // (0.103.0: the SECTIONS row is there by default; the rows below count without it)
     MainView view (studio);
     view.setSize (1500, 900);
     auto& arrange = view.getArrangeView();

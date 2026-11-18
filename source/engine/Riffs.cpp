@@ -1,6 +1,8 @@
 #include "engine/Riffs.h"
 
 #include <cstring>
+#include <functional>
+#include <string>
 
 namespace pr7s
 {
@@ -412,16 +414,17 @@ namespace pr7s
     }
 
     //==========================================================================
-    std::vector<LineIdea> styleRhythmIdeas (GuitarStyle style, const std::vector<ChordSpan>& spans, double beatsPerBar, int variation,
-                                            const GuitarTuning& tuning, const GuitarVelocities& vel, const RiffSettings& settings)
+    //==========================================================================
+    // (0.85.0) A riff's bars (the characters above) played on the chords: the written riffs' and the generator's.
+    LineIdea riffFromBars (const std::function<std::string (int barIndex)>& barOf, bool pedalBase, const juce::String& name,
+                           const juce::String& description, const std::vector<ChordSpan>& spans, double beatsPerBar, int variation,
+                           const GuitarTuning& tuning, const GuitarVelocities& vel)
     {
-        std::vector<LineIdea> ideas;
+        LineIdea idea { LineIdea::Part::rhythm, name, description, {} };
         if (spans.empty() || beatsPerBar <= 0.0)
-            return ideas;
-        const auto riff = settings.limited();
+            return idea;
         const auto origin = spans.front().start;
         const auto low = tuning.lowest(), high = tuning.highest();
-        // Each chord's root low on the neck (its first eleven frets), near the one before.
         std::vector<int> roots;
         {
             double prev = low + 3.0 + (variation % 3);
@@ -432,111 +435,305 @@ namespace pr7s
                 prev = n;
             }
         }
-        for (const auto& def : riffsOf (style))
+        std::vector<int> lastHigh;   // the high chord's voicing, kept moving little
+        for (size_t si = 0; si < spans.size(); ++si)
         {
-            LineIdea idea { LineIdea::Part::rhythm, def.name, def.description, {} };
-            std::vector<int> lastHigh;   // the high chord's voicing, kept moving little
-            for (size_t si = 0; si < spans.size(); ++si)
+            const auto& span = spans[si];
+            const auto root = roots[si];
+            const auto pedal = nearestPitch (span.key.pitchClass(), low, low, low + 11);
+            const auto base = pedalBase ? pedal : root;
+            const auto fifth = fifthAbove (span.chord, root);
+            for (auto t = span.start; t < span.end - 1.0e-9; t += beatsPerBar)
             {
-                const auto& span = spans[si];
-                const auto root = roots[si];
-                const auto pedal = nearestPitch (span.key.pitchClass(), low, low, low + 11);
-                const auto base = def.base == Base::pedal ? pedal : root;
-                const auto fifth = fifthAbove (span.chord, root);
-                for (auto t = span.start; t < span.end - 1.0e-9; t += beatsPerBar)
+                const auto barIndex = (int) std::floor ((t - origin) / beatsPerBar + 1.0e-9);
+                const auto barText = barOf (barIndex);
+                const char* bar = barText.c_str();
+                const auto steps = (int) barText.size();
+                if (steps == 0)
+                    continue;
+                const auto step = beatsPerBar / steps;
+                // (0.88.0, DRONING) A bar that begins held ('=': rung from a push or a tied chord) when nothing is ringing
+                // into it (the chord changed on this bar line, so the chord before stopped) strikes its own chord here.
+                auto firstStrike = std::string();
+                if (bar[0] == '=')
                 {
-                    const auto barIndex = (int) std::floor ((t - origin) / beatsPerBar + 1.0e-9);
-                    const char* a = variation % 2 == 1 && def.altA != nullptr ? def.altA : def.a;
-                    const char* b = def.b != nullptr ? def.b : a;
-                    const char* c = def.c != nullptr ? def.c : b;
-                    const char* bar = riff.bars == 1 ? a : riff.bars == 2 ? (barIndex % 2 == 0 ? a : b)
-                                    : (barIndex % 4 == 1 ? b : barIndex % 4 == 3 ? c : a);
-                    const auto steps = (int) std::strlen (bar);
-                    if (steps == 0)
-                        continue;
-                    const auto step = beatsPerBar / steps;
-                    for (auto i = 0; i < steps; ++i)
+                    auto until = -1.0;
+                    for (const auto& n : idea.notes)
+                        until = juce::jmax (until, n.beat + n.length / 0.96);
+                    if (until < t - origin + 1.0e-3)   // (nothing carries past the bar line)
                     {
-                        const auto ch = bar[i];
-                        if (! isSounding (ch))
-                            continue;
-                        auto held = 1;
-                        while (i + held < steps && bar[i + held] == '=')
-                            ++held;
-                        const auto at = t + i * step;
-                        if (at >= span.end - 1.0e-9)
+                        firstStrike = barText;
+                        firstStrike[0] = '|';
+                        bar = firstStrike.c_str();
+                    }
+                }
+                for (auto i = 0; i < steps; ++i)
+                {
+                    const auto ch = bar[i];
+                    if (! isSounding (ch))
+                        continue;
+                    auto held = 1;
+                    while (i + held < steps && bar[i + held] == '=')
+                        ++held;
+                    const auto at = t + i * step;
+                    if (at >= span.end - 1.0e-9)
+                        break;
+                    const auto length = juce::jmin (held * step, span.end - at);
+                    const auto pos = at - t;
+                    const auto barStart = i == 0;
+                    const auto onBeat = std::abs (pos - std::round (pos)) < 1.0e-6;
+                    const auto mutedVelocity = of (barStart ? vel.muteLoose : step * held < 0.3 ? vel.muteTight : vel.muteMid);
+                    const auto openVelocity = of (barStart ? vel.sustainHard : onBeat ? vel.sustain : vel.open (vel.sustain - 6));
+                    const auto when = at - origin;
+                    const auto lower = (char) juce::CharacterFunctions::toLowerCase ((juce::juce_wchar) ch);
+                    const auto open = ch != lower;   // (upper case)
+                    // (0.88.0) Where the next thing is struck or stopped after this hit (this bar, then up to four
+                    // bars on): a tied or pushed chord rings to there.
+                    const auto nextStrike = [&]
+                    {
+                        for (auto k = i + 1; k < steps; ++k)
+                            if (bar[k] != '=')
+                                return t + k * step;
+                        for (auto b = 1; b <= 4; ++b)
+                        {
+                            const auto text = barOf (barIndex + b);
+                            const auto n = (int) text.size();
+                            for (auto k = 0; k < n; ++k)
+                                if (text[(size_t) k] != '=')
+                                    return t + b * beatsPerBar + k * (beatsPerBar / juce::jmax (1, n));
+                        }
+                        return t + 5.0 * beatsPerBar;
+                    };
+                    const auto single = [&] (int pitch)
+                    {
+                        add (idea.notes, when, open ? length : length * 0.9, pitch, open ? openVelocity : mutedVelocity);
+                    };
+                    switch (lower)
+                    {
+                        case 'x': single (base); break;
+                        case 'c': single (base + 1); break;
+                        case 'd': single (base + 3); break;
+                        case 'f': single (base + 5); break;
+                        case 'e': single (base + 6); break;
+                        case 'g': single (base + 7); break;
+                        case 'k': single (base + 10); break;
+                        case 't': single (base == root ? root + thirdOf (span.chord) : base + thirdOf (span.chord)); break;
+                        case 'z': single (pedal); break;
+                        case 'b':
+                            for (const auto p : { root, root + 6 })
+                                add (idea.notes, when, open ? length : length * 0.9, p, open ? openVelocity : mutedVelocity);
                             break;
-                        const auto length = juce::jmin (held * step, span.end - at);
-                        const auto pos = at - t;
-                        const auto barStart = i == 0;
-                        const auto onBeat = std::abs (pos - std::round (pos)) < 1.0e-6;
-                        const auto mutedVelocity = of (barStart ? vel.muteLoose : step * held < 0.3 ? vel.muteTight : vel.muteMid);
-                        const auto openVelocity = of (barStart ? vel.sustainHard : onBeat ? vel.sustain : vel.open (vel.sustain - 6));
-                        const auto when = at - origin;
-                        const auto lower = (char) juce::CharacterFunctions::toLowerCase ((juce::juce_wchar) ch);
-                        const auto open = ch != lower;   // (upper case)
-                        const auto single = [&] (int pitch)
+                        case '*':
+                            for (const auto p : { root, fifth })
+                                add (idea.notes, when, length * 0.9, p, mutedVelocity);
+                            break;
+                        case '#':
+                            for (const auto p : { root, fifth, root + 12 })
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            break;
+                        case 'o':
+                            for (const auto p : { root, root + 12 })
+                                add (idea.notes, when, length, p, openVelocity);
+                            break;
+                        case 'h':
                         {
-                            add (idea.notes, when, open ? length : length * 0.9, pitch, open ? openVelocity : mutedVelocity);
-                        };
-                        switch (lower)
+                            const auto voicings = voicingsFor (span.chord, 52);
+                            const auto notes = voicings.empty() ? std::vector<int> { root + 24 } : voicings[(size_t) closestVoicing (voicings, lastHigh, {})];
+                            lastHigh = notes;
+                            for (const auto p : notes)
+                                add (idea.notes, when, length, p, of (vel.sustain));
+                            break;
+                        }
+                        case 'p': add (idea.notes, when, length, root + 12, of (vel.pinch)); break;
+                        case 'r': add (idea.notes, when, length, root + 12, of (vel.rake)); break;
+                        case 'v': case 'w': case 'u':
                         {
-                            case 'x': single (base); break;
-                            case 'c': single (base + 1); break;
-                            case 'd': single (base + 3); break;
-                            case 'f': single (base + 5); break;
-                            case 'e': single (base + 6); break;
-                            case 'g': single (base + 7); break;
-                            case 'k': single (base + 10); break;
-                            case 't': single (base == root ? root + thirdOf (span.chord) : base + thirdOf (span.chord)); break;
-                            case 'z': single (pedal); break;
-                            case 'b':
-                                for (const auto p : { root, root + 6 })
-                                    add (idea.notes, when, open ? length : length * 0.9, p, open ? openVelocity : mutedVelocity);
-                                break;
-                            case '*':
+                            const auto stab = base + 24;
+                            const auto pitches = lower == 'v' ? std::vector<int> { stab, stab + 6 }
+                                               : lower == 'w' ? std::vector<int> { stab - 2, stab }
+                                                              : std::vector<int> { stab + 2 };
+                            for (const auto p : pitches)
+                            {
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                                idea.notes.back().effect = lower == 'v' ? LineNote::Effect::vibrato : lower == 'w' ? LineNote::Effect::bend : LineNote::Effect::ring;
+                            }
+                            break;
+                        }
+                        // (0.85.0, TRITONE CHUG: the owner's Ten Ton Hammer intro) the high tritone chords, open and
+                        // left to ring over the low string: q the flat fifth and the fifth together two octaves up (a
+                        // half step apart: the grind), y the flat fifth doubled (an octave apart), j the root and the
+                        // flat fifth two octaves up, n the grind an octave lower.
+                        // (0.85.0, the owner's third example: Flaw's Whole, its breakdown) ^: the grind a ninth over
+                        // the chugged chord's root (the flat ninth and the ninth, a half step apart), ringing.
+                        case '^':
+                            for (const auto p : { base + 25, base + 26 })
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            break;
+                        case 'q': case 'y': case 'j': case 'n':
+                        {
+                            const auto pitches = lower == 'q' ? std::vector<int> { base + 30, base + 31 }
+                                               : lower == 'y' ? std::vector<int> { base + 18, base + 30 }
+                                               : lower == 'j' ? std::vector<int> { base + 24, base + 30 }
+                                                              : std::vector<int> { base + 18, base + 19 };
+                            for (const auto p : pitches)
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            break;
+                        }
+                        // (0.85.0, the djent kind: the owner's Periphery's Wildfire) a: the low tritone chord, the low
+                        // string a half step up under the open fifth and octave (b2, 5, 8: the b2 and the 5 a tritone
+                        // apart; lower case muted, upper case ringing); i: its pinch harmonic (the pinch velocity);
+                        // l / m / s: a single note on the low string a half step / whole step / minor third up, bent
+                        // up a half step.
+                        case 'a':
+                            for (const auto p : { base + 1, base + 7, base + 12 })
+                                add (idea.notes, when, open ? length : length * 0.9, p, open ? of (barStart || onBeat ? vel.sustainHard : vel.sustain) : mutedVelocity);
+                            break;
+                        case 'i':
+                            for (const auto p : { base + 1, base + 7 })
+                                add (idea.notes, when, length, p, of (vel.pinch));
+                            break;
+                        case 'l': case 'm': case 's':
+                            add (idea.notes, when, length, base + (lower == 'l' ? 1 : lower == 'm' ? 2 : 3), of (vel.sustain));
+                            if (! idea.notes.empty())
+                            {
+                                idea.notes.back().effect = LineNote::Effect::bend;
+                                idea.notes.back().amount = 1.0f;
+                            }
+                            break;
+                        // (0.85.0) A power chord on the degree the digit names (semitones over the low note: 3 the flat
+                        // third, 6 the flat fifth...): the answer bar's dark walk.
+                        case '1': case '2': case '3': case '4': case '5': case '6': case '7': case '8': case '9':
+                        {
+                            const auto r = base + (lower - '0');
+                            for (const auto p : { r, r + 7, r + 12 })
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            break;
+                        }
+                        // (0.87.0, DRIVING EIGHTHS, Tears Don't Fall) % a full chord strummed open (root, fifth,
+                        // octave and the chord's third over it), & the same with the fourth in the third's place (the
+                        // top voice moving), ! a dead-string scratch (the chord's notes, choked: quiet and short).
+                        case '%': case '&':
+                        {
+                            const auto top = root + 12 + (lower == '&' ? 5 : thirdOf (span.chord));
+                            for (const auto p : { root, fifth, root + 12, top })
+                                add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
+                            break;
+                        }
+                        // (0.88.0, DRONING) | the full chord struck here and rung until the next strike (tied over the bar
+                        // line; cut at its chord's end).
+                        case '|':
+                        {
+                            const auto ring = juce::jmax (step, juce::jmin (nextStrike(), span.end) - at);
+                            for (const auto p : { root, fifth, root + 12, root + 12 + thirdOf (span.chord) })
+                                add (idea.notes, when, ring, p, of (vel.sustainHard));
+                            break;
+                        }
+                        // (0.88.0, DRONING: Circle With Me) ~ the chord at the next bar line pushed early: its full voicing struck
+                        // here and rung across the bar line until the next strike (or its chord's end).
+                        case '~':
+                        {
+                            const auto nextAt = t + beatsPerBar;
+                            auto next = (size_t) 0;
+                            auto found = false;
+                            for (size_t j = 0; j < spans.size(); ++j)
+                                if (nextAt >= spans[j].start - 1.0e-9 && nextAt < spans[j].end - 1.0e-9)
+                                {
+                                    next = j;
+                                    found = true;
+                                    break;
+                                }
+                            if (! found)
+                                next = (nextAt >= spans.back().end - 1.0e-9) ? 0 : si;
+                            const auto& to = spans[next];
+                            const auto r = roots[next];
+                            const auto f = fifthAbove (to.chord, r);
+                            const auto ringEnd = juce::jmin (found ? to.end : span.end, nextStrike());
+                            const auto ring = juce::jmax (step, ringEnd - at);
+                            for (const auto p : { r, f, r + 12, r + 12 + thirdOf (to.chord) })
+                                add (idea.notes, when, ring, p, of (vel.sustainHard));
+                            break;
+                        }
+                        // (0.88.0, DRONING) @ the power chord rung to the bar's end (or the chord's), whatever comes after it;
+                        // $ the chord's third over the octave, an open single.
+                        case '@':
+                        {
+                            const auto ring = juce::jmin ((steps - i) * step, span.end - at);
+                            for (const auto p : { root, fifth, root + 12 })
+                                add (idea.notes, when, ring, p, of (vel.sustainHard));
+                            break;
+                        }
+                        case '$': add (idea.notes, when, length, root + 12 + thirdOf (span.chord), openVelocity); break;
+                        // (0.87.0, DRIVING EIGHTHS' picked bars) + the root an octave up, ; the fifth over that, open singles.
+                        // (a symbol has no upper case: these ring open, never at the muted velocity. 0.87.0 played them muted.)
+                        case '+': add (idea.notes, when, length, root + 12, openVelocity); break;
+                        case ';': add (idea.notes, when, length, fifth + 12, openVelocity); break;
+                        case '!':
+                            for (const auto p : { root, fifth, root + 12 })
+                                add (idea.notes, when, juce::jmin (length, 0.1), p, of (vel.muteTight));
+                            break;
+                        // (0.87.0, DRIVING EIGHTHS) the walk into the chord at the next bar line (or this chord's end):
+                        // > a whole step and < a half step over its root, ( and ) under it; open single notes ({ } [ ]
+                        // the same as power chords). The
+                        // same chord going on: a muted power chord instead. (After the last chord: the first, as the
+                        // riff goes round.)
+                        case '>': case '<': case '(': case ')':
+                        case '{': case '}': case '[': case ']':
+                        case '_':   // (0.99.0, SYNCOPATED DRIVE's push: the next chord's power chord itself, an eighth early)
+                        {
+                            const auto nextAt = juce::jmin (t + beatsPerBar, span.end);
+                            auto next = (size_t) 0;
+                            auto found = false;
+                            for (size_t j = 0; j < spans.size(); ++j)
+                                if (nextAt >= spans[j].start - 1.0e-9 && nextAt < spans[j].end - 1.0e-9)
+                                {
+                                    next = j;
+                                    found = true;
+                                    break;
+                                }
+                            if (! found)
+                                next = 0;
+                            if (next == si || spans[next].chord == span.chord)
+                            {
                                 for (const auto p : { root, fifth })
                                     add (idea.notes, when, length * 0.9, p, mutedVelocity);
                                 break;
-                            case '#':
-                                for (const auto p : { root, fifth, root + 12 })
-                                    add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
-                                break;
-                            case 'o':
-                                for (const auto p : { root, root + 12 })
-                                    add (idea.notes, when, length, p, openVelocity);
-                                break;
-                            case 'h':
-                            {
-                                const auto voicings = voicingsFor (span.chord, 52);
-                                const auto notes = voicings.empty() ? std::vector<int> { root + 24 } : voicings[(size_t) closestVoicing (voicings, lastHigh, {})];
-                                lastHigh = notes;
-                                for (const auto p : notes)
-                                    add (idea.notes, when, length, p, of (vel.sustain));
-                                break;
                             }
-                            case 'p': add (idea.notes, when, length, root + 12, of (vel.pinch)); break;
-                            case 'r': add (idea.notes, when, length, root + 12, of (vel.rake)); break;
-                            case 'v': case 'w': case 'u':
-                            {
-                                const auto stab = base + 24;
-                                const auto pitches = lower == 'v' ? std::vector<int> { stab, stab + 6 }
-                                                   : lower == 'w' ? std::vector<int> { stab - 2, stab }
-                                                                  : std::vector<int> { stab + 2 };
-                                for (const auto p : pitches)
-                                {
+                            const auto by = lower == '_' ? 0 : (lower == '>' || lower == '{') ? 2 : (lower == '<' || lower == '}') ? 1 : (lower == '(' || lower == '[') ? -2 : -1;
+                            const auto to = roots[next] + by;
+                            if (lower == '{' || lower == '}' || lower == '[' || lower == ']' || lower == '_')
+                                for (const auto p : { to, to + 7, to + 12 })   // (the power chord itself steps: The End of Heartache)
                                     add (idea.notes, when, length, p, of (barStart || onBeat ? vel.sustainHard : vel.sustain));
-                                    idea.notes.back().effect = lower == 'v' ? LineNote::Effect::vibrato : lower == 'w' ? LineNote::Effect::bend : LineNote::Effect::ring;
-                                }
-                                break;
-                            }
-                            default: break;
+                            else
+                                add (idea.notes, when, length, to, openVelocity);
+                            break;
                         }
+                        default: break;
                     }
                 }
             }
-            foldAndSort (idea, low, high);
-            ideas.push_back (std::move (idea));
+        }
+        foldAndSort (idea, low, high);
+        return idea;
+    }
+
+    std::vector<LineIdea> styleRhythmIdeas (GuitarStyle style, const std::vector<ChordSpan>& spans, double beatsPerBar, int variation,
+                                            const GuitarTuning& tuning, const GuitarVelocities& vel, const RiffSettings& settings)
+    {
+        std::vector<LineIdea> ideas;
+        if (spans.empty() || beatsPerBar <= 0.0)
+            return ideas;
+        const auto riff = settings.limited();
+        for (const auto& def : riffsOf (style))
+        {
+            const auto barOf = [&def, &riff, variation] (int barIndex)
+            {
+                const char* a = variation % 2 == 1 && def.altA != nullptr ? def.altA : def.a;
+                const char* b = def.b != nullptr ? def.b : a;
+                const char* c = def.c != nullptr ? def.c : b;
+                return std::string (riff.bars == 1 ? a : riff.bars == 2 ? (barIndex % 2 == 0 ? a : b)
+                                                   : (barIndex % 4 == 1 ? b : barIndex % 4 == 3 ? c : a));
+            };
+            ideas.push_back (riffFromBars (barOf, def.base == Base::pedal, def.name, def.description, spans, beatsPerBar, variation, tuning, vel));
         }
         for (auto& idea : ideas)
             shapeRiff (idea, spans, beatsPerBar, riff, vel, style, variation, tuning);

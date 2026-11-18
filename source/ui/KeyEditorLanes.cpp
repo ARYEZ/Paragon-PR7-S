@@ -1413,13 +1413,29 @@ void KeyEditor::paintControllerLane (juce::Graphics& g, int lane)
     if (indices.empty())
         return;
     // The curve: each value until the next (or a ramp to it), filled below.
+    // (0.85.2) Only the events near what's being drawn, and the one either side (as the automation's,
+    // 0.34.4): a dense recorded lane built and stroked its whole length for every play bar strip.
+    const auto clipArea = g.getClipBounds().toFloat();
+    size_t from = 0, to = indices.size() - 1;
+    for (size_t k = 0; k < indices.size(); ++k)
+    {
+        const auto x = xForBeat (part->start + list[(size_t) indices[k]].start);
+        if (x < clipArea.getX() - 64.0f)
+            from = k;
+        else if (x > clipArea.getRight() + 64.0f)
+        {
+            to = k;
+            break;
+        }
+    }
+    const auto reachesEnd = to == indices.size() - 1;
     juce::Path line, fill;
     const auto baseY = code == K::pitchbend ? yForValue (lane, 8192) : inner.getBottom();
-    const auto firstX = xForBeat (part->start + list[(size_t) indices.front()].start);
-    line.startNewSubPath (firstX, yForValue (lane, list[(size_t) indices.front()].value));
+    const auto firstX = xForBeat (part->start + list[(size_t) indices[from]].start);
+    line.startNewSubPath (firstX, yForValue (lane, list[(size_t) indices[from]].value));
     fill.startNewSubPath (firstX, baseY);
-    fill.lineTo (firstX, yForValue (lane, list[(size_t) indices.front()].value));
-    for (size_t k = 1; k < indices.size(); ++k)
+    fill.lineTo (firstX, yForValue (lane, list[(size_t) indices[from]].value));
+    for (size_t k = from + 1; k <= to; ++k)
     {
         const auto& c = list[(size_t) indices[k]];
         const auto x = xForBeat (part->start + c.start), y = yForValue (lane, c.value);
@@ -1432,10 +1448,14 @@ void KeyEditor::paintControllerLane (juce::Graphics& g, int lane)
         line.lineTo (x, y);
         fill.lineTo (x, y);
     }
-    const auto lastY = yForValue (lane, list[(size_t) indices.back()].value);
-    line.lineTo (partRight, lastY);
-    fill.lineTo (partRight, lastY);
-    fill.lineTo (partRight, baseY);
+    const auto lastY = yForValue (lane, list[(size_t) indices[to]].value);
+    const auto endX = reachesEnd ? partRight : xForBeat (part->start + list[(size_t) indices[to]].start);
+    if (reachesEnd)
+    {
+        line.lineTo (partRight, lastY);
+        fill.lineTo (partRight, lastY);
+    }
+    fill.lineTo (endX, baseY);
     fill.closeSubPath();
     g.setColour (colour.withAlpha (0.16f));
     g.fillPath (fill);

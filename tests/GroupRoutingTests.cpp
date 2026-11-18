@@ -222,7 +222,7 @@ TEST_CASE ("A composer lane dragged out as a MIDI file: its notes, the drums on 
     const auto file = page.dragLaneOut (ComposerLayer::bass);
     REQUIRE (file.existsAsFile());
     CHECK (dragged == juce::StringArray { file.getFullPathName() });
-    CHECK (file.getFileName().startsWith ("Composer bass - "));
+    CHECK (file.getFileName().startsWith ("Architect bass - "));
     CHECK (file.isAChildOf (composerDragFolder()));
     CHECK_FALSE (file.isAChildOf (dragOutFolder()));   // (so the arrangement takes it when dropped back)
     juce::String error;

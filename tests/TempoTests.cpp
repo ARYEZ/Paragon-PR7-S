@@ -264,6 +264,7 @@ TEST_CASE ("The tempo track on screen: its row under the master's, a click on th
     Studio studio (false);
     MainView view (studio);
     view.setSize (1500, 900);
+    studio.removeSongSectionTrack();   // (0.103.0: the SECTIONS row is there by default; this test is about the others)
     studio.setTempo (120.0);
     studio.addTempoTrack();
     studio.dispatchPendingMessages();

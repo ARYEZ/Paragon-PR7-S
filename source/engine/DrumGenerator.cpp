@@ -283,7 +283,7 @@ namespace pr7s
         const auto bars = juce::jmax (1, (int) std::ceil (total / beatsPerBar - 1.0e-9));
         const auto step = beatsPerBar / 16.0;
         juce::Random rng ((juce::int64) seed * 2654435761LL + (int) section * 97 + (int) style * 13 + 5);
-        const auto locked = s.lockToRiff && ! riffHits.empty() && section != DrumSection::intro && section != DrumSection::ending;
+        const auto locked = s.lockToRiff && ! riffHits.empty() && (s.lockAlways || (section != DrumSection::intro && section != DrumSection::ending));
         const auto lockedKicksOf = [&] (int bar)
         {
             std::vector<int> steps;

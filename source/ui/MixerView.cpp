@@ -184,7 +184,19 @@ void MixerView::Strip::refresh()
     }
     AutomationKeys::refresh (read, write, owner.studio, busId);
     followMix();
-    repaint();
+    // (0.85.2) Painted again only when something the strip paints itself changed (its keys and slots
+    // repaint themselves): every note or part edit repainted every strip, docked across the whole window.
+    juce::String look;
+    look << (track != nullptr ? track->name + "|" + track->colour.toString() + "|" + juce::String (track->pan, 4) : juce::String ("master"))
+         << "|" << (int) (! isMaster() && owner.studio.isTrackSelected (busId)) << "|" << owner.studio.getPreFaderSlots (busId)
+         << "|" << shownSlots << "|" << (int) owner.showsInserts() << (int) owner.showsSends() << (int) owner.isInWindow();
+    if (const auto* link = owner.studio.getLinkGroupOf (busId))
+        look << "|L:" << link->id << " " << link->name;
+    if (look != shownLook)
+    {
+        shownLook = look;
+        repaint();
+    }
 }
 
 void MixerView::Strip::followMix()
@@ -221,7 +233,15 @@ void MixerView::Strip::setLevels (float leftPeak, float rightPeak)
     const auto changedLeft = left.push (leftPeak);
     const auto changedRight = right.push (rightPeak);
     if (changedLeft || changedRight)
-        repaint (meterArea.toNearestInt().expanded (2));
+    {
+        // (0.83.1) Only when a lit or held segment changes (the column's height, as paint lays it out).
+        const auto now = std::make_pair (left.shown (meterArea.getHeight()), right.shown (meterArea.getHeight()));
+        if (now != shownLevels)
+        {
+            shownLevels = now;
+            repaint (meterArea.toNearestInt().expanded (2));
+        }
+    }
 }
 
 void MixerView::Strip::paint (juce::Graphics& g)
@@ -239,6 +259,13 @@ void MixerView::Strip::paint (juce::Graphics& g)
     {
         g.setColour (ParagonColours::accent.withAlpha (0.6f));
         g.drawRect (bounds.reduced (1.0f, 0.0f).withTrimmedTop (4.0f), 1.0f);
+    }
+    // (0.83.2) A meter's redraw (30 times a second for every strip while playing) paints the meter
+    // only: the names, racks and readouts are outside what's redrawn.
+    if (meterArea.expanded (2.0f).contains (g.getClipBounds().toFloat()))
+    {
+        paintMeter (g);
+        return;
     }
 
     // Its link group (the manual: "the number and the name ... above the channel name").
@@ -278,6 +305,15 @@ void MixerView::Strip::paint (juce::Graphics& g)
     if (track != nullptr)
         g.drawText (panText (track->pan), panReadoutArea, juce::Justification::centred, false);
 
+    paintMeter (g);
+
+    g.setColour (ParagonColours::text);
+    g.setFont (font (11.0f));
+    g.drawText (dbText (volume.getValue()), readoutArea, juce::Justification::centred, false);
+}
+
+void MixerView::Strip::paintMeter (juce::Graphics& g)
+{
     // The level: PR7-C's meter, a column for each side (the master's) or one for the track.
     const auto columns = isMaster() ? 2 : 1;
     const auto columnWidth = (meterArea.getWidth() - (float) (columns - 1) * 2.0f) / (float) columns;
@@ -288,10 +324,6 @@ void MixerView::Strip::paint (juce::Graphics& g)
         LevelMeter::paintSegments (g, column, LevelMeter::proportionForDb (reading.db),
                                    reading.heldDb > LevelMeter::minDb ? LevelMeter::proportionForDb (reading.heldDb) : -1.0f);
     }
-
-    g.setColour (ParagonColours::text);
-    g.setFont (font (11.0f));
-    g.drawText (dbText (volume.getValue()), readoutArea, juce::Justification::centred, false);
 }
 
 void MixerView::Strip::resized()

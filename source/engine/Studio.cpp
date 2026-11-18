@@ -1,10 +1,16 @@
 #include "Studio.h"
+#include "Pr7dLink.h"
+#include "SectionTypes.h"
 #include "Controllers.h"
 #include "Stretch.h"
 #include "Warp.h"
 
 #include <map>
 #include <set>
+#include <atomic>
+#include <thread>
+#include <bit>
+#include <string_view>
 
 #include "AudioAdvice.h"
 #include "DawProject.h"
@@ -188,6 +194,8 @@ namespace pr7s
 
     Studio::~Studio()
     {
+        if (pr7dReading != nullptr && pr7dReading->thread.joinable())
+            pr7dReading->thread.join();   // (0.112.1)
         padPlayer.onPerform = nullptr;
         padPlayer.onPerformStop = nullptr;
         performer.reset();   // (its timer sends through the pad player)
@@ -264,13 +272,17 @@ namespace pr7s
     //==========================================================================
     void Studio::changed (bool undoable)
     {
+        const auto partsOnly = std::exchange (partsOnlyAsked, false);   // (0.174.0: taken at once, never left behind)
         if (mirroring)
             return;   // (a linked change: the change it came from does all this once, after)
         // (0.76.0, the owner: the composer's instruments too loud, the mixer couldn't be used while hearing them)
         // While the composer is heard, a change (a fader, pan, an insert, a mute) is played in its copy and the
         // hearing goes on; it ends only when its tracks can no longer play it.
         std::optional<Project> heardCopy;
-        if (composerAudition.has_value())
+        // (0.85.2) A drag's mix-only step reads only levels, which the copy shares with the song: no copy then
+        // (it copied the whole song and made the six layers' parts again on every step of a fader drag).
+        const auto mixStepOnly = mixOnlyAsked && ! mixOnlyBroken && ! undoable;
+        if (composerAudition.has_value() && ! mixStepOnly)
         {
             heardCopy = composerAuditionCopy();
             if (! heardCopy.has_value())
@@ -281,16 +293,42 @@ namespace pr7s
             if (track.frozen)
                 if (const auto kept = frozenParts.find (track.id); kept != frozenParts.end() && track.parts != kept->second)
                     track.parts = kept->second;
+        // (0.123.0) Only an undo step edits music: a track clicked, a track armed, SNAP turned on didn't, yet each
+        // sliced every track's parts once per linked block to look. A change made otherwise is caught by the next step.
+        // (and whenever the tracks themselves changed: a block's snapshot holds each track's music in it)
+        std::vector<int> trackIds;
+        trackIds.reserve (project.tracks.size());
+        for (const auto& t : project.tracks)
+            trackIds.push_back (t.id);
+        const auto tracksChanged = trackIds != sectionPassTracks;
+        if (! mixStepOnly && (undoable || linksReset || chordsReset || tracksChanged))   // (after an undo or an open: the new look taken)
+        {
+            sectionPassTracks = std::move (trackIds);
+            rewriteChangedSections();   // (0.92.0: a block's chords changed: its music rewritten to fit, in this undo step)
+            syncLinkedSections();   // (0.91.0: an edit to one linked block copied into the others, in this undo step)
+            noteSectionChords();
+        }
         applyAutoColour();   // (0.79.0: the rule wins over whatever moved or recoloured a track)
         numberParts();
         watchPlugins();
         if (exportJob == nullptr)   // (mid-render the engine plays the render's copy: endExport brings the song back)
-            engine.update (heardCopy.has_value() ? *heardCopy : project);
+        {
+            // (0.83.1) A drag's step that moved only the mix (a fader, pan, send level, EQ or BOOSTER, nothing
+            // written): just the levels, not every track's notes and clips again. The release (an undo step)
+            // does the full update, so nothing else can be left behind.
+            const auto& playing = heardCopy.has_value() ? *heardCopy : project;
+            if (mixStepOnly)
+                engine.updateMix (project);
+            else
+                engine.update (playing);
+        }
+        if (! mixStepOnly)
+            syncPr7dLinks();   // (0.108.0: PR7-D's song follows its track's copies)
         modified = true;
         if (undoable)
             recordUndoState();
         updateLiveTrack();
-        announce();
+        announce (partsOnly);
     }
 
     bool Studio::hasEditor (const juce::AudioProcessor* plugin)
@@ -302,15 +340,31 @@ namespace pr7s
         // change, and each click stuck for about a second (0.9.9).
         if (const auto known = editorAnswers.find (plugin); known != editorAnswers.end())
             return known->second;
+        // (0.123.0, the owner: the first click on a track after opening a song stuck about five seconds) Even
+        // asked once, the first time is the cost: selecting the track made the Inspector ask its instrument,
+        // and the plug-in built its whole editor to answer. A VST3 or AU is taken to have one without asking
+        // (nearly all do; the window shows JUCE's plain parameter editor for one that hasn't).
+        if (const auto* hosted = dynamic_cast<const juce::AudioPluginInstance*> (plugin))
+        {
+            const auto format = hosted->getPluginDescription().pluginFormatName;
+            if (format == "VST3" || format == "AudioUnit" || format == "VST")
+                return editorAnswers[plugin] = true;
+        }
         return editorAnswers[plugin] = plugin->hasEditor();
     }
 
     void Studio::numberParts()
     {
         for (auto& track : project.tracks)
+        {
+            // (0.165.0) Looked at without writing: written to (and so copied, when shared) only with a part to number.
+            const auto& parts = std::as_const (track.parts);
+            if (std::none_of (parts.begin(), parts.end(), [] (const Part& p) { return p.id == 0; }))
+                continue;
             for (auto& part : track.parts)
                 if (part.id == 0)
                     part.id = nextPartId++;
+        }
     }
 
     std::optional<std::pair<int, int>> Studio::findPart (int partId) const
@@ -331,46 +385,65 @@ namespace pr7s
         engine.setLiveInputFilter (live != nullptr ? live->midiInput : juce::String());
     }
 
-    void Studio::recordUndoState()
+    // (0.83.1) A copy of the song without the plug-ins' saved settings (several MB each: nothing
+    // that plays or undoes a copy reads them), made by moving them out of the song for the copy and
+    // back: the song is the same after. With `forUndo`, also without what undo never puts back.
+    Project Studio::copyWithoutPluginStates (bool forUndo) const
     {
-        // A copy without the plug-ins' settings (they aren't undone, and can be several MB each:
-        // since 0.34.1 they're moved out of the song while it's copied, not copied and thrown away),
-        // nor what undo never puts back (the drum maps, the hand-edited hitpoints).
+        auto& song = const_cast<Project&> (project);   // (message thread; left exactly as it was)
         std::vector<juce::MemoryBlock> keptStates;
         const auto takeOut = [&keptStates] (juce::MemoryBlock& state) { keptStates.push_back (std::move (state)); state.reset(); };
-        for (auto& track : project.tracks)
+        for (auto& track : song.tracks)
         {
             takeOut (track.instrument.state);
             for (auto& insert : track.inserts)
                 takeOut (insert.state);
         }
-        for (auto& insert : project.masterInserts)
+        for (auto& insert : song.masterInserts)
             takeOut (insert.state);
-        auto drumMaps = std::move (project.drumMaps);
-        auto hitpointEdits = std::move (project.hitpointEdits);
-        project.drumMaps.clear();
-        project.hitpointEdits.clear();
-        auto state = project;
-        project.drumMaps = std::move (drumMaps);
-        project.hitpointEdits = std::move (hitpointEdits);
+        std::vector<DrumMap> drumMaps;
+        decltype (song.hitpointEdits) hitpointEdits;
+        if (forUndo)
+        {
+            drumMaps = std::move (song.drumMaps);
+            hitpointEdits = std::move (song.hitpointEdits);
+            song.drumMaps.clear();
+            song.hitpointEdits.clear();
+        }
+        auto copy = song;
+        if (forUndo)
+        {
+            song.drumMaps = std::move (drumMaps);
+            song.hitpointEdits = std::move (hitpointEdits);
+        }
         auto next = keptStates.begin();
-        for (auto& track : project.tracks)
+        for (auto& track : song.tracks)
         {
             track.instrument.state = std::move (*next++);
             for (auto& insert : track.inserts)
                 insert.state = std::move (*next++);
         }
-        for (auto& insert : project.masterInserts)
+        for (auto& insert : song.masterInserts)
             insert.state = std::move (*next++);
-        // (0.83.0) Its name for the Edit History, from what differs from the step it follows.
+        return copy;
+    }
+
+    void Studio::recordUndoState()
+    {
+        // A copy without the plug-ins' settings (they aren't undone, and can be several MB each:
+        // since 0.34.1 they're moved out of the song while it's copied, not copied and thrown away),
+        // nor what undo never puts back (the drum maps, the hand-edited hitpoints).
+        checkUndoSharing();
+        auto state = copyWithoutPluginStates (true);
+        // (0.83.0) Its place in the Edit History: the time now; its name is worked out when the history is
+        // looked at (0.83.2, getHistory), from what differs from the step it follows.
         HistoryStep step;
-        if (undoIndex >= 0 && undoIndex < (int) undoStates.size())
-            step = describeEdit (undoStates[(size_t) undoIndex], state);
-        else
+        step.time = juce::Time::getCurrentTime();
+        if (undoIndex < 0 || undoIndex >= (int) undoStates.size())
         {
             step.action = "Start";
             step.details = file.existsAsFile() ? file.getFileNameWithoutExtension() : juce::String ("New song");
-            step.time = juce::Time::getCurrentTime();
+            step.named = true;
         }
         undoStates.resize ((size_t) (undoIndex + 1));
         undoInfo.resize ((size_t) (undoIndex + 1));
@@ -378,11 +451,41 @@ namespace pr7s
         undoInfo.push_back (std::move (step));
         const auto most = getMaxUndoSteps() + 1;   // (the start, and that many steps after it)
         while ((int) undoStates.size() > most)
-        {
-            undoStates.erase (undoStates.begin());
-            undoInfo.erase (undoInfo.begin());
-        }
+            dropOldestStep();
         undoIndex = (int) undoStates.size() - 1;
+        noteUndoParts();
+    }
+
+    void Studio::noteUndoParts()
+    {
+        if (! guardUndoSharing)
+            return;
+        // The recent steps only (the last few: where a stray write would land), as plain copies.
+        undoParts.assign (undoStates.size(), {});
+        for (size_t i = undoStates.size() > 6 ? undoStates.size() - 6 : 0; i < undoStates.size(); ++i)
+            for (const auto& track : undoStates[i].tracks)
+                undoParts[i].push_back (track.parts.get());
+    }
+
+    void Studio::checkUndoSharing()
+    {
+        if (! guardUndoSharing || undoParts.size() != undoStates.size())
+            return;
+        for (size_t i = 0; i < undoStates.size(); ++i)
+        {
+            if (undoParts[i].empty())
+                continue;
+            auto same = undoParts[i].size() == undoStates[i].tracks.size();
+            for (size_t t = 0; same && t < undoStates[i].tracks.size(); ++t)
+                same = undoParts[i][t] == undoStates[i].tracks[t].parts.get();
+            if (! same)
+            {
+                std::fprintf (stderr, "\n*** An undo step's parts changed after it was kept (step %d of %d): something wrote "
+                                      "through a Part& kept across a copy of the song (0.165.0's shared parts).\n",
+                              (int) i, (int) undoStates.size());
+                std::abort();
+            }
+        }
     }
 
     // The lanes and their points as they were; which are shown, and the R and
@@ -412,6 +515,7 @@ namespace pr7s
         project.signatureTrackShown = state.signatureTrackShown;
         project.markerTrack.markers = state.markerTrack.markers;   // (0.49.0: marker edits are undo steps;
         project.markerTrack.shown = state.markerTrack.shown;       //  the lock and the window's settings aren't)
+        project.songSections = state.songSections;                 // (0.90.0: the blocks and their order are undo steps)
         project.loopOn = state.loopOn;
         project.loopStart = state.loopStart;
         project.loopEnd = state.loopEnd;
@@ -428,7 +532,8 @@ namespace pr7s
                 track.pan = then->pan;
                 track.mute = then->mute;
                 track.solo = then->solo && ! track.hidden && ! track.disabled;   // (hiding or disabling a track ended its solo: undo doesn't bring it back)
-                track.parts = then->parts;
+                if (track.parts != then->parts)   // (0.164.0: an undo copied every track's notes, changed or not)
+                    track.parts = then->parts;
                 restoreLanes (track.automation, then->automation);
                 track.output = then->output;
                 track.sends = then->sends;
@@ -461,6 +566,8 @@ namespace pr7s
         std::stable_sort (project.tracks.begin(), project.tracks.end(),
                           [&] (const Track& a, const Track& b) { return placeIn (a.id) < placeIn (b.id); });
         project.tidyFolders();
+        linksReset = true;   // (0.91.0: what undo brings back is what the linked blocks hold, nothing to copy)
+        chordsReset = true;  // (0.92.0: nor anything to rewrite)
         changed (false);
     }
 
@@ -468,6 +575,7 @@ namespace pr7s
     {
         if (! canUndo())
             return;
+        checkUndoSharing();
         restore (undoStates[(size_t) --undoIndex]);
     }
 
@@ -475,6 +583,7 @@ namespace pr7s
     {
         if (! canRedo())
             return;
+        checkUndoSharing();
         restore (undoStates[(size_t) ++undoIndex]);
     }
 
@@ -484,13 +593,49 @@ namespace pr7s
         if (index < 0 || index == undoIndex)
             return;
         undoIndex = index;
+        checkUndoSharing();
         restore (undoStates[(size_t) undoIndex]);
+    }
+
+    const std::vector<HistoryStep>& Studio::getHistory() const
+    {
+        for (size_t i = 0; i < undoInfo.size(); ++i)
+            if (! undoInfo[i].named)
+            {
+                auto& step = undoInfo[i];
+                if (i > 0 && i < undoStates.size())
+                {
+                    const auto described = describeEdit (undoStates[i - 1], undoStates[i]);
+                    step.action = described.action;
+                    if (step.details.isEmpty())
+                        step.details = described.details;
+                }
+                else
+                    step.action = "Edit";
+                step.named = true;
+            }
+        return undoInfo;
+    }
+
+    void Studio::dropOldestStep()
+    {
+        // The oldest copy goes. The one after it becomes the first: if its name wasn't worked out, the copy
+        // it would be compared with has just gone, so it says so (honest, and nothing compared on every edit).
+        undoStates.erase (undoStates.begin());
+        undoInfo.erase (undoInfo.begin());
+        if (! undoInfo.empty() && ! undoInfo.front().named)
+        {
+            undoInfo.front().action = "Earliest Kept";
+            undoInfo.front().details = "older steps dropped (MAX STEPS)";
+            undoInfo.front().named = true;
+        }
     }
 
     void Studio::setHistoryDetails (int index, const juce::String& text)
     {
         if (index >= 0 && index < (int) undoInfo.size())
         {
+            getHistory();   // (named first: a typed note isn't then replaced by the name's details)
             undoInfo[(size_t) index].details = text;
             announce();
         }
@@ -511,8 +656,7 @@ namespace pr7s
         // Fewer kept: the oldest go (never the one the song is at).
         while ((int) undoStates.size() > maxUndoHere + 1 && undoIndex > 0)
         {
-            undoStates.erase (undoStates.begin());
-            undoInfo.erase (undoInfo.begin());
+            dropOldestStep();
             --undoIndex;
         }
         announce();
@@ -920,6 +1064,7 @@ namespace pr7s
                 selectedTracks.erase (std::remove (selectedTracks.begin(), selectedTracks.end(), id), selectedTracks.end());
             if (std::find (group.begin(), group.end(), selectedTrack) != group.end())
                 selectedTrack = selectedTracks.back();
+            if (! mirroring) selectionOnlyAsked = true;   // (0.164.0: only the selection changed)
             changed (false);
             return;
         }
@@ -927,6 +1072,7 @@ namespace pr7s
             if (! isTrackSelected (id))
                 selectedTracks.push_back (id);
         selectedTrack = trackId;
+        if (! mirroring) selectionOnlyAsked = true;   // (0.164.0: only the selection changed)
         changed (false);
     }
 
@@ -953,6 +1099,7 @@ namespace pr7s
             if (! isTrackSelected (project.tracks[(size_t) i].id))
                 selectedTracks.push_back (project.tracks[(size_t) i].id);
         selectedTrack = trackId;
+        if (! mirroring) selectionOnlyAsked = true;   // (0.164.0: only the selection changed)
         changed (false);
     }
 
@@ -1778,6 +1925,7 @@ namespace pr7s
         // The master's row (0.9.12): the Inspector shows the master; no track selected.
         masterSelected = true;
         selectedTracks.clear();   // (no track looks chosen; recording still goes to the one last chosen)
+        if (! mirroring) selectionOnlyAsked = true;   // (0.164.0: only the selection changed)
         announce();
     }
 
@@ -1798,6 +1946,7 @@ namespace pr7s
         if (! engine.isRecording() && (selected == nullptr || (! selected->isChannel() && ! selected->disabled && ! selected->frozen)))
             for (auto& track : project.tracks)
                 track.armed = track.id == trackId;
+        if (! mirroring) selectionOnlyAsked = true;   // (0.164.0: only the selection changed)
         changed (false);
     }
 
@@ -1966,6 +2115,7 @@ namespace pr7s
             const auto old = part;
             part.length = juce::jmax (0.25, newLength);
             rebaseWarp (old, part, project.tempoMap());   // (0.32.0: a warped clip's end pinned where it now is)
+            partsOnlyAsked = true;
             changed();
         }
     }
@@ -2302,6 +2452,7 @@ namespace pr7s
                                                         && track->parts[(size_t) index].muted != muted)
         {
             track->parts[(size_t) index].muted = muted;
+            partsOnlyAsked = true;
             changed();
         }
     }
@@ -2309,15 +2460,26 @@ namespace pr7s
     void Studio::setPartsMuted (const std::vector<int>& partIds, bool muted)
     {
         auto any = false;
+        const auto wanted = [&] (const Part& part) { return part.muted != muted && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end(); };
         for (auto& track : project.tracks)
+        {
+            // (0.174.0) Looked at first without writing: only the tracks with a part to change are copied
+            // (written through, every track's shared parts were copied, and every row redrawn).
+            const auto& parts = std::as_const (track.parts);
+            if (std::none_of (parts.begin(), parts.end(), wanted))
+                continue;
             for (auto& part : track.parts)
-                if (std::find (partIds.begin(), partIds.end(), part.id) != partIds.end() && part.muted != muted)
+                if (wanted (part))
                 {
                     part.muted = muted;
                     any = true;
                 }
+        }
         if (any)
+        {
+            partsOnlyAsked = true;
             changed();
+        }
     }
 
     std::optional<double> Studio::getPartField (int partId, PartField field) const
@@ -2527,10 +2689,13 @@ namespace pr7s
         }
 
         // What of a part lies between two beats (none if nothing).
-        std::optional<Part> slice (Part part, double start, double end, const TempoMap& tempo)
+        std::optional<Part> slice (const Part& whole, double start, double end, const TempoMap& tempo)
         {
-            if (part.end() <= start + edge || part.start >= end - edge)
+            // (0.164.0) The overlap first: a part was copied whole (every note) before the test, and the
+            // linked-sections check slices every part of the song on each undo step.
+            if (whole.end() <= start + edge || whole.start >= end - edge)
                 return std::nullopt;
+            auto part = whole;
             if (start > part.start + edge)
                 part = cutPart (part, start - part.start, tempo);
             if (end < part.end() - edge)
@@ -2597,10 +2762,40 @@ namespace pr7s
         changed();
     }
 
+    bool Studio::coversEveryTrack (const Range& range) const
+    {
+        auto any = false;
+        for (const auto& track : project.tracks)
+            if (! track.isChannel() && isTrackShown (track.id))
+            {
+                any = true;
+                if (std::find (range.trackIds.begin(), range.trackIds.end(), track.id) == range.trackIds.end())
+                    return false;
+            }
+        return any;
+    }
+
     void Studio::deleteRange (const Range& range, bool closeGap)
     {
         if (range.isEmpty())
             return;
+        if (closeGap && coversEveryTrack (range))   // (0.119.0: the whole song closes up, hidden tracks too)
+        {
+            for (auto& track : project.tracks)
+            {
+                if (track.frozen || track.isChannel())
+                    continue;
+                splitTrackAt (track, range.start, project.tempoMap());
+                splitTrackAt (track, range.end, project.tempoMap());
+                track.parts.erase (std::remove_if (track.parts.begin(), track.parts.end(),
+                                                   [&] (const Part& part) { return inside (part, range.start, range.end); }),
+                                   track.parts.end());
+                shiftFrom (track, range.end, -range.length());
+            }
+            shiftSongTime (range.start, range.length(), false);
+            changed();
+            return;
+        }
         for (const auto id : range.trackIds)
             if (auto* track = project.findTrack (id))
             {
@@ -2648,6 +2843,18 @@ namespace pr7s
     {
         if (range.isEmpty())
             return;
+        if (coversEveryTrack (range))   // (0.119.0: the whole song moves on, hidden tracks too)
+        {
+            for (auto& track : project.tracks)
+                if (! track.frozen && ! track.isChannel())
+                {
+                    splitTrackAt (track, range.start, project.tempoMap());
+                    shiftFrom (track, range.start, range.length());
+                }
+            shiftSongTime (range.start, range.length(), true);
+            changed();
+            return;
+        }
         for (const auto id : range.trackIds)
             if (auto* track = project.findTrack (id))
             {
@@ -2724,6 +2931,7 @@ namespace pr7s
         if (part.notes == notes)
             return;   // nothing changed: no undo step
         part.notes = std::move (notes);
+        partsOnlyAsked = true;
         changed();
     }
 
@@ -2744,6 +2952,7 @@ namespace pr7s
         if (part.controllers == events)
             return;   // nothing changed: no undo step
         part.controllers = std::move (events);
+        partsOnlyAsked = true;
         changed();
     }
 
@@ -2855,8 +3064,235 @@ namespace pr7s
         modified = wasModified;
     }
 
+    const Pr7dLibrary& Studio::getPr7dLibrary() const
+    {
+        const auto folder = pr7dFolderOverride != juce::File() ? pr7dFolderOverride
+                          : settings != nullptr ? pr7dPresetsFolder() : juce::File();
+        if (folder == juce::File())
+        {
+            keptPr7d = {};
+            return keptPr7d;
+        }
+        // Read again when PR7-D has written its index since (or the folder changed).
+        const auto date = folder.getChildFile ("Groove Index.xml").getLastModificationTime();
+        takePr7dReading();
+        if (! keptPr7dRead || keptPr7d.folder != folder || date != keptPr7dIndexDate)
+        {
+            // (0.112.1) In the app, on a thread of its own: what was read before is used meanwhile (tests read at once).
+            if (settings != nullptr && pr7dFolderOverride == juce::File())
+            {
+                if (pr7dReading == nullptr || pr7dReading->folder != folder || pr7dReading->date != date)
+                {
+                    if (pr7dReading != nullptr && pr7dReading->thread.joinable())
+                        pr7dReading->thread.join();
+                    pr7dReading = std::make_unique<Pr7dReading>();
+                    pr7dReading->folder = folder;
+                    pr7dReading->date = date;
+                    auto* reading = pr7dReading.get();
+                    reading->thread = std::thread ([reading]
+                    {
+                        reading->result = readPr7dLibrary (reading->folder);
+                        reading->done = true;
+                    });
+                }
+                return keptPr7d;
+            }
+            keptPr7d = readPr7dLibrary (folder);
+            keptPr7dIndexDate = date;
+            keptPr7dRead = true;
+            if (keptPr7d.found)
+                SessionLog::note ("PR7-D's groove library: " + juce::String ((int) keptPr7d.grooves.size()) + " grooves (" + folder.getFullPathName() + ")");
+        }
+        return keptPr7d;
+    }
+
+    bool Studio::takePr7dReading() const
+    {
+        if (pr7dReading == nullptr || ! pr7dReading->done)
+            return false;
+        pr7dReading->thread.join();
+        keptPr7d = std::move (pr7dReading->result);
+        keptPr7dIndexDate = pr7dReading->date;
+        keptPr7dRead = true;
+        pr7dReading.reset();
+        if (keptPr7d.found)
+            SessionLog::note ("PR7-D's groove library: " + juce::String ((int) keptPr7d.grooves.size()) + " grooves (" + keptPr7d.folder.getFullPathName() + ")");
+        return true;
+    }
+
+    DrumNotes Studio::composerDrumNotes() const
+    {
+        if (const auto id = findIdeaTrack (LineIdea::Part::drums); id != 0)
+        {
+            const auto* track = project.findTrack (id);
+            return track != nullptr && track->drumMap == DrumMap::pr7d().name ? DrumNotes::pr7d : DrumNotes::generalMidi;
+        }
+        // None yet: what a new one would be (PR7-D, on the map it'd get).
+        if (host->getStudioDrums() == nullptr)
+            return DrumNotes::generalMidi;
+        const auto chosen = getDefaultDrumMap();
+        return isDrumMapAvailable (chosen) && chosen != DrumMap::pr7d().name ? DrumNotes::generalMidi : DrumNotes::pr7d;
+    }
+
+    Instrument Studio::drumsInstrument() const
+    {
+        Instrument instrument;
+        if (const auto* drums = host->getStudioDrums())
+        {
+            instrument.kind = Instrument::Kind::plugin;
+            instrument.plugin = *drums;
+        }
+        return instrument;
+    }
+
+    int Studio::addDrumsTrack (const juce::String& name)
+    {
+        const auto id = addTrack (drumsInstrument());
+        if (id == 0)
+            return 0;
+        renameTrack (id, name);
+        setTrackDrumMap (id, defaultDrumMapFor (id));
+        return id;
+    }
+
+    bool Studio::getPr7dPlaysDrums() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("pr7dPlaysDrums", true) : pr7dPlaysDrumsHere;
+    }
+
+    void Studio::setPr7dPlaysDrums (bool on)
+    {
+        if (settings != nullptr)
+            settings->setValue ("pr7dPlaysDrums", on);
+        pr7dPlaysDrumsHere = on;
+    }
+
+    bool Studio::linksToPr7d (int trackId) const
+    {
+        return getPr7dPlaysDrums() && playsPr7d (trackId);
+    }
+
+    void Studio::linkForPr7d (int trackId, const LineIdea& idea, Part& part) const
+    {
+        if ((idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove) && linksToPr7d (trackId))
+        {
+            part.muted = true;      // (PR7-D plays it from its song: the track's notes would play every hit twice)
+            part.linkCopy = true;
+        }
+    }
+
+    juce::File Studio::pr7dLinkFile (int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr || track->drumLink.isEmpty())
+            return {};
+        const auto folder = linkFolderOverride != juce::File() ? linkFolderOverride : pr7dLinkFolder();
+        return folder.getChildFile (track->drumLink + ".xml");
+    }
+
+    void Studio::sendPr7d (int trackId, const juce::MidiMessage& message)
+    {
+        engine.sendToInstrument (trackId, message);
+        if (onPr7dMessage)
+            onPr7dMessage (trackId, message);
+    }
+
+    int Studio::syncPr7dLinks()
+    {
+        auto sent = 0;
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen || track.disabled || ! playsPr7d (track.id))
+                continue;
+            std::vector<Part> copies;
+            for (const auto& p : std::as_const (track.parts))   // (0.173.0: const: a shared list isn't copied)
+                if (p.linkCopy)
+                    copies.push_back (p);
+            if (copies.empty() && track.drumLink.isEmpty())
+                continue;   // (never linked)
+            const auto fingerprint = pr7dCopiesFingerprint (copies);
+            if (const auto known = pr7dSent.find (track.id); known != pr7dSent.end() && known->second == fingerprint)
+                continue;
+            if (track.drumLink.isEmpty())
+                track.drumLink = juce::Uuid().toString();
+            const auto file = pr7dLinkFile (track.id);
+            file.getParentDirectory().createDirectory();
+            const auto song = pr7dSongXml (copies, track.drumMap == DrumMap::pr7d().name, project.numerator, project.denominator,
+                                           project.signatureChanges, file.getFullPathName());
+            if (! song->writeTo (file))
+            {
+                SessionLog::note ("PR7-D's link: couldn't write " + file.getFullPathName());
+                continue;
+            }
+            pr7dWritten[track.id] = file.getLastModificationTime();
+            pr7dSent[track.id] = fingerprint;
+            sendPr7d (track.id, pr7dLinkMessage (Pr7dCommand::load, file.getFullPathName()));
+            ++sent;
+        }
+        return sent;
+    }
+
+    int Studio::readPr7dEdits()
+    {
+        auto changedTracks = 0;
+        for (auto& track : project.tracks)
+        {
+            if (track.drumLink.isEmpty() || track.frozen || ! playsPr7d (track.id))
+                continue;
+            const auto file = pr7dLinkFile (track.id);
+            const auto date = file.getLastModificationTime();
+            if (! file.existsAsFile() || date == pr7dWritten[track.id])
+                continue;
+            pr7dWritten[track.id] = date;
+            const auto xml = juce::XmlDocument::parse (file);
+            if (xml == nullptr || ! xml->hasTagName ("Song"))
+                continue;
+            auto copies = pr7dPartsFromSong (*xml, track.drumMap == DrumMap::pr7d().name);
+            const auto fingerprint = pr7dCopiesFingerprint (copies);
+            std::vector<Part> mine;
+            for (const auto& p : std::as_const (track.parts))
+                if (p.linkCopy)
+                    mine.push_back (p);
+            pr7dSent[track.id] = fingerprint;   // (what PR7-D has: not sent back)
+            if (pr7dCopiesFingerprint (mine) == fingerprint)
+                continue;
+            track.parts.erase (std::remove_if (track.parts.begin(), track.parts.end(), [] (const Part& p) { return p.linkCopy; }), track.parts.end());
+            for (auto& p : copies)
+                track.parts.push_back (std::move (p));
+            ++changedTracks;
+        }
+        if (changedTracks > 0)
+        {
+            SessionLog::note ("PR7-D's link: edits made in PR7-D read back (" + juce::String (changedTracks) + " track(s))");
+            changed();
+        }
+        return changedTracks;
+    }
+
+    void Studio::pausePr7dSongs (bool pause)
+    {
+        if (pause)
+        {
+            for (const auto& track : project.tracks)
+                if (track.drumLink.isNotEmpty() && playsPr7d (track.id)
+                    && std::find (pr7dPaused.begin(), pr7dPaused.end(), track.id) == pr7dPaused.end())
+                {
+                    sendPr7d (track.id, pr7dLinkMessage (Pr7dCommand::pause));
+                    pr7dPaused.push_back (track.id);
+                }
+        }
+        else
+        {
+            for (const auto id : pr7dPaused)
+                sendPr7d (id, pr7dLinkMessage (Pr7dCommand::resume));
+            pr7dPaused.clear();
+        }
+    }
+
     bool Studio::playsPr7d (int trackId) const
     {
+        if (treatAsPr7dForTests)
+            return treatAsPr7dForTests (trackId);
         const auto* track = project.findTrack (trackId);
         return track != nullptr && track->instrument.kind == Instrument::Kind::plugin
                && track->instrument.plugin.name.containsIgnoreCase ("PR7-D");
@@ -2989,6 +3425,7 @@ namespace pr7s
             existing.audioOffset = juce::jmax (0.0, existing.audioOffset);
             existing.fadeIn = juce::jmax (0.0, existing.fadeIn);
             existing.fadeOut = juce::jmax (0.0, existing.fadeOut);
+            partsOnlyAsked = true;
             changed();
         }
     }
@@ -3416,7 +3853,10 @@ namespace pr7s
         const auto id = addFxChannel (&preset->plugin, &error);
         if (id != 0)
             if (auto* effect = engine.getEffect (id, 0))
+            {
                 effect->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+                notePluginChanged (effect);
+            }
         return id;
     }
 
@@ -3444,6 +3884,7 @@ namespace pr7s
                 && track->instrument.plugin.name == preset->plugin.name)
             {
                 running->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+                notePluginChanged (running);
                 changed();
                 return true;
             }
@@ -3461,6 +3902,7 @@ namespace pr7s
                     if (auto* effect = engine.getEffect (trackId, slot))
                     {
                         effect->setStateInformation (preset->state.getData(), (int) preset->state.getSize());
+                        notePluginChanged (effect);
                         changed();
                         return true;
                     }
@@ -4567,6 +5009,7 @@ namespace pr7s
         if (target == nullptr || (*target == limited && ! undoable))
             return;
         *target = limited;
+        mixOnly (! undoable);   // (0.83.1: a drag's steps redraw no other view; the release does)
         changed (undoable);
     }
 
@@ -4588,6 +5031,7 @@ namespace pr7s
         if (target == nullptr || (*target == limited && ! undoable))
             return;
         *target = limited;
+        mixOnly (! undoable);   // (0.83.1: a drag's steps redraw no other view; the release does)
         changed (undoable);
     }
 
@@ -4646,19 +5090,36 @@ namespace pr7s
             detached = true;
         }
 
+        // (0.130.0) What may have changed the plug-in's settings since they were last asked for.
+        // The flag is set from any thread (a plug-in may report from its own); the rest is the message thread's.
+        bool mayHaveChanged() const noexcept { return changedSince.load() || windowsOpen > 0; }
+        bool hasKeptState() const noexcept { return kept; }
+        const juce::MemoryBlock& getKeptState() const noexcept { return keptState; }
+        void aboutToAsk() noexcept { changedSince = false; }
+        void keepState (const juce::MemoryBlock& state) { keptState = state; kept = true; }
+        void markChanged() noexcept { changedSince = true; }
+        void windowOpen (bool open) noexcept
+        {
+            windowsOpen = juce::jmax (0, windowsOpen + (open ? 1 : -1));
+            changedSince = true;
+        }
+
         void audioProcessorParameterChanged (juce::AudioProcessor*, int index, float value) override
         {
+            changedSince = true;
             post ([value] (Studio& s, int bus, const AutomationLane& knob) { s.setKnob (bus, knob, value); }, index);
         }
         void audioProcessorParameterChangeGestureBegin (juce::AudioProcessor*, int index) override
         {
+            changedSince = true;
             post ([] (Studio& s, int bus, const AutomationLane& knob) { s.grabControl (bus, knob); }, index);
         }
         void audioProcessorParameterChangeGestureEnd (juce::AudioProcessor*, int index) override
         {
+            changedSince = true;
             post ([] (Studio& s, int bus, const AutomationLane& knob) { s.releaseControl (bus, knob); }, index);
         }
-        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override {}
+        void audioProcessorChanged (juce::AudioProcessor*, const ChangeDetails&) override { changedSince = true; }
 
     private:
         template <typename Action>
@@ -4688,6 +5149,10 @@ namespace pr7s
         const AutomationLane::Target kind;
         const int slotIndex;
         bool detached = false;
+        std::atomic<bool> changedSince { true };
+        int windowsOpen = 0;
+        juce::MemoryBlock keptState;
+        bool kept = false;
     };
 
     void Studio::watchPlugins()
@@ -6280,17 +6745,40 @@ namespace pr7s
         changed();
     }
 
-    void Studio::setCycle (double start, double end)
+    void Studio::setCycle (double start, double end, bool undoable)
     {
         start = juce::jmax (0.0, start);
         project.loopStart = start;
         project.loopEnd = juce::jmax (start + 0.25, end);
+        // (0.123.0, the owner: dragging the cycle lagged, in the MIDI editor and the arrangement) Every mouse move
+        // went through changed(): every track rebuilt for the engine, a whole copy of the song for undo, the
+        // sections' checks and every open view rebuilt and redrawn. A drag's step now hands the engine only the
+        // locators and tells the views to redraw their cycle strips; the release makes it one change, one undo step.
+        if (! undoable && ! composerAudition.has_value() && exportJob == nullptr)
+        {
+            engine.updateCycle (project);
+            modified = true;
+            cycleStepped = true;
+            ++cycleVersion;
+            sendChangeMessage();
+            return;
+        }
+        cycleStepped = false;
+        ++cycleVersion;
         changed();
+    }
+
+    void Studio::finishCycleDrag()
+    {
+        if (std::exchange (cycleStepped, false))
+            changed();
     }
 
     void Studio::setCycleOn (bool on)
     {
         project.loopOn = on;
+        cycleStepped = false;   // (this change takes a drag's steps with it)
+        ++cycleVersion;
         changed();
     }
 
@@ -6415,7 +6903,9 @@ namespace pr7s
         engine.setPosition (beats);
         if (! engine.isPlaying())
             playStart = juce::jmax (0.0, beats);
-        announce();
+        // (0.123.0) Not a change of the song: every view draws the playhead from its own timer. A new change
+        // version made every open view rebuild on each mouse move of a playhead drag along the ruler.
+        sendChangeMessage();
     }
 
     //==========================================================================
@@ -7510,7 +8000,7 @@ namespace pr7s
             error = "Couldn't write " + written.getFullPathName();
             return {};
         }
-        SessionLog::note ("Composer drag out: " + written.getFileName());
+        SessionLog::note ("Architect drag out: " + written.getFileName());
         return written;
     }
 
@@ -7785,7 +8275,7 @@ namespace pr7s
     {
         if (project.findTrack (trackId) == nullptr || exportJob != nullptr)
             return;
-        auto heard = project;
+        auto heard = copyWithoutPluginStates (false);
         for (auto& t : heard.tracks)
             t.solo = t.id == trackId;
         heard.findTrack (trackId)->soloLane = lane;
@@ -8210,6 +8700,10 @@ namespace pr7s
         if (rendering || exportJob != nullptr)
             return;
         backupIfDue();   // (0.72.0: AUTO-SAVE)
+        if (++pr7dLinkTicks % 15 == 0)
+            readPr7dEdits();   // (0.108.0: edits made in PR7-D's song track, about twice a second)
+        if (takePr7dReading())
+            announce();   // (0.112.1: PR7-D's grooves read: the composer takes them)
         if (performer != nullptr)
         {
             // (0.39.0) The performance's tempo and bar, from the song at the playhead.
@@ -8241,7 +8735,9 @@ namespace pr7s
             if (recorded.size() != before || ++quietRecordingTicks >= 6)
             {
                 quietRecordingTicks = 0;
-                announce();
+                // (0.173.0) Not a change to the song (that comes when recording stops): only the take's row.
+                ++recordingVersion;
+                sendChangeMessage();
             }
         }
         else if (wasRecording)
@@ -8252,7 +8748,30 @@ namespace pr7s
     }
 
     //==========================================================================
-    void Studio::newProject()
+    // (0.113.0, the owner: the studio hung closing or opening a song) Every track's plug-ins unloaded, one
+    // after another, as a step of the progress box each: Kontakt and its kind can take seconds each to go,
+    // and with nothing on screen the studio looked dead (and Windows called it "Not Responding").
+    void Studio::unloadSongTracks()
+    {
+        auto toUnload = 0;
+        for (const auto& track : project.tracks)
+            toUnload += (engine.getInstrument (track.id) != nullptr ? 1 : 0) + engine.getNumEffects (track.id);
+        auto done = 0;
+        const auto shown = toUnload >= 2;
+        for (const auto& track : project.tracks)
+        {
+            const auto here = (engine.getInstrument (track.id) != nullptr ? 1 : 0) + engine.getNumEffects (track.id);
+            if (shown && here > 0)
+                setProgressStage ((double) done / (double) toUnload, (double) here / (double) toUnload,
+                                  "Closing the song: unloading " + track.name + "'s plug-ins (" + juce::String (done + 1) + " of " + juce::String (toUnload) + ")");
+            engine.removeTrack (track.id);
+            done += here;
+        }
+        if (shown)
+            endProgress();
+    }
+
+    void Studio::newProject (bool starterTrack)
     {
         audioFolderOverride = juce::File();
         lastBackupHash = 0;
@@ -8260,6 +8779,8 @@ namespace pr7s
         endComposerAudition (false);   // (0.58.0)
         frozenParts.clear();
         builtSections.clear();
+        pr7dSent.clear();   // (0.108.0: another song's links)
+        pr7dWritten.clear();
         composerRiff.reset();
         editorSoloTrack = 0;   // (0.78.0: another song's track ids)
         engine.setEditorSolo (0);
@@ -8269,8 +8790,7 @@ namespace pr7s
         removeAllEffects();
         forgetAllAudio();
         engine.stop();
-        for (const auto& track : project.tracks)
-            engine.removeTrack (track.id);
+        unloadSongTracks();
         project = {};
         padsChanged();
         file = juce::File();
@@ -8278,9 +8798,13 @@ namespace pr7s
         selectedTracks.clear();
         engine.setPosition (0.0);
         playStart = 0.0;
-        // A new song starts with one track on the studio's synth (PR7-K), ready to play.
-        addTrack ({});
+        // A new song starts with one track on the studio's synth (PR7-K), ready to play. (0.113.0) Not when
+        // the song only closes back to the Hub: the next song would unload it at once.
+        if (starterTrack)
+            addTrack ({});
         engine.update (project);
+        linkSnapshots.clear();   // (0.91.0)
+        chordSnapshots.clear();   // (0.92.0)
         clearHistory();
         recordUndoState();
         modified = false;
@@ -8409,6 +8933,54 @@ namespace pr7s
             settings->setValue ("autoSaveKeep", autoSaveKeepHere);
     }
 
+    OptionMemory Studio::getOptionMemory() const
+    {
+        if (settings == nullptr)
+            return optionMemoryHere;
+        OptionMemory m;
+        m.favourites = OptionMemory::fromText (settings->getValue ("optionFavourites"));
+        m.recent = OptionMemory::fromText (settings->getValue ("optionRecent"));
+        return m;
+    }
+
+    void Studio::saveOptionMemory (const OptionMemory& m)
+    {
+        optionMemoryHere = m;
+        if (settings != nullptr)
+        {
+            settings->setValue ("optionFavourites", OptionMemory::toText (m.favourites));
+            settings->setValue ("optionRecent", OptionMemory::toText (m.recent));
+        }
+    }
+
+    void Studio::setOptionFavourite (const juce::String& list, const juce::String& name, bool on)
+    {
+        auto m = getOptionMemory();
+        m.setFavourite (list, name, on);
+        saveOptionMemory (m);
+    }
+
+    void Studio::noteOptionUsed (const juce::String& list, const juce::String& name)
+    {
+        auto m = getOptionMemory();
+        m.noteUsed (list, name);
+        saveOptionMemory (m);
+    }
+
+    bool Studio::getAskBeforeTypeChange() const
+    {
+        if (settings != nullptr)
+            return settings->getBoolValue ("askSectionTypeChange", false);
+        return askTypeChangeHere;
+    }
+
+    void Studio::setAskBeforeTypeChange (bool ask)
+    {
+        askTypeChangeHere = ask;
+        if (settings != nullptr)
+            settings->setValue ("askSectionTypeChange", ask);
+    }
+
     juce::File Studio::backupFolder() const
     {
         if (file != juce::File() && audioFolderOverride == juce::File())
@@ -8432,14 +9004,35 @@ namespace pr7s
 
     bool Studio::writeBackup()
     {
-        collectPluginStates();
-        auto xml = project.toXml();
-        xml->setAttribute ("backupAudioFolder", getAudioFolder().getFullPathName());
-        const auto text = xml->toString();
-        const auto hash = text.hashCode64();
-        if (hash == lastBackupHash)
+        // (0.85.2) Whether anything changed is told without writing the song out: the change
+        // count, the levels (a fader drag's steps don't count as changes) and each plug-in's
+        // settings, hashed. The XML text itself is made on the saver's thread from a copy
+        // (it held the screen for the whole song's toXml every few minutes).
+        collectPluginStates (true);   // (0.130.0: plug-ins nothing has touched aren't asked again)
+        const auto mix = [] (juce::uint64 h, juce::uint64 v) { return (h ^ v) * 1099511628211ull; };
+        const auto stateHash = [] (const juce::MemoryBlock& m)
+        {
+            return (juce::uint64) std::hash<std::string_view>{} (std::string_view (static_cast<const char*> (m.getData()), m.getSize()));
+        };
+        juce::uint64 hash = mix (14695981039346656037ull, changeVersion);
+        hash = mix (hash, (juce::uint64) std::bit_cast<juce::uint32> (project.masterVolumeDb));
+        for (const auto& track : project.tracks)
+        {
+            hash = mix (hash, (juce::uint64) std::bit_cast<juce::uint32> (track.volumeDb));
+            hash = mix (hash, (juce::uint64) std::bit_cast<juce::uint32> (track.pan));
+            hash = mix (hash, stateHash (track.instrument.state));
+            for (const auto& insert : track.inserts)
+                hash = mix (hash, stateHash (insert.state));
+        }
+        for (const auto& insert : project.masterInserts)
+            hash = mix (hash, stateHash (insert.state));
+        if (hash == 0)
+            hash = 1;
+        if ((juce::int64) hash == lastBackupHash)
             return false;   // (nothing changed since the last copy)
-        lastBackupHash = hash;
+        lastBackupHash = (juce::int64) hash;
+        auto copy = std::make_shared<const Project> (project);
+        const auto audioFolder = getAudioFolder().getFullPathName();
         auto name = file != juce::File() ? file.getFileNameWithoutExtension() : juce::String ("Untitled");
         if (const auto at = name.indexOf (" backup "); at > 0)
             name = name.substring (0, at);   // (a backup opened: its copies keep the song's name)
@@ -8451,10 +9044,12 @@ namespace pr7s
         const auto keep = getAutoSaveKeep();
         SessionLog::note ("Auto-save: " + destination.getFullPathName());
         ++savesRunning;
-        saver.addJob ([text, destination, folder, name, keep, life = saveAlive, this]
+        saver.addJob ([copy, audioFolder, destination, folder, name, keep, life = saveAlive, this]
         {
+            auto xml = copy->toXml();
+            xml->setAttribute ("backupAudioFolder", audioFolder);
             folder.createDirectory();
-            const auto written = destination.replaceWithText (text);
+            const auto written = destination.replaceWithText (xml->toString());
             // The newest `keep` of this song's copies stay.
             auto copies = folder.findChildFiles (juce::File::findFiles, false, name + " backup *" + Project::fileExtension);
             std::sort (copies.begin(), copies.end(), [] (const juce::File& a, const juce::File& b) { return a.getFileName() > b.getFileName(); });
@@ -8736,26 +9331,49 @@ namespace pr7s
         return copyAudioFiles (getAudioFolder(), destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio"));
     }
 
-    void Studio::collectPluginStates()
+    juce::MemoryBlock Studio::pluginState (juce::AudioProcessor& plugin, bool reuseUnchanged)
+    {
+        // (0.130.0) The watcher notes anything that may change the plug-in's settings (see Studio.h).
+        const auto found = watchers.find (&plugin);
+        auto* watcher = found != watchers.end() ? found->second.get() : nullptr;
+        if (reuseUnchanged && watcher != nullptr && watcher->hasKeptState() && ! watcher->mayHaveChanged())
+        {
+            ++reusedStates;
+            return watcher->getKeptState();
+        }
+        if (watcher != nullptr)
+            watcher->aboutToAsk();   // (a change while it answers marks it again)
+        juce::MemoryBlock state;
+        plugin.getStateInformation (state);
+        if (watcher != nullptr)
+            watcher->keepState (state);
+        return state;
+    }
+
+    void Studio::notePluginWindow (juce::AudioProcessor* plugin, bool open)
+    {
+        if (const auto found = watchers.find (plugin); found != watchers.end())
+            found->second->windowOpen (open);
+    }
+
+    void Studio::notePluginChanged (juce::AudioProcessor* plugin)
+    {
+        if (const auto found = watchers.find (plugin); found != watchers.end())
+            found->second->markChanged();
+    }
+
+    void Studio::collectPluginStates (bool reuseUnchanged)
     {
         // Each instrument's current settings go into the file with it.
         for (auto& track : project.tracks)
             if (auto* instrument = engine.getInstrument (track.id))
-            {
-                juce::MemoryBlock state;
-                instrument->getStateInformation (state);
-                track.instrument.state = std::move (state);
-            }
+                track.instrument.state = pluginState (*instrument, reuseUnchanged);
         // And each effect's.
-        const auto keepEffectStates = [this] (int busId, std::vector<Insert>& inserts)
+        const auto keepEffectStates = [this, reuseUnchanged] (int busId, std::vector<Insert>& inserts)
         {
             for (int slot = 0; slot < (int) inserts.size(); ++slot)
                 if (auto* effect = engine.getEffect (busId, slot))
-                {
-                    juce::MemoryBlock state;
-                    effect->getStateInformation (state);
-                    inserts[(size_t) slot].state = std::move (state);
-                }
+                    inserts[(size_t) slot].state = pluginState (*effect, reuseUnchanged);
         };
         for (auto& track : project.tracks)
             keepEffectStates (track.id, track.inserts);
@@ -8846,6 +9464,7 @@ namespace pr7s
             apply (project);
             for (auto& state : undoStates)
                 apply (state);
+            noteUndoParts();   // (a real change to the kept steps: noted again)
             for (auto& [id, parts] : frozenParts)
                 for (auto& part : parts)
                     if (part.isAudio())
@@ -9615,6 +10234,8 @@ namespace pr7s
         endComposerAudition (false);   // (0.58.0)
         builtSections.clear();
         composerRiff.reset();
+        pr7dSent.clear();   // (0.108.0: this song's links sent afresh: PR7-D's song made sure of)
+        pr7dWritten.clear();
         editorSoloTrack = 0;   // (0.78.0: another song's track ids)
         engine.setEditorSolo (0);
         std::optional<Project> loaded { std::move (loadedProject) };
@@ -9624,8 +10245,7 @@ namespace pr7s
             onInstrumentGoing (0);
         removeAllEffects();
         engine.stop();
-        for (const auto& track : project.tracks)
-            engine.removeTrack (track.id);
+        unloadSongTracks();
         project = std::move (*loaded);
         for (const auto& track : project.tracks)   // (never a new track with an old one's number)
             project.nextTrackId = juce::jmax (project.nextTrackId, track.id + 1);
@@ -9635,6 +10255,45 @@ namespace pr7s
         forgetAllAudio();
         juce::StringArray missing;
         missingItems.clear();
+        // (0.83.2) The recordings read on threads of their own, several at once, while the plug-ins load
+        // here (they were read whole, one after another, before the first plug-in was started). Each
+        // thread reads with its own reader into its own slot; they're taken into the cache once the
+        // plug-ins are in, before anything plays.
+        audioCacheRate = engine.getSampleRate();
+        std::vector<juce::String> toRead;
+        for (const auto& track : project.tracks)
+        {
+            if (track.isAudio())
+                for (const auto& part : track.parts)
+                    if (part.isAudio() && std::find (toRead.begin(), toRead.end(), part.audioFile) == toRead.end())
+                        toRead.push_back (part.audioFile);
+            if (track.frozen && track.freezeFile.isNotEmpty() && std::find (toRead.begin(), toRead.end(), track.freezeFile) == toRead.end())
+                toRead.push_back (track.freezeFile);
+        }
+        std::vector<std::shared_ptr<const AudioData>> read (toRead.size());
+        std::atomic<size_t> nextToRead { 0 };
+        std::vector<std::thread> readers;
+        {
+            const auto folder = getAudioFolder();
+            const auto count = juce::jmin (toRead.size(), (size_t) juce::jlimit (1, 4, (int) std::thread::hardware_concurrency() - 1));
+            for (size_t r = 0; r < count; ++r)
+                readers.emplace_back ([this, folder, &toRead, &read, &nextToRead]
+                {
+                    for (auto i = nextToRead++; i < toRead.size(); i = nextToRead++)
+                        read[i] = readAudio (folder.getChildFile (toRead[i]));
+                });
+        }
+        const auto takeRecordings = [&]
+        {
+            for (auto& reader : readers)
+                if (reader.joinable())
+                    reader.join();
+            for (size_t i = 0; i < toRead.size(); ++i)
+                if (read[i] != nullptr)
+                    audioCache[toRead[i]] = read[i];
+        };
+        const juce::ScopeGuard readersJoined { [&] { for (auto& reader : readers) if (reader.joinable()) reader.join(); } };
+        std::vector<std::pair<const Track*, juce::String>> recordingsToCheck;
         // Each plug-in loaded is a step of the progress box (0.11.1: Kontakt and its kind take a while).
         auto toLoad = 0, nowLoading = 0;
         for (const auto& track : project.tracks)
@@ -9664,11 +10323,8 @@ namespace pr7s
             {
                 engine.addAudioTrack (track.id);
                 for (const auto& part : track.parts)
-                    if (part.isAudio() && getAudio (part.audioFile) == nullptr)
-                    {
-                        missing.add (track.name + ": the recording " + part.audioFile + " isn't in " + getAudioFolder().getFullPathName());
-                        missingItems.push_back ({ MissingItem::Kind::recording, track.id, -1, part.audioFile });
-                    }
+                    if (part.isAudio())
+                        recordingsToCheck.emplace_back (&track, part.audioFile);   // (checked once they're read)
                 continue;
             }
             juce::String error;
@@ -9712,6 +10368,13 @@ namespace pr7s
             if (! track.disabled && ! track.frozen)
                 loadEffects (track.id, track.name, track.inserts);
         loadEffects (Engine::masterBus, "Master", project.masterInserts);
+        takeRecordings();
+        for (const auto& [track, name] : recordingsToCheck)
+            if (getAudio (name) == nullptr)
+            {
+                missing.add (track->name + ": the recording " + name + " isn't in " + getAudioFolder().getFullPathName());
+                missingItems.push_back ({ MissingItem::Kind::recording, track->id, -1, name });
+            }
         problems = missing.joinIntoString ("\n");
         numberParts();
         for (const auto& track : project.tracks)
@@ -9731,7 +10394,11 @@ namespace pr7s
         engine.setPosition (0.0);
         playStart = 0.0;
         applyAutoColour();   // (0.79.0)
+        linksReset = true;   // (0.91.0)
+        syncLinkedSections();
+        noteSectionChords();   // (0.92.0)
         engine.update (project);
+        syncPr7dLinks();   // (0.123.0: PR7-D's song sent while the song opens, not on the first click after)
         clearHistory();
         recordUndoState();
         updateLiveTrack();
@@ -10212,6 +10879,7 @@ namespace pr7s
             case LineIdea::Part::chords: return "Piano";
             case LineIdea::Part::rhythm: return "Guitar";
             case LineIdea::Part::lead: return "Lead Guitar";
+            case LineIdea::Part::clean: return "Clean Guitar";
             case LineIdea::Part::pattern: return "Pattern";
             case LineIdea::Part::tune: return "Melody";
             case LineIdea::Part::drums:
@@ -10233,7 +10901,7 @@ namespace pr7s
             }
     }
 
-    std::vector<Controller> Studio::effectControllers (const std::vector<LineNote>& notes, int bendRange)
+    std::vector<Controller> Studio::effectControllers (const std::vector<LineNote>& notes, int bendRange, double bpm)
     {
         // Each group of notes with an effect starting together (a stab's two notes): its controllers.
         using E = LineNote::Effect;
@@ -10241,7 +10909,9 @@ namespace pr7s
         std::vector<Group> groups;
         for (const auto& n : notes)
         {
-            if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive))
+            if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive && n.effect != E::release
+                                && n.effect != E::slideIn && n.effect != E::fallOff && n.effect != E::slowBend && n.effect != E::wobble
+                                && n.effect != E::scoop && n.effect != E::pullUp && n.effect != E::bendDive))
                 continue;
             auto found = false;
             for (auto& g : groups)
@@ -10254,6 +10924,34 @@ namespace pr7s
                 groups.push_back ({ n.beat, n.length, n.effect, n.amount });
         }
         std::vector<Controller> out;
+        // (0.101.0, Circle With Me's first clean guitar) a swell: expression (CC 11) from nothing up over the note's
+        // first part (a beat and a half at most), held; once a line has swells, its other notes start at full.
+        auto anySwell = false;
+        for (const auto& n : notes)
+            anySwell = anySwell || (! n.keyswitch && n.effect == E::swell);
+        if (anySwell)
+        {
+            std::vector<double> starts;
+            for (const auto& n : notes)
+            {
+                if (n.keyswitch)
+                    continue;
+                auto seen = false;
+                for (const auto t : starts)
+                    seen = seen || std::abs (t - n.beat) < HumanizeLimits::together;
+                if (seen)
+                    continue;
+                starts.push_back (n.beat);
+                if (n.effect == E::swell)
+                {
+                    const auto peak = juce::jlimit (1, 127, juce::roundToInt (110.0f * (n.amount > 0.0f ? n.amount : 1.0f)));
+                    out.push_back ({ Controller::Type::cc, 11, n.beat, 0, false });
+                    out.push_back ({ Controller::Type::cc, 11, n.beat + juce::jmin (1.5, juce::jmax (0.05, n.length) * 0.6), peak, true });
+                }
+                else
+                    out.push_back ({ Controller::Type::cc, 11, n.beat, 110, false });
+            }
+        }
         const auto range = (double) juce::jmax (1, bendRange);
         for (const auto& g : groups)
         {
@@ -10263,9 +10961,113 @@ namespace pr7s
                 // (0.66.0) Up by its amount (0: a whole step), as far as the bend range reaches.
                 const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
                 const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
-                const auto up = g.at + juce::jmin (0.25, (end - g.at) * 0.5);
+                // (0.116.0, the owner's solos: a bend reaches its pitch in about 0.13-0.27 s at any tempo)
+                // (0.128.0, the owner's Metallica and Def Leppard solos: from 50 ms on a quick bend to over a second on
+                // a long held one: 0.06 s + 0.13 of the note's length, at most 0.7 s; a one-beat note at 120 BPM: 0.19 s)
+                const auto rise = bpm > 0.0 ? juce::jlimit (0.06, 0.7, 0.06 + 0.13 * (end - g.at) * 60.0 / bpm) * bpm / 60.0 : 0.25;
+                const auto up = g.at + juce::jmin (rise, (end - g.at) * 0.5);
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
                 out.push_back ({ Controller::Type::pitchbend, 0, up, bent, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::release)
+            {
+                // (0.116.0) A pre-bend let down: up by its amount from the start, held, then down onto the note.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
+                const auto rise = bpm > 0.0 ? 0.19 * bpm / 60.0 : 0.25;
+                const auto hold = g.at + juce::jmin (0.75, (end - g.at) * 0.4);
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, bent, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, hold, bent, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, juce::jmin (end - 0.01, hold + rise), 8192, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::slowBend)
+            {
+                // (0.129.0) The anthem bend: up by its amount over half the note's time, 0.5 s to 1.3 s (the owner's
+                // Def Leppard solos), held there.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
+                const auto rise = bpm > 0.0 ? juce::jlimit (0.5, 1.3, 0.5 * (end - g.at) * 60.0 / bpm) * bpm / 60.0 : (end - g.at) * 0.5;
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + juce::jmin (rise, (end - g.at) * 0.8), bent, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::wobble)
+            {
+                // (0.129.0) The whammy bar shaken: from a fifth of the note on, up and down `amount` semitones (1 if
+                // none) about 5.5 times a second, as far as the bend range reaches; back to none at the end.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 1.0;
+                const auto swing = juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0);
+                const auto from = g.at + (end - g.at) * 0.2;
+                const auto quarter = bpm > 0.0 ? (1.0 / 22.0) * bpm / 60.0 : 0.1;   // (a quarter of a 5.5 Hz cycle, in beats)
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, from, 8192, false });
+                auto k = 1;
+                for (auto x = from + quarter; x < end - 1.0e-6 && k < 400; x += quarter, ++k)
+                {
+                    const int shape[] = { 1, 0, -1, 0 };
+                    out.push_back ({ Controller::Type::pitchbend, 0, x, juce::jlimit (0, 16383, 8192 + shape[(k - 1) % 4] * swing), true });
+                }
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::slideIn)
+            {
+                // (0.128.0) Slid up into the note: from `amount` semitones under (as far as the range reaches) to none
+                // over the first 0.12 s (a third of the note at most).
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto under = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, semitones / range) * 8192.0));
+                const auto slide = bpm > 0.0 ? 0.12 * bpm / 60.0 : 0.25;
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, under, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + juce::jmin (slide, (end - g.at) / 3.0), 8192, true });
+            }
+            else if (g.effect == E::pullUp)
+            {
+                // (0.134.0, the owner's Pantera solos) The whammy bar pulled up: straight for 0.15 s, then up `amount`
+                // semitones (7 if none, as far as the range reaches) over 0.15 s, held to the end.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 7.0;
+                const auto up = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
+                const auto wait = juce::jmin (bpm > 0.0 ? 0.15 * bpm / 60.0 : 0.25, (end - g.at) * 0.3);
+                const auto rise = juce::jmin (bpm > 0.0 ? 0.15 * bpm / 60.0 : 0.25, (end - g.at) * 0.3);
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + wait, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + wait + rise, up, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::bendDive)
+            {
+                // (0.134.0) Bent up a whole step into the note (from 2 under, as the bend range reaches) in 0.12 s,
+                // held to 45 % of the note, then dived `amount` semitones under it (12 if none) by 95 %.
+                const auto under = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, 2.0 / range) * 8192.0));
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 12.0;
+                const auto down = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, semitones / range) * 8192.0));
+                const auto rise = juce::jmin (bpm > 0.0 ? 0.12 * bpm / 60.0 : 0.25, (end - g.at) * 0.3);
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, under, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + rise, 8192, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.45, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.95, down, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::scoop)
+            {
+                // (0.133.0, the owner's Van Halen solos) The whammy bar scooped up into the note: from `amount`
+                // semitones under (2 if none; up to an octave, as far as the range reaches) to none in 0.06 s (a third
+                // of the note at most): quicker than a slide.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto under = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, semitones / range) * 8192.0));
+                const auto scoop = bpm > 0.0 ? 0.06 * bpm / 60.0 : 0.125;
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, under, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + juce::jmin (scoop, (end - g.at) / 3.0), 8192, true });
+            }
+            else if (g.effect == E::fallOff)
+            {
+                // (0.128.0) Held, then slid down `amount` semitones over its last 30 % (as far as the range reaches),
+                // the wheel back as the note ends.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 5.0;
+                const auto down = juce::jlimit (0, 16383, 8192 - juce::roundToInt (juce::jmin (1.0, semitones / range) * 8192.0));
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.7, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.98, down, true });
                 out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
             }
             else if (g.effect == E::dive)
@@ -10283,8 +11085,9 @@ namespace pr7s
             {
                 const auto peak = juce::jlimit (1, 127, juce::roundToInt (96.0f * (g.amount > 0.0f ? g.amount : 1.0f)));
                 out.push_back ({ Controller::Type::cc, 1, g.at, 0, false });
-                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.3, 0, false });
-                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.8, peak, true });
+                // (0.133.0, the owner's Van Halen solos: vibrato starts about 15 % into a held note, every one)
+                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.15, 0, false });
+                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.65, peak, true });
                 out.push_back ({ Controller::Type::cc, 1, end, 0, false });
             }
         }
@@ -10300,7 +11103,7 @@ namespace pr7s
         part.name = name;
         auto range = 2;
         const auto use = idea.part == LineIdea::Part::lead ? ProfileUse::lead
-                       : idea.part == LineIdea::Part::rhythm ? ProfileUse::guitar : ProfileUse::bass;
+                       : idea.part == LineIdea::Part::rhythm || idea.part == LineIdea::Part::clean ? ProfileUse::guitar : ProfileUse::bass;
         auto profile = profileFor (use);
         if (! profile.has_value() && use == ProfileUse::lead)
             profile = profileFor (ProfileUse::guitar);
@@ -10310,7 +11113,7 @@ namespace pr7s
         fitBends (notes, range);
         for (const auto& n : notes)
             part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
-        part.controllers = effectControllers (notes, range);
+        part.controllers = effectControllers (notes, range, project.bpmAt (start));
         return part;
     }
 
@@ -10321,26 +11124,203 @@ namespace pr7s
         auto trackId = canTakeMidi (ontoTrackId) ? ontoTrackId : 0;
         if (trackId == 0)
         {
-            trackId = addTrack (Instrument {});
+            // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view; (0.107.0) the
+            // studio's drums (PR7-D) when it's found.
+            const auto drums = idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove;
+            trackId = drums ? addDrumsTrack (newIdeaTrackName (idea.part)) : addTrack (Instrument {});
             if (trackId == 0)
                 return 0;
-            renameTrack (trackId, linePartName (idea.part));
-            // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view.
-            if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
-                setTrackDrumMap (trackId, defaultDrumMapFor (trackId));
+            if (! drums)
+                renameTrack (trackId, newIdeaTrackName (idea.part));
         }
-        const auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
+        auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
+        linkForPr7d (trackId, idea, part);   // (0.108.0)
         addPart (trackId, part);
         return trackId;
     }
 
     int Studio::findIdeaTrack (LineIdea::Part part) const
     {
-        const auto name = linePartName (part);
-        for (const auto& t : project.tracks)
-            if (t.name == name && canTakeMidi (t.id))
-                return t.id;
+        const auto lane = composerTrackLane (part);
+        const auto names = lane >= 0 ? getComposerTracks (part).names : juce::StringArray (linePartName (part));
+        for (const auto& name : names)
+            for (const auto& t : project.tracks)
+                if (t.name.trim().equalsIgnoreCase (name) && canTakeMidi (t.id))
+                    return t.id;
         return 0;
+    }
+
+    //==========================================================================
+    // COMPOSER TRACKS (0.112.0)
+    LineIdea::Part Studio::composerTrackPart (int lane)
+    {
+        static const LineIdea::Part parts[] { LineIdea::Part::bass, LineIdea::Part::rhythm, LineIdea::Part::lead,
+                                              LineIdea::Part::chords, LineIdea::Part::tune, LineIdea::Part::drums, LineIdea::Part::clean };
+        return parts[juce::jlimit (0, numComposerTrackLanes - 1, lane)];
+    }
+
+    int Studio::composerTrackLane (LineIdea::Part part)
+    {
+        switch (part)
+        {
+            case LineIdea::Part::bass:   return 0;
+            case LineIdea::Part::rhythm: return 1;
+            case LineIdea::Part::lead:   return 2;
+            case LineIdea::Part::chords: return 3;
+            case LineIdea::Part::melody:
+            case LineIdea::Part::tune:   return 4;
+            case LineIdea::Part::drums:
+            case LineIdea::Part::groove: return 5;
+            case LineIdea::Part::clean:  return 6;   // (0.114.0: appended, so saved names keep their lanes)
+            case LineIdea::Part::pattern: break;
+        }
+        return -1;
+    }
+
+    static juce::StringArray cleanTrackNames (const juce::StringArray& names)
+    {
+        juce::StringArray out;
+        for (auto n : names)
+        {
+            n = n.removeCharacters ("|,\n\r").trim();   // (commas part names)
+            if (n.isNotEmpty() && ! out.contains (n, true))
+                out.add (n);
+        }
+        return out;
+    }
+
+    std::array<Studio::ComposerTracks, Studio::numComposerTrackLanes> Studio::readComposerTracks() const
+    {
+        // A lane a line, in composerTrackPart's order: "1|Guitar L, Guitar R" (1: EVERY); an empty name list: the default.
+        auto lanes = composerTracksHere;
+        if (settings != nullptr)
+        {
+            const auto lines = juce::StringArray::fromLines (settings->getValue ("composerTracks"));
+            for (int i = 0; i < numComposerTrackLanes; ++i)
+            {
+                lanes[(size_t) i] = {};
+                if (i < lines.size() && lines[i].contains ("|"))
+                {
+                    lanes[(size_t) i].every = lines[i].upToFirstOccurrenceOf ("|", false, false).trim() == "1";
+                    lanes[(size_t) i].names = cleanTrackNames (juce::StringArray::fromTokens (lines[i].fromFirstOccurrenceOf ("|", false, false), ",", ""));
+                }
+            }
+        }
+        for (int i = 0; i < numComposerTrackLanes; ++i)
+            if (lanes[(size_t) i].names.isEmpty())
+                lanes[(size_t) i].names = juce::StringArray (linePartName (composerTrackPart (i)));
+        return lanes;
+    }
+
+    Studio::ComposerTracks Studio::getComposerTracks (LineIdea::Part part) const
+    {
+        const auto lane = composerTrackLane (part);
+        if (lane < 0)
+            return { juce::StringArray (linePartName (part)), false };
+        return readComposerTracks()[(size_t) lane];
+    }
+
+    void Studio::setComposerTracks (LineIdea::Part part, ComposerTracks tracks)
+    {
+        const auto lane = composerTrackLane (part);
+        if (lane < 0)
+            return;
+        tracks.names = cleanTrackNames (tracks.names);
+        if (tracks.names.isEmpty())
+            tracks.names = juce::StringArray (linePartName (part));
+        auto lanes = readComposerTracks();
+        lanes[(size_t) lane] = tracks;
+        composerTracksHere = lanes;
+        if (settings != nullptr)
+        {
+            juce::StringArray lines;
+            for (const auto& l : lanes)
+                lines.add (juce::String (l.every ? "1" : "0") + "|" + l.names.joinIntoString (", "));
+            settings->setValue ("composerTracks", lines.joinIntoString ("\n"));
+        }
+    }
+
+    void Studio::resetComposerTracks()
+    {
+        composerTracksHere = {};
+        if (settings != nullptr)
+            settings->removeValue ("composerTracks");
+    }
+
+    bool Studio::getLooseCopies() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("composerLooseCopies", true) : looseCopiesHere;
+    }
+
+    void Studio::setLooseCopies (bool on)
+    {
+        looseCopiesHere = on;
+        if (settings != nullptr)
+            settings->setValue ("composerLooseCopies", on);
+    }
+
+    juce::String Studio::newIdeaTrackName (LineIdea::Part part) const
+    {
+        const auto names = getComposerTracks (part).names;
+        return names.isEmpty() ? linePartName (part) : names[0];
+    }
+
+    std::vector<int> Studio::findIdeaTracks (LineIdea::Part part) const
+    {
+        const auto tracks = getComposerTracks (part);
+        if (! tracks.every)
+        {
+            if (const auto id = findIdeaTrack (part))
+                return { id };
+            return {};
+        }
+        // Every match, in the track list's order (guitar left above guitar right plays as the first).
+        std::vector<int> found;
+        for (const auto& t : project.tracks)
+            if (canTakeMidi (t.id))
+                for (const auto& name : tracks.names)
+                    if (t.name.trim().equalsIgnoreCase (name))
+                    {
+                        found.push_back (t.id);
+                        break;
+                    }
+        return found;
+    }
+
+    LineIdea Studio::doubledCopy (const LineIdea& source, int copy, double originBeat, int copies) const
+    {
+        // (0.129.0) A twin lead on two tracks or more: the first plays the lead, the second its harmony voice (the
+        // keyswitches on both); further ones looser copies of the lead. On one track both voices play there.
+        auto idea = source;
+        const auto twin = std::any_of (source.notes.begin(), source.notes.end(), [] (const LineNote& n) { return n.harmony; });
+        if (twin && copies >= 2)
+        {
+            idea.notes.clear();
+            for (const auto& n : source.notes)
+                if (n.keyswitch || n.harmony == (copy == 1))
+                    idea.notes.push_back (n);
+            if (copy <= 1)
+                return idea;
+        }
+        if (copy <= 0 || ! getLooseCopies())
+            return idea;
+        // A second take: the playable notes humanized again (keyswitches left where they are), each in its velocity layer.
+        auto out = idea;
+        std::vector<LineNote> keys, played;
+        for (const auto& n : idea.notes)
+            (n.keyswitch ? keys : played).push_back (n);
+        HumanizeOptions o;
+        o.amount = 0.45f;
+        o.bpm = project.bpmAt (originBeat);
+        o.beatsPerBar = project.beatsPerBarAt (originBeat);
+        o.originBeat = originBeat;
+        if (idea.part != LineIdea::Part::drums && idea.part != LineIdea::Part::groove)
+            o.layers = guitarLayers();
+        o.seed = (juce::uint32) (copy * 7919 + 97);
+        out.notes = humanize (played, o);
+        out.notes.insert (out.notes.end(), keys.begin(), keys.end());
+        std::stable_sort (out.notes.begin(), out.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        return out;
     }
 
     //==========================================================================
@@ -10365,6 +11345,49 @@ namespace pr7s
         c.humanize = getIdeasHumanize();
         c.feel = getIdeasFeel();
         c.bpm = project.bpmAt (atBeat);
+        // (0.107.0) PR7-D's groove library first (the owner's: the folders its GROOVES page links), on the drums
+        // track's notes.
+        if (const auto& pr7d = getPr7dLibrary(); ! pr7d.grooves.empty())
+        {
+            const auto bpm = juce::roundToInt (c.bpm * 10.0);
+            const auto bar = juce::roundToInt (c.beatsPerBar * 1000.0);
+            // (0.112.1) Worked out and given their notes once per library, style, tempo, bar and drum notes, then
+            // shared: the owner's 100,000 grooves were copied (and their notes set) on every refresh.
+            const auto notes = composerDrumNotes();
+            if (keptPr7dGrooves.date != pr7d.indexDate || keptPr7dGrooves.count != pr7d.grooves.size() || keptPr7dGrooves.style != (int) c.style
+                || keptPr7dGrooves.bpm != bpm || keptPr7dGrooves.bar != bar || keptPr7dGrooves.notes != notes)
+            {
+                auto found = findPr7dGrooves (pr7d, c.style, c.bpm, c.beatsPerBar);
+                for (auto& g : found)
+                    g.notes = notes;
+                keptPr7dGrooves = { pr7d.indexDate, (int) c.style, bpm, bar, pr7d.grooves.size(), notes, GrooveList (std::move (found)) };
+            }
+            c.libraryGrooves = keptPr7dGrooves.grooves;
+        }
+        // (0.106.0) The groove library's drum MIDI (the MediaBay's), for the composer's drums lane. Without a settings
+        // file (tests) the MediaBay isn't opened for this.
+        else if (settings != nullptr || mediaBay != nullptr)
+        {
+            const auto& items = const_cast<Studio*> (this)->getMediaBay().getItems();
+            const auto bpm = juce::roundToInt (c.bpm * 10.0);
+            if (keptGrooves.items != items.data() || keptGrooves.count != items.size() || keptGrooves.style != (int) c.style || keptGrooves.bpm != bpm)
+                keptGrooves = { items.data(), items.size(), (int) c.style, bpm, findLibraryGrooves (items, c.style, c.bpm) };
+            c.libraryGrooves = keptGrooves.grooves;
+        }
+        // (0.104.0) A block of the SECTIONS row starting there: what its transition needs (the chord after it, its
+        // last bar's length).
+        const auto places = getSongSectionPlaces();
+        for (const auto& place : places)
+            if (std::abs (place.start - atBeat) < 1.0e-6)
+            {
+                const auto map = project.signatures();
+                c.lastBarBeats = map.barLengthAt (map.beatOfBar (place.firstBar + place.bars - 1));   // (its last bar: barAt counts a hair before a line as on it)
+                const auto chords = withLengths (project.chordTrack, project.beatsPerBarAt (place.end));
+                for (const auto& e : chords)
+                    if (e.beat <= place.end + 1.0e-9 && place.end < e.beat + e.length - 1.0e-9)
+                        c.nextChord = e.chord;
+                break;
+            }
         return c;
     }
 
@@ -10386,7 +11409,9 @@ namespace pr7s
             return std::nullopt;
         const auto start = composerAudition->start, end = composerAudition->end;
         // A copy of the song: each layer a part on its track, those tracks alone, the cycle round the layers.
-        auto heard = project;
+        // (0.83.1: without the plug-ins' saved settings: this runs on every change while the composer
+        // plays, a fader step included, and copied every Kontakt-sized state each time.)
+        auto heard = copyWithoutPluginStates (false);
         std::set<int> playing;
         for (const auto& [trackId, idea] : composerAudition->layers)
         {
@@ -10438,6 +11463,8 @@ namespace pr7s
             composerAudition->wasAt = engine.getPosition();
         }
         engine.update (*heard);
+        if (first)
+            pausePr7dSongs (true);   // (0.108.0: PR7-D's song silent while the composer's drums play through it)
         if (first || ! engine.isPlaying())
         {
             engine.setPosition (start);
@@ -10456,6 +11483,7 @@ namespace pr7s
         const auto wasAt = composerAudition->wasAt;
         composerAudition.reset();
         engine.stop();
+        pausePr7dSongs (false);   // (0.108.0)
         engine.setPosition (wasAt);
         if (backToSong && exportJob == nullptr)
             engine.update (project);
@@ -10486,12 +11514,12 @@ namespace pr7s
             auto trackId = i < onto.size() && canTakeMidi (onto[i]) ? onto[i] : findIdeaTrack (idea.part);
             if (trackId == 0)
             {
-                trackId = addTrack (Instrument {});
+                const auto drums = idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove;
+                trackId = drums ? addDrumsTrack (newIdeaTrackName (idea.part)) : addTrack (Instrument {});   // (0.107.0: PR7-D)
                 if (trackId == 0)
                     continue;
-                renameTrack (trackId, linePartName (idea.part));
-                if (idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove)
-                    setTrackDrumMap (trackId, defaultDrumMapFor (trackId));
+                if (! drums)
+                    renameTrack (trackId, newIdeaTrackName (idea.part));
             }
             plan.emplace_back (trackId, &idea);
             used.push_back (trackId);
@@ -10502,6 +11530,7 @@ namespace pr7s
                 track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
                                     { return p.start >= start - 1.0e-9 && p.start + p.length <= end + 1.0e-9; }), track->parts.end());
                 track->parts.push_back (partFromIdea (*idea, start, end - start, (sectionName.isNotEmpty() ? sectionName + ": " : juce::String()) + idea->style));
+                linkForPr7d (trackId, *idea, track->parts.back());   // (0.108.0: PR7-D plays it from its song track)
                 track->parts.back().id = 0;
             }
         if (! plan.empty())
@@ -10647,9 +11676,15 @@ namespace pr7s
     {
         if (name.isEmpty())
             return std::nullopt;
-        auto profile = DrumProfile::load (drummerFile (getDrummerFolder(), name));
+        const auto f = drummerFile (getDrummerFolder(), name);
+        const auto modified = f.getLastModificationTime();
+        const auto size = f.getSize();
+        if (keptDrummer.file == f && keptDrummer.modified == modified && keptDrummer.size == size && f.existsAsFile())
+            return keptDrummer.profile;
+        auto profile = DrumProfile::load (f);
         if (profile.has_value() && profile->name.isEmpty())
             profile->name = name;
+        keptDrummer = { f, modified, size, profile };
         return profile;
     }
 
@@ -10764,8 +11799,23 @@ namespace pr7s
                                                                                                  : std::nullopt)
                                                 : instrumentProfiles;
         if (! stored.has_value())
-            return { InstrumentProfile::djinnBass2() };   // (the first time: the owner's bass)
+        {
+            // The first time: the owner's bass, and (0.127.0, with a settings file: the app, not the tests) their
+            // guitar, Shreddage Jupiter, on the guitar and lead lanes (its power chords by C#-1).
+            std::vector<InstrumentProfile> first { InstrumentProfile::djinnBass2() };
+            if (settings != nullptr)
+                giveGuitarLaneShreddage (first, getGuitarVelocities());
+            return first;
+        }
         auto profiles = profilesFromText (*stored);
+        // (0.127.0, the owner: the guitar lane was built for Shreddage, its power chords by C#-1) no profile on the
+        // guitar lane: a Shreddage one there, once (the flag), so a lane emptied by hand afterwards stays empty.
+        if (settings != nullptr && ! settings->getBoolValue ("shreddageGuitar0127", false))
+        {
+            if (giveGuitarLaneShreddage (profiles, getGuitarVelocities()))
+                settings->setValue ("instrumentProfiles", profilesToText (profiles));
+            settings->setValue ("shreddageGuitar0127", true);
+        }
         // (0.82.2, the owner: their bass is drop A, A E A D G) A Djinn Bass 2 saved with 0.62.0's A D A D G gets its
         // E string, once (the flag), so a tuning set by hand afterwards stays.
         if (settings != nullptr && ! settings->getBoolValue ("djinnDropA0822", false))
@@ -10962,8 +12012,8 @@ namespace pr7s
         for (const auto& e : project.chordTrack.events)
             if (e.beat < start - 1.0e-6 || e.beat >= end - 1.0e-6)
                 events.push_back (e);
-        for (size_t i = 0; i < steps.size(); ++i)
-            events.push_back ({ at[i], steps[i].chord });
+        for (size_t i = 0; i < steps.size(); ++i)   // (0.85.3: each as long as its step, the last too)
+            events.push_back ({ at[i], steps[i].chord, (i + 1 < steps.size() ? at[i + 1] : end) - at[i] });
         std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
         project.chordTrack.shown = true;
         project.chordTrack.events = std::move (events);
@@ -11045,10 +12095,158 @@ namespace pr7s
         chordTrackChanged();
     }
 
+    std::vector<int> Studio::placeChordEvents (const std::vector<ChordEvent>& placed, std::vector<ChordEvent> others)
+    {
+        auto result = placeChords (std::move (others), placed);
+        project.chordTrack.shown = true;
+        project.chordTrack.events = std::move (result.events);
+        chordTrackChanged();   // (sorts: by beat already, so the places hold)
+        return result.placed;
+    }
+
+    std::vector<int> Studio::moveChordEvents (const std::vector<int>& indices, double delta, bool copy)
+    {
+        const auto all = withLengths (project.chordTrack, project.beatsPerBar());
+        std::vector<ChordEvent> moved, others;
+        for (int i = 0; i < (int) all.size(); ++i)
+        {
+            const auto chosen = std::find (indices.begin(), indices.end(), i) != indices.end();
+            if (chosen)
+            {
+                auto e = all[(size_t) i];
+                e.beat = e.beat + delta;
+                moved.push_back (e);
+            }
+            if (! chosen || copy)
+                others.push_back (all[(size_t) i]);
+        }
+        if (moved.empty())
+            return {};
+        // (Not before the song's start: the earliest stops at 0.)
+        auto earliest = moved.front().beat;
+        for (const auto& m : moved)
+            earliest = juce::jmin (earliest, m.beat);
+        if (earliest < 0.0)
+            for (auto& m : moved)
+                m.beat -= earliest;
+        return placeChordEvents (moved, std::move (others));
+    }
+
+    int Studio::resizeChordEvent (int index, double newStart, double newEnd)
+    {
+        if (! juce::isPositiveAndBelow (index, (int) project.chordTrack.events.size()))
+            return -1;
+        auto all = withLengths (project.chordTrack, project.beatsPerBar());
+        auto chord = all[(size_t) index];
+        newStart = juce::jmax (0.0, newStart);
+        if (newEnd - newStart < shortestChord)
+            return index;
+        chord.beat = newStart;
+        chord.length = newEnd - newStart;
+        all.erase (all.begin() + index);
+        const auto placed = placeChordEvents ({ chord }, std::move (all));
+        return placed.empty() ? -1 : placed.front();
+    }
+
+    std::vector<int> Studio::splitChordEvents (double beat, const std::vector<int>& indices)
+    {
+        auto all = withLengths (project.chordTrack, project.beatsPerBar());
+        std::vector<double> splitAt;
+        auto any = false;
+        std::vector<ChordEvent> out;
+        for (int i = 0; i < (int) all.size(); ++i)
+        {
+            const auto& e = all[(size_t) i];
+            const auto chosen = indices.empty() || std::find (indices.begin(), indices.end(), i) != indices.end();
+            if (chosen && beat > e.beat + shortestChord - 1.0e-9 && beat < e.beat + e.length - shortestChord + 1.0e-9)
+            {
+                auto first = e, second = e;
+                first.length = beat - e.beat;
+                second.beat = beat;
+                second.length = e.beat + e.length - beat;
+                out.push_back (first);
+                out.push_back (second);
+                any = true;
+            }
+            else
+                out.push_back (e);
+        }
+        if (! any)
+            return {};
+        project.chordTrack.events = std::move (out);
+        chordTrackChanged();
+        std::vector<int> halves;   // (the second halves: where each cut is)
+        for (int i = 0; i < (int) project.chordTrack.events.size(); ++i)
+            if (std::abs (project.chordTrack.events[(size_t) i].beat - beat) < 1.0e-6)
+                halves.push_back (i);
+        return halves;
+    }
+
+    int Studio::glueChordEvent (int index)
+    {
+        auto all = withLengths (project.chordTrack, project.beatsPerBar());
+        if (! juce::isPositiveAndBelow (index, (int) all.size() - 1))
+            return -1;
+        auto& e = all[(size_t) index];
+        const auto& next = all[(size_t) index + 1];
+        e.length = next.beat + next.length - e.beat;
+        all.erase (all.begin() + index + 1);
+        project.chordTrack.events = std::move (all);
+        chordTrackChanged();
+        return index;
+    }
+
+    Studio::ChordClip Studio::copyChordEvents (const std::vector<int>& indices) const
+    {
+        const auto all = withLengths (project.chordTrack, project.beatsPerBar());
+        ChordClip clip;
+        auto first = 1.0e12, last = 0.0;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) all.size()))
+            {
+                first = juce::jmin (first, all[(size_t) i].beat);
+                last = juce::jmax (last, all[(size_t) i].beat + all[(size_t) i].length);
+            }
+        for (int i = 0; i < (int) all.size(); ++i)
+            if (std::find (indices.begin(), indices.end(), i) != indices.end())
+            {
+                auto e = all[(size_t) i];
+                e.beat -= first;
+                clip.events.push_back (e);
+            }
+        clip.length = clip.events.empty() ? 0.0 : last - first;
+        return clip;
+    }
+
+    std::vector<int> Studio::pasteChordEvents (const ChordClip& clip, double atBeat)
+    {
+        if (clip.events.empty())
+            return {};
+        auto placed = clip.events;
+        for (auto& e : placed)
+            e.beat += juce::jmax (0.0, atBeat);
+        return placeChordEvents (placed, withLengths (project.chordTrack, project.beatsPerBar()));
+    }
+
+    std::vector<int> Studio::duplicateChordEvents (const std::vector<int>& indices)
+    {
+        const auto clip = copyChordEvents (indices);
+        if (clip.events.empty())
+            return {};
+        auto first = 1.0e12;
+        for (const auto i : indices)
+            if (juce::isPositiveAndBelow (i, (int) project.chordTrack.events.size()))
+                first = juce::jmin (first, project.chordTrack.events[(size_t) i].beat);
+        return pasteChordEvents (clip, first + clip.length);
+    }
+
     void Studio::removeChordEvents (std::vector<int> indices)
     {
         std::sort (indices.rbegin(), indices.rend());
         indices.erase (std::unique (indices.begin(), indices.end()), indices.end());
+        // (0.85.3) As clips: the others keep their lengths, so a gap is left (the one before ran on).
+        if (std::any_of (indices.begin(), indices.end(), [this] (int i) { return juce::isPositiveAndBelow (i, (int) project.chordTrack.events.size()); }))
+            project.chordTrack.events = withLengths (project.chordTrack, project.beatsPerBar());
         auto& events = project.chordTrack.events;
         auto any = false;
         for (const auto i : indices)
@@ -11059,6 +12257,187 @@ namespace pr7s
             }
         if (any)
             chordTrackChanged();
+    }
+
+    void Studio::setChordTrackKey (double fromBeat, const Key& key)
+    {
+        fromBeat = juce::jmax (0.0, fromBeat);
+        std::vector<ScaleEvent> scales;
+        for (const auto& sc : project.chordTrack.scales)
+            if (sc.beat < fromBeat - 1.0e-6)
+                scales.push_back (sc);
+        if (scales.empty() || ! (scales.back().key == key))
+            scales.push_back ({ fromBeat, key });
+        if (! project.chordTrack.autoScales && scales == project.chordTrack.scales)
+            return;
+        setScaleEvents (std::move (scales));
+    }
+
+    //==========================================================================
+    // The song's key (0.114.0)
+    static int keyIndexOf (const Key& key)
+    {
+        const auto& all = Key::all();
+        for (size_t i = 0; i < all.size(); ++i)
+            if (all[i] == key)
+                return (int) i;
+        // (an unusual spelling: the key of the same pitch and mode)
+        for (size_t i = 0; i < all.size(); ++i)
+            if (all[i].pitchClass() == key.pitchClass() && all[i].minor == key.minor)
+                return (int) i;
+        return -1;
+    }
+
+    Key Studio::getSongKey() const
+    {
+        const auto k = project.songSections.songKey;
+        return juce::isPositiveAndBelow (k, (int) Key::all().size()) ? Key::all()[(size_t) k] : chordTrackKeyAt (0.0);
+    }
+
+    Key Studio::getSongSectionKey (int index) const
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! project.songSections.oneKey && juce::isPositiveAndBelow (index, (int) blocks.size()))
+            if (const auto k = blocks[(size_t) index].key; juce::isPositiveAndBelow (k, (int) Key::all().size()))
+                return Key::all()[(size_t) k];
+        return getSongKey();
+    }
+
+    void Studio::layOutSectionKeys()
+    {
+        std::vector<ScaleEvent> scales { { 0.0, getSongKey() } };
+        const auto places = getSongSectionPlaces();
+        for (size_t i = 0; i < places.size(); ++i)
+        {
+            const auto key = getSongSectionKey ((int) i);
+            if (! (key == scales.back().key))
+            {
+                if (places[i].start < 1.0e-6)
+                    scales.back().key = key;
+                else
+                    scales.push_back ({ places[i].start, key });
+            }
+        }
+        if (! places.empty() && ! (scales.back().key == getSongKey()))
+            scales.push_back ({ places.back().end, getSongKey() });   // (after the row: the song's key again)
+        project.chordTrack.scales = std::move (scales);
+        project.chordTrack.autoScales = false;
+    }
+
+    void Studio::moveMusicToKey (double from, double to, const Key& oldKey, const Key& newKey)
+    {
+        if (oldKey == newKey)
+            return;
+        const auto inside = [from, to] (double beat) { return beat >= from - 1.0e-6 && beat < to - 1.0e-6; };
+        for (auto& e : project.chordTrack.events)
+            if (inside (e.beat))
+                e.chord = moveChordToKey (e.chord, oldKey, newKey);
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen || ! isPitchedTrack (track))
+                continue;
+            for (auto& part : track.parts)
+                for (auto& n : part.notes)
+                    if (inside (part.start + n.start))
+                    {
+                        const auto heard = part.heardPitch (n.pitch);
+                        n.pitch = juce::jlimit (0, 127, movePitchToKey (heard, oldKey, newKey) - (heard - n.pitch));
+                    }
+        }
+        // What the composer built there: its recipe in the new key, and its lanes still the composer's.
+        const auto places = getSongSectionPlaces();
+        auto& blocks = project.songSections.blocks;
+        for (size_t i = 0; i < blocks.size() && i < places.size(); ++i)
+        {
+            if (! inside (places[i].start))
+                continue;
+            auto& b = blocks[i];
+            if (b.recipe.isNotEmpty())
+            {
+                auto state = ComposerState::fromString (b.recipe);
+                state.key = newKey;
+                b.recipe = state.toString();
+            }
+            for (auto& lane : b.lanes)
+                lane.mark = trackMark (places[i], lane.track);
+        }
+    }
+
+    void Studio::setSongKey (const Key& key)
+    {
+        const auto index = keyIndexOf (key);
+        if (index < 0)
+            return;
+        const auto old = getSongKey();
+        auto& sections = project.songSections;
+        const auto places = getSongSectionPlaces();
+        if (sections.oneKey || places.empty())
+            moveMusicToKey (0.0, 1.0e9, old, key);
+        else
+        {
+            // Blocks in the song's key move with it; blocks with their own keep theirs; the song outside the row too.
+            moveMusicToKey (places.back().end, 1.0e9, old, key);
+            for (size_t i = 0; i < places.size(); ++i)
+                if (sections.blocks[i].key < 0)
+                    moveMusicToKey (places[i].start, places[i].end, old, key);
+            if (! places.empty() && places.front().start > 1.0e-6)
+                moveMusicToKey (0.0, places.front().start, old, key);
+        }
+        sections.songKey = index;
+        layOutSectionKeys();
+        noteSectionChords();   // (the chords moved with their music: nothing to rewrite)
+        changed();
+    }
+
+    void Studio::setOneKey (bool on)
+    {
+        auto& sections = project.songSections;
+        if (sections.oneKey == on)
+            return;
+        if (on)
+        {
+            const auto places = getSongSectionPlaces();
+            for (size_t i = 0; i < sections.blocks.size() && i < places.size(); ++i)
+                if (const auto k = sections.blocks[i].key; k >= 0)
+                {
+                    sections.blocks[i].key = -1;
+                    moveMusicToKey (places[i].start, places[i].end, Key::all()[(size_t) k], getSongKey());
+                }
+        }
+        if (sections.songKey < 0)
+            sections.songKey = keyIndexOf (getSongKey());
+        sections.oneKey = on;
+        layOutSectionKeys();
+        noteSectionChords();
+        changed();
+    }
+
+    void Studio::setSongSectionKey (int index, const Key& key)
+    {
+        auto& sections = project.songSections;
+        if (sections.oneKey)
+        {
+            setSongKey (key);
+            return;
+        }
+        if (! juce::isPositiveAndBelow (index, (int) sections.blocks.size()))
+            return;
+        const auto k = keyIndexOf (key);
+        if (k < 0)
+            return;
+        if (sections.songKey < 0)
+            sections.songKey = keyIndexOf (getSongKey());
+        const auto places = getSongSectionPlaces();
+        for (const auto i : sections.linkedWith (index))
+        {
+            const auto old = getSongSectionKey (i);
+            sections.blocks[(size_t) i].key = key == getSongKey() ? -1 : k;
+            if (juce::isPositiveAndBelow (i, (int) places.size()))
+                moveMusicToKey (places[(size_t) i].start, places[(size_t) i].end, old, key);
+        }
+        layOutSectionKeys();
+        noteSectionChords();
+        changed();
     }
 
     void Studio::setScaleEvents (std::vector<ScaleEvent> scales)
@@ -11074,6 +12453,38 @@ namespace pr7s
             return;
         project.chordTrack.autoScales = on;
         chordTrackChanged();
+    }
+
+    std::vector<KeyIssue> Studio::checkSongKey (std::optional<Key> chosen) const
+    {
+        return checkKey (project, keyCheckKeys (project, chosen));
+    }
+
+    bool Studio::fixOutOfKeyNotes (const std::vector<KeyIssue>& issues)
+    {
+        auto any = false;
+        for (const auto& issue : issues)
+        {
+            if (issue.kind != KeyIssue::Kind::note)
+                continue;
+            const auto where = findPart (issue.partId);
+            if (! where.has_value())
+                continue;
+            auto* track = project.findTrack (where->first);
+            if (track == nullptr || track->frozen || ! juce::isPositiveAndBelow (where->second, (int) track->parts.size()))
+                continue;
+            auto& part = track->parts[(size_t) where->second];
+            if (! juce::isPositiveAndBelow (issue.noteIndex, (int) part.notes.size()))
+                continue;
+            auto& note = part.notes[(size_t) issue.noteIndex];
+            if (part.heardPitch (note.pitch) != issue.pitch)
+                continue;   // (changed since the check)
+            note.pitch = juce::jlimit (0, 127, issue.suggested - part.transpose);
+            any = true;
+        }
+        if (any)
+            changed();
+        return any;
     }
 
     Key Studio::chordTrackKeyAt (double beat) const
@@ -12374,13 +13785,1334 @@ namespace pr7s
         mixOnlyBroken = mixOnlyBroken || ! onlyTheMix;
     }
 
-    void Studio::announce()
+    void Studio::announce (bool partsOnly)
     {
         // (0.34.3) Every change counts, but a fader, pan or send level moved (nothing written, nothing
         // else changed with it): the views skip their full rebuild then, their timers following the mix.
         if (! mixOnlyAsked || mixOnlyBroken)
+        {
             ++changeVersion;
+            if (! selectionOnlyAsked)
+            {
+                ++contentVersion;
+                if (! partsOnly)
+                    ++layoutVersion;
+            }
+        }
         mixOnlyAsked = mixOnlyBroken = false;
+        selectionOnlyAsked = false;
         sendChangeMessage();
+    }
+    //==========================================================================
+    // The SECTIONS row (0.90.0)
+    std::vector<SectionPlace> Studio::getSongSectionPlaces() const
+    {
+        return sectionPlaces (project.songSections, project.signatures());
+    }
+
+    std::optional<SectionPlace> Studio::getSongSectionPlace (int index) const
+    {
+        const auto places = getSongSectionPlaces();
+        if (! juce::isPositiveAndBelow (index, (int) places.size()))
+            return std::nullopt;
+        return places[(size_t) index];
+    }
+
+    std::vector<Studio::SectionChord> Studio::getSectionChords (int index) const
+    {
+        std::vector<SectionChord> out;
+        const auto place = getSongSectionPlace (index);
+        if (! place.has_value())
+            return out;
+        for (const auto& e : withLengths (project.chordTrack, project.beatsPerBarAt (place->start)))
+        {
+            const auto from = juce::jmax (e.beat, place->start), to = juce::jmin (e.beat + e.length, place->end);
+            if (to > from + 1.0e-6)
+                out.push_back ({ e.chord, to - from });
+        }
+        return out;
+    }
+
+    bool Studio::setSectionChords (int index, const std::vector<SectionChord>& chords)
+    {
+        const auto place = getSongSectionPlace (index);
+        if (! place.has_value())
+            return false;
+        const auto start = place->start, end = place->end;
+        std::vector<ChordEvent> events;
+        for (const auto& e : withLengths (project.chordTrack, project.beatsPerBarAt (start)))
+        {
+            const auto eEnd = e.beat + e.length;
+            if (eEnd <= start + 1.0e-6 || e.beat >= end - 1.0e-6)
+                events.push_back (e);
+            else
+            {
+                if (e.beat < start - 1.0e-6)
+                    events.push_back ({ e.beat, e.chord, start - e.beat });
+                if (eEnd > end + 1.0e-6)
+                    events.push_back ({ end, e.chord, eEnd - end });
+            }
+        }
+        auto t = start;
+        for (const auto& c : chords)
+        {
+            const auto length = juce::jmin (c.beats, end - t);
+            if (length <= 1.0e-6)
+                break;
+            events.push_back ({ t, c.chord, length });
+            t += length;
+        }
+        std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+        if (! project.chordTrack.shown)
+            project.chordTrack.shown = true;
+        setChordEvents (std::move (events));
+        return true;
+    }
+
+    void Studio::addSongSectionTrack()
+    {
+        if (project.songSections.shown)
+            return;
+        project.songSections.shown = true;
+        changed();
+    }
+
+    void Studio::removeSongSectionTrack()
+    {
+        if (! project.songSections.shown)
+            return;
+        project.songSections.shown = false;
+        changed();
+    }
+
+    namespace
+    {
+        juce::String sectionNameOrVerse (const juce::String& name)
+        {
+            const auto base = sectionBaseOf (name);
+            return base.isNotEmpty() ? base : juce::String ("Verse");
+        }
+    }
+
+    int Studio::linkedCopyOf (const juce::String& name) const
+    {
+        const auto base = sectionBaseOf (name);
+        const auto& blocks = project.songSections.blocks;
+        for (int i = (int) blocks.size() - 1; i >= 0; --i)
+            if (blocks[(size_t) i].name == base)
+                return i;
+        return -1;
+    }
+
+    int Studio::appendSongSection (const juce::String& name, int bars, bool linked)
+    {
+        if (linked && linkedCopyOf (name) >= 0)
+            return insertSongSection ((int) project.songSections.blocks.size(), name, bars, true)
+                     ? (int) project.songSections.blocks.size() - 1 : -1;
+        auto& sections = project.songSections;
+        SongSection b;
+        b.id = sections.nextId();
+        b.name = sectionNameOrVerse (name);
+        b.bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+        sections.blocks.push_back (b);
+        sections.shown = true;
+        changed();
+        return (int) sections.blocks.size() - 1;
+    }
+
+    bool Studio::insertSongSection (int index, const juce::String& name, int bars, bool linked)
+    {
+        const auto& blocks = project.songSections.blocks;
+        index = juce::jlimit (0, (int) blocks.size(), index);
+        // (0.91.0) A name already in the song: a linked copy of its last block.
+        if (const auto source = linked ? linkedCopyOf (name) : -1; source >= 0)
+        {
+            const auto link = blocks[(size_t) source].link > 0 ? blocks[(size_t) source].link : project.songSections.nextLink();
+            std::vector<SectionMove> moves;
+            for (int i = 0; i < (int) blocks.size(); ++i)
+            {
+                auto b = blocks[(size_t) i];
+                if (i == source)
+                    b.link = link;
+                if (i == index)
+                {
+                    auto copy = blocks[(size_t) source];
+                    copy.id = project.songSections.nextId();
+                    copy.link = link;
+                    moves.push_back ({ source, copy });
+                }
+                moves.push_back ({ i, b });
+            }
+            if (index == (int) blocks.size())
+            {
+                auto copy = blocks[(size_t) source];
+                copy.id = project.songSections.nextId();
+                copy.link = link;
+                moves.push_back ({ source, copy });
+            }
+            return relayoutSections (moves);
+        }
+        std::vector<SectionMove> moves;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+        {
+            if (i == index)
+            {
+                SongSection b;
+                b.id = project.songSections.nextId();
+                b.name = sectionNameOrVerse (name);
+                b.bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+                moves.push_back ({ -1, b });
+            }
+            moves.push_back ({ i, blocks[(size_t) i] });
+        }
+        if (index == (int) blocks.size())
+        {
+            SongSection b;
+            b.id = project.songSections.nextId();
+            b.name = sectionNameOrVerse (name);
+            b.bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+            moves.push_back ({ -1, b });
+        }
+        return relayoutSections (moves);
+    }
+
+    bool Studio::moveSongSection (int from, int to)
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (from, (int) blocks.size()))
+            return false;
+        to = juce::jlimit (0, (int) blocks.size() - 1, to);
+        if (to == from)
+            return true;
+        std::vector<SectionMove> moves;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            moves.push_back ({ i, blocks[(size_t) i] });
+        const auto moved = moves[(size_t) from];
+        moves.erase (moves.begin() + from);
+        moves.insert (moves.begin() + to, moved);
+        return relayoutSections (moves);
+    }
+
+    bool Studio::setSongSectionBars (int index, int bars)
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+        if (blocks[(size_t) index].bars == bars)
+            return true;
+        std::vector<SectionMove> moves;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            moves.push_back ({ i, blocks[(size_t) i] });
+        for (const auto i : project.songSections.linkedWith (index))   // (0.91.0: linked copies keep one length)
+            moves[(size_t) i].block.bars = bars;
+        return relayoutSections (moves);
+    }
+
+    bool Studio::renameSongSection (int index, const juce::String& name)
+    {
+        auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()) || sectionBaseOf (name).isEmpty())
+            return false;
+        if (blocks[(size_t) index].name == sectionBaseOf (name))
+            return true;
+        for (const auto i : project.songSections.linkedWith (index))   // (0.91.0: linked copies keep one name)
+        {
+            blocks[(size_t) i].name = sectionBaseOf (name);
+            if (! isSectionTypeOf (blocks[(size_t) i].name, blocks[(size_t) i].type))
+                blocks[(size_t) i].type = {};   // (0.94.0: a type the new name doesn't have: STANDARD)
+        }
+        changed();
+        return true;
+    }
+
+    bool Studio::duplicateSongSection (int index, bool linked)
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        const auto link = ! linked ? 0 : blocks[(size_t) index].link > 0 ? blocks[(size_t) index].link : project.songSections.nextLink();
+        std::vector<SectionMove> moves;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+        {
+            auto b = blocks[(size_t) i];
+            if (i == index && linked)
+                b.link = link;
+            moves.push_back ({ i, b });
+            if (i == index)
+            {
+                auto copy = blocks[(size_t) i];
+                copy.id = project.songSections.nextId();
+                copy.link = link;
+                moves.push_back ({ i, copy });
+            }
+        }
+        return relayoutSections (moves);
+    }
+
+    bool Studio::unlinkSongSection (int index)
+    {
+        auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()) || blocks[(size_t) index].link == 0)
+            return false;
+        const auto link = blocks[(size_t) index].link;
+        blocks[(size_t) index].link = 0;
+        if (std::count_if (blocks.begin(), blocks.end(), [link] (const SongSection& b) { return b.link == link; }) < 2)
+            for (auto& b : blocks)
+                if (b.link == link)
+                    b.link = 0;   // (the one left is no longer linked to anything)
+        changed();
+        return true;
+    }
+
+    bool Studio::isSongSectionLinked (int index) const
+    {
+        return project.songSections.linkedWith (index).size() > 1;
+    }
+
+    bool Studio::removeSongSection (int index)
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        std::vector<SectionMove> moves;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            if (i != index)
+                moves.push_back ({ i, blocks[(size_t) i] });
+        return relayoutSections (moves);
+    }
+
+    namespace
+    {
+        // A stretch of the old song carried to a new place: [from, to) moves by `delta`.
+        struct Carry { double from = 0.0, to = 0.0, delta = 0.0; };
+
+        // The points of a curve carried window by window: each window's points inside it moved, with a point at
+        // its start and just before its end holding the values the curve had there (so a block keeps its own
+        // levels wherever it lands); points in no window are dropped.
+        std::vector<AutomationPoint> carryPoints (const std::vector<AutomationPoint>& points, const std::vector<Carry>& carries)
+        {
+            if (points.empty())
+                return points;
+            AutomationLane lane;
+            lane.points = points;
+            std::vector<AutomationPoint> out;
+            constexpr double just = 1.0 / 960.0;
+            for (const auto& c : carries)
+            {
+                if (c.to <= c.from)
+                    continue;
+                if (const auto v = lane.valueAt (c.from))
+                    out.push_back ({ c.from + c.delta, *v, 0.0f, false });
+                for (const auto& p : points)
+                    if (p.beat > c.from + edge && p.beat < c.to - edge)
+                    {
+                        auto q = p;
+                        q.beat += c.delta;
+                        out.push_back (q);
+                    }
+                if (std::isfinite (c.to) && c.to - c.from > 2.0 * just)
+                    if (const auto v = lane.valueAt (c.to - just))
+                        out.push_back ({ c.to - just + c.delta, *v, 0.0f, false });
+            }
+            std::stable_sort (out.begin(), out.end(), [] (const AutomationPoint& a, const AutomationPoint& b) { return a.beat < b.beat; });
+            return out;
+        }
+
+        // (0.119.0: shared by the SECTIONS row and Insert Silence / Delete Time over every track)
+        void carryTempo (Project& project, const std::vector<Carry>& carries)
+        {
+            if (! project.tempoEvents.empty())
+            {
+                const auto map = project.tempoMap();
+                std::vector<TempoEvent> events;
+                for (const auto& c : carries)
+                {
+                    events.push_back ({ c.from + c.delta, map.bpmAt (c.from), false });
+                    for (const auto& e : project.tempoEvents)
+                        if (e.beat > c.from + edge && e.beat < c.to - edge)
+                            events.push_back ({ e.beat + c.delta, e.bpm, e.ramp });
+                }
+                std::stable_sort (events.begin(), events.end(), [] (const TempoEvent& a, const TempoEvent& b) { return a.beat < b.beat; });
+                std::vector<TempoEvent> oneEach;
+                for (const auto& e : events)
+                    if (! oneEach.empty() && std::abs (oneEach.back().beat - e.beat) < edge)
+                        oneEach.back() = e;
+                    else
+                        oneEach.push_back (e);
+                if (oneEach.empty() || oneEach.front().beat > edge)
+                    oneEach.insert (oneEach.begin(), { 0.0, map.bpmAt (0.0), false });
+                oneEach.front().beat = 0.0;
+                project.tempoEvents = oneEach;
+            }
+        }
+
+        void carryChordsMarkersAutomation (Project& project, const std::vector<Carry>& carries)
+        {
+            // 5. The chords (each its own length first) and the scales.
+            {
+                auto& ct = project.chordTrack;
+                const auto chords = withLengths (ct, project.beatsPerBar());
+                std::vector<ChordEvent> events;
+                for (const auto& c : carries)
+                    for (const auto& e : chords)
+                    {
+                        const auto from = juce::jmax (e.beat, c.from), to = juce::jmin (e.beat + e.length, c.to);
+                        if (to - from >= shortestChord)
+                            events.push_back ({ from + c.delta, e.chord, to - from });
+                    }
+                if (! ct.autoScales && ! ct.scales.empty())
+                {
+                    std::vector<ScaleEvent> scales;
+                    for (const auto& c : carries)
+                    {
+                        scales.push_back ({ c.from + c.delta, ct.keyAt (c.from, project.chordPads.key()) });
+                        for (const auto& e : ct.scales)
+                            if (e.beat > c.from + edge && e.beat < c.to - edge)
+                                scales.push_back ({ e.beat + c.delta, e.key });
+                    }
+                    std::stable_sort (scales.begin(), scales.end(), [] (const ScaleEvent& a, const ScaleEvent& b) { return a.beat < b.beat; });
+                    ct.scales = scales;
+                }
+                ct.events = events;
+                ct.sort();
+                if (ct.autoScales)
+                    ct.scales = ct.events.empty() ? std::vector<ScaleEvent> {} : scalesFromChords (ct.events, project.chordPads.key());
+            }
+
+            // 6. Markers: each with its start's window (a block copied: its markers copied, with new IDs).
+            {
+                std::vector<Marker> markers;
+                auto& mt = project.markerTrack;
+                for (const auto& m : mt.markers)
+                {
+                    auto first = true;
+                    for (const auto& c : carries)
+                        if (m.start >= c.from - edge && m.start < c.to - edge)
+                        {
+                            auto copy = m;
+                            copy.start += c.delta;
+                            copy.end = m.cycle ? m.end + c.delta : copy.start;
+                            if (! first)
+                                copy.id = 0;
+                            first = false;
+                            markers.push_back (copy);
+                        }
+                }
+                for (auto& m : markers)
+                    if (m.id == 0)
+                    {
+                        MarkerTrack t;
+                        t.markers = markers;
+                        m.id = t.nextId (m.cycle);
+                    }
+                mt.markers = markers;
+                mt.sort();
+            }
+
+            // 7. Automation, every lane (tracks' and the master's), points and trims.
+            const auto carryLanes = [&carries] (std::vector<AutomationLane>& lanes)
+            {
+                for (auto& lane : lanes)
+                {
+                    lane.points = carryPoints (lane.points, carries);
+                    lane.trim = carryPoints (lane.trim, carries);
+                }
+            };
+            for (auto& track : project.tracks)
+                if (! track.frozen)
+                    carryLanes (track.automation);
+            carryLanes (project.masterAutomation);
+        }
+    }
+
+    bool Studio::relayoutSections (const std::vector<SectionMove>& moves, bool announce)
+    {
+        auto& sections = project.songSections;
+        const auto oldBlocks = sections.blocks;
+        const auto oldMap = project.signatures();
+        const auto oldPlaces = sectionPlaces (sections, oldMap);
+        const auto oldEndBar = sections.totalBars();
+        const auto oldEnd = oldMap.beatOfBar (oldEndBar);
+        for (const auto& m : moves)
+            if (m.from >= (int) oldBlocks.size())
+                return false;
+
+        // 1. The signatures, bar by bar: each carried block keeps the signature it started with and the changes
+        //    inside what's kept of it; what follows the row keeps its own (so every block keeps its beats).
+        {
+            std::vector<SignatureEvent> events;   // bar 0 included
+            const auto sigAt = [&oldMap] (int bar) { return oldMap.segmentOfBar (bar).event; };
+            const auto& oldChanges = project.signatureChanges;
+            auto bar = 0;
+            for (const auto& m : moves)
+            {
+                if (m.from >= 0)
+                {
+                    const auto& p = oldPlaces[(size_t) m.from];
+                    const auto kept = juce::jmin (m.block.bars, p.bars);
+                    auto start = sigAt (p.firstBar);
+                    start.bar = bar;
+                    events.push_back (start);
+                    const auto oldShortBar = oldBlocks[(size_t) m.from].shortBeats() > 0 ? p.firstBar + p.bars - 1 : -1;
+                    for (const auto& c : oldChanges)
+                        if (c.bar > p.firstBar && c.bar < p.firstBar + kept && c.bar != oldShortBar)
+                        {
+                            auto e = c;
+                            e.bar = c.bar - p.firstBar + bar;
+                            events.push_back (e);
+                        }
+                }
+                // (0.104.0) A SHORT BAR: its last bar that many beats, the signature before it back after it (a
+                // block that follows gives its own, given later, so it wins).
+                if (const auto beats = m.block.shortBeats(); beats > 0)
+                {
+                    const auto lastBar = bar + m.block.bars - 1;
+                    SignatureEvent before { 0, project.numerator, project.denominator };
+                    for (const auto& e : events)
+                        if (e.bar <= lastBar)
+                            before = e;
+                    events.push_back ({ lastBar, beats, before.denominator });
+                    auto back = before;
+                    back.bar = lastBar + 1;
+                    events.push_back (back);
+                }
+                bar += m.block.bars;
+            }
+            auto after = sigAt (oldEndBar);
+            after.bar = bar;
+            events.push_back (after);
+            for (const auto& c : oldChanges)
+                if (c.bar > oldEndBar)
+                {
+                    auto e = c;
+                    e.bar = c.bar - oldEndBar + bar;
+                    events.push_back (e);
+                }
+            // Events before any block keep bar 0's signature (a row starting with a new block).
+            if (std::none_of (events.begin(), events.end(), [] (const SignatureEvent& e) { return e.bar == 0; }))
+                events.insert (events.begin(), sigAt (0));
+            std::stable_sort (events.begin(), events.end(), [] (const SignatureEvent& a, const SignatureEvent& b) { return a.bar < b.bar; });
+            std::vector<SignatureEvent> oneEach;   // (the last given for a bar wins)
+            for (const auto& e : events)
+                if (! oneEach.empty() && oneEach.back().bar == e.bar)
+                    oneEach.back() = e;
+                else
+                    oneEach.push_back (e);
+            project.numerator = oneEach.front().numerator;
+            project.denominator = oneEach.front().denominator;
+            std::vector<SignatureEvent> changes (oneEach.begin() + 1, oneEach.end());
+            project.signatureChanges = tidySignatures (project.numerator, project.denominator, changes);
+        }
+
+        // 2. The new places, and what each window of the old song carries to.
+        SongSections laid;
+        laid.shown = true;
+        for (const auto& m : moves)
+            laid.blocks.push_back (m.block);
+        const auto newMap = project.signatures();
+        const auto newPlaces = sectionPlaces (laid, newMap);
+        const auto newEnd = newMap.beatOfBar (laid.totalBars());
+        std::vector<Carry> carries;
+        for (size_t i = 0; i < moves.size(); ++i)
+            if (const auto from = moves[i].from; from >= 0)
+            {
+                const auto& p = oldPlaces[(size_t) from];
+                const auto kept = juce::jmin (moves[i].block.bars, p.bars);
+                const auto keptEnd = juce::jmin (oldMap.beatOfBar (p.firstBar + kept), p.start + newPlaces[i].end - newPlaces[i].start);   // (0.104.0: a shortened last bar)
+                carries.push_back ({ p.start, keptEnd, newPlaces[i].start - p.start });
+            }
+        carries.push_back ({ oldEnd, std::numeric_limits<double>::infinity(), newEnd - oldEnd });   // what follows the row
+
+        // 3. The tempo: each window starts at the tempo it had; what's inside moves with it.
+        carryTempo (project, carries);
+        const auto tempo = project.tempoMap();
+
+        // 4. Every track's parts: cut at the windows' edges, each piece carried (a block copied: twice), the rest
+        //    dropped. Frozen tracks are left as they are (changed() puts their parts back).
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen || track.parts.empty())
+                continue;
+            for (const auto& c : carries)
+            {
+                splitTrackAt (track, c.from, tempo);
+                if (std::isfinite (c.to))
+                    splitTrackAt (track, c.to, tempo);
+            }
+            for (const auto& p : oldPlaces)
+                splitTrackAt (track, p.end, tempo);
+            std::vector<Part> placed;
+            for (const auto& part : track.parts)
+            {
+                auto first = true;
+                for (const auto& c : carries)
+                    if (part.start >= c.from - edge && part.end() <= c.to + edge)
+                    {
+                        auto piece = part;
+                        piece.start = juce::jmax (0.0, part.start + c.delta);
+                        if (! first)
+                            piece.id = 0;
+                        first = false;
+                        placed.push_back (piece);
+                    }
+            }
+            track.parts = std::move (placed);
+        }
+
+        // 5-7. The chords and scales, the markers, the automation.
+        carryChordsMarkersAutomation (project, carries);
+
+        sections.blocks = laid.blocks;
+        sections.shown = true;
+        for (auto& b : sections.blocks)   // (0.91.0: a link with one block left is no link)
+            if (b.link > 0 && std::count_if (sections.blocks.begin(), sections.blocks.end(), [&b] (const SongSection& o) { return o.link == b.link; }) < 2)
+                b.link = 0;
+        if (announce)
+            changed();
+        return true;
+    }
+
+    void Studio::shiftSongTime (double at, double length, bool insert)
+    {
+        if (length <= edge)
+            return;
+        const auto oldMap = project.signatures();
+        const auto oldPlaces = sectionPlaces (project.songSections, oldMap);
+        const auto oldRowEnd = oldMap.beatOfBar (project.songSections.totalBars());
+
+        // Whole bars? (Only then do the signatures and the SECTIONS row follow: their bars are counted.)
+        auto bars = 0;
+        const auto startBar = oldMap.barAt (at);
+        if (oldMap.isBarLine (at))
+        {
+            if (insert)
+            {
+                const auto barLength = oldMap.barLengthAt (at);
+                const auto n = length / barLength;
+                if (std::abs (n - std::round (n)) < 1.0e-6 && std::round (n) >= 1.0)
+                    bars = (int) std::round (n);
+            }
+            else if (oldMap.isBarLine (at + length))
+                bars = oldMap.barAt (at + length) - startBar;
+        }
+
+        // 1. Signatures, by bars.
+        if (bars > 0)
+        {
+            std::vector<SignatureEvent> events { { 0, project.numerator, project.denominator } };
+            for (const auto& c : project.signatureChanges)
+                events.push_back (c);
+            std::vector<SignatureEvent> moved;
+            if (insert)
+            {
+                auto here = oldMap.segmentOfBar (startBar).event;   // the new bars take the signature in force there
+                here.bar = startBar;
+                for (auto e : events)
+                {
+                    if (e.bar >= startBar)
+                        e.bar += bars;
+                    moved.push_back (e);
+                }
+                moved.push_back (here);
+            }
+            else
+            {
+                const auto endBar = startBar + bars;
+                auto after = oldMap.segmentOfBar (endBar).event;   // what played after the gap goes on there
+                after.bar = startBar;
+                for (auto e : events)
+                    if (e.bar < startBar)
+                        moved.push_back (e);
+                    else if (e.bar > endBar)
+                    {
+                        e.bar -= bars;
+                        moved.push_back (e);
+                    }
+                moved.push_back (after);
+            }
+            std::stable_sort (moved.begin(), moved.end(), [] (const SignatureEvent& a, const SignatureEvent& b) { return a.bar < b.bar; });
+            std::vector<SignatureEvent> oneEach;   // (the last given for a bar wins)
+            for (const auto& e : moved)
+                if (! oneEach.empty() && oneEach.back().bar == e.bar)
+                    oneEach.back() = e;
+                else
+                    oneEach.push_back (e);
+            project.numerator = oneEach.front().numerator;
+            project.denominator = oneEach.front().denominator;
+            std::vector<SignatureEvent> changes (oneEach.begin() + 1, oneEach.end());
+            project.signatureChanges = tidySignatures (project.numerator, project.denominator, changes);
+        }
+
+        // 2. Tempo, chords and scales, markers, automation: as the SECTIONS row carries them.
+        std::vector<Carry> carries;
+        constexpr auto never = std::numeric_limits<double>::infinity();
+        if (insert)
+            carries = { { 0.0, at, 0.0 }, { at, never, length } };
+        else
+            carries = { { 0.0, at, 0.0 }, { at + length, never, -length } };
+        carryTempo (project, carries);
+        carryChordsMarkersAutomation (project, carries);
+
+        // 3. The SECTIONS row (whole bars, and only where it reaches): on a block's edge a new empty block, inside
+        //    one that block grows; deleting shortens the blocks it covers (a block wholly inside goes). A block
+        //    changed is unlinked from its copies: its music no longer matches theirs.
+        auto& blocks = project.songSections.blocks;
+        if (bars > 0 && ! blocks.empty() && at < oldRowEnd - edge)
+        {
+            const auto unlink = [] (SongSection& b) { b.link = 0; };
+            if (insert)
+            {
+                for (size_t i = 0; i < oldPlaces.size(); ++i)
+                {
+                    const auto& p = oldPlaces[i];
+                    if (startBar == p.firstBar)
+                    {
+                        SongSection b;
+                        b.id = project.songSections.nextId();
+                        b.name = blocks[i].name;
+                        b.bars = bars;
+                        blocks.insert (blocks.begin() + (long) i, b);
+                        break;
+                    }
+                    if (startBar > p.firstBar && startBar < p.firstBar + p.bars)
+                    {
+                        unlink (blocks[i]);
+                        blocks[i].bars += bars;
+                        if (const auto over = blocks[i].bars - mostSectionBars; over > 0)   // (a block holds 64 bars at most)
+                        {
+                            blocks[i].bars = mostSectionBars;
+                            SongSection b;
+                            b.id = project.songSections.nextId();
+                            b.name = blocks[i].name;
+                            b.bars = over;
+                            blocks.insert (blocks.begin() + (long) i + 1, b);
+                        }
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                const auto endBar = startBar + bars;
+                std::vector<SongSection> kept;
+                for (size_t i = 0; i < oldPlaces.size(); ++i)
+                {
+                    const auto& p = oldPlaces[i];
+                    const auto from = juce::jmax (p.firstBar, startBar), to = juce::jmin (p.firstBar + p.bars, endBar);
+                    auto b = blocks[i];
+                    if (to > from)
+                    {
+                        b.bars -= to - from;
+                        unlink (b);
+                    }
+                    if (b.bars > 0)
+                        kept.push_back (b);
+                }
+                blocks = kept;
+            }
+            for (auto& b : blocks)   // (a link with one block left is no link)
+                if (b.link > 0 && std::count_if (blocks.begin(), blocks.end(), [&b] (const SongSection& o) { return o.link == b.link; }) < 2)
+                    b.link = 0;
+        }
+    }
+
+    //==========================================================================
+    // Linked copies (0.91.0)
+    Studio::SectionContent Studio::sectionContent (const SectionPlace& place) const
+    {
+        SectionContent content;
+        const auto tempo = project.tempoMap();
+        for (const auto& track : project.tracks)
+        {
+            if (track.frozen || track.isChannel())
+                continue;
+            auto& slices = content.tracks.emplace_back (track.id, std::vector<Part> {}).second;
+            for (const auto& part : track.parts)
+                if (auto piece = slice (part, place.start, place.end, tempo))
+                {
+                    piece->start -= place.start;
+                    slices.push_back (*piece);
+                }
+            std::stable_sort (slices.begin(), slices.end(), [] (const Part& a, const Part& b)
+            {
+                return a.start != b.start ? a.start < b.start : a.lane != b.lane ? a.lane < b.lane : a.length < b.length;
+            });
+        }
+        for (const auto& e : withLengths (project.chordTrack, project.beatsPerBar()))
+        {
+            const auto from = juce::jmax (e.beat, place.start), to = juce::jmin (e.beat + e.length, place.end);
+            if (to - from >= shortestChord)
+                content.chords.push_back ({ from - place.start, e.chord, to - from });
+        }
+        return content;
+    }
+
+    void Studio::writeSectionContent (const SectionPlace& place, const SectionContent& content)
+    {
+        const auto tempo = project.tempoMap();
+        for (const auto& [trackId, parts] : content.tracks)
+        {
+            auto* track = project.findTrack (trackId);
+            if (track == nullptr || track->frozen)
+                continue;
+            splitTrackAt (*track, place.start, tempo);
+            splitTrackAt (*track, place.end, tempo);
+            track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(),
+                                                [&] (const Part& p) { return inside (p, place.start, place.end); }),
+                                track->parts.end());
+            for (auto p : parts)
+            {
+                p.start += place.start;
+                p.id = 0;
+                track->parts.push_back (p);
+            }
+        }
+        // The chords: what was in the block cut out, the others' put in.
+        auto& ct = project.chordTrack;
+        if (sectionChords (place) != content.chords)
+        {
+            std::vector<ChordEvent> events;
+            for (const auto& e : withLengths (ct, project.beatsPerBar()))
+            {
+                if (e.beat < place.start - edge)
+                {
+                    const auto to = juce::jmin (e.beat + e.length, place.start);
+                    if (to - e.beat >= shortestChord)
+                        events.push_back ({ e.beat, e.chord, to - e.beat });
+                }
+                if (e.beat + e.length > place.end + edge)
+                {
+                    const auto from = juce::jmax (e.beat, place.end);
+                    events.push_back ({ from, e.chord, e.beat + e.length - from });
+                }
+            }
+            for (const auto& c : content.chords)
+                events.push_back ({ c.beat + place.start, c.chord, c.length });
+            ct.events = events;
+            ct.sort();
+            if (ct.autoScales)
+                ct.scales = ct.events.empty() ? std::vector<ScaleEvent> {} : scalesFromChords (ct.events, project.chordPads.key());
+        }
+    }
+
+    Studio::LinkInputs Studio::currentLinkInputs() const
+    {
+        LinkInputs in;
+        in.tracks.reserve (project.tracks.size());
+        for (const auto& track : project.tracks)
+            in.tracks.push_back ({ track.id, track.frozen || track.isChannel(), track.parts });
+        in.chords = project.chordTrack;
+        in.bpm = project.bpm;
+        in.tempoOn = project.tempoTrackOn;
+        in.tempo = project.tempoEvents;
+        in.numerator = project.numerator;
+        in.denominator = project.denominator;
+        const auto places = getSongSectionPlaces();
+        for (size_t i = 0; i < project.songSections.blocks.size(); ++i)
+        {
+            const auto& b = project.songSections.blocks[i];
+            in.blocks.emplace_back (b.id, b.link, b.bars, i < places.size() ? places[i].start : -1.0, i < places.size() ? places[i].end : -1.0);
+        }
+        return in;
+    }
+
+    bool Studio::sameLinkInputs (const LinkInputs& a, const LinkInputs& b)
+    {
+        if (a.tracks.size() != b.tracks.size() || ! (a.chords == b.chords) || a.bpm != b.bpm || a.tempoOn != b.tempoOn || a.tempo != b.tempo
+            || a.numerator != b.numerator || a.denominator != b.denominator || a.blocks != b.blocks)
+            return false;
+        for (size_t i = 0; i < a.tracks.size(); ++i)
+            if (a.tracks[i].id != b.tracks[i].id || a.tracks[i].skipped != b.tracks[i].skipped || ! a.tracks[i].parts.sharesWith (b.tracks[i].parts))
+                return false;
+        return true;
+    }
+
+    void Studio::syncLinkedSections()
+    {
+        // (0.173.0) No linked blocks: nothing to keep. The music they're made of all as last seen (every track's
+        // parts the very same list): the snapshots still hold, so nothing is sliced again. It re-sliced every
+        // linked block's every part on every undo step (a fader's release, a mute, a rename: ~2 ms on a big song).
+        const auto anyLinks = std::any_of (project.songSections.blocks.begin(), project.songSections.blocks.end(),
+                                           [] (const SongSection& b) { return b.link > 0; });
+        if (! anyLinks)
+        {
+            linksReset = false;
+            linkSnapshots.clear();
+            linkInputs.reset();
+            return;
+        }
+        auto inputs = currentLinkInputs();
+        if (! linksReset && linkInputs.has_value() && sameLinkInputs (*linkInputs, inputs))
+            return;
+        const auto& blocks = project.songSections.blocks;
+        const auto places = getSongSectionPlaces();
+        std::map<int, std::vector<int>> groups;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            if (blocks[(size_t) i].link > 0)
+                groups[blocks[(size_t) i].link].push_back (i);
+        if (! linksReset)
+            for (const auto& [link, members] : groups)
+            {
+                if (members.size() < 2)
+                    continue;
+                // The block whose music changed since the last look (the first in the song if several did).
+                std::optional<SectionContent> edited;
+                int editedIndex = -1;
+                for (const auto i : members)
+                {
+                    const auto seen = linkSnapshots.find (blocks[(size_t) i].id);
+                    if (seen == linkSnapshots.end())
+                        continue;
+                    auto now = sectionContent (places[(size_t) i]);
+                    if (! (now == seen->second))
+                    {
+                        edited = std::move (now);
+                        editedIndex = i;
+                        break;
+                    }
+                }
+                if (! edited.has_value())
+                    continue;
+                for (const auto i : members)
+                    if (i != editedIndex && blocks[(size_t) i].bars == blocks[(size_t) editedIndex].bars
+                        && ! (sectionContent (places[(size_t) i]) == *edited))
+                        writeSectionContent (places[(size_t) i], *edited);
+            }
+        linksReset = false;
+        // What every linked block holds now, for the next look.
+        std::map<int, SectionContent> seen;
+        for (const auto& [link, members] : groups)
+            if (members.size() >= 2)
+                for (const auto i : members)
+                    seen[blocks[(size_t) i].id] = sectionContent (places[(size_t) i]);
+        linkSnapshots = std::move (seen);
+        // What they were made from: after writing into the links, the song as it is now.
+        linkInputs = currentLinkInputs();
+    }
+    //==========================================================================
+    // Blocks whose chords change (0.92.0)
+    std::vector<ChordEvent> Studio::sectionChords (const SectionPlace& place) const
+    {
+        std::vector<ChordEvent> out;
+        for (const auto& e : withLengths (project.chordTrack, project.beatsPerBar()))
+        {
+            const auto from = juce::jmax (e.beat, place.start), to = juce::jmin (e.beat + e.length, place.end);
+            if (to - from >= shortestChord)
+                out.push_back ({ from - place.start, e.chord, to - from });
+        }
+        return out;
+    }
+
+    juce::int64 Studio::trackMark (const SectionPlace& place, int trackId) const
+    {
+        const auto* track = project.findTrack (trackId);
+        if (track == nullptr)
+            return 0;
+        // The notes heard inside the block, from its start (the parts' own edges don't count: a built part may be
+        // cut or glued and still hold the same notes).
+        std::vector<std::tuple<double, double, int, float>> notes;
+        for (const auto& part : track->parts)
+            for (const auto& n : part.notes)
+            {
+                const auto at = part.start + n.start;
+                if (at >= place.start - 1.0e-9 && at < place.end - 1.0e-9 && n.start < part.length - 1.0e-9 && (! part.muted || part.linkCopy) && ! n.muted)   // (0.108.0: PR7-D's copies count: edits there are hand edits)
+                    notes.emplace_back (std::round ((at - place.start) * 960.0), std::round (juce::jmin (n.length, part.length - n.start) * 960.0),
+                                        n.pitch, std::round (n.velocity * 127.0f));
+            }
+        std::sort (notes.begin(), notes.end());
+        juce::int64 hash = (juce::int64) 1469598103934665603ll;
+        const auto mix = [&hash] (juce::int64 v) { hash = (hash ^ v) * (juce::int64) 1099511628211ll; };
+        for (const auto& [at, length, pitch, velocity] : notes)
+        {
+            mix ((juce::int64) at);
+            mix ((juce::int64) length);
+            mix (pitch);
+            mix ((juce::int64) velocity);
+        }
+        mix ((juce::int64) notes.size());
+        return hash;
+    }
+
+    void Studio::noteSectionBuilt (int blockId, const juce::String& composerState, const std::vector<std::pair<int, int>>& layerTracks)
+    {
+        auto& sections = project.songSections;
+        const auto index = sections.indexOf (blockId);
+        if (index < 0)
+            return;
+        const auto place = sectionPlaces (sections, project.signatures())[(size_t) index];
+        std::vector<SongSection::Lane> lanes;
+        for (const auto& [layer, track] : layerTracks)
+            lanes.push_back ({ layer, track, trackMark (place, track) });
+        for (const auto i : sections.linkedWith (index))
+        {
+            sections.blocks[(size_t) i].recipe = composerState;
+            sections.blocks[(size_t) i].lanes = lanes;
+        }
+        modified = true;   // (not an undo step of its own: the build was)
+    }
+
+    void Studio::rewriteChangedSections()
+    {
+        if (chordsReset)
+            return;
+        const auto places = getSongSectionPlaces();
+        const auto& blocks = project.songSections.blocks;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+        {
+            const auto seen = chordSnapshots.find (blocks[(size_t) i].id);
+            if (seen == chordSnapshots.end() || seen->second.first != blocks[(size_t) i].bars)
+                continue;   // (a new block, or its length changed: not a chord change)
+            auto now = sectionChords (places[(size_t) i]);
+            if (! (now == seen->second.second))
+                rewriteSection (i, seen->second.second, now);
+        }
+    }
+
+    void Studio::noteSectionChords()
+    {
+        chordsReset = false;
+        std::map<int, std::pair<int, std::vector<ChordEvent>>> seen;
+        const auto places = getSongSectionPlaces();
+        const auto& blocks = project.songSections.blocks;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            seen[blocks[(size_t) i].id] = { blocks[(size_t) i].bars, sectionChords (places[(size_t) i]) };
+        chordSnapshots = std::move (seen);
+    }
+
+    void Studio::rewriteSection (int index, const std::vector<ChordEvent>& before, const std::vector<ChordEvent>& after)
+    {
+        auto& block = project.songSections.blocks[(size_t) index];
+        const auto place = getSongSectionPlaces()[(size_t) index];
+        if (after.empty())
+            return;   // (the chords taken away: the music stays as it is)
+        const auto chordAt = [] (const std::vector<ChordEvent>& chords, double rel) -> const ChordEvent*
+        {
+            const ChordEvent* found = nullptr;
+            for (const auto& c : chords)
+                if (c.beat <= rel + 1.0e-9 && rel < c.beat + c.length - 1.0e-9)
+                    found = &c;
+            if (found == nullptr)   // (in a gap: the chord before, else the first)
+                for (const auto& c : chords)
+                    if (c.beat <= rel + 1.0e-9)
+                        found = &c;
+            return found != nullptr ? found : (chords.empty() ? nullptr : &chords.front());
+        };
+        // 1. The composer's lanes the block still holds as written: built again over the new chords.
+        const auto rebuilt = rebuildSectionLanes (index, after);
+        // 2. Every other pitched track's notes in the block moved to fit the new chords (their rhythm kept).
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen || ! isPitchedTrack (track) || std::find (rebuilt.begin(), rebuilt.end(), track.id) != rebuilt.end())
+                continue;
+            for (auto& part : track.parts)
+                for (auto& n : part.notes)
+                {
+                    const auto at = part.start + n.start;
+                    if (at < place.start - 1.0e-9 || at >= place.end - 1.0e-9)
+                        continue;
+                    const auto* from = chordAt (before, at - place.start);
+                    const auto* to = chordAt (after, at - place.start);
+                    if (from == nullptr || to == nullptr || from->chord == to->chord)
+                        continue;
+                    const auto key = chordTrackKeyAt (at);
+                    n.pitch = juce::jlimit (0, 127, followPitch (n.pitch, FollowMode::chordsAndScales, from->chord, key, to->chord, key));
+                }
+        }
+        // The linked copies keep the same recipe and marks (their music is the same once copied).
+        for (const auto i : project.songSections.linkedWith (index))
+            if (i != index)
+                project.songSections.blocks[(size_t) i].lanes = block.lanes;
+    }
+
+    std::vector<int> Studio::rebuildSectionLanes (int index, const std::vector<ChordEvent>& after)
+    {
+        std::vector<int> rebuilt;
+        auto& block = project.songSections.blocks[(size_t) index];
+        const auto place = getSongSectionPlaces()[(size_t) index];
+        if (after.empty() || block.recipe.isEmpty() || block.lanes.empty())
+            return rebuilt;
+        {
+            std::vector<ChordSpan> spans;
+            for (const auto& c : after)
+                spans.push_back ({ place.start + c.beat, place.start + c.beat + c.length, c.chord, chordTrackKeyAt (place.start + c.beat) });
+            auto state = ComposerState::fromString (block.recipe);
+            state.bars = block.bars;
+            state.transition = block.transition;   // (0.104.0: the block's own, whenever it was chosen)
+            const auto context = getComposerContext (place.start);
+            const auto layers = composeLayers (state, spans, context);
+            const auto label = sectionLabel (project.songSections.blocks, index);
+            std::map<int, int> copies;   // (0.112.0) a lane's second track on (EVERY matching track): its looser copy
+            std::map<int, int> laneTracks;   // (0.129.0) how many tracks each layer is on (a twin lead's harmony: the second)
+            for (const auto& lane : block.lanes)
+                ++laneTracks[lane.layer];
+            for (auto& lane : block.lanes)
+            {
+                const auto copy = copies[lane.layer]++;
+                auto* track = project.findTrack (lane.track);
+                if (track == nullptr || track->frozen || ! juce::isPositiveAndBelow (lane.layer, composerLayerCount)
+                    || trackMark (place, lane.track) != lane.mark)
+                    continue;   // (changed by hand since: it follows the chords instead)
+                const auto idea = doubledCopy (layers[(size_t) lane.layer], copy, spans.front().start, laneTracks[lane.layer]);
+                track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
+                                    { return p.start >= place.start - 1.0e-9 && p.end() <= place.end + 1.0e-9; }), track->parts.end());
+                if (! idea.notes.empty())
+                {
+                    track->parts.push_back (partFromIdea (idea, spans.front().start, place.end - spans.front().start, label + ": " + idea.style));
+                    track->parts.back().id = 0;
+                    linkForPr7d (lane.track, idea, track->parts.back());   // (0.108.0)
+                }
+                rebuilt.push_back (lane.track);
+            }
+            for (auto& lane : block.lanes)
+                if (std::find (rebuilt.begin(), rebuilt.end(), lane.track) != rebuilt.end())
+                    lane.mark = trackMark (place, lane.track);
+        }
+        for (const auto i : project.songSections.linkedWith (index))
+            if (i != index)
+                project.songSections.blocks[(size_t) i].lanes = block.lanes;
+        return rebuilt;
+    }
+
+    bool Studio::isSongSectionBuilt (int index) const
+    {
+        const auto& blocks = project.songSections.blocks;
+        return juce::isPositiveAndBelow (index, (int) blocks.size()) && blocks[(size_t) index].recipe.isNotEmpty();
+    }
+
+    bool Studio::setSongSectionType (int index, const juce::String& type)
+    {
+        auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()) || ! isSectionTypeOf (blocks[(size_t) index].name, type))
+            return false;
+        const auto found = sectionTypeNamed (blocks[(size_t) index].name, type);
+        const auto chosen = found.has_value() ? found->name : juce::String();
+        if (blocks[(size_t) index].type == chosen)
+            return true;
+        const auto linked = project.songSections.linkedWith (index);
+        for (const auto i : linked)
+            blocks[(size_t) i].type = chosen;
+        auto& block = blocks[(size_t) index];
+        if (block.recipe.isNotEmpty())
+        {
+            auto state = ComposerState::fromString (block.recipe);
+            applySectionType (state, block.name, chosen);
+            for (const auto i : linked)
+                blocks[(size_t) i].recipe = state.toString();
+            if (const auto place = getSongSectionPlace (index))
+                rebuildSectionLanes (index, sectionChords (*place));
+        }
+        changed();
+        return true;
+    }
+
+    bool Studio::setSongSectionTransition (int index, const juce::String& name)
+    {
+        auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        const auto found = sectionTransitionNamed (name);
+        if (! found.has_value() && name.isNotEmpty() && ! name.equalsIgnoreCase (noTransition))
+            return false;
+        const auto chosen = found.has_value() ? found->name : juce::String();
+        if (blocks[(size_t) index].transition == chosen)
+            return true;
+        const auto linked = project.songSections.linkedWith (index);
+        // The lanes still as the composer wrote them (a shortened bar mustn't make them look edited by hand).
+        std::map<int, std::vector<bool>> asWritten;
+        for (const auto i : linked)
+            if (const auto place = getSongSectionPlace (i))
+                for (const auto& lane : blocks[(size_t) i].lanes)
+                    asWritten[i].push_back (trackMark (*place, lane.track) == lane.mark);
+        const auto shortBefore = blocks[(size_t) index].shortBeats();
+        auto changedBlock = blocks[(size_t) index];
+        changedBlock.transition = chosen;
+        if (changedBlock.shortBeats() != shortBefore)
+        {
+            std::vector<SectionMove> moves;
+            for (int i = 0; i < (int) blocks.size(); ++i)
+                moves.push_back ({ i, blocks[(size_t) i] });
+            for (const auto i : linked)
+                moves[(size_t) i].block.transition = chosen;
+            if (! relayoutSections (moves, false))
+                return false;
+        }
+        else
+            for (const auto i : linked)
+                blocks[(size_t) i].transition = chosen;
+        for (const auto i : linked)
+            if (const auto place = getSongSectionPlace (i); place.has_value() && asWritten.count (i) > 0)
+            {
+                auto& lanes = project.songSections.blocks[(size_t) i].lanes;
+                for (size_t k = 0; k < lanes.size() && k < asWritten[i].size(); ++k)
+                    if (asWritten[i][k])
+                        lanes[k].mark = trackMark (*place, lanes[k].track);
+            }
+        if (project.songSections.blocks[(size_t) index].recipe.isNotEmpty())
+            if (const auto place = getSongSectionPlace (index))
+                rebuildSectionLanes (index, sectionChords (*place));
+        changed();
+        return true;
+    }
+
+    //==========================================================================
+    // Blueprints (0.152.0)
+    juce::File Studio::getBlueprintFolder() const
+    {
+        return blueprintFolder != juce::File() ? blueprintFolder : defaultBlueprintFolder();
+    }
+
+    std::vector<Blueprint> Studio::getBlueprints() const
+    {
+        auto all = factoryBlueprints();
+        for (auto& b : userBlueprints (getBlueprintFolder()))
+            all.push_back (std::move (b));
+        return all;
+    }
+
+    bool Studio::applyBlueprint (const Blueprint& bp, const Key& key, bool withChords, bool withTempo)
+    {
+        if (bp.blocks.empty() || keyIndexOf (key) < 0)
+            return false;
+        auto& sections = project.songSections;
+        sections.blocks.clear();
+        std::map<int, int> links;   // the blueprint's link numbers -> the song's
+        std::vector<int> shortened;
+        for (const auto& b : bp.blocks)
+        {
+            SongSection s;
+            s.id = sections.nextId();
+            s.name = sectionBaseOf (b.name).isNotEmpty() ? sectionBaseOf (b.name) : juce::String ("Verse");
+            s.bars = juce::jlimit (leastSectionBars, mostSectionBars, b.bars);
+            if (b.link > 0)
+            {
+                if (links.count (b.link) == 0)
+                    links[b.link] = sections.nextLink();
+                s.link = links[b.link];
+            }
+            if (b.type.isNotEmpty())
+                if (const auto t = sectionTypeNamed (s.name, b.type))
+                    s.type = t->name;
+            if (const auto t = sectionTransitionNamed (b.transition))
+            {
+                SongSection probe;
+                probe.transition = t->name;
+                if (probe.shortBeats() > 0)
+                    shortened.push_back ((int) sections.blocks.size());   // (set after: it changes the signatures)
+                else
+                    s.transition = t->name;
+            }
+            sections.blocks.push_back (std::move (s));
+        }
+        // A linked copy alone (its partners left out): its own.
+        for (auto& s : sections.blocks)
+            if (s.link > 0 && sections.linkedWith (sections.indexOf (s.id)).size() < 2)
+                s.link = 0;
+        sections.shown = true;
+        sections.oneKey = true;
+        for (auto& s : sections.blocks)
+            s.key = -1;
+        sections.songKey = keyIndexOf (key);
+        if (withChords && bp.hasChords())
+        {
+            const auto places = getSongSectionPlaces();
+            const auto rowEnd = places.empty() ? 0.0 : places.back().end;
+            std::vector<ChordEvent> events;
+            for (const auto& e : withLengths (project.chordTrack, project.beatsPerBarAt (0.0)))
+            {
+                if (e.beat >= rowEnd - 1.0e-6)
+                    events.push_back (e);
+            }
+            for (size_t i = 0; i < places.size() && i < bp.blocks.size(); ++i)
+            {
+                auto t = places[i].start;
+                for (const auto& [chord, bars] : bp.chordsIn (key, (int) i))
+                {
+                    const auto length = juce::jmin (bars * project.beatsPerBarAt (t), places[i].end - t);
+                    if (length <= 1.0e-6)
+                        break;
+                    events.push_back ({ t, chord, length });
+                    t += length;
+                }
+            }
+            std::sort (events.begin(), events.end(), [] (const ChordEvent& a, const ChordEvent& b) { return a.beat < b.beat; });
+            project.chordTrack.events = std::move (events);
+            project.chordTrack.shown = true;
+        }
+        if (withTempo && bp.bpm > 0.0)
+        {
+            const auto bpm = juce::jlimit (Project::minBpm, Project::maxBpm, bp.bpm);
+            project.bpm = bpm;
+            if (project.tempoTrackOn && project.tempoEvents.size() <= 1)
+                project.tempoEvents = { { 0.0, bpm, false } };
+        }
+        layOutSectionKeys();
+        linksReset = true;    // (the new blocks hold what the song holds there: nothing to copy)
+        chordsReset = true;   // (nor anything to rewrite)
+        chordTrackChanged();
+        for (const auto i : shortened)
+            setSongSectionTransition (i, bp.blocks[(size_t) i].transition);
+        return true;
+    }
+
+    Blueprint Studio::makeBlueprint (const juce::String& name) const
+    {
+        Blueprint bp;
+        bp.name = name.trim().isNotEmpty() ? name.trim() : juce::String ("My Blueprint");
+        bp.bpm = project.bpmAt (0.0);
+        const auto key = getSongKey();
+        bp.minor = key.minor;
+        bp.keyIndex = keyIndexOf (key);
+        const auto& blocks = project.songSections.blocks;
+        const auto places = getSongSectionPlaces();
+        for (size_t i = 0; i < blocks.size(); ++i)
+        {
+            const auto& s = blocks[i];
+            BlueprintBlock b;
+            b.name = s.name;
+            b.bars = s.bars;
+            b.link = s.link;
+            b.type = s.type;
+            b.transition = s.transition;
+            if (i < places.size())
+            {
+                // Its chords from its own key's tonic, as the song's key's mode reads them.
+                const auto blockKey = getSongSectionKey ((int) i);
+                const auto tonic = blockKey.minor == key.minor ? blockKey.pitchClass()
+                                                               : (blockKey.pitchClass() + (blockKey.minor ? 3 : 9)) % 12;
+                for (const auto& c : getSectionChords ((int) i))
+                    b.chords.push_back ({ c.chord.transposed (-tonic), c.beats / juce::jmax (1.0, project.beatsPerBarAt (places[i].start)) });
+            }
+            bp.blocks.push_back (std::move (b));
+        }
+        return bp;
+    }
+
+    juce::File Studio::saveSongAsBlueprint (const juce::String& name, juce::String& error)
+    {
+        if (project.songSections.blocks.empty())
+        {
+            error = "The SECTIONS row is empty: lay the song out as blocks first.";
+            return {};
+        }
+        auto bp = makeBlueprint (name);
+        const auto folder = getBlueprintFolder();
+        const auto base = juce::File::createLegalFileName (bp.name);
+        auto file = folder.getChildFile (base + blueprintExtension);
+        for (int n = 2; file.exists(); ++n)
+            file = folder.getChildFile (base + " " + juce::String (n) + blueprintExtension);
+        if (! saveBlueprint (bp, file))
+        {
+            error = "Couldn't write " + file.getFullPathName();
+            return {};
+        }
+        return file;
+    }
+
+    bool Studio::deleteBlueprint (const Blueprint& bp)
+    {
+        if (bp.factory || ! bp.file.existsAsFile())
+            return false;
+        return bp.file.deleteFile();
     }
 }

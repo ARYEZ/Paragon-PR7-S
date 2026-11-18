@@ -2,6 +2,7 @@
 
 #include "Project.h"
 
+#include <array>
 #include <numeric>
 
 namespace pr7s
@@ -371,6 +372,15 @@ namespace pr7s
                 return notes[x].start < notes[y].start;
             return notes[x].pitch < notes[y].pitch;
         });
+        struct Shared { int index = -2, refChord = -2, refScale = -2, trackScale = -2; Chord from; Key fromKey, toKey; std::array<int, 128> table {}; } shared;
+        const auto lastAtOrBefore = [] (const auto& list, double at)
+        {
+            auto found = -1;
+            for (int i = 0; i < (int) list.size(); ++i)
+                if (list[(size_t) i].beat <= at + 1.0e-9)
+                    found = i;
+            return found;
+        };
         for (size_t k = 0; k < order.size();)
         {
             auto end = k + 1;
@@ -415,9 +425,37 @@ namespace pr7s
                 }
                 else
                 {
-                    const auto toKey = chords.keyAt (look, chords.scales.empty() ? fallback : chords.scales.front().key);
+                    // (0.83.2) A note's new pitch depends only on its pitch and the chords and keys it moves
+                    // between, so notes under the same ones share a table of pitches worked out once (each note
+                    // worked out its chord's key and notes again: a chord edit took 11 ms on a heavy song).
+                    // Which chord and key apply is found by index, exactly as chordAt / keyAt find them.
+                    const auto refChord = reference.chords.empty() ? -1 : juce::jmax (0, lastAtOrBefore (reference.chords, look));
+                    const auto refScale = reference.scales.empty() ? -1 : juce::jmax (0, lastAtOrBefore (reference.scales, look));
+                    const auto trackScale = chords.scales.empty() ? -1 : juce::jmax (0, lastAtOrBefore (chords.scales, look));
+                    if (index != shared.index || refChord != shared.refChord || refScale != shared.refScale || trackScale != shared.trackScale)
+                    {
+                        shared.index = index;
+                        shared.refChord = refChord;
+                        shared.refScale = refScale;
+                        shared.trackScale = trackScale;
+                        shared.from = reference.chordAt (look);
+                        shared.fromKey = reference.keyAt (look);
+                        shared.toKey = chords.keyAt (look, chords.scales.empty() ? fallback : chords.scales.front().key);
+                        shared.table.fill (-1);
+                    }
                     for (auto g = k; g < end; ++g)
-                        result[order[g]].pitch = followPitch (notes[order[g]].pitch, mode, reference.chordAt (look), reference.keyAt (look), to, toKey);
+                    {
+                        const auto pitch = notes[order[g]].pitch;
+                        if (! juce::isPositiveAndBelow (pitch, 128))
+                        {
+                            result[order[g]].pitch = followPitch (pitch, mode, shared.from, shared.fromKey, to, shared.toKey);
+                            continue;
+                        }
+                        auto& known = shared.table[(size_t) pitch];
+                        if (known < 0)
+                            known = followPitch (pitch, mode, shared.from, shared.fromKey, to, shared.toKey);
+                        result[order[g]].pitch = known;
+                    }
                 }
             }
             k = end;

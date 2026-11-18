@@ -663,18 +663,20 @@ namespace pr7s
     MediaDatabase::MediaDatabase (juce::File s) : store (std::move (s))
     {
         load();
+        rebuildIndex();
     }
 
     MediaDatabase::~MediaDatabase()
     {
         scanner.reset();
+        waitForSave();
         if (unsaved)
             save();
     }
 
     void MediaDatabase::saveSoon()
     {
-        searchCache.clear();
+        ++generation;
         unsaved = true;
         lastEdit = juce::Time::getMillisecondCounterHiRes();
     }
@@ -682,7 +684,128 @@ namespace pr7s
     void MediaDatabase::saveIfDue (double quietMs)
     {
         if (unsaved && juce::Time::getMillisecondCounterHiRes() - lastEdit >= quietMs)
-            save();
+            saveInBackground();
+    }
+
+    void MediaDatabase::rebuildIndex()
+    {
+        ++generation;
+        byPath.clear();
+        byPath.reserve (items.size() * 2);
+        parents.assign (items.size(), {});
+        for (int i = 0; i < (int) items.size(); ++i)
+        {
+            byPath[items[(size_t) i].file.getFullPathName()] = i;
+            parents[(size_t) i] = items[(size_t) i].file.getParentDirectory().getFullPathName();
+        }
+        searchTexts.assign (items.size(), {});
+        searchMade.assign (items.size(), 0);
+        nameRank.clear();
+        folderRank.clear();
+    }
+
+    void MediaDatabase::invalidateSearch (int index) const
+    {
+        if (juce::isPositiveAndBelow (index, (int) searchMade.size()))
+            searchMade[(size_t) index] = 0;
+    }
+
+    int MediaDatabase::indexOf (const juce::File& file) const
+    {
+        const auto found = byPath.find (file.getFullPathName());
+        return found != byPath.end() ? found->second : -1;
+    }
+
+    const std::vector<int>& MediaDatabase::nameRanks() const
+    {
+        if (nameRank.size() != items.size())
+        {
+            // The items are kept in name order (a scan's results are sorted so, and saved so): checked in one walk,
+            // sorted only if they aren't.
+            nameRank.resize (items.size());
+            bool inOrder = true;
+            for (size_t i = 1; i < items.size() && inOrder; ++i)
+                inOrder = items[i - 1].name.compareNatural (items[i].name) <= 0;
+            std::vector<int> order ((size_t) items.size());
+            for (int i = 0; i < (int) order.size(); ++i)
+                order[(size_t) i] = i;
+            if (! inOrder)
+                std::stable_sort (order.begin(), order.end(), [this] (int a, int b)
+                                  { return items[(size_t) a].name.compareNatural (items[(size_t) b].name) < 0; });
+            for (int r = 0; r < (int) order.size(); ++r)
+                nameRank[(size_t) order[(size_t) r]] = r;
+        }
+        return nameRank;
+    }
+
+    const std::vector<int>& MediaDatabase::folderRanks() const
+    {
+        if (folderRank.size() != items.size())
+        {
+            // A few thousand folders among 120,000 files: the folders sorted once, each file given its folder's place.
+            std::vector<juce::String> folders (parents.begin(), parents.end());
+            std::sort (folders.begin(), folders.end());
+            folders.erase (std::unique (folders.begin(), folders.end()), folders.end());
+            std::stable_sort (folders.begin(), folders.end(), [] (const juce::String& a, const juce::String& b) { return a.compareNatural (b) < 0; });
+            std::unordered_map<juce::String, int> rankOf;
+            for (int r = 0; r < (int) folders.size(); ++r)
+                rankOf[folders[(size_t) r]] = r;
+            folderRank.resize (items.size());
+            for (size_t i = 0; i < items.size(); ++i)
+                folderRank[i] = rankOf[parents[i]];
+        }
+        return folderRank;
+    }
+
+    bool MediaDatabase::renameFile (const juce::File& file, const juce::String& newName, juce::String& error)
+    {
+        const auto name = juce::File::createLegalFileName (newName.trim());
+        if (name.isEmpty())
+        {
+            error = "Type a name for it.";
+            return false;
+        }
+        if (! file.existsAsFile())
+        {
+            error = "The file isn't there any more.";
+            return false;
+        }
+        const auto target = file.getSiblingFile (name + file.getFileExtension());
+        if (target == file)
+            return true;
+        if (target.exists())
+        {
+            error = "There's already a file called \"" + target.getFileName() + "\" in that folder.";
+            return false;
+        }
+        if (! file.moveFileTo (target))
+        {
+            error = "The file couldn't be renamed (is it open in another program, or read-only?).";
+            return false;
+        }
+        {
+            const juce::ScopedLock sl (pendingLock);   // (a scan in another thread reads `items`)
+            const auto oldPath = file.getFullPathName(), newPath = target.getFullPathName();
+            if (auto r = ratings.find (oldPath); r != ratings.end())
+            {
+                ratings[newPath] = r->second;
+                ratings.erase (oldPath);
+            }
+            if (auto t = tags.find (oldPath); t != tags.end())
+            {
+                tags[newPath] = t->second;
+                tags.erase (oldPath);
+            }
+            if (const auto i = indexOf (file); i >= 0)
+            {
+                auto& item = items[(size_t) i];
+                item.file = target;
+                item.name = target.getFileNameWithoutExtension();
+            }
+            rebuildIndex();
+        }
+        save();
+        return true;
     }
 
     bool MediaDatabase::addLocation (const juce::File& folder)
@@ -714,6 +837,7 @@ namespace pr7s
         items.erase (std::remove_if (items.begin(), items.end(), [this] (const MediaItem& item)
                                      { return ! includedBy (item.file, locations, exclusions); }),
                      items.end());
+        rebuildIndex();
     }
 
     bool MediaDatabase::includedBy (const juce::File& file, const juce::StringArray& scanned, const juce::StringArray& leftOut)
@@ -849,11 +973,11 @@ namespace pr7s
         }
         if (! result)
             return false;
+        ++scansTaken;
         scanning = false;
         {
             const juce::ScopedLock sl (pendingLock);   // (a scan in another thread reads `items`)
             items = std::move (*result);
-            searchCache.clear();
             for (auto& item : items)
             {
                 // A file read for the first time with tags of its own (0.22.2): they become its
@@ -868,33 +992,58 @@ namespace pr7s
             }
             std::stable_sort (items.begin(), items.end(), [] (const MediaItem& a, const MediaItem& b)
                               { return a.name.compareNatural (b.name) < 0; });
+            rebuildIndex();
+            nameRank.resize (items.size());
+            for (int i = 0; i < (int) items.size(); ++i)
+                nameRank[(size_t) i] = i;   // (just sorted by name)
         }
-        save();
+        saveInBackground();
         return true;
+    }
+
+    void MediaDatabase::setItemsForTests (std::vector<MediaItem> list)
+    {
+        {
+            const juce::ScopedLock sl (pendingLock);
+            pending = std::move (list);
+        }
+        takeScanResults();
     }
 
     std::vector<int> MediaDatabase::find (const MediaQuery& query) const
     {
         const TextSearch search (query.text);
+        const auto folderPath = query.folder == juce::File() ? juce::String() : query.folder.getFullPathName();
         std::vector<int> found;
         for (int i = 0; i < (int) items.size(); ++i)
-            if (passes (items[(size_t) i], query, search))
+            if (passes (i, query, search, folderPath))
                 found.push_back (i);
         return found;
     }
 
-    bool MediaDatabase::passes (const MediaItem& item, const MediaQuery& query, const TextSearch& search) const
+    namespace
     {
+        // (0.163.0) A file's folder against the folder chosen, as text (File::isAChildOf walked up each file's path).
+        bool inFolder (const juce::String& parent, const juce::String& folder, bool subfolders)
+        {
+            if (parent == folder)
+                return true;
+            if (! subfolders || parent.length() <= folder.length() || ! parent.startsWith (folder))
+                return false;
+            const auto sep = juce::File::getSeparatorChar();
+            return folder.getLastCharacter() == sep || parent[folder.length()] == sep;
+        }
+    }
+
+    bool MediaDatabase::passes (int index, const MediaQuery& query, const TextSearch& search, const juce::String& folderPath) const
+    {
+        const auto& item = items[(size_t) index];
         if (! query.types.empty() && query.types.count (item.type) == 0)
             return false;
         if (item.rating < query.minimumRating)
             return false;
-        if (const auto& folder = query.folder; folder != juce::File())
-        {
-            const auto parent = item.file.getParentDirectory();
-            if (query.subfolders ? ! (parent == folder || item.file.isAChildOf (folder)) : parent != folder)
-                return false;
-        }
+        if (folderPath.isNotEmpty() && ! inFolder (parents[(size_t) index], folderPath, query.subfolders))
+            return false;
         for (const auto& filter : query.attributes)
         {
             if (filter.values.isEmpty())
@@ -920,13 +1069,22 @@ namespace pr7s
 
     const juce::String& MediaDatabase::searchTextOf (const MediaItem& item) const
     {
-        // (0.57.2) Made once per item (it was made for every item on every keystroke), forgotten when
-        // the items, their tags or ratings change.
-        const auto key = item.file.getFullPathName();
-        auto found = searchCache.find (key);
-        if (found == searchCache.end())
-            found = searchCache.emplace (key, item.searchText()).first;
-        return found->second;
+        // (0.57.2) Made once per item (it was made for every item on every keystroke). (0.163.0) Kept beside the
+        // items by place (it was a map by path: a path made and looked up for every item on every keystroke), and
+        // forgotten only for an item whose tags change.
+        const auto index = (int) (&item - items.data());
+        if (! juce::isPositiveAndBelow (index, (int) items.size()) || index >= (int) searchMade.size())
+        {
+            static thread_local juce::String text;
+            text = item.searchText();
+            return text;
+        }
+        if (! searchMade[(size_t) index])
+        {
+            searchTexts[(size_t) index] = item.searchText();
+            searchMade[(size_t) index] = 1;
+        }
+        return searchTexts[(size_t) index];
     }
 
     std::vector<std::pair<juce::String, int>> MediaDatabase::valueCounts (const MediaQuery& query, const AttributeId& attribute) const
@@ -936,10 +1094,11 @@ namespace pr7s
                                                  [&] (const AttributeFilter& f) { return f.attribute == attribute; }),
                                  others.attributes.end());
         const TextSearch search (others.text);
+        const auto folderPath = others.folder == juce::File() ? juce::String() : others.folder.getFullPathName();
         std::map<juce::String, int> counts;
-        for (const auto& item : items)
-            if (passes (item, others, search))
-                for (const auto& v : attributeValues (item, attribute))
+        for (int i = 0; i < (int) items.size(); ++i)
+            if (passes (i, others, search, folderPath))
+                for (const auto& v : attributeValues (items[(size_t) i], attribute))
                     ++counts[v];
         std::vector<std::pair<juce::String, int>> list (counts.begin(), counts.end());
         const auto numeric = attribute.kind == MediaAttribute::tempo || attribute.kind == MediaAttribute::rating;
@@ -954,6 +1113,43 @@ namespace pr7s
 
     void MediaDatabase::sort (std::vector<int>& indices, MediaColumn column, bool ascending) const
     {
+        // (0.163.0) Names and folders by their places (worked out once), categories and styles by their values'
+        // places (a few dozen values, not 120,000 natural-order text comparisons a sort).
+        const auto byRank = [&] (const std::vector<int>& rank)
+        {
+            std::stable_sort (indices.begin(), indices.end(), [&] (int a, int b)
+            {
+                return ascending ? rank[(size_t) a] < rank[(size_t) b] : rank[(size_t) a] > rank[(size_t) b];
+            });
+        };
+        if (column == MediaColumn::name)
+            return byRank (nameRanks());
+        if (column == MediaColumn::folder)
+            return byRank (folderRanks());
+        if (column == MediaColumn::category || column == MediaColumn::style)
+        {
+            const auto pairOf = [column] (const MediaItem& m)
+            {
+                return column == MediaColumn::category ? std::pair { m.tags.category, m.tags.subCategory } : std::pair { m.tags.style, m.tags.subStyle };
+            };
+            std::vector<std::pair<juce::String, juce::String>> values;
+            for (const auto i : indices)
+                values.push_back (pairOf (items[(size_t) i]));
+            std::sort (values.begin(), values.end());
+            values.erase (std::unique (values.begin(), values.end()), values.end());
+            std::stable_sort (values.begin(), values.end(), [] (const auto& a, const auto& b)
+            {
+                const auto c = a.first.compareNatural (b.first);
+                return c != 0 ? c < 0 : a.second.compareNatural (b.second) < 0;
+            });
+            std::map<std::pair<juce::String, juce::String>, int> rankOf;
+            for (int r = 0; r < (int) values.size(); ++r)
+                rankOf[values[(size_t) r]] = r;
+            std::vector<int> rank (items.size(), 0);
+            for (const auto i : indices)
+                rank[(size_t) i] = rankOf[pairOf (items[(size_t) i])];
+            return byRank (rank);
+        }
         const auto compare = [this, column] (int ia, int ib)
         {
             const auto& a = items[(size_t) ia];
@@ -1011,9 +1207,8 @@ namespace pr7s
                     ratings.erase (file.getFullPathName());
                 else
                     ratings[file.getFullPathName()] = stars;
-                for (auto& item : items)
-                    if (item.file == file)
-                        item.rating = stars;
+                if (const auto i = indexOf (file); i >= 0)
+                    items[(size_t) i].rating = stars;
             }
         }
         saveSoon();   // (0.57.1: a rating or tag: written once things go quiet)
@@ -1046,9 +1241,11 @@ namespace pr7s
                     tags.erase (file.getFullPathName());
                 else
                     tags[file.getFullPathName()] = t;
-                for (auto& item : items)
-                    if (item.file == file)
-                        item.tags = t;
+                if (const auto i = indexOf (file); i >= 0)
+                {
+                    items[(size_t) i].tags = t;
+                    invalidateSearch (i);
+                }
             }
         }
         saveSoon();   // (0.57.1: a rating or tag: written once things go quiet)
@@ -1308,7 +1505,6 @@ namespace pr7s
     //==========================================================================
     void MediaDatabase::load()
     {
-        searchCache.clear();
         if (store == juce::File() || ! store.existsAsFile())
             return;
         const auto xml = juce::XmlDocument::parse (store);
@@ -1392,83 +1588,157 @@ namespace pr7s
         }
     }
 
+    namespace
+    {
+        // (0.163.0) What a save writes: the database's own lists (a save now), or copies of them (a save on its thread).
+        template <typename Source>
+        std::unique_ptr<juce::XmlElement> buildMediaXml (const Source& src)
+    {
+            // (0.163.0) The children gathered, then put in back to front: JUCE's createNewChildElement walks to the end
+            // of the list for every child, so 120,000 items took four minutes to save (and a save came after every
+            // scan and every rating).
+            auto xml = std::make_unique<juce::XmlElement> ("MediaBay");
+            std::vector<juce::XmlElement*> children;
+            children.reserve (src.items.size() + src.ratings.size() + src.tags.size() + src.locations.size() + 64);
+            struct Adder
+            {
+                std::vector<juce::XmlElement*>& to;
+                juce::XmlElement* createNewChildElement (const char* tag) { to.push_back (new juce::XmlElement (tag)); return to.back(); }
+            } adder { children };
+            auto* to = &adder;
+            for (const auto& location : src.locations)
+                to->createNewChildElement ("Location")->setAttribute ("path", location);
+            for (const auto& folder : src.exclusions)
+                to->createNewChildElement ("Exclude")->setAttribute ("path", folder);
+            for (const auto& [path, stars] : src.ratings)
+            {
+                auto* e = to->createNewChildElement ("Rating");
+                e->setAttribute ("path", path);
+                e->setAttribute ("stars", stars);
+            }
+            for (const auto& [path, t] : src.tags)
+            {
+                auto* e = to->createNewChildElement ("Tags");
+                e->setAttribute ("path", path);
+                const auto put = [e] (const char* name, const juce::String& v) { if (v.isNotEmpty()) e->setAttribute (name, v); };
+                put ("category", t.category);
+                put ("subCategory", t.subCategory);
+                put ("style", t.style);
+                put ("subStyle", t.subStyle);
+                put ("comment", t.comment);
+                put ("key", t.key);
+                if (t.bpm > 0.0) e->setAttribute ("bpm", t.bpm);
+                put ("character", t.character.joinIntoString (","));
+                for (const auto& [name, value] : t.user)
+                {
+                    auto* u = e->createNewChildElement ("User");
+                    u->setAttribute ("name", name);
+                    u->setAttribute ("value", value);
+                }
+            }
+            const auto writeLists = [&] (const char* tag, const std::vector<AttributeList>& lists)
+            {
+                for (const auto& list : lists)
+                {
+                    auto* e = to->createNewChildElement (tag);
+                    e->setAttribute ("name", list.name);
+                    for (const auto& sub : list.subs)
+                        e->createNewChildElement ("Sub")->setAttribute ("name", sub);
+                }
+            };
+            writeLists ("UserCategory", src.userCategories);
+            writeLists ("UserStyle", src.userStyles);
+            for (const auto& a : src.userAttributes)
+            {
+                auto* e = to->createNewChildElement ("UserAttribute");
+                e->setAttribute ("name", a.name);
+                e->setAttribute ("type", a.type == UserAttributeType::number ? "number" : a.type == UserAttributeType::yesNo ? "yesNo" : "text");
+                if (a.precision > 0) e->setAttribute ("precision", a.precision);
+            }
+            for (const auto& item : src.items)
+            {
+                auto* e = to->createNewChildElement ("Item");
+                e->setAttribute ("path", item.file.getFullPathName());
+                e->setAttribute ("size", juce::String (item.size));
+                e->setAttribute ("modified", juce::String (item.modified.toMilliseconds()));
+                if (item.seconds > 0.0) e->setAttribute ("seconds", item.seconds);
+                if (item.sampleRate > 0.0) e->setAttribute ("rate", item.sampleRate);
+                if (item.channels > 0) e->setAttribute ("channels", item.channels);
+                if (item.bpm > 0.0) e->setAttribute ("bpm", item.bpm);
+                if (item.key.isNotEmpty()) e->setAttribute ("key", item.key);
+                if (item.beats > 0.0) e->setAttribute ("beats", item.beats);
+                if (item.notes > 0) e->setAttribute ("notes", item.notes);
+                if (item.info.isNotEmpty()) e->setAttribute ("info", item.info);
+                if (item.presetClass.isNotEmpty()) e->setAttribute ("class", item.presetClass);
+                if (item.presetPlugin.isNotEmpty()) e->setAttribute ("plugin", item.presetPlugin);
+                if (item.presetInstrument) e->setAttribute ("instrument", true);
+                if (item.type == MediaType::pluginPreset && item.name != item.file.getFileNameWithoutExtension()) e->setAttribute ("name", item.name);
+                e->setAttribute ("read", item.readVersion);
+            }
+            for (auto i = children.rbegin(); i != children.rend(); ++i)
+                xml->prependChildElement (*i);
+            return xml;
+        }
+
+
+        struct MediaSaveCopy
+        {
+            juce::StringArray locations, exclusions;
+            std::vector<MediaItem> items;
+            std::map<juce::String, int> ratings;
+            std::map<juce::String, MediaTags> tags;
+            std::vector<AttributeList> userCategories, userStyles;
+            std::vector<UserAttribute> userAttributes;
+        };
+    }
+
+    std::unique_ptr<juce::XmlElement> MediaDatabase::makeXml() const
+    {
+        // (The private lists through references: a template outside the class can't read them.)
+        struct Lists
+        {
+            const juce::StringArray& locations; const juce::StringArray& exclusions;
+            const std::vector<MediaItem>& items; const std::map<juce::String, int>& ratings;
+            const std::map<juce::String, MediaTags>& tags;
+            const std::vector<AttributeList>& userCategories; const std::vector<AttributeList>& userStyles;
+            const std::vector<UserAttribute>& userAttributes;
+        };
+        return buildMediaXml (Lists { locations, exclusions, items, ratings, tags, userCategories, userStyles, userAttributes });
+    }
+
     void MediaDatabase::save() const
     {
-        searchCache.clear();
+        waitForSave();
         unsaved = false;
         if (store == juce::File())
             return;
-        juce::XmlElement xml ("MediaBay");
-        for (const auto& location : locations)
-            xml.createNewChildElement ("Location")->setAttribute ("path", location);
-        for (const auto& folder : exclusions)
-            xml.createNewChildElement ("Exclude")->setAttribute ("path", folder);
-        for (const auto& [path, stars] : ratings)
-        {
-            auto* e = xml.createNewChildElement ("Rating");
-            e->setAttribute ("path", path);
-            e->setAttribute ("stars", stars);
-        }
-        for (const auto& [path, t] : tags)
-        {
-            auto* e = xml.createNewChildElement ("Tags");
-            e->setAttribute ("path", path);
-            const auto put = [e] (const char* name, const juce::String& v) { if (v.isNotEmpty()) e->setAttribute (name, v); };
-            put ("category", t.category);
-            put ("subCategory", t.subCategory);
-            put ("style", t.style);
-            put ("subStyle", t.subStyle);
-            put ("comment", t.comment);
-            put ("key", t.key);
-            if (t.bpm > 0.0) e->setAttribute ("bpm", t.bpm);
-            put ("character", t.character.joinIntoString (","));
-            for (const auto& [name, value] : t.user)
-            {
-                auto* u = e->createNewChildElement ("User");
-                u->setAttribute ("name", name);
-                u->setAttribute ("value", value);
-            }
-        }
-        const auto writeLists = [&] (const char* tag, const std::vector<AttributeList>& lists)
-        {
-            for (const auto& list : lists)
-            {
-                auto* e = xml.createNewChildElement (tag);
-                e->setAttribute ("name", list.name);
-                for (const auto& sub : list.subs)
-                    e->createNewChildElement ("Sub")->setAttribute ("name", sub);
-            }
-        };
-        writeLists ("UserCategory", userCategories);
-        writeLists ("UserStyle", userStyles);
-        for (const auto& a : userAttributes)
-        {
-            auto* e = xml.createNewChildElement ("UserAttribute");
-            e->setAttribute ("name", a.name);
-            e->setAttribute ("type", a.type == UserAttributeType::number ? "number" : a.type == UserAttributeType::yesNo ? "yesNo" : "text");
-            if (a.precision > 0) e->setAttribute ("precision", a.precision);
-        }
-        for (const auto& item : items)
-        {
-            auto* e = xml.createNewChildElement ("Item");
-            e->setAttribute ("path", item.file.getFullPathName());
-            e->setAttribute ("size", juce::String (item.size));
-            e->setAttribute ("modified", juce::String (item.modified.toMilliseconds()));
-            if (item.seconds > 0.0) e->setAttribute ("seconds", item.seconds);
-            if (item.sampleRate > 0.0) e->setAttribute ("rate", item.sampleRate);
-            if (item.channels > 0) e->setAttribute ("channels", item.channels);
-            if (item.bpm > 0.0) e->setAttribute ("bpm", item.bpm);
-            if (item.key.isNotEmpty()) e->setAttribute ("key", item.key);
-            if (item.beats > 0.0) e->setAttribute ("beats", item.beats);
-            if (item.notes > 0) e->setAttribute ("notes", item.notes);
-            if (item.info.isNotEmpty()) e->setAttribute ("info", item.info);
-            if (item.presetClass.isNotEmpty()) e->setAttribute ("class", item.presetClass);
-            if (item.presetPlugin.isNotEmpty()) e->setAttribute ("plugin", item.presetPlugin);
-            if (item.presetInstrument) e->setAttribute ("instrument", true);
-            if (item.type == MediaType::pluginPreset && item.name != item.file.getFileNameWithoutExtension()) e->setAttribute ("name", item.name);
-            e->setAttribute ("read", item.readVersion);
-        }
+        const auto xml = makeXml();
         store.getParentDirectory().createDirectory();
-        xml.writeTo (store);
+        xml->writeTo (store);
+    }
+
+    void MediaDatabase::saveInBackground() const
+    {
+        // (0.163.0) Made here (the items can change after), written on a thread of its own.
+        waitForSave();
+        unsaved = false;
+        if (store == juce::File())
+            return;
+        // (Copied here: building the XML of 120,000 files took half a second, now on the save's thread.)
+        auto copy = std::make_shared<MediaSaveCopy> (MediaSaveCopy { locations, exclusions, items, ratings, tags,
+                                                                     userCategories, userStyles, userAttributes });
+        const auto file = store;
+        saving = std::async (std::launch::async, [copy, file]
+        {
+            const auto xml = buildMediaXml (*copy);
+            file.getParentDirectory().createDirectory();
+            xml->writeTo (file);
+        });
+    }
+
+    void MediaDatabase::waitForSave() const
+    {
+        if (saving.valid())
+            saving.wait();
     }
 }

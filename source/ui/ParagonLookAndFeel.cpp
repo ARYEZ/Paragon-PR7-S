@@ -445,6 +445,38 @@ juce::ColourGradient ParagonLookAndFeel::familyGradient (juce::Point<float> from
     return gradient;
 }
 
+void ParagonLookAndFeel::drawPlayhead (juce::Graphics& g, float x, float lineTop, float bottom, float markerSize, bool recording)
+{
+    const auto centre = x + 0.7f;   // (where the old 1.4 px line's middle was)
+    const auto lit = juce::Rectangle<float>::leftTopRightBottom (centre - 1.5f, lineTop, centre + 1.5f, bottom);
+    const auto markerTop = lineTop - markerSize * 0.5f;
+    juce::Path marker;
+    marker.addTriangle (centre - markerSize * 0.5f, markerTop, centre + markerSize * 0.5f, markerTop, centre, lineTop + 4.0f);
+    if (recording)
+    {
+        g.setColour (juce::Colour (0xffff3b2f).withAlpha (0.3f));
+        g.fillRect (lit.expanded (2.5f, 0.0f));
+        g.setColour (juce::Colour (0xffff3b2f));
+        g.fillRect (lit);
+        g.fillPath (marker);
+        return;
+    }
+    // (0.132.0, the owner chose it from a mock-up) A black bar outlined in the family gradient (pink at the
+    // top, orange at the foot), the fader's soft halo of the gradient round it; the marker black, outlined.
+    const auto travel = familyGradient ({ centre, lineTop }, { centre, bottom });
+    const auto bar = lit.expanded (0.5f, 0.0f);   // (4 px: the black shows over dark lanes too)
+    g.setGradientFill (travel);
+    g.setOpacity (0.3f);
+    g.fillRoundedRectangle (lit.expanded (2.5f, 0.0f), 2.0f);
+    g.setOpacity (1.0f);
+    g.fillRect (bar);
+    g.setColour (juce::Colour (0xff050405));
+    g.fillRect (bar.reduced (1.2f, 0.0f));
+    g.fillPath (marker);
+    g.setGradientFill (travel);
+    g.strokePath (marker, juce::PathStrokeType (1.2f));
+}
+
 void ParagonLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                                            float sliderPos, float startAngle, float endAngle,
                                            juce::Slider& slider)

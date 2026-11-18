@@ -86,9 +86,19 @@ namespace pr7s
         // inserts are bypassed, and the master's volume.
         // Call after every change.
         void update (const Project&);
+        // (0.83.1) Only the mix: each track's volume, pan, sends, EQ and BOOSTER and the master's, from the
+        // song; nothing rebuilt (events, clips, lanes, drum maps, routing, mute and solo as they were). For a
+        // fader, pan, send, EQ or BOOSTER drag's steps; the release does a full `update`.
+        void updateMix (const Project&);
+        void updateCycle (const Project&);   // (0.123.0) only the locators and CYCLE (a cycle drag's step)
+        // The locators the engine plays by (message thread: it's the only writer).
+        std::pair<double, double> getCycleRange() const noexcept { return { settings.loopStart, settings.loopEnd }; }
         // (0.78.0) The MIDI editor's SOLO: while set (a track's id), the next updates hear that track alone (and
         // what it's routed into), whatever the tracks' own solos say. 0: off. Message thread only.
         void setEditorSolo (int trackId) noexcept { editorSolo = trackId; }
+        // (0.108.0, PR7-D's studio link) A message for a track's instrument, played at the start of its next block
+        // (playing or not). Message thread; false: no such track.
+        bool sendToInstrument (int trackId, const juce::MidiMessage&);
         int getEditorSolo() const noexcept { return editorSolo; }
         int getEventBuilds() const noexcept { return eventBuilds; }   // (0.34.2, tests) tracks' event lists built so far
         int getClipBuilds() const noexcept { return clipBuilds; }     // (0.57.2, tests) audio tracks' clip lists built
@@ -343,6 +353,9 @@ namespace pr7s
             int instrumentChannels = 2;  // what the instrument is given (its buffer may have more, for the inserts)
             std::vector<Slot> inserts;
             std::vector<Event> events;   // every note on and off, by beat
+            // (0.85.2) Only the controller events (CC, bend, pressure, program) of `events`, in its
+            // order: the chase at play start, a jump and every cycle wrap walks these, not every note.
+            std::vector<Event> controllerEvents;
             float gainLeft = 1.0f, gainRight = 1.0f;
             juce::SmoothedValue<float> left, right;
             std::bitset<128> held;       // notes sounding, to stop them on a jump or stop
@@ -360,6 +373,10 @@ namespace pr7s
             bool bent = false, sustained = false;   // a bend or the sustain pedal sent: reset on stop
             bool checkHeld = false;      // the events changed (an edit while playing): the notes they no longer end, ended
             juce::MidiBuffer midi;
+            // (0.108.0) Messages for its instrument from the message thread (sendToInstrument: PR7-D's studio link),
+            // played at the start of the next block; the audio thread only tries the lock.
+            juce::SpinLock outboxLock;
+            juce::MidiBuffer outbox;
             juce::AudioBuffer<float> buffer;
             std::array<LevelMeterSource, 3> meters;   // one per reader (2: the Inspector's fader)
             // The mix as set, and the lanes read (those with points and R on).
@@ -393,7 +410,7 @@ namespace pr7s
             struct BuiltFrom
             {
                 bool valid = false;
-                std::vector<Part> parts;
+                PartList parts;   // (0.165.0: shared with the song while unchanged)
                 int midiChannel = 1, soloLane = -1;
                 std::optional<DrumMap> map;
                 // (0.36.0) Following the chord track: its mode, reference, and the chord track as it was.

@@ -2,6 +2,2445 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.174.0
+
+Speed, round seven: the two look changes you OK'd and the riskier redraw changes left over from 0.173.0.
+
+**The two look changes:**
+- **The cycle's tint is drawn solid** in each row instead of as a see-through layer over the whole arrangement (3-4 ms a redraw on a wide window). It looks the same as before: the same colour, over the grid lines too.
+- **Notes inside parts sit on whole pixels.** In-between positions made the drawing smooth every note's edges, more than twice the work (46,000 notes: 17 ms down to 7). At normal zoom you won't see a difference.
+
+**Redraws:**
+- **An edit to one part redraws only its track's row** (and the folder it's in), not the whole arrangement across your three screens. This covers editing notes or controllers, resizing, muting, and the info line's fields.
+- **The MIDI editor isn't redrawn when another track's parts change.** Moving or muting parts in the arrangement redrew the whole editor (52 ms at 200 % across three screens).
+- **Muting parts copies only their own tracks' parts.** Before, every track's parts were copied, which also made every row redraw.
+- **The transport's screens** (POSITION, TIME, CPU, OUT, TEMPO, SIGNATURE) keep their frames and glass as pictures. Only the numbers are drawn each frame.
+- **The EQ window** keeps its grid and its curve as pictures while the spectrum moves between them. The curve is drawn again only when the EQ changes.
+- **The Media rack does nothing while it's hidden.** It used to check for scans ten times a second even with the right zone closed.
+
+**Fixed along the way:** a finished MediaBay scan was taken in by whichever of the MediaBay window and the Media rack asked first, and the other one never refreshed. Both see it now.
+
+## 0.173.0
+
+Speed, round six (you asked for another full pass). Three reviewers looked at the audio, the screen, and the edits / ARCHITECT, every finding was checked in the code and measured, and only changes that give exactly the same sound and picture went in.
+
+**ARCHITECT, much quicker:**
+- **Section types were built again on every question.** Every time ARCHITECT asked "what types does a chorus have?" it made the whole list of about 280 types afresh, up to nine times per lane. Now each section's list is made once and kept. Opening the TYPE options went from about 1 second to 23 ms, a lane's option menu from 32 ms to under 1 ms, and composing a section's lanes from 10-21 ms to about 0.4 ms. What it writes is identical (checked note for note).
+- **The shared options lists** (the FROM YOUR SONGS ones) are made once, not on every call.
+- **The melody lane composed six melodies to use one.** Now it composes only the one asked for (the same notes as before, tested).
+- **The library-groove pools** were kept for 6 sections, fewer than a song has, so they were thrown away and worked out again all the time. Now 16 are kept.
+- **The lane menu** no longer works out every option's music just to show their names.
+
+**Editing:**
+- **Linked sections checked on every undo step.** The SECTIONS row compared every linked block's music after every edit (about 2 ms of every 3). Now it skips the check when the song has no linked blocks, or when nothing they're made from changed.
+- The PR7-D link no longer copies every track's parts to look at them.
+
+**Audio:**
+- **The channel EQ works on both sides at once** (the processor's two-number registers): about 1.6 times quicker on stereo channels, bit for bit the same sound. Channels with no EQ bands on skip it entirely.
+- The click's loop runs only while a click is sounding.
+
+**The screen:**
+- **Recording no longer redraws the whole window** several times a second: only the take's row, from where it started to the playhead. Before, the arrangement (24-31 ms), the MIDI editor (52 ms) and the track list were all redrawn while you recorded.
+- **Waveforms are drawn bar by bar** again: with software drawing, the way 0.164.0 batched them was about 13 times slower on long recordings (31,000 bars: 42 ms down to 3 ms). The picture is the same (at most one shade out of 255 at a bar's anti-aliased edge).
+
+**Not done, and why:**
+- Two would change the look slightly, so they're your call: the cycle's tint drawn solid instead of see-through (saves 3-4 ms a redraw), and notes in parts placed on whole pixels (16 ms down to 6 on a busy song).
+- Riskier ones left for another round: the MIDI editor and the arrangement redrawing only rows that changed, keeping the transport screens' frames and the EQ window's curve layers as pictures, and the Media rack's timer while it's hidden.
+
+## 0.172.0
+
+The last of the five releases from your 12 songs (round five): the smaller additions. These are shared options, offered in the lane's menu under every section type after the type's own (they're in the option browser's FROM YOUR SONGS group), plus six transitions. Shapes only, our names.
+
+**Riff versions (the guitar lane; the bass's DOUBLES THE GUITAR follows them):**
+- **HALF-STEP DROP IN THREES:** groups of 3+3+2, the chord a half step over the root dropping onto the root.
+- **SIXTEENTH NEIGHBOURS, CLASH AT THE END:** fourteen sixteenths round the root, then a high minor triad a half step over it rung over the bar line.
+- **PEDAL RIFF WITH A CHROMATIC PICKUP:** the root on every other sixteenth, then a pickup onto the chord a major third up.
+- **FLAT-FIVE CHORD HAMMERED:** a power chord with the tritone over it in sixteenths for two bars, then a turnaround bar.
+- **CHROMATIC QUARTET INTO THE TONIC:** four power chords climbing by half steps into the key's root, a beat each.
+- **OCTAVE POWER CHORDS IN 3+3+2:** the root three eighths, the flat seven three, the root two; every second bar ending on the half step over the root.
+- **CLEAN HELD CHORD, PUSHED INTO FOUR:** a clean chord held, the change pushed into beat 4.
+- **FLAT-THREE OCTAVE BURST EVERY FOURTH BAR:** three bars of the chorus rhythm, then a high octave burst on the key's flat third.
+- **RING THE FLAT TWO:** single notes, then the half step over the root left ringing nine beats.
+- **HIGH NOTE SEESAW, TWO BARS EACH:** one high note held two bars, the flat sixth and the fifth in turn.
+- **FOUR-NOTE CHROMATIC CELL, OCTAVE DYADS:** a low four-note cell falling by half steps, ending on two falling octave dyads.
+- **OUT, THEN THE BASS'S ROCKING LINE:** the guitar out for the first half, then rocking between the root and the flat seven.
+
+**Drums:** CRASH ON THE KICKS, RIDE BETWEEN; HAND ON THE BEATS, FOOT ON THE ANDS (the hat by hand on the beats, the hat pedal on the ands); SNARE ON THE DOTTED CHAIN, KICKS BETWEEN; SNARE DOUBLES THE UNISON CELL; BACKBEAT, HAT RUFF EVERY SECOND BAR; CRASH AND CHINA EIGHTHS, SNARE THICKENS; RIDE ON THE DOTTED LINE.
+
+**Keys:** HIGH COLOUR TONE and HIGH TONIC PEDAL, now under every type.
+
+**Transitions (INTO THE NEXT):**
+- **UNISON HIT BAR A HALF STEP UNDER:** the last bar everyone hitting together in threes and twos on the chord a half step under, the snare and toms on every hit.
+- **A HIT, TWO SILENT BARS, KICK PICKUP:** one hit, silence, then a lone kick on the last sixteenth.
+- **TWO STABS AND A SILENT BAR.**
+- **HALF-BAR TOM FILL:** the band stops halfway through the last bar, the drums filling the first half.
+- **MUTED BREATH BAR:** only a palm-muted root in eighths, a snare on 1 and a hat on 3.
+- **HIGH SOFT NOTES, BAND OUT:** four soft high notes held a beat each.
+
+Not checked here: how they sound.
+
+## 0.171.0
+
+Six new bridge types from your 12 songs (round five, the fourth of five releases). Shapes only, our names; under TYPE on a Bridge, Middle 8 or Break block (the interlude and instrumental lists take them too).
+
+- **PEDAL CELL, FALLING TOP, CHORDS IN THE GAP:** power chords on a pedal cell (x--x--x-x-------), a top note falling each bar (fifth, third, second, root), a push from the half step under every fourth bar; from halfway the last hit becomes a high chord in fourths rung in the gap, climbing a step each bar. Drums: soft crashes on the beats, the snare on 3.
+- **BASS AND RIDE ALONE, THE GUITAR DRIFTS IN:** the bass's four-bar cell (two bars playing, two empty) and the ride alone; the guitar comes in late with single held notes that clash with the chord (its major third, the half step over the root, the major seventh, the tritone), ending on a chord rung. A china ends every eighth bar.
+- **LOW HIT, HIGH MAJOR-7TH DYAD, CHROMATIC CLIMB:** low hits on 1 and its and answered by a high dyad of the major third and seventh, then power chords climbing by half steps in sixteenths every second bar. Drums: the crash, china and kick together.
+- **FLAT-SEVEN OCTAVES, SUS TO MAJOR TOP:** octave dyads round the key's flat seven, its top note going from the fourth to the major third, then the root and the half step over it; the next bar the root, the flat seven and the flat six.
+- **FLAT-TWO DRIVE TO THE SEVEN:** the power chord a half step over the key's root on every eighth, landing on the flat seven held for the last bar, over a driving beat (the song's file had only the guitar: the bass and drums are ours).
+- **GUITAR ALONE: A BAR OF LINE, A BAR RUNG:** one guitar with the band out: a bar of single-note line, a bar of the fifth, third and fifth held, then a power chord rung two bars (or a line bar and a rung bar in turn).
+
+Not checked here: how they sound.
+
+## 0.170.0
+
+Three new post-chorus / interlude types from your 12 songs (round five, the third of five releases). Shapes only, our names; under TYPE on a Post-Chorus, Interlude or Instrumental block.
+
+- **NINTH CLASH IN EIGHTHS:** the root, its ninth and the ninth an octave up on every eighth, in the second half every third eighth's ninth rising to the third, every fourth bar ending on a held tritone; the bass plays a whole step above the guitar's root, rocking a half step in the last two bars of four. Drums: a crash on every beat with the kick on the off-eighths, or the snare on every dotted eighth. Keys: the key's fifth high every two bars.
+- **ONE CHORD RUNG OVER THE INTRO BEAT:** one open chord struck and left ringing eight bars (or four), the bass holding the root, over a half-time hat groove or the ride.
+- **HELD SECOND CLUSTER, SIXTEENTH PICKUP:** a ninth-and-third cluster held three beats, then a sixteenth pickup of the next chord on beat 4 (the bass with it), over a tom groove with splashes on the beats.
+
+Not checked here: how they sound.
+
+## 0.169.0
+
+Seven new chorus types from your 12 songs (round five, the second of five releases). Shapes only, our names; under TYPE on a chorus block (the hook, post-chorus and interlude lists take the chorus types too).
+
+- **HALF-STEP GRIND IN THREES, HIGH TONIC TREMOLO:** low power chords grinding in three-sixteenth cells, the half step over the root then the root held, every second bar turning on the half step and the fourth; a second guitar holds the key's root high in straight sixteenths. Drums: the kick on every hit of the grind, crashes in sixteenth pairs on 1 and 3.
+- **FIXED DISSONANT CHORD, BASS ROCKS UNDER IT:** one dissonant cluster on the key's root (its fifth, sixth and a raised fourth) struck on every beat for the whole chorus, whatever the chords, with a high major-seventh dyad on each bar's last sixteenth; the bass moves under it on whole notes. Drums: a china on the eighths, floor tom accents.
+- **LOW CHORD, HIGH CLASH, WALK BAR:** a low power chord answered by a high minor triad a half step over it, every third bar a walk of power chords stepping down by half steps on the pushes. Drums: the new CRASH ON THE KICKS, RIDE BETWEEN (a crash on every eighth with a kick, the ride on the others).
+- **RINGING, THEN DRIVING:** four-bar phrases thickening from a rung chord to a syncopated figure to two bars of driving eighths over a half-time kit (it suits chords a third apart, as the song had: put them on the chord track).
+- **TONIC BAR, CHROMATIC FALL BAR:** a bar of the key's root on 3+3+2, then a bar of the flat seven falling by half steps, every fourth bar cut at the half; the keys play a high seesaw over it.
+- **CALL, AIR, DRIVE:** four-bar cycles: a bar of short-long hits, a bar of air with one soft high chord, two bars of eighths rocking to the half step over the root, the snare and kick interlocking.
+- **RING THE OCTAVE OVER A MOVING BASS:** one high octave rung a bar (the key's root, fifth, flat sixth, then an empty bar), the bass doing the moving under a half-time ride.
+
+Not checked here: how they sound.
+
+## 0.168.0
+
+Six new verse types from the 12 songs you uploaded, the first of the five releases for them (then choruses, post-choruses, bridges, and the smaller additions). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a verse block (they're also under the pre-chorus's list, which takes every verse type).
+
+- **PEDAL STUTTER UNDER OCTAVE THIRDS:** the low root on sixteenths broken up by a high dyad of the chord's third, two octaves apart, with a root-and-fifth pickup into each change. Its second guitar option adds the chords rung over it on a syncopated figure (on a second track when the lane has two). Bass: sixteenth roots with two holes. Drums: a two-bar syncopated kick with open hats or a china on the eighths.
+- **CHOKED EIGHTHS, HIGH COLOUR TONE HELD:** two bars of short choked chords on every eighth (root, octave and third, no fifth), then two of a power chord with its top note moving 9, 3, 9. A high note held over each chord: the seventh, then the third (a second guitar, or the keys). A half-time kit with a four-bar kick cycle.
+- **BASS RUNS UNDER HELD CHORDS:** one power chord held a bar, a minor sixth on top every second bar and a half step up every fourth, three high notes answering in the second half, while the bass runs sixteenths round the root. Drums: a plain backbeat with a hat ruff every second bar.
+- **ONE RIFF, THE KIT CHANGES:** one double-picked riff of eight scale notes, the same every bar whatever the chord; the bass plays it two octaves down in eighths, then sixteenths for the last two bars. Drums: the ride on every sixteenth with kick pairs and a kick-and-snare run into the next section, or a busier kick with a crash on every beat.
+- **OPEN OCTAVE BAR, FALLING TRITONE ANSWER:** bars in pairs: an open voicing on the eighths with beat 3 left empty, then a bar stepping down to the flat seven and the tritone. A half-time kit with hats on the beats.
+- **PEDAL CELL WITH A HIGH ANSWER:** the low root on a 3+3+2 cell for half the bar, then high notes answering it, falling from the third to the root over four bars. A half-time kit with a few syncopated hats.
+
+Not checked here: how they sound (listening is yours).
+
+## 0.167.0
+
+Two fixes from your reports.
+
+**The MIDI editor's lag:** the soft glow round every note (0.166.0) is gone. Each note had three see-through rounded halos drawn round it on every redraw; on a busy song across your screens that added about half again to every full redraw here, and likely far more on Windows, especially drawing without the graphics card. The notes keep the slightly brighter body and the light line along their top (they cost nothing), and with CHORD GUIDES on they keep the pearl glow they had before 0.166.0.
+
+Also, as a safety net: the arrangement and the MIDI editor only redraw 60 times a second with the play bar standing still (Stationary Cursor) while their kept picture is actually saving work. If it ever has to be drawn whole frame after frame on your screen, they drop back to 30 a second.
+
+Measured here, a full MIDI editor redraw at 5760 px wide and 200 %: 34 ms with the halos, 24 ms without.
+
+**Some automation dots bigger and brighter than others:** those were several points sitting on the same spot (writing automation by moving a control can leave a few within a pixel or two, and two on the same beat where it jumps). Each drew its see-through glow, and the glows added up into a bigger, brighter blob. Points on the same spot on screen are now drawn as one dot. Every point is still there and plays, selects and edits as before; only the drawing changed.
+
+Not checked here: whether the lag you saw is fully gone on your machine (I couldn't reproduce it exactly). If the editor still drags, tell me whether it's while playing, while editing notes or all the time.
+
+## 0.166.0
+
+**The MIDI editor, round two of the scrolling fix, and glowing notes** (you asked for both).
+
+**The MIDI editor while it scrolls under a still play bar (Stationary Cursor):**
+- **It's kept as a picture while the song plays,** as the arrangement has been since 0.165.0. Each frame copies the picture and draws only the thin strip that scrolled into view; the keys, the side panel and the play bar stay drawn on top. An edit or a click redraws just its own columns.
+- **The scroll is smooth:** it follows the play bar where it's drawn, 60 times a second, instead of the audio's block steps (about 20 uneven jumps a second at your 2048 buffer).
+- Measured here, a frame at 5760 px wide and the editor's 200 % size: **25.6 ms drawn whole, 4.1 ms kept as a picture.**
+
+**The notes glow,** like the automation lines: each note has a soft halo in its own velocity colour (orange, pink, red), a brighter body and a bright line along its top. Muted notes don't glow. With CHORD GUIDES on, the halo is pearl white so it stands out from the guide rows. Drum diamonds glow too.
+
+The kept picture was compared with a full redraw at 100 %, 150 % and 200 % display scale, after scrolls of several sizes, a partial redraw and an edit: no difference beyond a shade where a strip meets the picture.
+
+Not checked here: the smoothness on your screens and graphics card, and how the glow looks to your eye at your display's size (screenshots in all three finishes were checked).
+
+## 0.165.0
+
+**Speed, round six** (you asked: fix the three things left from round five). Each was checked against the old way before it went in.
+
+**The arrangement while it scrolls under a still play bar (Stationary Cursor):**
+- **It's kept as a picture while the song plays.** Each frame copies the picture and draws only the thin strip that scrolled into view. It used to draw the whole arrangement every frame, across all three of your screens. Anything else that changes (an edit, a click, a selection) redraws just its own columns of the picture. The play bar, the tempo lane's BPM labels and the LOCKED labels are drawn on top, because they stay where they are on the screen.
+- **The scroll is smooth and twice as often.** The view used to follow the audio's block steps. At your 2048 buffer that's about 20 jumps a second, unevenly, and it redrew only 30 times a second because a frame was expensive. It now follows the play bar where it's drawn, 60 times a second.
+- **The same fixes help the normal view too.** Things that used to be lined up with the screen are now lined up with the song: dashed lines, glow round automation points just past the edge, the round ends of the glowing automation lines.
+
+**Undo:**
+- **Each undo step shares every track it didn't change** instead of copying the whole song's notes. The engine's note of what it last built shares the same way, so checking which tracks changed is one look for each untouched track instead of comparing every note. On a song of 30 tracks of 2000 notes, a fader move with an undo step went from about 0.7 ms to 0.06 ms, and a note edit costs about 0.3 ms. The undo history also takes far less memory: a step holds only the tracks that changed.
+- **A safety check in the tests:** every recent undo step is checked against its own copy on each new step, undo and redo. Anything that wrote into a kept step by mistake would stop the tests. None did.
+
+**The channel EQ:** each band's filter stages now run together, sample by sample, in full precision. It's about 1.5 times faster with 4 to 12 stages on. The sound changes only by rounding about 100 dB down (the old way rounded between stages; the new way doesn't).
+
+Measured here, before and after:
+
+| | Before | After |
+|---|---|---|
+| A frame of Stationary Cursor at 5760 px wide | 5 to 7 ms | 0.6 to 1 ms |
+| A fader move with an undo step (30 tracks x 2000 notes) | about 0.7 ms | 0.06 ms |
+| The EQ with 8 stages, a 2048 block in stereo | 71 µs | 46 µs |
+
+The kept picture was compared with a full redraw at 100 %, 150 % and 200 % display scale, after scrolls of several sizes, a partial redraw and an edit: none of them differ by more than a shade where a strip meets the picture.
+
+Not checked here: the smoothness on your screens and graphics card (the picture is copied the same way on Windows, but I can only time it here).
+
+## 0.164.0
+
+**Speed, round five** (you asked: another optimization pass on the whole studio). Three reviewers read the code (the audio thread, what happens on each edit, the screen). I checked every finding in the code before changing anything, and every change was checked to give the same result as before.
+
+**The audio thread** (fewer chances of a dropout, at your 2048 buffer especially):
+- **Each track's MIDI buffer had a fixed size of about 450 events.** Controller ramps are written 128 times a beat, so a track with pitch bend, vibrato and a swell (what the Architect writes for solos) could pass that in one large block. The buffer then grew while the audio was playing. Now each track's buffer is sized for its busiest block whenever its notes change, or when the audio device's block size changes, never during playback.
+- **The MIDI input queue** is now made big enough when the audio device starts. Before, it first grew while holding the lock the audio thread waits on.
+- **SysEx coming in from a controller** was copied for every track on every block. It's now passed through as it came.
+- **The audio thread used to spin at full speed** while it waited for the other cores to finish their tracks (tens of milliseconds behind a heavy instrument). That kept a whole core busy, competing with the helpers and the plug-ins' own threads on your 4-core machine. Now it waits briefly, then sleeps until the last track is done. The sound is the same.
+
+**Editing:**
+- **The song file is written in one pass.** The same slow way of adding lines that made the MediaBay's save take minutes was also used for parts and automation lanes. A part of thousands of notes and controller points wrote slowly on every save, backup and track preset.
+- **Undo copies only the tracks whose parts changed.** It used to copy every track's notes on every undo.
+- **The check for linked SECTIONS copies** used to copy the whole song several times on each undo step. It now copies only the parts inside each block.
+- **The check whether PR7-D's song needs sending again** used to write every drum note out as text on every change. It now uses a quick number made from the same notes.
+- **Each update** no longer copies every MIDI track's drum map and the chord track just to compare them.
+
+**The screen** (your window spans three screens):
+- **Waveforms are drawn in one go per clip**, not one rectangle at a time, and each pixel's position is worked out once.
+- **Clicking a track repaints only the rows it changes**: the selected row, and the alternating shades between it and the track selected before. It used to repaint the whole arrangement.
+- **The Inspector** (when hidden with F1) and **the Architect's page** (behind its IDEAS tab, or with its window closed) no longer keep updating themselves every frame.
+
+Measured on the test songs here, before and after:
+
+| | Before | After |
+|---|---|---|
+| The whole window at 5760 px wide | 47 ms | 29 ms |
+| The arrangement at 5760 px wide | 17 ms | 10 ms |
+| The window at 1500 px | 27 ms | 14 ms |
+| Saving a song with 100 MB of plug-in settings | about 1.7 s | about 1.5 s |
+
+The screens were compared pixel by pixel with the last version: identical at 5760 wide, and at most one colour level apart in a few pixels elsewhere.
+
+Not done this round, and why:
+- **Finding each track's output and sends by a stored link instead of a search:** a few microseconds a block, with a risk of a link left pointing nowhere.
+- **Combining the channel EQ's filter stages into one pass:** about 3% of a core with 30 EQs on, a larger rewrite.
+- **A stored picture of the arrangement while Stationary Cursor scrolls it:** the largest screen cost left, and a big change.
+
+Not checked here: your plug-ins and your interface (the audio-thread changes can only be heard and measured on your machine).
+
+## 0.163.0
+
+**The MediaBay at 120,000 files** (you: "the lag is insane and makes it basically unusable"). Measured with 120,000 made-up files, before and after this release:
+
+- **Saving its list took about four minutes.** JUCE's XML adds each new line by walking to the end of the list, so 120,000 files was about 7 billion steps. It saved after every scan, and two seconds after every rating or tag. Now it builds the list in one pass and writes it on a thread of its own, so the window keeps going while it writes. This was the big one: the minutes-long freezes.
+- **Typing in the search** searched every file on every key (0.9 s for the first letter). Now each file's search text is made once and kept (only a file whose tags change is made again). The search also waits for a short pause in your typing (about a fifth of a second), and Enter searches at once.
+- **Choosing a folder** checked each of the 120,000 files' paths through the disk-path routines (0.4 s). Now it compares text it worked out once.
+- **Sorting by name or folder** compared names letter by letter 2 million times (0.35 s and 1.2 s). Now each file's place is worked out once.
+- **The Inspector and the attribute menus** looked through every file to find the selected ones. Now they read the selected rows directly.
+- **The Media rack** (the right zone) counted every file twice on each paint of its HOME page, and built a line of text for every file when it showed a results page. Now the counts are kept until something changes, and the text is made only for the rows you can see.
+
+(The before/after timings are in the commit and the speed test `"[.perf-mediabay]"`.)
+
+**Rename a file from the MediaBay** (you asked): right-click a result, then **Rename...**. The file is renamed on disk and keeps its extension, rating and tags. You can't rename it over a file that's already there, or to an empty name. The same menu has **Show in Its Folder** and **Remove Its Rating**.
+
+**The family's gradient in place of the flat orange** in the MediaBay and the Media rack: selected rows, the playing file's bar, the headings, the stars, the scan boxes, the waveform, the top line and the rack's tab.
+
+Not checked here: your library itself (the timings are on made-up files of the same count), and Windows' file renaming (a file another program holds open can't be renamed: you get a message saying so).
+
+## 0.162.0
+
+**Eight new solo styles from the solos in your round-four songs** (you asked; shapes only, our own names). The round-three and round-four readers had skipped solos, so four readers went back through every file that had a lead stretch. Most of those songs have no guitar solo; eight do: Stricken, Ten Thousand Fists, So Cold, Awake, Straight Out of Line, I'm Not Okay (I Promise), What I've Done and In Pieces. One style from each:
+
+- **THREES ACROSS THE BLOCKS** (Stricken): one idea per two-bar chord block, repeated exactly and changed at the block line. In order: dotted quarters, dotted-eighth double stops, one note picked in sixteenths for a bar, then a three-note cell looped across the beat. Minor pentatonic plus the ninth, no bends.
+- **RIFF-TALK CALL & STAB** (Ten Thousand Fists): a one-bar call answered by fourth dyads and muted ghost hits in the riff's rhythm. Then the call again, its top note a step higher. Then held whole-step bends and a two-note shake, and a two-bar theme on the off-beats to the end.
+- **RIFF DOUBLE-STOP, UNISON PEAK** (So Cold): minor-third double stops in the riff's rhythm, then a bend and release. Next a unison bend held three beats, the bent note struck twice, and a fall in three-note cells. The key's minor third held over the last bar.
+- **TREMOLO, THEN THE TALK** (Awake): the first half is tremolo picking on the key's tonic, moving on a four-bar cycle. The second half is a bluesy line that comes in on the band's push, says its opening call twice and bends late. Where the instrument's shortest note is longer than a sixteenth, the tremolo is one held note on its tremolo key.
+- **RIFF STUTTER BREAK** (Straight Out of Line): a short, hot break with one idea a bar:
+  - a bend into the tonic and a blues run down;
+  - one note stuttered in the riff's rhythm with ghost hits;
+  - an octave dive and swoop;
+  - a three-note cell looped;
+  - a bar of leaps.
+
+  No rests; it bends up into the high tonic at the end.
+- **TWIN THIRDS SINGALONG** (I'm Not Okay): two guitars a third apart from the first note. The second guitar goes on the lead lane's second track; one track plays both.
+  - The call: the key's fifth bent a whole step three times, then a fall.
+  - The call said twice, with only its tail changed.
+  - An answer of turns leaping up to the bent tonic.
+  - The one fast run: triplets home onto the chord's third.
+- **SWAYING THIRDS THEME** (What I've Done): a small theme in about an octave. Pairs a third apart in eighths rise into a note held on each chord's root. Each time round the chords it comes back the same, and its last bar walks down to the tonic.
+- **STILL CELL, MOVING CHORDS** (In Pieces): one falling six-note cell kept at the same pitches while the chords change under it. It stops on the dominant bar for a gallop on one note. Each later round rises a step, with no rests, and it ends on the last chord's root, straight into the next section.
+
+**What these eight have in common**, so they all do it:
+- one steady pace, with at most one fast run near the end (no waves of bursts);
+- rests of half a beat at most;
+- ideas repeated exactly rather than raised and developed;
+- the key's scale over every chord;
+- whole-step bends only, on long notes;
+- one long last note on the key's own note (its tonic or minor third, or the chord's third), not always the last chord's root.
+
+**BY STYLE with the nu-metal guitar style** now plays one of these eight, a different one for each take (ROLL). Rock keeps SINGING BENDS, and your other 92 solo styles are unchanged.
+
+As always, these come from the readers' measurements, not from listening, so play them before you trust them.
+
+## 0.161.0
+
+**The versions that belong to one type, added to that type** (you asked; round four, shapes only, our own names). Each is a new option in its own type's list (after the type's own options; a bass one just in front of LOCKED WITH THE KICK), in the browser's THIS TYPE'S OWN group:
+
+- **INTRO RETURNS, LAST CHORD RINGS** (outro, The Heart of Everything): guitar **THEME, THEN ONE LAST HIT** (the opening theme back, then the band drops away to one chord on the last bar's one); keys **THE HYMN ALONE AT THE END** (from halfway, organ and choir chords held a bar each).
+- **DEAD STOP** (Praise): guitar **FOUR EIGHTHS, THEN SILENCE**.
+- **HOOK ALONE TO THE END** (Faint, In Pieces): keys **HOOK WITH A ONE-BAR BREAK**.
+- **RIFF ALONE, THEN THE BAND**: drums **GHOST NOTES UNDER THE RIFF** (soft ghost snares and hats under the riff alone, the full groove from halfway).
+- **RING, THEN ANSWER** (By Myself): guitar **ANSWER THROUGH THREE CHANGES**.
+- **DOTTED STREAM** (Angel's Son, Keep Away): guitar **DOTTED, ENDING 3+3+3+3+4**.
+- **HELD CHORDS IN 3+3+2** (Heavy): guitar **THREE CHORDS, THEN A HELD BAR**.
+- **CHROMATIC CHORDS UNDER A FIXED TREMOLO** (Enemy): drums **DOTTED KICKS, CRASH QUARTERS**.
+- **HOOK KEPT, BAND BUILT UNDER IT** (Heavy Is the Crown, Beautiful): guitar **THE BAND IN AT ONCE** (the hook alone, then the whole band together, not in stages) and **CHUG CELL OPENING ON A CLIMB**.
+- **KEYS ALONE, THEN RINGING HITS** (In Pieces): bass **IN AFTER THE DRUMS**.
+- **OCTAVE-JUMP PEDAL**: guitar **OCTAVE-JUMP PEDAL, FLAT-SEVEN FLIPS**.
+- **HOLED SIXTEENTH PEDAL** (The Heart of Everything): drums **KICK ON EVERY NOTE, TOMS IN THE HOLES**.
+- **SNARE CARPET BUILD** (Part of Me): drums **SNARE CARPET, NO CRASH**.
+- **UNISON ROCKING RIFF** (Licking Cream): guitar **UP A HALF STEP IN 2+1+3**.
+
+**RISING BASS** (a pre-chorus type) is now on the bridge's type list too (All I Need's bridge).
+
+As before, these come from the readers' short notes, so listen before you trust them.
+
+**One thing to know:** under these 13 types, the shared options (FROM YOUR SONGS) after the new ones moved down a place or two. A section saved with one of those shared options chosen under one of these types will open on the option next to it. Pick it again to get it back. Built blocks keep their music until you rebuild them.
+
+## 0.160.0
+
+**Eight bass versions from your songs, in front of LOCKED WITH THE KICK** (you asked; round four, shapes only, our own names). They're on the bass lane's list under every named section type whose bass list ends with LOCKED WITH THE KICK, after the type's own options and just in front of it. LOCKED WITH THE KICK stays last. In the browser they're in FROM YOUR SONGS.
+
+- **DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN** (I Stand Alone): the bass plays the guitar's top notes, its pings and stabs over the chugs, octaves down, and stays silent under the low chugs.
+- **PLAYS ONLY THE HEAD** (Don't Stay): the bass doubles the guitar's first seven sixteenths of each bar, then leaves the rest of the bar to the guitar.
+- **KEEPS THE CHORUS RHYTHM** (The Emptiness Machine): the chorus's chord rhythm on one root a bar, for a verse where the guitars drop back.
+- **CARVED SIXTEENTH LINE** (Papercut): three, a gap, one, four, a gap. Pair it with the drums' CARVED KICK, CHINA SIXTEENTHS from 0.159.0 and the kick doubles it.
+- **EIGHTHS, PICKUP INTO EACH BAR** (In My Remains): root eighths with a three-note pickup walking into the next chord.
+- **A NOTE A BAR, FALLING FROM THE KEY'S NOTE** (All I Need): one note a bar, a scale step lower each bar, starting again every four.
+- **CHROMATIC EIGHTHS AROUND THE ROOT** (Given Up): eighths circling the root through its half-step and whole-step neighbours.
+- **DOTTED FIGURE WITH THE KICK** (Angel's Son).
+
+The two that follow the guitar read whatever the guitar lane is playing, including the riff kinds from 0.158.0 and 0.159.0.
+
+When a type has no guitar for those two to follow (the guitar out, or no high notes), they play a part of their own instead of going silent: the root and its octave on the beats for HIGH NOTES, a short head figure on the root for THE HEAD.
+
+**Two fixes you reported:**
+- **The option browser** (MORE OPTIONS..., MORE TYPES..., MORE SOLO STYLES...) now opens as a window of its own, centred on the screen the Architect is on and maximized. It's freely resizable (down to 820 x 480) and has the usual minimise / maximise / close buttons. Closing it works as closing the old box did: a HEAR you tried without USE IT goes back.
+- **The style menus are names only.** Every option used to carry its whole description in brackets, which made the menu as wide as your screen, so SOLO STYLE's list opened far off to the left, outside it. Now the lane's style menu, the solo styles, the riff flavours and the TYPE menu show just the names, and each submenu opens beside its menu. What each one does is still in the browser.
+
+**One thing to know about songs saved on LOCKED WITH THE KICK:** a song remembers a lane's option by its place in the list, and the new options now sit where LOCKED WITH THE KICK used to be. A section saved with its bass on LOCKED WITH THE KICK will open on DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN instead. Pick LOCKED WITH THE KICK again to get it back. Built blocks keep the music they already have until you rebuild them.
+
+## 0.159.0
+
+**45 new versions of styles we already had, from your songs** (round four, the readers' "new versions" lists; shapes only, our own names). Each is a guitar, drums or keys option on the shared lists, so it shows under every named section type, after the type's own options. In the option browser they're in the FROM YOUR SONGS group, and FEEL / ENERGY and the search find them.
+
+**Guitar (21):**
+- **CHORDS IN SIXTEENTHS UNDER A FIXED HIGH NOTE** (Enemy): power chords on every sixteenth following the chords, with a second guitar holding the key's fifth high.
+- **TRESILLO FOURTH DYADS** (Given Up): fourth dyads on 3+3+2, twice a bar: the bar's chord, then the next.
+- **FIXED LOW CLUSTER IN SIXTEENTHS** (Leave Out All the Rest): a low cluster of the key's note, its second and third on every sixteenth that never moves, with the chords rung over it.
+- **HIGH TRITONE EIGHTHS OVER RUNG CHORDS** (Praise): the riff's power chords rung, a second guitar's high tritone dyad fixed in eighths.
+- **FOURTH DYADS ROCKING A HALF STEP** (Part of Me).
+- **CHUGS WITH A SIXTH** (Beautiful): a chug cell of three, gap, three, three, the second group opening on a major sixth.
+- **ROOT TO FIFTH IN THE BAR** (Beautiful): the chord for half a bar, then its fifth; every second bar a flat six.
+- **RIFF CELL TWICE A BAR** (Forsaken): one cell in each half of the bar.
+- **DYAD STREAM, ROOT STEPPING EACH BAR** (Bender): the key's note and its tritone on the sixteenths with a hole every eight, a whole step lower every other bar.
+- **SIXTEENTH PEDAL OVER LATE HITS** (Bender): one guitar's low sixteenth pedal seesawing a whole step, the other hitting the and of 2 and 4.
+- **RUNG SYNCOPATION, TONIC AND HALF STEP** (Don't Stay).
+- **DOTTED CHORDS, HIGH OCTAVE FIGURE** (Awake): chords on 1, the and of 2 and 4 with a half-step pickup, then a second guitar's high octaves from halfway.
+- **PEDAL WALL, CHORDS MOVING ON TOP** (Bender): full chords on every sixteenth over the key's fixed low note, the upper chord following the progression.
+- **ONE-NOTE SCRATCH RHYTHM** (With You): one muted note, a broken pattern of ten to twelve hits drawn again every bar.
+- **PEDAL-TOP FINGERPICKING** (Angel's Son): the same top note on every other sixteenth, the root and third under it.
+- **FIXED FIGURE OVER HALF TIME** (Somewhere I Belong): a high three-note figure that keeps its notes over every chord, a second guitar ringing the chords.
+- **TWO GUITARS IN TWO RHYTHMS** (Somewhere I Belong): eighths in one guitar, 1-2-2&-3-4-4& an octave up in the other.
+- **ROCKING UP A STEP IN THREES** (Straight Out of Line): the root and the step above in groups of three across the beat.
+- **UNISON CELL ACROSS THE BAR** (Bender): a twelve-sixteenth cell running across the bar lines.
+- **DOUBLE HITS WITH SCRATCHES** (One Step Closer).
+- **PEDAL IN THREES, CLIMBING** (Black): a soft pedal, every third note higher and climbing a step every two bars.
+
+The ones with a second guitar put it on the lane's second track when you give the guitar lane two (Hub > ARCHITECT TRACKS). A type's DOUBLES THE GUITAR bass follows whichever you choose.
+
+**Drums (12):** DOTTED KICK CHAIN, CRASH QUARTERS (Enemy); PULSE, SNARE CREEPS IN (Iridescent: four on the floor, the snare entering by quarters of the section); SPLASH QUARTERS, SNARE ON THREE (Part of Me); LOOP AND SIDESTICK SIXTEENTHS (Leave Out All the Rest); DISPLACED SNARE, RIDE BELL (I Stand Alone); BROKEN BEAT, CRASH EIGHTHS (I Stand Alone); LAYERED DOUBLE KICK (Whatever); THE STOMP JOINS (Castle of Glass: kick and floor tom together, a soft snare on 2 and 4); CARVED KICK, CHINA SIXTEENTHS (Papercut); QUARTER HATS, BUSY KICK (In My Remains); TOM GROOVE, SNARE ON THREE (Bender); SNARE ON THE A OF TWO, CRASH EIGHTHS (Lying From You).
+
+**Keys (12):** FIXED TOP, ROOT UNDER IT (In Pieces); FALLING FOUR-NOTE CELL (In Pieces); CHOIR STABS ON THE ACCENTS (The Heart of Everything); STRINGS QUARTER, EIGHTH, EIGHTH and STRINGS DOTTED-QUARTER LINE (The Heart of Everything); HIGH STAB HOOK, FIXED (Heavy Is the Crown); FIVE-NOTE CHORDS ON ONE AND THREE (In My Remains); HIGH STRINGS MOTIF (Faint); TONIC AND STEP SIXTEENTH LOOP (With You); PIANO TRIADS ON THE QUARTERS (Bleed It Out); TONIC EIGHTH PULSE (Faint); PAD CHORDS IN HALF NOTES (Given Up).
+
+**What isn't in this release:**
+- The bass versions (DOUBLES THE PINGS AN OCTAVE DOWN, BASS PLAYS ONLY THE HEAD, BASS KEEPS THE CHORUS RHYTHM). Every bass list ends with LOCKED WITH THE KICK, and saved songs remember that option by its place in the list, so anything added after it would have to be put in front of it. I can do that if you want them.
+- A few that only make sense inside one type (INTRO RETURNS with the hymn, DEAD STOP as four eighths, RING, THEN ANSWER through three changes, DOTTED STREAM ending 3+3+3+3+4). I can add those to their own types.
+- Some were already covered by what we have (the readers said so), and the keys and transition ones they listed came in 0.154.0 and 0.155.0.
+
+All of these come from the readers' short notes, not a bar-by-bar reading, so they're our reading of each name. Listen before you trust them.
+
+## 0.158.0
+
+**Six riff kinds from your songs as guitar options** (round four; shapes only, our own names). They're on the guitar lane's list under every named section type, after the type's own options, in the browser's FROM YOUR SONGS group:
+
+- **CHUGS, THEN THREE CHORDS:** muted chugs on the root for half a bar, then three ringing power chords (the root, the minor third, the fourth) at 3+3+2 sixteenths.
+- **HIT, THEN BURSTS ON TWO AND FOUR:** a power chord on 1, then muted sixteenth bursts filling beats 2 and 4. Beat 3 stays open.
+- **PUSHED POWER CHORDS WITH A FLAT-TWO STAB:** power chords on 1 and the and of 2, a short stab a half step up, then the next chord pushed onto the and of 4 and held over the bar line.
+- **ROOT TWICE, TRITONE PUSHED IN:** the root struck twice, then a tritone dyad pushed in on the and of 2 and rung, the same again in the second half.
+- **SUS2 SPLIT BETWEEN TWO GUITARS:** one chord split between two guitars, one playing root and fifth, the other the second, fifth and octave. Put the guitar lane on two tracks (Hub > ARCHITECT TRACKS, your left and right guitars) and each guitar gets its half. On one track you hear both together.
+- **TONIC WALL UNDER MOVING CHORDS:** a wall of muted sixteenths on the key's tonic that never moves, with the chords changing over it as rung triads on 1 and 3.
+
+When a type's bass is on **DOUBLES THE GUITAR**, it now doubles whichever of these riffs you've chosen, and the kick options that follow the guitar follow it too. That was why 0.145.0 left the guitar out of the shared lists, and it's fixed now.
+
+These six were built from the readers' short notes on your songs (Greed, The Howling, Praise, By Myself, Bleed It Out), not from a bar-by-bar reading, so they're our reading of what each name describes.
+
+**Two browser fixes:**
+- The groups on the left now follow their set order (BY STYLE, then BENDS, MELODIC... for solos).
+- Solos used to read almost all BROKEN / CALM. Now a line only counts as broken when it's off the sixteenth grid (triplets, sextuplets), and its busyness counts only the bars it plays. Each solo's picture shows its busiest two bars, not the first two, where most solos are still resting.
+
+## 0.157.0
+
+**The same short menus and browser for TYPE, the solo styles and INTO THE NEXT** (the second half of the option picker you chose).
+
+- **TYPE in ARCHITECT:** the menu now shows STANDARD, the type you're on, your ★ favourites and the last four types you used. **MORE TYPES...** opens the browser with every type for that kind of section (a chorus has about 46), in groups: CHORUS TYPES, VERSE TYPES, RIFF TYPES and so on. Each type's FEEL and ENERGY are measured from the drums it writes (the library grooves are left out of that, or every type would measure the same). The browser draws two bars of those drums. **HEAR** tries the type with your lanes and puts the old one back if you close without **USE IT**. On a block that's already built, HEAR is hidden, because changing a built block's type rebuilds its music.
+- **Solo styles:** the lead lane's **Solo Style** submenu now holds the style you're on, your favourites and the recent ones. **MORE SOLO STYLES...** opens all 92 in the browser, grouped by their main technique: BENDS, MELODIC, FAST RUNS & CELLS, TAPPING & LEGATO, TREMOLO & TRILLS, WHAMMY & SQUEALS, OTHER. Each solo's feel and energy are measured from the solo it writes, and HEAR tries it.
+- **INTO THE NEXT** (the block menu and the block editor) and the block menu's **Type** list are now in groups. The 62 transitions are sorted into STOPS & SILENCES, SHORT BARS, ROLLS & BUILDS, WALKS & SLIDES, DROP-OUTS, HELD CHORDS and HITS TOGETHER, each its own submenu (or a heading in the block editor's list). Transitions only change a block's last bar or two, so there's no feel to filter by. The groups do that job here.
+
+The groups are our own sorting, made from the words in each name, so a few could sit better elsewhere. Tell me which and I'll move them.
+
+## 0.156.0
+
+**A shorter style menu and a browser for every option** (you chose mock-up D with C's feel filters). The lanes' option lists had grown to 30 and more, so each lane's style key in ARCHITECT now opens a short menu:
+
+- **Automatic**, then the section type's own options (or the lane's styles when there's no type).
+- **★ Favourites and Recent**: the options you've starred and the last four you used on that lane.
+- **MORE OPTIONS...** at the bottom opens the option browser with everything. The rest of the menu (Sync To, the library grooves, the riff flavours, the solo style...) is where it was.
+
+**The option browser:**
+
+- **Groups on the left with counts:** ★ FAVOURITES, RECENT, EVERYTHING, THIS TYPE'S OWN, FROM YOUR SONGS, STYLES.
+- **A search box** that looks through every group (any word of a name or description).
+- **FEEL keys** (STRAIGHT, HALF TIME, DOUBLE TIME, BROKEN) and **ENERGY keys** (CALM, MEDIUM, HEAVY): one of each at a time, clicked again to let go.
+- **The chosen option's details:** what it does, its feel and energy, and its first two bars drawn (a drum grid of cymbals, snare, toms and kick, or a small piano roll for the other lanes).
+- **HEAR** plays it with your other lanes. If you close the browser without **USE IT**, the lane goes back to what it had. Double-click a row to use it. Click a row's star (or ★ FAVOURITE) to keep it in your favourites, which stay between sessions.
+
+The feel and energy are measured from the notes each option writes, not labels anyone typed in, so treat them as a guide. Fills (the last beat of a bar, the last bar of a phrase) and ghost notes don't count. ELECTRONIC HALF-TIME LOOP still reads as straight because its backbeat is a clap.
+
+Next, 0.157.0: the same browser for TYPE, INTO THE NEXT and the solo styles.
+
+## 0.155.0
+
+**Eleven more drum options and fifteen more keys options from your 54 song files** (round four, shapes only; our own names). Like 0.145.0's, they're offered under every named section type, after that type's own options, so the songs you've built keep their choices. Pick one from the drums or keys lane's style menu in ARCHITECT.
+
+- **Drums:** HIP-HOP BREAK, SNARE ON TWO AND THE AND OF THREE, KIT ON ONE AND THREE, SNARE MARCH, CRASH EVERY BAR, SOFT SNARE QUARTERS, CRASH QUARTERS BUILD, OFF-SIXTEENTH SNARE, BREAKBEAT, FOUR ON THE FLOOR, CRASH ON TWO THREE FOUR, HIP-HOP BACKBEAT WITH A GHOST, PEDAL HAT SIXTEENTHS UNDER THE BEAT.
+- **Keys:** ONE-NOTE SIXTEENTH LOOP, ECHOING PLUCK, DYAD PULSE IN SIXTEENTHS, RIGHT HAND AFTER THE DOWNBEAT, LEFT HAND ON TWO AND FOUR, HALF-BAR BROKEN CHORD, SYNCOPATED PIANO FIGURE, STRINGS EIGHTHS OVER A HELD PAD, TWO SYNTHS IN CALL AND ANSWER, OFF-BEAT SYNTH STABS, STRINGS SIXTEENTH PEDAL IN THREES, CHOIR STABS ON THE DOTTED GRID, TRIAD ARPEGGIO IN SIXTEENTHS, HIGH STAB ON TWO AND FOUR, FIXED HIGH DYAD IN SIXTEENTHS.
+
+Four of these were already options inside one or two of 0.147.0's verse types (HIP-HOP BREAK, SNARE ON TWO AND THE AND OF THREE, SOFT SNARE QUARTERS, ONE-NOTE SIXTEENTH LOOP); now every type has them. BREAKBEAT here is a classic break, not the beat of 0.148.0's BREAKBEAT UNDER HELD CHORDS (that one stays with its chorus type). Two ideas were left out: the twelve-eight ballad beat (it needs a triplet feel, and you'd rather keep everything in straight 4/4), and "the kit only on the band's hits" (an option on the shared list can't see what the guitar plays, so it would be guessing).
+
+## 0.154.0
+
+**27 more transitions from your 54 song files** (round four, read for their shapes only; our own names). They're in INTO THE NEXT on every block of the SECTIONS row (right-click a block, or its editor), after the ones from 0.144.0. Each one only changes the end of its block, and the melody is never touched:
+
+- **Stops and silences:** THREE BEATS OF SILENCE, CUT AT THE HALF BAR, PUSHED STOP (the next bar's hit pushed onto the and of 4 and held), STOP, THREE-SNARE PICKUP, DOTTED HITS, THEN A SILENT BAR.
+- **Hits together:** UNISON SYNCOPATED BAR, UNISON SIXTEENTHS BAR, THREE STABS AND A HOLD, TWICE, TWO HITS AND TOMS, HITS ON TWO AND THREE, TOMS UNDER, SIX-SIXTEENTH TURNAROUND, HALF-STEP BURST BAR, GALLOP BAR, SNARE ON THE ANDS, SIXTEENTH SWELL, CUT SHORT.
+- **Held chords:** CHORD ON ONE, SNARE PICKUP, TRITONE HIT, RUNG BAR, HELD BAR, DRUMS PICK UP, TIMPANI ROLL (the floor tom rolling under the held chord), TOM RUMBLE BARS, STRINGS CLIMB, TOM ROLL.
+- **Drop-outs:** CLAP BREAK, RIFF ALONE, TWO BARS, DROP TO KEYS AND LEAD, DROP TO CLEAN, SNARE BUILD, HIT ON ONE, BASS FIGURE (the bass alone walking up into the next chord), HIT, THEN MUTED EIGHTHS IN, RISER INTO THE NEXT (the guitar tremolos the next chord's root while the crashes swell).
+
+Two of your songs' transitions were left out because we already have them: BREATH (two beats) is our BREATH, and the riff cut at the half bar became CUT AT THE HALF BAR beside our RIFF CUT SHORT.
+
+## 0.153.0
+
+**Automation lines glow** (you asked, from PR7-K's envelopes). A lane that's playing back draws its line as neon in the track's colour: soft halos around a bright line, with a hot, paler core. Under the line, a wash of the colour fades to nothing at the lane's foot. The points are glowing dots on the line. Selected points stay pearl white circles, so you can still tell them apart. In Trim, the curve that plays glows too. A lane that isn't playing back (R off, or the lane muted) stays plain grey, so you can see at a glance what's heard.
+
+## 0.152.1
+
+**THE COMPOSER is now ARCHITECT, and F7 opens it** (you asked). Every place the name showed is renamed: the window's title, the key on the chord pads and in IDEAS, OPEN IN THE ARCHITECT in a block's editor and menu, ARCHITECT TRACKS in the Hub, and the tooltips. **F7** opens ARCHITECT straight away (it was free); pressed again it brings the window to the front. It's also in KEYS as Window > Open Architect, so you can move it to another key or a Stream Deck button. Your settings and songs carry over: only the names on screen changed.
+
+**SEVEN-BAR CYCLE (from The Ghost Woman and the Hunter) put right** (you told us how to tell the parts apart). The verses are the clean picked figure over the low A, now with the type CLEAN VERSE, so the composer writes them without the heavy guitars. The choruses are the seven-chord cycle, heavy, typed DRONING, whose drums open up on the cymbals. Your MIDI file couldn't show this: it has one guitar on a distorted sound the whole way and the same hi-hat beat everywhere.
+
+## 0.152.0
+
+**BLUEPRINTS: a song's whole layout as a preset to start from** (you asked: "choose specific songs and we create their section layout as a template ... like we do with expansion rigs"). BLUEPRINTS is a new key on the SECTIONS row (also in the row's right-click menu and in KEYS as Window > Blueprints).
+
+The window lists our ten on the left. Pick one and you see:
+- its blocks drawn as the SECTIONS row would show them;
+- its description, tempo and length;
+- each block's type, the transition into the next block, and its chords in the key you pick.
+
+The controls:
+- **KEY:** starts on the blueprint's own key; change it and the chords move with it.
+- **CHORDS:** on, the blueprint's chords go onto the chord track inside the row; off, the chord track is left alone (your choice: "carry chords but give the option to turn the chords off").
+- **TEMPO:** on, the song takes the blueprint's tempo.
+- **USE IT:** lays out the SECTIONS row from bar 1: names, lengths, linked copies (edit one chorus and the other choruses change), section types and transitions, with the song's key set. If the row already has blocks, it asks before replacing them. The music already in the song isn't moved. One undo step.
+- **SAVE THIS SONG'S SECTIONS AS A BLUEPRINT...:** keeps your own row as a blueprint, saved as a .pr7blueprint file in Documents/Paragon PR7-S/Blueprints. Your blueprints are listed after ours, and DELETE removes them (ours can't be deleted).
+
+**Our ten, from the songs you chose.** Each form was read from your files for its layout only: sections, bars, repeats, chords as steps of the key, tempo. No notes were taken. The names are ours:
+
+| Blueprint | Song | Tempo, key | Bars |
+|---|---|---|---|
+| STADIUM BUILD | Edge of the Earth | 110, F minor | 122 |
+| SEVEN-BAR CYCLE | The Ghost Woman and the Hunter | 100, A minor | 72 |
+| RAP VERSE, SUNG HOOK | Papercut | 75, C# minor | 58 |
+| QUIET VERSE, LOUD RETURN | The Emptiness Machine | 91, D minor | 74 |
+| RIFF BOOKENDS | Remember | 82, C# minor | 84 |
+| PIANO HOOK FIRST | Call Me When You're Sober | 93, E minor | 82 |
+| CLEAN INTRO, LONG CLIMB | Enter Sandman | 120, E minor | 169 |
+| CLEAN VERSE, HEAVY CHORUS | Until It Sleeps | 115, G# minor | 126 |
+| RIFF-LED LIFT | At the End of August | 99, A minor | 91 |
+| STILL VERSE, HUGE CHORUS | Circle With Me (from the tabs) | 103, Ab minor | 100 |
+
+Where the songs leave 4/4, the layouts were kept in 4/4 (your rule):
+- Remember's odd-metre verse bars count as whole bars.
+- Until It Sleeps' 6-beat refrain phrases are laid out as 12 bars.
+- At the End of August's 2/4 stops are a STOP into each chorus.
+- Circle With Me is written at 206 in half time, so it's laid out at 103 with half the bars.
+
+Our guesses:
+- **Section types:** each block's section type is our pick for its character, and its chords are read from power chords: where a chord's third isn't played, the key decides major or minor.
+- **The C chords in Edge of the Earth** could be minor or major.
+
+## 0.151.0
+
+**Eight intro types and four outro types from your 54 new songs** (round four, the fifth group). The intros are in the intro's TYPE menu after KEYS ALONE, THEN THE RIFF; the outros in the outro's (and ending's, tag's, coda's) after TOM WALL UNDER THE LAST CHORD. Each writes the guitar, bass, keys and drums, two options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.
+
+Intros:
+- **SNARE-ROLL GROOVE, THE BAND JOINS:** the drums alone with the snare on every sixteenth, then the riff, then octaves in sixteenths over it, a stop halfway through the last bar. (Don't Stay)
+- **HYMN, THEN DOUBLE KICK UNDER IT:** organ chords alone with a timpani roll (the floor tom) at their end, then a hit on each one and a four-sixteenth pickup over the kick on every sixteenth. (The Heart of Everything)
+- **QUARTER STRUMS OVER AN OFF-SIXTEENTH SNARE:** full chords strummed on the beats with a high tone on 2, the snare off the sixteenths over the pedal hat, the bass out. (Denial)
+- **SIDE STICK AND HATS ON THE RIFF:** no kick or snare, the side stick and closed hats exactly on the riff, a shaker in sixteenths. (Part of Me)
+- **HAND PERCUSSION ALONE, THEN THE RIFF:** claps, tambourine and cowbell alone, then the muted riff, then the kit and the bass. (Given Up)
+- **ONE CHORD STRUMMED 3+3+3+3+4, RIFF JOINS:** the key's chord strummed on 3+3+3+3+4 alone, then the low riff and the bass under it. (Keep Away)
+- **RIFF ALONE, SIXTEENTH ROOT PEDAL JOINS:** the riff alone, then the bass's root in sixteenths, then the hats with the snare on 4, then the kick. (One Step Closer)
+- **SWELLS, THEN A FIXED HIGH FIGURE, THE KIT LAST:** clean chords held three beats, then a fixed high three-note figure with bass eighths, the hats from a quarter in, the kit last. (Somewhere I Belong)
+
+Outros:
+- **BURSTS OFF THE BEAT TO THE END:** bursts of five sixteenths off the beat with high octave stabs between them, ending on one burst held, the kick and a crash on the bursts. (Trust)
+- **BASS RIFF ALONE TO THE END:** the bass alone on its riff, everyone else out (or one chord held over it, a kick on each one). (Keep Away)
+- **CALL BAR, ANSWER BAR, CUT:** a bar of doubled hits answered by a bar of eighths, the last bar cut after beat 2. (Somewhere I Belong)
+- **OSTINATO AND BEAT TO THE END:** a two-note keys figure on every eighth and a plain beat to the end, the band out; or the figure alone for the last quarter. (What I've Done)
+
+Left out: the readers' FADE BY VELOCITY (a fade every lane would get, not a type of its own).
+
+## 0.150.0
+
+**Fourteen bridge types and four breakdown types from your 54 new songs** (round four, the fourth group). The bridges are in the bridge's TYPE menu (and the middle 8's, break's, instrumental's) after DRUMS DROP OUT, THE BAND CARRIES; the breakdowns after KEYS ALONE, THEN RINGING HITS. Each writes the guitar, bass, keys and drums, two options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.
+
+Bridges:
+- **PARALLEL CLASH OVER THE BASS:** the bass alone round its root in eighths, then a three-note clash a half step over it on every eighth, over half time with crash eighths and a snare roll to end. (Given Up)
+- **ORCHESTRA ALONE, THEN THE WALL:** strings and choir alone for the first half, then root sixteenths on guitar, bass and keys with kick pairs in threes. (The Heart of Everything)
+- **SNARE CARPET OVER THE FLOOR:** the guitars and bass out, a one-note keys loop, the snare on every sixteenth but one over four on the floor, piano from halfway, kick eighths at the end. (In My Remains)
+- **LONG PULSE BUILD:** the kick on every beat, the snare coming in by stages (a pickup, eighths, sixteenths), a high dyad in eighths with the key's fifth fixed on top. (Iridescent)
+- **PAIRS EVERY THREE UNDER A HELD CHORD:** low pairs every three sixteenths under a high chord held, the kick on the pairs, a tom fill to end. (Forsaken)
+- **THE HOOK'S RHYTHM ON LOW CHORDS:** power chords on the hook's rhythm, two bars on the key's root and two on the half step over it, then the chords in eighths. (Heavy Is the Crown)
+- **DOUBLED HITS ON ONE AND TWO, THEN HOLD:** doubled hits on 1 and 2 with the fifth under, then the chord held; bars 5 and 6 without the snare. (Somewhere I Belong)
+- **BURSTS OF FIVE, LAYERED:** bursts of five sixteenths, then fours, then a 3+3+3+3+4 strum laid over them, the backbeat coming in with it. (Keep Away)
+- **BELL GROOVE UNDER A TWO-CHORD DRONE:** root, fifth and ninth rung on the key's root and its flat third in turn over a ride bell groove. (I Stand Alone)
+- **HIGH CHROMATIC FALL OVER THE CHUG CELL:** the bass alone on a chug cell, then two high notes falling a half step each half bar, the snare only mid-bar. (The Howling)
+- **TRIBAL TOMS, DOTTED OCTAVES:** no snare or cymbals, tribal toms over the kick, root octaves on two figures in turn, high tones on the dotted quarters. (Denial)
+- **UNISON STABS OVER HATS ONLY:** everyone stabbing root octaves together over only the hats, three hits to end. (New Divide)
+- **EIGHTHS WITH AIR AT BOTH ENDS:** bars in pairs, power chords in eighths, then eighths from beat 2 to the and of 3 only. (Faint)
+- **ARPEGGIO UP AN OCTAVE, BASS STEPPING DOWN:** the drums out, an arpeggio an octave up, the bass falling a scale step a bar, a snare pickup to end. (All I Need)
+
+Breakdowns:
+- **HALF-BAR CHUGS, HALF STEP EVERY FOURTH:** low chugs in the first half bar, every fourth bar a half step up, the kick doubling them, crashes after. (From the Inside)
+- **PAIR STABS, THEN THE THREES:** pair stabs on 1 and 3, then tremolo chords with the snare and kick in threes against each other, an octave tremolo on top. (Wasteland)
+- **QUIET FALLING CELL OVER A LAMENT BASS:** the drums out, a quiet three-note cell falling a step a bar over a lament bass (root, flat seven, flat six, five). (The Howling)
+- **HIGH NOTE TREMOLO OVER A HALF-TIME CHUG:** a low unison chug over half time, a high ninth tremolo-picked over it, tom pickups. (Enemy)
+
+**Fixed:** 0.147.0's HELD CHORD A BAR, TWO HITS EVERY FOURTH had a guitar option named like an older type's (HELD TWO BARS), so the older one's part played in its place: it's RUNG TWO BARS AT A TIME now and plays its own (one power chord rung two bars at a time). Songs keep their choice.
+
+## 0.149.0
+
+**Six pre-chorus types and three post-chorus / interlude types from your 54 new songs** (round four, the third group). The pre-choruses are in the pre-chorus's TYPE menu after OCTAVES ROCKING TO THE TRITONE; the post-choruses are in the post-chorus's and interlude's after SNARE ONLY ON FOUR AND FOUR-AND. Each writes the guitar, bass, keys and drums, two to four options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.
+
+Pre-choruses:
+- **STOP BARS IN TURN WITH THE RIFF:** a bar of the riff, then a bar stopped on one hit, in turn. (Forsaken)
+- **MARCHING SNARE OVER HELD CHORDS:** no kick or cymbals, a soft snare figure under whole-note chords rising, stopping halfway through the last bar. (Heavy Is the Crown)
+- **DRUMS OUT, KEYS PULSE AND PUSHES:** the kit out, the keys pulsing eighths with the guitar pushing into each change. (The Emptiness Machine)
+- **SIXTEENTH ROOTS STEPPING DOWN:** one root a bar in sixteenths, falling down the scale, then bursts of six and five, then high clashing stabs. (Trust)
+- **SIDESTICK DROP:** the kick on the 3+3+2 anchors with a side stick, everything stopping after the and of 2 in the last bar. (Figure.09)
+- **HIGH PEDAL IN 3+3+2 OVER A MOVING BASS:** a high note picked in 3+3+2 while the bass moves under it. (P5hng Me A*wy)
+
+Post-choruses / interludes:
+- **OFF-BEAT LOW DYADS UNDER A HIGH DRONE:** low root-and-fifth dyads on the off-beats, a high note held over them. (Denial)
+- **CLAPS AND ONE GUITAR:** claps on every beat, no kick, one guitar playing the riff. (Bleed It Out)
+- **BASS RIFF ALONE UNDER A HELD HIGH NOTE:** the bass's riff alone with one high note held over it. (Moon Baby)
+
+## 0.148.0
+
+**Eleven chorus types from your 54 new songs** (round four, the second group). They're in the chorus's TYPE menu after FOUR EIGHTHS, THEN A PUSH. Each writes the guitar, bass, keys and drums, two to four options a lane; the bass's last is LOCKED WITH THE KICK. Shapes only, our names.
+
+- **ACOUSTIC STRUM CHORUS:** full chords strummed in sixteenths (x==x-xx==x-xxxxx), whole-note bass, strings on the root. Its drums are the song's escalation: none, toms alone on 3+3+3+3+4, toms over four on the floor, then a dotted kick with a backbeat. (Angel's Son)
+- **BURST & HOLD, THEN A CARPET IN 3+2+3:** four bars of a sixteenth burst into a held chord (the snare and crash only on 4), two bars of 3+2+3 chords over kick sixteenths, two bars of a half-time riff. (Forsaken)
+- **BREAKBEAT UNDER HELD CHORDS:** a double-time broken beat (or its thinned form, the kick only on 1) under a fixed four-note keys ostinato and a clean 3+3+2 figure. (Breaking the Habit)
+- **STOMP IN 3+3+2:** every lane on 3+3+2 over a kick and floor tom stomp with a soft snare on 2 and 4; or an octave wall over it. (Castle of Glass)
+- **FALLING PUSHED CHORDS:** two root chugs on 1, then power chords pushed onto the ands of 2, 3 and 4, each a scale step lower. (Whatever)
+- **HITS, THEN A WALL THE BASS LEAVES:** two stabs, then a sixteenth wall; the bass only on the stabs; a crash and splash on the eighths. (Lying From You)
+- **RING THE ONE, RUN THE REST:** an open chord rung on 1, chords running down the scale through the bar, the half step under the root pushed on the and of 4, a china on the quarters. (Greed)
+- **BASS SIXTEENTHS, GUITARS OUT:** root sixteenths on the bass, a fixed-top keys ostinato, a hip-hop break; the guitars out, stabbing the off-beats or in a wall (use them in that order, one per chorus, to make the choruses grow). (In Pieces)
+- **THREE CHORDS, THEN A HELD BAR:** three chords on 1, the and of 2 and 4, the next bar holding the last; the snare only on 3, two kicks into the next pair. (Heavy)
+- **HELD CHORD WITH A RINGING TOP, BUSY KICK:** the chord struck and held with its ninth ringing on top, pushed into the next on the and of 4, over a busy kick, ride bell and a china on 4. For slow songs. (Wasteland)
+- **CHANGES ON THREE:** open eighths with each chord arriving on beat 3 (a passing chord on beat 2 every other bar) over four on the floor. (Burn It Down)
+
+Where a chord moves down a step from the low string's root, it's written from the octave: the 7-string's low A has nothing under it.
+
+## 0.147.0
+
+**Eleven verse types from your 54 new songs** (round four, the first group: verses, then choruses, pre/post-choruses, bridges and breakdowns, intros and outros, transitions, then the options and new versions of styles we have). They're in the verse's TYPE menu after MUTED PEDAL, ACCENTS IN THREES (and in the pre-chorus's, after its own). Each writes the guitar, bass, keys and drums together, with two or three options a lane; the bass's last is always LOCKED WITH THE KICK. Shapes only, our names; the songs are named here as where each came from.
+
+- **HOOK OVER THE BEAT, GUITARS OUT:** the guitars out (or only a pickup chord every fourth bar), a keys hook fixed over every chord (the key's root and fifth in eighths, or the key's triad stabbed on 4+2+4+2+4), whole-note bass or pickups only, a sparse backbeat or the snare on 2 and the and of 3. (Heavy Is the Crown, What I've Done, By Myself)
+- **SEQUENCER VERSE, NO KIT:** one chord held three bars, an arpeggiator, whole-note bass, only clicks for drums (or the kick on the quarters with toms, no snare). (New Divide)
+- **HALF-STEP DROP PAIRS:** two-sixteenth stabs on 1, the a of 2 and 4, the chord a half step above dropping onto the root, the bass on its own sixteenth riff; or power chords on the 3+3+2 anchors with a flat-two burst. (Denial, Figure.09)
+- **TOM BURST WITH THE CELL, THEN SILENCE:** three hits a dotted eighth apart with the toms rolling under them, then a silent bar. (Awake)
+- **TWO-NOTE SEESAW IN EIGHTHS:** a high chord tone and the fifth under it in turn, climbing each half bar, over a two-bar bass and kick riff, the snare on 3 (or a side stick and hats on the riff). (Part of Me)
+- **OFF-BEAT STABS WITH THE SNARE:** short chords on every off-eighth, the snare with them, a keys ostinato over; or a hip-hop break. (In Pieces)
+- **TRILL HOOK OVER HATS:** a high two-note trill alone over a hats-only groove, or over a low chug cell. (Beautiful)
+- **HELD CHORD A BAR, TWO HITS EVERY FOURTH:** a chord rung each bar over a double-kick groove; every fourth bar two hits and a snare and tom fill. (Whatever)
+- **STRINGS ALONE VERSE:** the band out, strings over a pad walking down a step a bar; a kick and tom on 3 at the end. (Forsaken)
+- **TREMOLO LINE IN GROUPS:** a single-note line, each note a sixteenth burst in groups of 4, 3, 3 and 6, over root sixteenths. (Wasteland)
+- **RIFF BARS AND THIN BARS IN TURN:** two bars of a chug cell, two thin bars, a tom rumble every fourth pair. (The Howling, its 6/8 riff as straight 4/4)
+
+The 12/8 ballad feel two songs have is left out, as you chose: everything stays in straight 4/4.
+
+## 0.146.0
+
+**The five guitar ideas from your 61 songs as verse types of their own** (you asked, after 0.145.0 left them out of the option lists). They're in the verse's TYPE menu after BASS GROOVE, GUITAR SQUEALS (and so in the pre-chorus's too, which takes the verse's types after its own). Each writes the guitar, bass, keys and drums together, so the bass's DOUBLES THE GUITAR always doubles the riff you hear.
+
+- **OCTAVE-JUMP PEDAL:** the low root in sixteenths jumping to its octave and the half step over it (xxxxxx-x-xxxxx--). Guitar: the pedal, or the pedal with a high note held a bar over it, stepping down the key. Drums: sixteenth hats with the kick on the pedal's notes, or half time with sixteenth hats. (It's On)
+- **PEDAL 7+3+3+3:** the low root on seven sixteenths, then three groups of three, a power chord opening each group. Guitar: the chords moving a scale step each group, or one chord. Drums: the kick with the groups, or a rock beat. (Opiate)
+- **DRIVEN ARPEGGIO:** a distorted broken chord in eighths over two octaves. Guitar: all through, or with the last bar's chord rung. The bass's first option is the root on 3+3+2 eighths. Drums: the ride on the quarters with a backbeat, or a half-time ride. (Medicate)
+- **CHUG PAIRS, HIGH PINGS:** low muted chug pairs with two short high notes in the gaps of beats 3 and 4. Guitar: with the pings, or the pairs only. Drums: the kick on every chug, or a plain backbeat.
+- **MUTED PEDAL, ACCENTS IN THREES:** a muted root pedal in sixteenths, accented root-fifth dyads on 3+3+2+3+3+2. Guitar: on each chord's root, or the pedal staying on the key's root while the accents follow the chords. Drums: the kick on the accents, or a driving eighths beat.
+
+The bass under each: DOUBLES THE GUITAR, ROOTS HELD, LOCKED WITH THE KICK; the keys SILENT or HELD PADS, plus 0.145.0's keys and drums options after them. Shapes only, our names; the songs are named here as where each came from.
+
+## 0.145.0
+
+**More drums and keys options inside every section type**, the last group in your order: the smaller ideas from your 61 songs that weren't whole sections. Under any named section type (not STANDARD), the drums and keys lanes' style menus list these after the type's own options, so songs you've built keep their choices.
+
+- **Drums:** DOUBLE-TIME PUNK BEAT (the snare and an open hat on every off-beat eighth), SNARE ON EVERY BEAT, KICKS BETWEEN, CRASH EIGHTHS, FULL TIME, PHRASE-END SNARE RUN (every fourth bar the snare runs sixteenths through the second half), ELECTRONIC HALF-TIME LOOP (the pedal hat and a tom on 3), TOM RUN EVERY BAR, TOM ROLL CARPET (no kick or cymbals), INDUSTRIAL BROKEN BEAT (with a china), DISPLACED BACKBEAT.
+- **Keys:** SYNTH BASS SIXTEENTHS, STRINGS ON THE QUARTERS (in octaves), PIANO ARPEGGIO IN 3+3+2, PIZZICATO ARPEGGIO, TIMPANI ROLL RISER (the key's note low, a roll swelling every fourth bar).
+- The bass's LOCKED WITH THE KICK follows these drums too.
+- **Not added: the guitar ideas** (an octave-jump pedal, a 7+3+3+3 pedal, a driven arpeggio, chug pairs with high pings, accents in threes). The bass's DOUBLES THE GUITAR options read each section type's own guitar part, so a new guitar option there would leave the bass doubling a riff you don't hear. They'd fit as their own section types instead: say if you want them.
+
+That finishes your list from the 61 songs (everything but the solos).
+
+## 0.144.0
+
+**21 new transitions from your 61 songs**, the sixth group in your order. They're on each block's INTO THE NEXT menu (the block editor and the block's right-click menu), after SHORT BAR: 3 BEATS. A transition rewrites how a block hands over to the next one, usually its last bar or two, and leaves the melody alone.
+
+- **3+3+2 PICKUP, CUT ON THREE:** the band chugs two beats with the snare on 3+3+2, hits beat 3 together, then silence. (I'm Not Okay)
+- **DOTTED-EIGHTH FILL:** the chords ring while the snare and toms hit every three sixteenths across the last bar. (Here to Stay)
+- **RIFF ALONE BAR:** the last bar the guitar's riff alone, with a kick and a snare on its last two sixteenths. (Going Under)
+- **BURST PICKUP:** everyone on four sixteenths over the last beat, a snare fill under them. (Helena)
+- **SCALE RUN UP:** the bass and the guitar run up the scale in sixteenths into the next block's first chord, the snare rolling. (Shame, So Cold)
+- **BAND EIGHTH RAMP:** the last two bars everyone on the next chord in eighths, the snare and toms on every eighth, sixteenths over the last beat. (Intolerance, Medicate)
+- **HALF-STEP PICKUP STABS:** two power chords on the last beat, the root then a half step up, a crash on the last sixteenth. (It's On)
+- **HELD BAR:** the guitars ring one chord the whole last bar, the bass out, the drums keep time. (No One, Prayer)
+- **TREMOLO HOLD:** the root tremolo-picked over a held bass note. (Part of Me, Opiate)
+- **RIFF CUT SHORT:** everyone stops after the last bar's twelfth sixteenth. (Remember, Prayer)
+- **TWO SILENT BARS:** the last two bars silent. (My Gift To You, H.)
+- **DROP TO BASS AND KICK:** the last bar only the bass and the kick. (Tourniquet, Trash, Alone I Break)
+- **TOM CASCADE:** four falling groups of tom hits across the last bar, high to floor. (Voices)
+- **STRINGS RUN, THEN HOLD:** the drums out, the keys running up in sixteenths then holding the chord with the band. (What You Want)
+- **HIT, TWO PUSHES, SILENCE:** a hit on the one, two stabs on the a of 2 and the e of 3, then silence. (Diary of Jane)
+- **SNARE BURST, HIT AND HOLD:** a burst of sixteenth snares on beat 2, then everyone hits beat 3 and holds. (Diary of Jane)
+- **LONG STOP, BELL COUNT-IN:** a chord held a bar, then a bar of silence with the ride's bell counting in. (Divine)
+- **UNISON EIGHTHS BAR:** the last bar the kick, snare and floor tom on every eighth with the band. (Sober, The Ghost of You, Ten Thousand Fists)
+- **CYMBAL ROLL BAR:** the last bar the bass alone under hats, then crashes in sixteenths. (Ten Thousand Fists)
+- **GROWING CHORD:** the last bar the guitar in sixteenths, its chord growing from two notes to five over toms. (Stinkfist)
+- **KICK & SNARE ROLL:** the last half bar the kick and the snare in turn on every sixteenth. (The Ghost of You)
+
+The song names are only here for you; the app shows our own names.
+
+**Next:** the last group, the options inside the existing types (new drum, keys, guitar and bass options from the same songs).
+
+**Checked:** a test runs all 21 over an eight-bar block and checks four things for each: the melody is untouched, the earlier bars are as they were, nothing runs past the end, and the band's lanes change. It also checks some of their shapes:
+- the two silent bars, and the cut after the twelfth sixteenth;
+- only kicks in DROP TO BASS AND KICK;
+- the dotted fill on sixteenths 4, 7, 10 and 13;
+- the tom cascade falling high to floor;
+- the scale run ending a step under the next chord's root.
+
+Not checked here: how they sound (your ears).
+
+## 0.143.0
+
+**Eight new intro types and eight new outro types from your 61 songs**, the fifth group in your order. The intro's TYPE menu lists them after GAPPED PEDAL, BUILD INTO THE VERSE; the outro's (and the ending's, tag's and coda's) after SINGLE-NOTE BAR, CHORD BAR. Every lane has two options, and the bass three (the last LOCKED WITH THE KICK).
+
+**Intros:**
+- **HOOK KEPT, BAND BUILT UNDER IT:** a hook on the keys alone (the chord's root and fifth rocking in sixteenths, or high eighths), carrying on unchanged while the band builds under it. The drums come in a quarter of the way, before the bass (whole notes, then a sixteenth pedal). The guitar's riff arrives at the landing, with the kick on 3+3+2 and a crash on every eighth. (Diary of Jane, Farther Away, Falling Away From Me, Everybody's Fool, Ghost of You)
+- **RIFF GROWS FROM THE RIDE:** the ride alone in sixteenths, then a high tritone stab, then half the riff, then all of it with the kit. (Blind)
+- **TOM GROOVE ALONE, THEN THE RIFF:** the toms and the kick in 3+3+2 with no cymbals, high stabs just after the beat, then the band on a sixteenth chug riff. (What You Want)
+- **TOMS ON THE CELL:** a six-sixteenth cell laid 6+6+4. The toms play its first two, and the kick, the snare and the guitar's root-and-tritone dyad its third and fifth. (Divine)
+- **PADS, THEN THE MACHINE LOOP:** pads alone, then a piano ostinato and a machine loop with the pedal hat on every sixteenth and no snare. (Haunted, Imaginary)
+- **HEARTBEAT KICK:** the kick alone like a heartbeat, a soft tremolo note coming in, quiet swelled chords, then the toms building. (Third Eye)
+- **DRONE, DRUMS, THEN THE RIFF:** one clashing note held alone, then the drums alone in sixteenth hats, then the riff with the band. (It's On)
+- **KEYS ALONE, THEN THE RIFF:** a sixteenth keys figure alone, then the riff and the band come in under it. (My Last Breath)
+
+**Outros:**
+- **UNISON LINE TO THE END:** a single-note line on every eighth answered by held chords, then power chords on every eighth to end on one held. (Intolerance, Lateralus)
+- **DOTTED-EIGHTH HIT CHAIN:** the band hits on the one, then every three sixteenths across the bar lines, the last chord held. The kick and a crash come with every hit. (46&2, Undertow, Whisper)
+- **UNISON CLIMB TO THE END:** everyone climbing in sixteenths a scale step a beat. The kick fills in from quarters to every sixteenth, then a hit to end. (Vicarious)
+- **THREE DOTTED PUSHES, THEN RING:** chords in eighths, then three pushes on 1, the a of 1 and the and of 2, with a crash on each and the last chord rung. (Taking Over Me, So Cold)
+- **HITS AT BOTH ENDS:** the band only on 1, 1-and, 4 and 4-and, the last bar one hit. (Sober)
+- **CHANT OVER A PEDAL BURST:** a low pedal burst a bar with a choir climbing a note a bar over it, and crashes on the dotted eighths to end. (Whisper)
+- **BAND DROPS TO PADS AND PIANO:** the band stops on a splash with the key's note held, then strings pulse and a high piano plays to the end. (Imaginary)
+- **TOM WALL UNDER THE LAST CHORD:** the riff, then the last chord held over the kick and the floor tom on every sixteenth. (Aenima)
+
+The song names are only here for you; the app shows our own names.
+
+**Next:** the 21 transitions (INTO THE NEXT), then the options inside the existing types.
+
+**Checked:**
+- A test makes every option of every lane in all 16 types and checks each is a different part.
+- Another checks their shapes: the hook from the start with the drums a quarter in and the guitar at the landing; the heartbeat's kicks; no drums before the loop and the pedal hat on every sixteenth; the hit chain every three sixteenths; the hits only at both ends; the tom wall's 64 sixteenths; the band dropping out after two bars.
+- Not checked here: how they sound (your ears).
+
+## 0.142.0
+
+**Eleven new bridge types and five new breakdown types from your 61 songs**, the fourth group in your order. The bridge's TYPE menu lists them after KEYS CARRY THE CHORUS ALONE (before CREEP, OPEN CHORDS and DRONING). The breakdown's lists them after ARPEGGIO, THEN THE RIFF UNDER IT (before HEAVY CHUG and STACCATO CHUG). Every lane has two options, the bass three (the last LOCKED WITH THE KICK). Only TREMOLO CLUSTER OVER OPEN CHORDS gives the lead a part of its own.
+
+**Bridges:**
+- **CLEAN FIGURE, THEN DISTORTED:** a clean figure over the kick alone for the first half. Then the distorted guitars take the same figure, hats come in, and a snare roll leads into the chorus. (No One)
+- **TOM OSTINATO, BAND THIN:** no cymbals at all. Two toms play an eighth-note ostinato, and the bass comes in by stages: a root every two bars, then root-and-fifth, then eighths. A very high held note rings over it, with a low stab every fourth bar. (Intolerance, Lateralus)
+- **TOMS DOUBLE THE PEDAL:** muted pedal bursts with the toms exactly on them and no kick or cymbals. From halfway a slow line falls a step a bar and the kit comes back quietly. (Vicarious)
+- **DOMINANT PEDAL BUILD:** the whole bridge on the key's fifth, building in three stages: quiet neighbour notes in half time, then muted sixteenths with a soft high trill, then power chords over a double-kick carpet and a roll into the chorus. (Believe)
+- **TREMOLO CLUSTER OVER OPEN CHORDS:** open ninth (or sus) chords rung under an unbroken high half-step cluster, tremolo-picked on the lead. The bass plays up high over a broken beat that drops out halfway. (Falling Away From Me)
+- **PIANO AND CHOIR ALONE:** everyone out but the piano's rising quarter notes and the choir holding the chord, then a snare roll brings the band back. (Everybody's Fool)
+- **TRESILLO BOTH HALVES:** chords on 3+3+2 in each half bar, the kick on the first half and the snare with a crash on the second. (Voices)
+- **BASS ALONE, DOTTED:** the bass alone in double stops on a dotted hemiola across two bars, or pairs in 3+3+2. The drums come in tribal halfway: kick pairs with the floor tom, pedal hat. (Sober, Stinkfist)
+- **RIFF ON THE FOUR, NO BACKBEAT, THEN HOME:** the riff on the key's fourth with the kick on it and the ride, no snare. Then on the tonic with the backbeat and open hats. (Here to Stay)
+- **BASS HOLDS THE GRID, THE BAND CARVES IT:** the bass keeps every pair of sixteenths, while the band plays only a few of them in the second half. The snare doubles the guitar, with the kick in the holes. (Divine)
+- **DRUMS DROP OUT, THE BAND CARRIES:** chords in eighths growing every four bars. The drums stop two and a half bars in and the band carries it alone. (Save Yourself)
+
+**Breakdowns:**
+- **FOUR ON THE FLOOR, NO SNARE:** the kick on every beat and no snare. The guitars are nearly out (a high held note, then a muted pulse), and the bass alternates a whole note with a 3+3+2 bar. The last two bars build with open hats and a snare roll. (Got the Life)
+- **OCTAVE PUMP WALL:** the root and its octave pumped in eighths, the kick on every eighth, the snare and a crash on every beat. (Medicate)
+- **BASS RIFF ALONE, GHOST GROOVE JOINS:** the bass alone on a 3+3+2 riff. A ghost-note groove with no backbeat joins halfway, with high pings on beat 3. (Blind)
+- **SEVEN-BEAT RIFF ACROSS THE BAR:** a riff seven beats long running across the 4/4 bar lines, so it starts a beat earlier each time. A steady backbeat plays under it. The other option plays it a bar plus three beats with beat 4 rung. (Down With the Sickness)
+- **KEYS ALONE, THEN RINGING HITS:** the keys alone, then chords rung two bars each over half time, ending in a 3+3+2 pickup. (I'm Not Okay, Going Under)
+
+The song names are only here for you; the app shows our own names.
+
+**Next:** the intros and outros (16 types).
+
+**Checked:** a test makes every option of every lane in all 16 types and checks each is a different part. Another checks their shapes:
+- no cymbals in the tom ostinato, and the bass's three stages;
+- only the kick in the clean figure's first half, then hats;
+- the dominant pedal on the key's fifth;
+- the pump's kick on every eighth and a crash on every beat;
+- no snare in FOUR ON THE FLOOR until its build;
+- the seven-beat riff coming round every seven beats;
+- nothing but the keys in PIANO AND CHOIR ALONE.
+
+Not checked here: how they sound (your ears).
+
+## 0.141.0
+
+**Seven new pre-chorus types and six new post-chorus / interlude types from your 61 songs**, the third group in your order. The pre-chorus TYPE menu lists them after THREES ACROSS THE BAR. The post-chorus and interlude menus list them after CHROMATIC WOBBLE. Each type sets every lane: two options for the guitar, the keys and the drums, and three for the bass, whose last is always LOCKED WITH THE KICK. Only RING & STAB UNDER CYMBAL EIGHTHS gives the lead a part of its own; the others leave the lead on its own styles.
+
+**Pre-choruses:**
+- **KICK OUT, LOW TREMOLO:** the kick drops out. Low dyads are tremolo-picked, rocking a beat at a time between the root and the half step over it. Hats (or the ride) and the snare carry the time, with a fill to end. (Got the Life)
+- **UNISON ROCKING RIFF:** the guitars and the bass in unison on a riff rocking between the root and the step under it, with a rock beat and open hats. (Trash)
+- **RING & STAB UNDER CYMBAL EIGHTHS:** each half bar a chord rung, then a high stab. A cymbal plays every eighth (crash and splash in turn), with a sparse kick. The lead can hold one high bent note a bar. (Stinkfist)
+- **UNISON EIGHTHS BUILD:** everyone on every eighth, the kick, the snare and the floor tom together. The last bar hits only on 1, 1-and, 4 and 4-and, with a roll into the chorus. (Sober, The Ghost of You, Ten Thousand Fists)
+- **TREMOLO PEDAL, THEN OCTAVE PUMP:** in thirds. First the root tremolo-picked under a chord held every two bars, then under chords on 1 and 3. Then the root and its octave pumped in eighths, with the kick on every eighth and a crash on every beat. (Opiate)
+- **PAIRS IN 3+3+2, RING BAR:** pairs of sixteenths on 3+3+2, with every fourth bar a chord rung. (Coming Undone)
+- **OCTAVES ROCKING TO THE TRITONE:** low octaves rocking between the root and its tritone, the bass with them, over a pushed kick. (Falling Away From Me)
+
+**Post-choruses and interludes:**
+- **DOWN TO THE LOOP:** the band drops to a loop. A one-note synth arpeggio with a rising tag at the end of each bar (or a sequenced synth bass), high muted guitar bursts, a tresillo bass and a broken industrial beat, or closed hats only. (Save Yourself)
+- **HATS AND ROOTS:** only busy closed hats and the chorus's roots in halves, with two high notes a bar over them. (Here to Stay)
+- **HITS ON FOUR:** the band hits once a bar, on beat 4, with the next chord, and lets it ring. (BBK)
+- **UNISON CHROMATIC RUNS:** everyone on sixteenth runs climbing a half step at a time in odd groups (3+4+3+3+3), closed by a bar of quarter-note hits. (Undertow, Vicarious)
+- **DOTTED NOTE OVER THE RIFF:** one high note every three sixteenths over the bass's sixteenth pedal riff. (46&2)
+- **SNARE ONLY ON FOUR AND FOUR-AND:** chords held two bars with high stabs answering. The snare plays only on beat 4 and its and. (Sober)
+
+The song names are only here for you; the app shows our own names.
+
+**Next:** the bridges and breakdowns (16 types).
+
+**Checked:** a test makes every option of every lane in all 13 types and checks each is a different part. Another checks their shapes: no kick in KICK OUT, the build's eighths and its last bar, the hits only on beat 4 with the next chord, the snare only on 4 and its and, a note every three sixteenths, and the loop's twelve sixteenths and rising tag. Not checked here: how they sound (your ears).
+
+## 0.140.0
+
+**23 new chorus types from your 61 songs**, the second group in the order you chose. They're on the chorus's TYPE menu after CHUG BAR, CHORD BAR, and a post-chorus lists them too. Each sets what the guitar, bass, keys and drums do, with two options per lane (the bass three, the last always LOCKED WITH THE KICK). Ten of them also give the lead lane two options of its own; the others leave the lead on its own styles.
+
+- **DOTTED STREAM:** power chords on 3+3+3+3+2+2 every bar, each ringing into the next. The bass and the kick are on the dotted hits, with open hats on the eighths. A lead line can ride the same grid. (Prayer, Remember)
+- **NEIGHBOUR TRILL WALL:** the full chord on every sixteenth. The bass trills its root with the scale note under it, over a plain backbeat. A sixteenth run up the scale leads into the next part. (Shame, So Cold, Stinkfist)
+- **TWO RUNG CHORDS A BAR:** a chord struck on the one and again on the and of 2 (or a chord a third up), both rung, with a crash on each. (Somebody Someone, Taking Over Me, Stinkfist)
+- **THREE DOTTED PUSHES:** one bar a rung chord, the next three chords pushed on 1, the a of 1 and the and of 2, the last held. The strings double them high. (Taking Over Me, So Cold)
+- **FOUR ON THE FLOOR, DYAD RIFF:** a high sixteenth dyad riff over four on the floor, with the open hat on every off-beat. Every other bar the changes fall on 3+3+2. (Got the Life)
+- **SPLIT ON THE AND OF THREE:** two chords a bar, the next bar's chord pushed in from the and of 3. The kick is on the accents and the ride on the eighths. (Going Under)
+- **TREMOLO DYADS OVER RUNG CHORDS:** chords rung in halves under high tremolo-picked dyads. The floor tom plays 1, 1-and, 3 and 3-and, with a dotted fill to end. (Here to Stay)
+- **DOTTED CHORDS, HIGH TREMOLO NOTE:** full chords on a dotted grid under one high chord note tremolo-picked, with a crash on every eighth. (Diary of Jane)
+- **THE RIFF IS THE CHORUS:** every guitar and the bass in unison on a low chromatic riff. The kick is on its hits and a china on the beats. (Blind, Awaken, BBK)
+- **HIGH TREMOLO DYAD OVER THE RIFF:** the low root and its tritone on a gapped grid, under a high dissonant dyad that stays the same over every chord. The hi-hat's foot can double the kick. (BBK)
+- **HELD CHORDS IN 3+3+2:** three long chords rung across each bar, the third the next chord pushed in. (Blow Me Away, Crawl Away)
+- **DOTTED PEDAL CELL:** a six-sixteenth cell running 3 over 4. Only its low root follows the chords; its top notes stay fixed. (Tourniquet)
+- **FIXED SHAPE, CREEPING ROOT:** a ringing arpeggio whose three upper notes never change while its root follows the chords, with a high two-note hook. (Trash)
+- **CHROMATIC CHORDS UNDER A FIXED TREMOLO:** power chords struck for half a bar and silent for the other half, under a high chord tremolo-picked the whole time. The tremolo is in sixteenths, your shortest note. (Thoughtless)
+- **HALF-NOTE CHORDS, OFF-BEAT OPEN HATS:** chords held in halves, the open hat only on the off-beats. The fourth bar's changes are pushed, with a tom fill. (Whisper)
+- **HIT, HOLD, BURST INTO THE NEXT:** a chord struck and held, then three sixteenths of the next chord bursting into its bar. (Haunted)
+- **PUSH BAR, CELL BAR:** one bar a held chord with sixteenths pushing into the next, the next bar sixteenth pairs. (So Cold)
+- **SYNCOPATED CHORDS WITH A PUSH BAR:** syncopated chords, then a bar that rings and pushes up three chords over the toms, with a breath bar every eighth bar. (Stinkfist; its odd meter played in 4/4)
+- **THREE-SIXTEENTH CELLS AFTER A HELD ONE:** a chord held a beat, then three sixteenths on each other beat, rocking the root and the half step. (Down With the Sickness)
+- **SHRINKING GROUPS:** four bars of eighths grouped 9, 8, 7 and 8, so the accents cross the bar lines, with a crash on each group, all in 4/4. (Lateralus)
+- **HELD ROOTS CLIMBING, PUSHED LATE:** one chord a bar struck late (on 3, or the and of 2) and held into the next, with a kick and a crash on each. (Let's Get This Party Started)
+- **FALLING CELLS IN SIXES:** three-note cells falling a half step at a time into the root, every six sixteenths. (Divine)
+- **FOUR EIGHTHS, THEN A PUSH:** four eighth-note chords, a gap, then pushes into the next bar, with a high piano pulse or strings in 3+3+2. (Imaginary)
+
+The song names are only here for you; the app shows our own names.
+
+**Next:** the pre-choruses and post-choruses (13 types).
+
+**Checked:** a test makes every option of every lane in all 23 types and checks each is a different part. Another checks their shapes: the dotted grid's hits, the trill, the pushed chord on the and of 3, four on the floor with off-beat hats, the shrinking groups' crashes on eighths 0, 9, 17 and 24, the fixed tremolo's two notes, the burst's three sixteenths, and the fixed arpeggio top. Not checked here: how they sound (your ears).
+
+## 0.139.0
+
+**Twelve new verse types from your 61 songs.** You uploaded 61 more song files and asked for every section to be built out except solos. Six readers went through every song, every section and every part (shapes only: rhythms, registers, how the parts lock together, never notes copied). That gave about 80 new section types, 21 transitions and about 40 options. You chose to build it all, verses first. This release is the verses: twelve new types on the verse's TYPE menu, after TRESILLO RIFF and before DRONING and SPARSE. A pre-chorus lists them too, after its own.
+
+Each type sets what the guitar, bass, keys and drums do, and each lane has two or three options. The bass always ends with LOCKED WITH THE KICK. The lead plays its own styles, as with the other verse types.
+
+- **BASS RIFF, HIGH NOTES RUNG:** the bass carries the riff in sixteenths (its root, a flick to the b7 under it, its octave and its fifth). The guitar only rings high notes over it: octaves, one held note a bar, or a high sus chord. The kick plays on the bass's hits. (From Awaken, BBK, Ball Tongue, Crawl Away.)
+- **RIFF BAR, HOOK BAR:** one bar the bass and the kick play a 3+3+2 figure (the root three times, the fifth three times). The next bar only a keys hook plays. The guitar is out, doubles the riff bars, or comes in halfway. (From Let's Get This Party Started, My Gift To You.)
+- **DRUMS, BASS, GUITAR IN TURN:** the verse builds in quarters. First the drums alone (toms on a 3+3+2 cell, or hats), then the bass, then the guitar's chugs, then a falling single-note line, with the snare's backbeat in the last quarter. (From Lateralus, It's On, No One.)
+- **TOMS AND OCTAVE BASS:** no snare. The toms step down the kit in sixteenths, the kick is on the quarters, and the bass jumps the octave every other eighth. The guitar rings one chord every two bars, or is out. A snare fill closes the verse. (From Shame.)
+- **TOM FIGURE VERSE:** a two-bar figure on the toms with the snare on 3. The guitars are out the first half, then palm-mute the low root on every tom hit, with the bass on the same hits. (From Farther Away.)
+- **SIX-SIXTEENTH CELLS:** cells six sixteenths long, laid 6+6+4 in each bar. The low root plays twice, then the root with its tritone (or fifth). The kick plays in pairs on each cell's start, or the toms take the cell. (From Divine.)
+- **HOLED SIXTEENTH PEDAL:** the muted low root on a sixteenth stream with two holes. The kick, with the floor tom if you like, plays the same stream under a snare on 2 and 4. There's an option with a high two-note siren over it. (From Down With the Sickness.)
+- **GUITAR CALLS, BASS ANSWERS:** the guitar plays its riff for three beats (or two) and stops. The bass answers alone in the gap with two notes ending on the root. The kick is on the call and the snare on the answer, with a tom fill every fourth bar. (From Undertow.)
+- **THREE-BAR CYCLE:** a cell of nine chugs and three rests, twelve sixteenths long, so it runs across the bar lines and comes round every three bars, all in 4/4. There's no backbeat: the snare plays every six sixteenths and a crash marks each time the cycle comes round. (From Aenima.)
+- **THREE-BAR RIFF, KICK AND BASS ON THE BEATS:** a guitar riff three bars long, so each time it starts on a different bar of the four. Under it the kick and the bass play beats 1 to 3 and the snare only beat 3. (From Coming Undone.)
+- **KICK AND BASS IN UNISON:** the guitars are out. The kick and the bass play one syncopated sixteenth line, hit for hit, with no snare for three bars. Strings hold the root, or a high bell note rings now and then. The guitars come in halfway with bursts after 2 and 4. (From Tourniquet.)
+- **BASS GROOVE, GUITAR SQUEALS:** the bass plays a sixteenth groove with a rest after beats 1 and 3, over a funk kick with ghost snares. The guitar plays only a high held squeal with vibrato in one bar and a six-note burst at the next bar's end. (From Got the Life.)
+
+The song names are only here for you; the app shows our own names.
+
+**Next, in the order you chose:** the choruses (23 types), then the pre-choruses and post-choruses, then the bridges and breakdowns, then the intros and outros, then the 21 transitions and the options inside the existing types.
+
+**Checked:** a test makes every option of every lane in all twelve types and checks each is a different part. Another checks each type's shape: the bass and the kick together where they should be, the guitar silent where it should be, the three-bar cycle coming round every twelve sixteenths, the stream's two holes, and the snare only where each type puts it. Not checked here: how they sound (your ears).
+
+## 0.138.0
+
+**IDEAS' DRUMS tab offers your Toontrack grooves, not the MediaBay's.** The FROM MY LIBRARY column on IDEAS' DRUMS tab was still using its old way from before 0.137.0: every drum MIDI file the MediaBay had scanned, ranked by its name. That's why it showed single-drum Ghosthack files (a hi-hat alone, a kick alone) when your Toontrack grooves are in PR7-D's library.
+
+- **The same pool as the composer:** the column now shows exactly the composer's drums lane pool from 0.137.0. That means PR7-D's groove library first, 66 of the 100 from your Toontrack folder, only grooves named for the section, 4 to 16 bars, none from the left-out styles, best fit to the guitar first. MORE GROOVES pages through them six at a time.
+- **The section** comes from BUILD SECTION's choice (verse, chorus...). Changing it brings that section's grooves.
+- **The MediaBay's drum MIDI** is only used when PR7-D's library has no grooves at all, as in the composer.
+
+**Synced drums play your Toontrack grooves too** (you asked). Before, drums following another lane (the SYNC key, or the drums lane's SYNC TO) skipped the library and were written by the beat maker. That's why your K94 drummer profile came back in your screenshot. Now, with library grooves on:
+
+- **The groove:** it comes from the same 100-groove pool, ranked by how it fits the lane the drums follow.
+- **The kicks:** they're put on that lane's hits. DOUBLE THE SYNC TRACK gives a kick on every hit; without it, a kick on its accents. The groove's own kicks are taken out, so the kick plays exactly with the lane it follows.
+- **Everything else:** snares, hats, cymbals and fills stay as the groove has them.
+- **Fallback:** with library grooves off (the drums lane's menu), synced drums are written by the beat maker as before.
+
+**Checked:** a test builds a PR7-D library and checks the IDEAS tab lists exactly the composer's verse pool, then the chorus's. Another checks synced drums: the library groove plays, its kicks land exactly on the guitar's accents (or every hit with DOUBLE), and its ride is kept. Not checked here: your own library, and how it sounds (your ears).
+
+## 0.137.0
+
+**The composer's drums lane, rebuilt to your rules.** Before, it picked among the handful of library grooves whose file names scored best, so ROLL kept giving you about five beats, and nothing listened to the riff. Now, for each section:
+
+1. **A pool of 100 grooves** (was 24, and ROLL only ever reached the top 5 to 8).
+2. **Two thirds from your Toontrack folder:** 66 of the 100 come from a folder with "Toontrack" in its name, 34 from your other folders. If there were ever too few other grooves, Toontrack makes up the rest.
+3. **The section's name first:** a verse takes only grooves with "verse" in their name or folders; a chorus "chorus" (or refrain, hook); a bridge "bridge" (or middle 8, interlude); and so on. If a section has no grooves of its own name, it borrows the nearest kind's: an intro, bridge or breakdown takes the verse's, an ending or solo the chorus's.
+4. **Only 4 to 16 bars.** Nothing shorter or longer is offered.
+5. **Scored by how the kick and snare fit the guitar.** Each groove's kicks are lined up against the rhythm guitar's hits: kicks that land on the riff and riff accents that get a kick both count, and snares on a backbeat or a guitar hit. The best fits come first. The style's words and the tempo still count, but only a little. The kick and snare come from PR7-D's groove index, so this works on your 100,000 grooves without opening every file.
+6. **The kick fitted a little to the riff:** where the guitar has an accent with no kick, a kick is added there (the groove's own kick sound and its usual velocity); a kick just off a guitar hit moves onto it. Two changes a bar at most, the bar's first kick never moved, snares, hats and cymbals left as written. Turn it off in the drums lane's menu: **Fit the Kick to the Riff**.
+7. **ROLL goes through all 100 in a random order.** You won't hear one again until you've heard all of them; then a new random order starts (never with the one you just heard). The order is kept with the song.
+
+**Styles left out:** any groove in a folder whose name says electronic, brushes, jazz, big band, R&B or reggae, or whose genre label says so, is never offered. That goes for fills too.
+
+**Fills** follow the same rules: never from those folders, and the Toontrack folder's first.
+
+**The drums lane's menu** lists all 100 (name, folder, bars), says how many are from Toontrack, and still lets you pick any by hand. ROLL's status line shows how many of the 100 you've heard.
+
+**Honest limits:**
+
+- **The fit is our own measure** of kick and snare against the guitar's rhythm, not a listening test. It needs PR7-D's groove index (PR7-D keeps each groove's kick and snare there); grooves found only through the MediaBay are still offered by name and length, but without the riff fit.
+- **The groove's length** comes from PR7-D's index (or the MediaBay's reading of the file); a file the index gives no length for is left out.
+- **The riff the drums fit to** is the rhythm guitar lane (or your pasted riff's lane). With the guitar lane off, the pool is ranked by name, style and tempo alone.
+
+**Checked:** tests cover the pool's size and its two-thirds share, the section and the nearest kind, the bar limits, the left-out styles and fills, the fit ranking, ROLL's full round with no repeats (and the next round), the kick fitting, and PR7-D's index read. Not checked here: your library itself (80,000 Toontrack grooves) and how the beats sound against your riffs (your ears).
+
+## 0.136.0
+
+**Solos from your 13 Stone Temple Pilots files**, read for their solos' shapes only, never copied; our own names. Three readers went through them.
+
+- **Only five lead passages turned up:**
+  - Meatplow: a solo.
+  - Piece of Pie: a solo and an outro lead.
+  - Silvergun Superman: an outro solo.
+  - Where the River Goes: a solo and an outro solo.
+  - Vasoline: a short lead break.
+- **No guitar solo in the files:**
+  - Crackerman: the file says its solo is missing.
+  - Dead and Bloated, Interstate Love Song, Plush, Sexy Type Thing, Still Remains, Unglued and Wicked Garden.
+- **What they share:**
+  - phrases breathe on a held bend, not on silence (one or two rests in 30 bars);
+  - bends on a quarter of the notes, in many sizes, mostly held to the note's end;
+  - half steps as common as whole steps;
+  - vibrato on every held note;
+  - no tune played back;
+  - one busy bar now and then, the biggest about three quarters of the way.
+
+**GRUNGE MELODY put right.** It was built in 0.69.0 from published lessons, and these files showed it was off on almost every point:
+
+- busier, with almost no rests;
+- vibrato on every held note (not only the last);
+- half-step bends as common as whole steps;
+- now and then a note slid off an octave;
+- phrases coming in off the beat and tied over the bar line;
+- no tune played again, no noise bursts, no random chromatic notes.
+
+**Seven new styles**, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+
+- **HELD-BEND TALKER:** for a long solo over a one-chord riff.
+  - Phrases end on a bend held to its end.
+  - Each bend is sized by the note it starts on: the 5th bends a minor third, the 6th a half step, the 4th and flat 7th a whole step, the root now and then a major third.
+  - One busy bar every few bars, each busier than the last.
+  - Octave double stops, hardly a rest.
+- **SPRINT, BEND, RUN DOWN:** for a short solo over a power-chord riff.
+  - Held bends, then four notes leaping two octaves up into a bend struck again and again, then sixteenth runs back down.
+  - One big over-bend, no vibrato.
+  - Two short chord stabs back into the riff to end.
+- **SLIDE-IN OUTRO MELODY:**
+  - a grace note sliding into each long note, held with slow vibrato;
+  - small whammy dips;
+  - the tune coming round with the chords.
+- **SOUR BENDS & STABS:**
+  - the key's 2nd, 4th and both sixths (no third, no flat seven);
+  - half-step bends as common as whole steps, shallow vibrato, notes slid off an octave;
+  - low chord stabs between the phrases (the soloist keeps playing rhythm), and one falling bar near the end;
+  - the fifth held over the last chords as they change.
+- **VALLEY LAUNCH:**
+  - a dip to the very bottom of the neck, then a chord arpeggio launched to the top;
+  - the climax: one high note struck six times, bent wider each time (a whole step up to two);
+  - one low note to finish.
+- **CHROMATIC VAMP FLOW:** for one-chord vamps.
+  - Two bars of sixteenth runs by step with half steps passing between.
+  - Then a bar on a note that rubs, a half step under a chord note, bent up into it.
+  - No rests.
+- **RIFF-REGISTER BREAK:** a short break down in the rhythm guitar's register.
+  - Mixolydian, with a three-note cell looped across the beat and quick half-step bends.
+  - The low flat seven bent slowly up into the root to end.
+
+**Honest limits:**
+
+- **Few files with solos:** only five lead passages in 13 files, two of them short, so each style rests on one or two solos.
+- **Left out:**
+  - Interstate Love Song's slide hook (it's an intro, not a solo).
+  - Piece of Pie's answers in parallel thirds.
+  - Meatplow's opening double stop bent together and its 2/4 bars (no meter changes, as you asked).
+
+**Checked:** tests cover:
+
+- the bend sizes by the note;
+- the bend struck again and the two stabs;
+- the grace notes and the dips;
+- the sour scale, the stabs and the fifth at the end;
+- the widening bends and the low last note;
+- the vamp's runs by step and its half-step bends;
+- the low register and the slow bend into the root;
+- GRUNGE MELODY's vibrato and both bend sizes.
+
+Not checked here: the sound in Shreddage (your ears).
+
+## 0.135.0
+
+**Solos from your 24 new files** (4 Oasis, 10 Mötley Crüe, 10 Dream Theater), read for their solos' shapes only, never copied; our own names. Five readers went through them.
+
+- **Not every file has a guitar solo:**
+  - Wonderwall, Too Fast for Love, Wild Side, Girls Girls Girls and Kickstart My Heart have none.
+  - Under a Glass Moon's solo is a synth line, so it was used with caution.
+  - In the Name of God's instrumental is played with the keys.
+- **What the readers found:**
+  - Oasis: repetition (half of every loop the same each time round), bends aimed at the key's root and fifth whatever the chord, the minor pentatonic over major chords, slow bends often let down again, no rests.
+  - Mötley Crüe: a slow, held start with the first phrase played again an octave up, whole-step bends, fast parts made of repeated or looped notes rather than scale runs, and a long held note to end.
+  - Dream Theater: almost no rests, long streams of six or eight notes a beat with the gear shifting only at bar lines, cells played twice then moved up a fourth, few bends and none inside the streams.
+
+**Three styles put right.** They were built in 0.67.0 and 0.68.0 from published lessons, and these files showed they were off:
+
+- **GLAM FLASH:**
+  - a slow start of held notes, with the first phrase again an octave up;
+  - whole-step bends;
+  - no double stops in thirds;
+  - hardly a rest;
+  - a tremolo-picked climb late in the solo, and a whole bar on the top root let down from a bend to end.
+- **SLEAZE BLUES:**
+  - a triplet shuffle;
+  - no flat five, no whammy dip and no quick run;
+  - lines that fall more than they rise, and a bend into the root to end.
+- **PROG PRECISION:**
+  - held notes chained without rests;
+  - long streams of cells played twice and moved up a fourth or an octave, shifting from sixteenths into sextuplets at the bar line;
+  - one cell looped at the peak;
+  - few bends, and no sweeps or strict scale sequences (the files have almost none).
+
+**21 new styles**, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+
+- **From the Oasis files:**
+  - **TRADED TURNS:** two guitars trading eight-bar turns, the second an octave down, in eighths and quarters with slow bends aimed at the key's root and fifth. On a LEAD lane with two tracks, each guitar plays on its own track.
+  - **CALL & UNISON CHANT:** a call of three quarter-note bends answered in sixteenths, then the call again exactly; a run up from the bottom string, a three-note cell looped across the beat, and the top root bent into again and again in eighths to end.
+  - **FIXED HEAD, NEW ANSWERS:** in one box, every other bar the same head (a bend into the root, a fall, the root shaken) and a new answer in between each time.
+- **From the Mötley Crüe files:**
+  - **SHUFFLE TRADE:** two guitars trading short turns in a triplet shuffle, the second lower (on its own track where there are two).
+  - **SEXTUPLET LOOPS & DIVES:** minor-third pre-bends shaken wide to start, then a different trick in each busy wave: a six-note cell looped, a high note dived, repeated-note stairs, the low and high root round a note walking down. The low root dived to end.
+  - **PICKED HYMN:** a singable theme, a note a beat with each note picked four times, stated three times (the last in octaves), octaves bent together between, and the root in octaves with the whammy pulsing to end.
+  - **ONE TRICK A BLOCK:** a slow first half (its first phrase again an octave up), then one trick per block: a shaken trill, a run to the bottom, a tremolo-picked climb, and the top root let down from a bend.
+  - **TURNS DOWN THE SCALE:** a chord-tone melody, and waves of turns (an eighth and a quick neighbour turn, a step lower each beat, then again an octave up).
+  - **OCTAVE BALLAD:** straight sixteenths and no bends at all, the first phrase again an octave higher in octaves, and four quarters walking up into the next section.
+  - **STEPPING BEND CALLS:** bent calls on beats two and four, each a step lower; a minor-third trill getting faster; the calls again an octave down.
+- **From the Dream Theater files:**
+  - **CONTOUR CELLS:** sextuplet streams of one shape (up three, back two) and its mirror, moved each beat, into a climb and a long top root.
+  - **LOOPED CELLS ACROSS THE BEAT:** a four-note cell looped across the sextuplets so it lands somewhere new each beat, then a six-note cell looped exactly.
+  - **FALLING PEDAL SEXTUPLETS:** a high pair over a low note, the figure falling a step a beat, then a run straight up.
+  - **EASTERN LEGATO RUNS:** the eastern scale moved onto each chord's root; held notes first, then thirty-second legato runs leaping an octave and running down.
+  - **CRYING HALF STEPS:** slow, for half-time drums: half-step bends twice as often as whole steps, held notes falling away with the bar or scooped into, and a call raised each time it returns.
+  - **FLOATING LINE:** held notes tied over the bar lines, phrases coming in off the beat, quick flurries at a half and three quarters of the way.
+  - **ADD-NINE MELODY:** a slow major-key melody landing on the chord's ninth, getting busier towards the end, with trills on held notes.
+  - **GEAR-SHIFT STREAM:** a melody, then from halfway one unbroken stream of turning cells shifting gear at the bar lines (sixteenths, sextuplets, thirty-seconds), one cell looped at the top.
+  - **BAR OSTINATO:** a bar-long figure of fourths and fifths in sixteenths, accented in threes and twos, played four times, then sextuplet cells and a bent melody.
+  - **TRIAD CELL SWEEPS:** the chord's triad up and down in sextuplets, each cell two to four times, with a half-step trill between.
+  - **HELD OVER A FALLING BASS:** held notes the chords share while the bass moves under them, a run of cells each a fourth higher, and held notes falling a step a bar, each let down from a bend, to end.
+
+**Honest limits:**
+- Two of the readers' ideas are written as a trill instead: one note shaken by a bend while another is held over it can't be done, because a pitch bend moves every note on the track.
+- The odd meters (7/8, 15/8 and the rest) are taken as the feel inside 4/4 (threes and twos), since you asked for no meter changes.
+- Under a Glass Moon's synth line may not be what the guitar plays.
+
+**Checked:** tests cover each new style's own shape:
+- the second guitar's turns and their octave;
+- the call played back exactly, and the head the same every other bar;
+- the looped cells, the four-times picking and the turns;
+- no bends in the ballad, and the walk up;
+- the calls on two and four;
+- the sextuplet streams, the eastern flat two, the half-step bends and the ties over the bar line;
+- the gear order, the ostinato, the triad cells and the falling releases.
+
+The fixed styles' tests were rewritten to what the files show. Not checked here: the sound in Shreddage (your ears).
+
+## 0.134.0
+
+**Solos from your eleven Pantera files** (read for their solos' shapes only, never copied; our own names). Three readers went through them:
+
+- **Ten of the eleven have a guitar solo; Cemetery Gates and This Love have a second lead too.** Strength Beyond Strength has no solo: only a lead fill and a slow twin melody.
+- **What these solos have in common:**
+  - whole blocks of fast notes (about 6 a beat, 11 to 14 a second) trade with blocks of held bends;
+  - there's almost no silence;
+  - bends are mostly a whole step (the 4th up to the 5th, the flat 7th up to the root), with one big over-bend per solo;
+  - the whammy bar squeals at the ends of phrases, three or four times a solo;
+  - the notes follow the key, not each chord;
+  - short cells loop three to eight times;
+  - the climbs are two to three octaves.
+
+**SCREAM & DIVE put right.** It was built in 0.67.0 from published lessons, not from files, and these files showed it was off:
+
+- **Bends:** mostly whole steps now (half steps were the most common before).
+- **Thirds:** no major third over the minor any more.
+- **Rests:** almost none.
+- **Fast passages:** diminished cells climbing by fourths, in blocks, where it used to shift licks up a fret at a time.
+- **Squeals:** whammy squeals at the ends of phrases.
+
+It still ends on a harmonic screamed up with the bar and a dive bomb.
+
+**Fifteen new styles**, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+
+- **BURST BLOCKS & SQUEALS:** calm bars of held bends and whole blocks of fire on four-bar lines: diminished cells climbing by fourths, then a top note struck four times and dropped. Squeals at the phrase ends, and a squeal (or a bend into a dive) to end.
+- **BENDS, THEN THE CLIMB:** three quarters held bends, nearly every note bent. Then one burst of cells climbing a scale step a beat for two octaves, and the last note bent into and dived away.
+- **BOTTOM-TO-TOP CLIMB:** from the bottom of the neck to the top over the whole solo. A pull-off cell and a bend looped, squeals and dives, and the top note bent into the root and dived.
+- **BURST, BAR, BURST:** a storm of fast cells, then a wild middle on the whammy bar (notes shaken, scooped and squealed, fourths), then a climb to the top note bent into the root and held.
+- **BALLAD INTO FIRE:** half a ballad (long held notes on the chord's third and root), then fire for the second half: cells cycled, a climb, and cells falling a half step each beat into the top note dived.
+- **HALF-SPEED BENT CELLS:** for slow songs, in thirty-seconds: pre-bends let down again and again, and a note shaken between a whole-step and a minor-third bend.
+- **PEDAL CLIMB & TREMOLO DYADS:** a pedal note under a line that climbs on, minor-third bends on the held notes. To end, a tremolo-picked double stop over the root, climbing into a held fifth.
+- **SLOW STAIRCASE OF BENDS:** slow and climbing, each phrase a step higher, then one minor-third bend struck again and again at the top, and the root held long.
+- **LOOPED PULL-OFF CELLS:** built from one-beat cells (three notes pulled off, then a bend) looped and moved up, with squeals and a bend into a dive to end.
+- **TRITONE STAIRCASE:** four bars of held notes on the key's root and flat five, each a tritone higher, coming in after the band's first beat. Then blocks of cells (a half step, then a fourth) moved up a fourth each beat, squeals, and a bend into the root to end.
+- **SHUFFLE SNARL:** a snarling shuffle blues: both thirds, the flat five, swung runs, diminished triplets climbing a minor third each beat, big bends, and a bend into a dive to end.
+- **BREAKDOWN TRILL:** for a breakdown: the minor and major third trilled in thirty-seconds under a top note that swaps between the fifth and the flat sixth each bar, harmonised a minor third under (on a LEAD lane with two tracks, the second plays the harmony).
+- **SLOW EASTERN TWINS:** slow and eastern (the flat second and the major third over the minor): long notes scooped up from a minor third under, a second guitar an octave and a third above, and a climb out to end.
+- **HELD LINE & RISING CELLS:** the first half one long note on each chord, each coming in an eighth early with a rake into it (where your instrument plays notes that short). Then a three-note cell bent a half step climbs a scale step each time into a long last note.
+- **STATED, RAISED, DROPPED:** a raked phrase held and bent, then a long silence. Up an octave early, calls played again, one big over-bend past halfway, and the last quarter dropped an octave, dived away to end.
+
+**Two new whammy shapes behind them:**
+
+- a **pull-up**: the bar pulled up 6 to 8 semitones (now and then an octave) a moment after the pick and held;
+- a **bend into a dive**: bent up into the note, held, then dived an octave.
+
+Both reach only as far as your instrument's bend range (HUB > INSTRUMENTS); a range of 12 gives the whole squeal.
+
+**Honest limits:**
+
+- The files can't show pinch harmonics or real vibrato width: their exports write one stock vibrato.
+- The oblique bends (one note of a double stop bent against the other held) aren't written. A pitch bend moves every note on the channel, so both notes would bend.
+
+**Checked:** tests cover the tritone stair, the diminished triplets, the harmony a minor third under and the one an octave and a third over, the early entries and half-step cells, the silence after the first phrase, the squeals, the diminished cells, the blocks on four-bar lines, the late climb, the looped cells, the chromatic fall, the repeated minor-third bend, the release cells, the pedal, the new endings, and the two new whammy shapes' timing. Not checked here: the sound in Shreddage (your ears).
+
+## 0.133.0
+
+**Solos from your nine Van Halen files** (read for their solos' shapes only, never copied; our own names). Three readers went through them:
+
+- **Seven of the nine have a guitar solo.** Runaround's file is only its intro, so it has none. Runnin' With the Devil's is a short composed break.
+- **None of them has wide two-handed tapping.** The fast passages are legato cells inside one box, repeated notes, and the whammy bar. So TAP & DIVE stays as it was; the new styles are built from what the files do.
+
+Eleven new styles, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+
+- **CELL WITH THE CHANGES:** a one-bar cell of sixteenths that starts again on each new chord, so it lands on that chord's third every time. It ends with major thirds climbing a half step at a time into a double stop on the root, dived an octave away.
+- **HOLD & ACCELERATE:** in on the downbeat with a high harmonic scooped up into with the whammy. Short bursts answered by bends, then the signature: one note held and shaken with the whammy, then struck again and again, faster each beat (eighths, eighth triplets, sixteenths). To end: harmonics a beat each stepping down the chord, each dived away, then the low root dived an octave.
+- **WHAMMY FIRE:** in at full speed, then staircases of repeated notes (each note struck three to six times in triplets, then a step up). The whammy scoops into the held notes and dives about half the phrase ends away. A dive to end.
+- **LEGATO THROWS:** high notes against fast legato runs down to low landings, and pickups thrown two octaves under the phrase they lead into. The fast cells stay in the key's box: one played three times in place, then stepped down. A run up into a long last note to end.
+- **SQUEALS & SEXTUPLETS:** in on a harmonic squeal, then down into three-note cells cycled in sextuplets, with pentatonic leaps between. Every held note is shaken, with hardly a bend.
+- **CHIMING FOURTHS:** bright and major: bends struck and let down, fourths as double stops, and a cycle of a bent note plus two fourths that runs three against four. It ends on a high bend held to the end.
+- **DOTTED BEND CHAIN:** whole-step bends struck every dotted quarter (three against four), each held and shaken, with a chromatic fall in triplets between the chains and a lick played twice to end.
+- **HOOK, THIRDS, HOOK:** a short hook played again and again, a middle third of major-third double stops that move with the chords (each chord's third on top), then the hook back. Nothing faster than sixteenths.
+- **BENT RIFF SOLO:** a riff more than a run: whole-step bends traded with fourths in eighths, one fast roll, the rock scale with no third at all (the key's 1, 2, 4, 5 and flat 7). It falls an octave at the end.
+- **TREMOLO PEDAL OUTRO:** one note tremolo-picked through the moving chords (with your instrument's tremolo key when its shortest note is a 16th). It ends on held notes stepping down the chord, each one coming in a beat early.
+- **BURST AND BEND:** in on a scream, then the root and fifth struck together again and again, each burst answered by one bent note. Then a flurry of triplet cells under a fixed top note, held notes shaken with the whammy, and a dive to end.
+
+**What every one of them does, as the files did:**
+
+- Phrases run into each other: a rest of half a beat at most; the held notes are the breath.
+- The busiest passage comes in the first half, not right at the end.
+- Nearly all bends are a whole step; the big pitch moves come from the whammy.
+- Every held note gets vibrato.
+
+**Two changes for every solo, not just the new ones:**
+
+- **Vibrato starts sooner:** about 15% into a held note (it was 30%), as in all of these files. It is fully on by two thirds of the note.
+- **A new whammy scoop:** up into the note from 2, 3 or (now and then) 12 semitones under, reaching pitch in 0.06 seconds: twice as quick as the slide. It reaches only as far as your instrument's bend range (HUB > INSTRUMENTS); a range of 12 gives the full octave.
+
+**Checked:** tests cover each style's own habit:
+
+- the cell landing on each chord's third;
+- the held note followed by the same note struck faster and faster;
+- the repeated-note staircases;
+- the two-octave throws;
+- the cycled cells;
+- the fourth double stops;
+- the endings;
+- the dotted-quarter bends and the chromatic fall;
+- the thirds with the chord's third on top;
+- the no-third scale;
+- the tremolo and the stepping-down ending;
+- the repeated double stops;
+- hardly a rest over a beat;
+- the scoop's speed and the vibrato's start.
+
+Not checked here: the sound in Shreddage (your ears).
+
+**Honest limit:** HOOK, THIRDS, HOOK reuses the engine's restated motif for its hook. The hook comes back, but not note for note as in the real solo's A-B-A.
+
+**Your Pantera files are next:** read already, they become their own round (0.134.0).
+
+## 0.132.0
+
+**The play bar black, outlined in the gradient** (you chose it from the mock-up).
+
+- **What changed:** the play line is now a black bar with a thin outline down both sides, red-pink at the top to orange at the foot, the same gradient as before, with the same soft glow round it. Its marker on the ruler is a black triangle outlined in the gradient.
+- **Wider than the mock-up:** 4 pixels instead of 3, so the black middle still shows over the dark empty parts of the arrangement.
+- **While recording:** it stays plain red.
+
+**A crash fixed** (0.131.0 was published a few minutes before this fix went in): a part's right-click menu could still answer after its arrangement view had gone, for example after the song was closed while the menu was open, and the studio stopped. The menu now does nothing in that case. The comp handle's To Front menu got the same fix. The tests found this one, not your log.
+
+## 0.131.0
+
+**The playhead in the mixer's colours** (you asked).
+
+- **What changed:** the play line is drawn like a mixer channel's lit volume fader: a 3-pixel line in the family's red / pink / orange gradient, pink at the top and orange at the foot, with the fader's soft halo round it. Its marker on the ruler is the gradient's pink. Before, it was pearl white with a pink glow.
+- **Where:** the arrangement and the MIDI editor.
+- **While recording:** it stays plain red, as before, so you can see at a glance that you're recording.
+
+**OUT shows the level going out now** (you asked).
+
+- **What was wrong:** OUT on the transport held the loudest peak since you last clicked it ("DB MAX"), so it never came down.
+- **What changed:** it now shows the loudest peak of every 5 seconds ("DB PEAK"). It goes up and down with the music, as the channel meters do, but the number changes only once every 5 seconds, so it doesn't flicker.
+  - The output is still read 30 times a second, so no peak is missed between updates.
+  - The screen is redrawn only when the number changes.
+- **A click on OUT** shows what the current 5 seconds have heard straight away, and starts a new 5 seconds.
+
+## 0.130.0
+
+**Auto-save no longer freezes the studio every five minutes** (your session log of 15 November).
+
+- **What was wrong:** to write a backup, the studio asked every plug-in for its settings, on the same thread that draws the window. Each of your four Kontakt 8 instances takes about a second to answer, so every five minutes the window stopped for 0.7 to 1.4 seconds. The log caught it again and again: SLOW notes at 01:14, 01:24, 01:29, 01:39, 01:54 and 02:09, each pointing at the auto-save asking Kontakt.
+- **What changed:** auto-save now asks a plug-in only when something may have changed its settings:
+  - one of its parameters moved;
+  - the plug-in said it changed (Kontakt does when you load an instrument);
+  - its window was opened since the last backup, or is open now;
+  - the studio gave it settings (a preset).
+  For every other plug-in the backup uses the settings it gave last time.
+- **The trade-off:** a plug-in that changes itself without telling the studio would have that change left out of the backup until something else marks it. Pressing SAVE (Ctrl+S) still asks every plug-in, every time, so saved songs are as complete as before.
+
+**From the same log, not the studio's own code:**
+
+- **The crash at 02:12** happened inside PR7-G 0.58.0's own window, while it was drawing itself. A bad pointer was read in PR7-G's code. The studio only passed Windows' message on, and can't catch an error inside a plug-in's own copy of JUCE. A note for PR7-G's chat describes it.
+- **The 7-second freeze at 01:18** was PR7-O drawing with the graphics card, even though the studio draws without it. A note for PR7-O's chat asks for the same "no graphics card" switch.
+
+## 0.129.0
+
+**Solos, round two from your Metallica and Def Leppard files** (read for their shapes only, never copied; our own names). Seven new styles, in the lead lane's Solo Style menu and IDEAS' SOLO box:
+
+- **UNISON BEND ANTHEM:** long notes struck, then bent slowly back up into themselves (the bend rises over half a second to 1.3 s), wide and singing, with one short run near the end.
+  - **Honest limit:** a real unison bend holds one string while another bends up to meet it. A MIDI pitch bend moves every note on the channel at once, so here the bend comes just after the note is struck, not alongside it.
+- **OCTAVE MELODY BUILD:** the melody played in octaves, every note doubled, building from held notes to a busy end.
+- **OPEN-STRING PEDAL FIRE:** fast picking against the low tonic: the low note struck between the notes of a line climbing over it. It ends back down on the low root.
+- **TWIN-LEAD HARMONY:** one guitar alone, then two in harmony from about two fifths of the way in. The harmony is thirds, fourths or octaves, depending on the take.
+  - **Two tracks:** put the LEAD lane on two tracks: in HUB > COMPOSER TRACKS, give LEAD two track names (e.g. "Lead L, Lead R") and tick EVERY MATCHING TRACK. The upper track plays the lead and the lower one the harmony, as a real twin lead.
+  - **One track:** both voices play on it. The harmonised part has no bends, because a bend would bend both voices.
+- **EASTERN TREMOLO STORM:** an eastern colour (the flat second, the major third over the minor): tremolo-picked notes moving along the scale, half-step bends, a dive to end.
+  - On an instrument whose SHORTEST NOTE is a 16th (Shreddage), the tremolo is played with its tremolo articulation instead of written-out fast notes.
+- **WHAMMY WAIL:** the whammy bar everywhere: held notes shaken, phrase ends dived away (7 to 12 semitones), a dive or a fall-off to finish.
+  - The dives only reach as far as your instrument's bend range (HUB > INSTRUMENTS).
+- **TRILL & FALL TAG:** held notes trilled with the note above, phrases falling off at their ends, and a closing tag that trills, then falls off.
+
+**New pitch-bend shapes behind them:** a slow bend, and a whammy wobble (the wheel up and down about 5.5 times a second).
+
+**Checked:** tests cover each style's passages, the harmony's intervals, the second track getting the harmony alone, the slow bend's rise, and the wobble going both ways. Not checked here: the sound in Shreddage (your ears).
+
+## 0.128.0
+
+**Solos, round one from your Metallica and Def Leppard files** (read for their shapes only, never copied; our own names in the app):
+
+What changes in every solo style:
+- **Fast runs at a player's speed:** the fast passages now aim for 8 to 12 notes a second, which is what those solos do at any tempo. At 66 BPM that means 32nds, at 120 16ths, and at 200 triplets or 8ths. Before, they were always 16ths, so a slow song's run crawled at about 4 notes a second.
+  - Your instrument's **SHORTEST NOTE** still wins. Shreddage's is a 16th, so on a slow song the runs stay 16ths there. Lower SHORTEST NOTE in HUB > INSTRUMENTS if you want the faster ones.
+- **Bends aimed at the notes that sing:** a held note gets bent mostly when it lands on the chord's root or fifth, or the minor key's fourth. Over a major chord, its third and sixth count too: the 2nd bent up to the 3rd and the 5th up to the 6th, as in the Def Leppard solos.
+- **Bends shaped by length:** a bend's rise now depends on the note. A quick one rises in about 60 ms, a long held one in up to 0.7 s (it was always 0.19 s).
+- **Slides and fall-offs:** a phrase's first note now and then slides up into its pitch from three frets under. A long held note now and then falls off at its end. Both are written as pitch bend, so your bend range sets how far they reach.
+- **Long first and last notes:** in a solo of 8 bars or more, the first note it lands on is held 4 to 6 beats, and the last note rings for the last 4 to 8. If the last chord comes in under it, it's struck again on that chord's root.
+  - FALLING MAJOR MELODY and SUNG IN THE GAPS keep their tune-like phrasing instead.
+- **BLUES HAMMER's climax:** it is now written as the repeated bends its description always promised.
+
+Four new styles, each built on those habits:
+- **REPEATED BEND CLIMB:** the same bend struck three to six times, then the next group a step higher. It ends bent up into the root or fifth, or on the top note hammered out.
+- **CHORD-CHASING ARPEGGIOS:** fast arpeggios that change with every chord, melodic phrases landing on the chord's third or fifth, and a triplet climb to the top root at the end.
+- **PEDAL DYAD HOOK:** a high pedal note picked between a line walking down under it, short calls played twice, and fourth double stops. It ends on the top note repeated.
+- **HOT START, COOL DOWN:** in at full speed with a fast run high up, then longer, lower, slower notes. It ends in a fall-off, a held note, or a drop to the low root back into the riff.
+
+The new endings any style can use: bent up into the root or fifth and held, a fall-off, a dive, a drop to the low root, the top note repeated, and a triplet climb out. The older styles end as before.
+
+**Checked:** tests cover the speed at 66 and 220 BPM (and that SHORTEST NOTE wins), the repeated bends climbing, bends aimed, slides, fall-offs, the long first and last notes, each new style's passages and endings, and the pitch bend for slides and fall-offs. Not checked here: how it sounds in Shreddage (your ears).
+
+**Round two** when you say so: UNISON BEND ANTHEM, OCTAVE MELODY BUILD, OPEN-STRING PEDAL FIRE, TWIN-LEAD HARMONY (a second track), EASTERN TREMOLO STORM, WHAMMY WAIL, TRILL & FALL TAG.
+
+## 0.127.0
+
+**The rhythm guitar plays its power chords through Shreddage's power chord articulation (C#-1)** (you asked):
+- **What was going on:** the composer has done this since 0.63.0: a power chord becomes its root alone after C#-1 (Shreddage's power chord articulation, the same velocity layers), and single notes go back to C-1 (Sustain). But it only did it when a Shreddage profile in the Hub's **INSTRUMENTS** page was ticked for the **GUITAR LANE**. Only the Djinn bass was there to start with, and making a Shreddage profile with + NEW didn't tick the lane, so the composer kept writing power chords out note by note.
+- **Now:** if your guitar lane has no instrument, **Shreddage Jupiter** goes there by itself, and on the lead lane too if that has none. If you'd already made a Shreddage profile, that one gets ticked instead of a new one being added. This happens once: if you take it off the lane later, it stays off. A Shreddage made with + NEW also takes the guitar and lead lanes when they're free.
+- **Single-note riffs stay single notes:** the chugs, pedal riffs and djent-style lines (nu-metal, metalcore, modern metal) play note by note on C-1. Only a root with its fifth (and octaves) turns into the power chord key. Fuller chords with a third, tritone shapes and the high stabs are still written out, because the articulation plays only a root and fifth.
+- **Checked:** a new test runs every riff kind and every section type's guitar options, with and without humanize. No power chord is left written out, and the C#-1 key is pressed throughout. Not checked here: the sound itself in Shreddage (your ears).
+- **To check it:** HUB > INSTRUMENTS should show Shreddage Jupiter with GUITAR LANE lit. Rogue works the same way: tick it for the guitar lane instead if that's the one you use.
+
+## 0.126.0
+
+**The composer's lanes no longer get locked to the guitar** (you found that picking certain kinds of guitar chords made every other instrument follow the guitar, with SYNC off):
+- **What was wrong:** four of the guitar's riff kinds (DRONING, DRIVING EIGHTHS, SYNCOPATED DRIVE, MUTED DRIVE) each came with a whole band written around them. Picking one of them in the guitar's Riff Flavour menu took over the bass, keys, lead and drums, even when the section's type was STANDARD or something else, and those lanes' menus then offered only the band's parts.
+- **Now:** the band follows the guitar only when the section's **TYPE** is that kind (a DRONING chorus, a DRIVING chorus...). Picking a riff kind for the guitar on its own changes only the guitar.
+- **PLAY ITS OWN STYLES:** under a section type, each lane's style menu has **Play Its Own Styles**: that instrument steps out of the type's band and plays its usual styles; **Follow the Section Type Again** brings it back. Each lane's title says **FOLLOWS THE SECTION TYPE** or **OWN STYLES**.
+
+**SYNC TO, lane by lane** (you asked: sync the bass and drums together, or bass, drums and the synth pad, but not every instrument):
+- Each lane's style menu has **Sync To**: that lane alone follows another lane's rhythm (the bass to the drums, the keys to the drums...), and every other lane plays its own part.
+- It follows what the other lane really plays, its section type's part included. The SYNC key at the top still makes every lane follow one lane, as before; a lane's own SYNC TO wins over it.
+- DOUBLE THE SYNC TRACK works with it on the bass and the drums. A lane others follow says SYNC LEADER on its title.
+
+## 0.125.0
+
+**CHORD GUIDES toned down, as you asked:**
+- **Half as strong:** the guides are about half their old strength, so they sit in the background.
+- **The bright sliver is gone:** that was a solid mark I drew at the start of each chord, and it looked exactly like a note.
+- **Colours by how good the note is:** red for the best notes (the chord's own notes, the root a shade stronger), orange for the next best (the chord's added notes, like a 7th), pink for the borderline passing notes (in the key but not in the chord). Notes outside the key get no colour. The stripe on the piano keys follows the same colours.
+- **The notes you played glow:** while the guides are on, each note you played has a soft pearl-white glow round it, so it stands out from the guides behind it.
+
+## 0.124.0
+
+You asked for the intro and outro ideas next, from your first 22 MIDI files (the rock bands). That's **seven new section types**: five intros and two outros. As before, only the songs' shapes were used, never their notes, and the names are ours. They come after the existing ones in an intro or outro block's TYPE menu. Each instrument has its options in its menu.
+
+**New intro types**
+- **BASS RIFF WITH TOMS:** the bass alone on the riff, with the floor tom doubling every note. A guitar can tick a high note on the quarters, or stay out until the last quarter and then play the riff. The kick and snare come in for the last quarter.
+- **PEDAL SEESAW, DOUBLE KICK:** eighth chugs rocking from the key's low tonic to the notes a third to a sixth above it, over sixteenth kicks with the snare on every quarter. Every fourth bar is a burst of sixteenths a step under. The lead can play two high voices over it.
+- **TWO CELLS IN THREES:** the guitar cycles root, root, fifth in sixteenths across the beats, following the chords. The keys cycle three stepping notes over it that never change with the chords, getting louder as they go. A second guitar option adds a flick, then strums the full chord from halfway.
+- **KIT HITS IN PAIRS:** the kick, snare, hat and guitars together in pairs of sixteenths on the dotted grid (1, 2-and, 4), then a bar with just one crash. The keys can play high notes on the same dotted grid.
+- **GAPPED PEDAL, BUILD INTO THE VERSE:** the low root in sixteenths with gaps on 2 and 4 and the octave on 3, the kick on every chug, crash quarters. The last two bars are a build (kick sixteenths, snare and crash eighths) into the verse.
+
+**New outro types**
+- **EVERY OTHER BAR EMPTY:** the chorus thinned out. A bar of the chord (held, or struck in eighths), then a bar of space, in turn, with a high quarter-note arpeggio over it. The drums alternate a groove bar with a bar of just a kick and crash on the 1, and the last chord is held.
+- **SINGLE-NOTE BAR, CHORD BAR:** a bar of low single notes in eighths (the 1 left empty), then a bar of power chords. The drums have the snare on 3 only, a syncopated kick, a crash on every quarter and a shaker. The keys play high notes on the dotted grid.
+
+**Left out on purpose:**
+- **The intro with a short bar every four:** you said no time signature changes.
+- **The ending that slows the tempo while the last chord rings:** the composer writes notes, not tempo changes. I can add that if you want it.
+
+**What I couldn't check:** how they sound. The tests check the shapes (where the toms, kicks, snares, gaps and pairs land, the keys' cell not following the chords, the empty bars, the held last chord). They also check that every option of every lane writes a different part.
+
+## 0.123.0
+
+Two things you asked for: the speed pass (the lag dragging the cycle, and the rough first click in the track list), and the pre-chorus ideas from your first 22 MIDI files (the rock bands).
+
+**Dragging the cycle, in the MIDI editor and the arrangement**
+- **What was wrong:** every mouse move while you dragged the cycle (an end, or the whole range) counted as a full change to the song. The studio rebuilt every track for the audio engine. It saved a whole copy of the song as an undo step. Every open view (track list, Inspector, mixer, MIDI editor, arrangement) redrew from scratch. On a big song that's a lot of work dozens of times a second.
+- **Now:** while you drag, only the cycle's two ends go to the audio engine, so what you hear loops at the new place straight away. Only the cycle strips are redrawn. When you let go, it's one change and **one undo step** (it used to leave dozens in the Edit History).
+- **Clicking or dragging the playhead along a ruler** had the same problem: every view rebuilt itself each time. They all draw the playhead from their own clocks anyway, so that's gone too.
+
+**The first click in the track list after opening a song**
+- **What I think it was:** to know whether a track's instrument has a window to open, the studio asks the plug-in. A VST3 answers by building its whole editor. That's slow for big instruments (Kontakt, for one), and it happened on the first click on each track, through the Inspector. Now the studio takes it that a VST3 has an editor (nearly all do) without building it. If one hasn't, its window shows its knobs plainly.
+- **Two smaller things on the same path:**
+  - A song with a PR7-D drums track now sends PR7-D its song while the song opens (inside the progress box), not on your first click.
+  - A track click (or arming, or SNAP) no longer makes the studio re-check every linked section block's music. Only real edits do.
+- **What I couldn't check:** your plug-ins aren't here, so I can't time your exact click. The session log notes SLOW pauses since 0.113.0: if a first click still sticks, the log will say where.
+
+**Six new pre-chorus types** (shapes only from the songs, our names; after the existing ones in a pre-chorus block's TYPE menu)
+- **SHIFTING BURSTS, KICK JOINS:** muted bursts of four sixteenths, moved a beat later the next bar, then two bars of eighths into the next chord. The drums start half time and from halfway the kick joins every burst. The last bar is snare eighths and a stop.
+- **SNARE CARPET BUILD:** no kick. The snare and a crash on every sixteenth (one left out a bar for breath) for four bars over the riff, then the groove comes back with a shaker in eighths.
+- **PEDAL WITH OPEN-HAT BEATS:** the low root on every sixteenth but the downbeat, every second bar climbing a half step at a time into the next. Open hats on the beats, the snare on the "e" of 1, on 2 and on 4.
+- **CHROMATIC CHUG, TREMOLO TRIAD:** a chug rocking between the root and the half step above (every fourth bar on the minor third). The lead can tremolo-pick a high triad over it: the key's own, or the relative major in a minor key. The plain groove turns into off-beat kicks halfway and ends in a sixteenth snare roll.
+- **OFF-BEAT SNARE, LOW BURSTS:** the snare and an open hat on every off eighth, never on 2 and 4, under low muted bursts. Optionally a crash on every eighth.
+- **THREES ACROSS THE BAR:** the waltz feel from one song kept in 4/4 (you said no meter changes). Three-beat cells run across the bar lines (a power chord, then four muted eighths), with matching three-beat drum cells. It turns into straight eighths from halfway.
+
+Every type's bass offers DOUBLES THE GUITAR, ROOT QUARTERS and LOCKED WITH THE KICK.
+
+**What I couldn't check:** how they sound. The tests check the shapes (where the bursts, pedals, hats and snares land, the triad's notes, the three-beat cells) and that every option of every lane writes a different part.
+
+## 0.122.0
+
+You chose the bridges and breakdowns first from the ideas left in your first 22 MIDI files (the rock bands). That's **13 new section types**: 9 bridges and 4 breakdowns. As before, only the songs' shapes were used, never their notes, and the names are ours.
+
+Each type sets what every instrument does, with options for each instrument in its menu. They come after the existing types in a block's TYPE menu.
+
+**New bridge types**
+- **ONE GUITAR RUNS, THE BAND HITS:** one guitar keeps root-and-fifth eighths going without a break, while the bass and drums play only the hits together (late in the bar, an empty bar in every four, a pickup into the next section). The guitar can add power chords on the hits.
+- **TWIN TREMOLO RUSH:** two guitars tremolo-pick a third apart, stepping up and back each bar. The kick and snare play together on a gapped sixteenth grid, and the last bar stops halfway.
+- **RING & CHUG SPLIT:** chugs on the gapped grid with the kick in 3+3+2, then halfway the chords ring for whole bars over crash quarters.
+- **DRUM BURSTS & PULSE:** no cymbals. The kick and snare play bursts and bars of sixteenths, a chord rings every two bars, and the keys keep one note pulsing in quarters.
+- **LAYERED FLOOR BUILD:** the kick on every eighth and toms closing each bar. The guitars come in by stages (a picked figure, then a high tremolo), building into a snare roll.
+- **UPPER-FIFTH CHORDS OVER A MOVING BASS:** the guitar holds a power chord on each chord's third for two bars while the bass moves under it every bar. This gives the open "major seventh" colours.
+- **CHROMATIC CREEP, NO BACKBEAT:** the low root, then its two half steps above, and a quick flick at the bar's end. Sparse kicks, the snare only once every two bars, long lead notes at the end.
+- **CLIMB UNDER A TRILL:** the chords are voiced higher bar by bar, the bass walks a half step into each new chord, and the lead trills two notes.
+- **KEYS CARRY THE CHORUS ALONE:** everyone drops out but the keys, which play the chords with each change pushed an eighth early and a high pedal on top. It suits the spot before the last chorus.
+
+**New breakdown types**
+- **ONE BAR OF CHUGS, THREE OF AIR:** a bar of sixteenth chugs, a bar of two hits, then two bars of space with only the ride keeping time. The guitar can fill the space with a rocking figure the second time round.
+- **CHUGS UNDER SPARSE HITS:** unbroken low eighths with their half steps and octave, under only one or two big drum hits a bar. It builds over the last quarter.
+- **DOUBLE-HIT UNISON RIFF:** the guitars and bass in unison with double hits, held notes and sixteenth runs, and the kick on every hit. The lead can trill over the second half.
+- **ARPEGGIO, THEN THE RIFF UNDER IT:** the drums and guitars drop out under a keys arpeggio, then the riff and the band come back under it halfway (or a quarter in), stopping on the and of 1 of the last bar.
+
+**What I couldn't check:** how they sound. The tests check the shapes: where the hits land, the gapped grid, the guitar on each chord's third over the moving bass, the creep's half steps, the pushed chords, the silent bars and the stop. They also check that every option of every lane writes a different part.
+
+## 0.121.0
+
+You asked for the MIDI editor to show which notes fit the chord, plus a faint tint for the rest of the key.
+
+**CHORD GUIDES in the MIDI editor.**
+- A new key in the editor's side panel, under SNAP. It's on to start with, and the editor remembers your choice.
+- Wherever the chord track has a chord, the piano roll lights that chord's notes in every octave, for exactly as long as the chord lasts:
+  - the **root** with the strongest red stripe;
+  - the **3rd and 5th** in pink (or a sus chord's 2nd / 4th, and a slash chord's bass note);
+  - **added notes** like a 7th, 9th or 11th in a lighter orange;
+  - the **key's other notes** with a very faint pearl tint, so the safe passing notes show too.
+- When the chord changes, the lit rows change with it, so a two-chord bar shows two sets.
+- **The piano keys** on the left light up the same way for the chord under the playhead, and follow it as the song plays.
+- Each lit row also gets a short solid mark in its colour where the chord starts, so red, pink and orange are easy to tell apart.
+- It's drawn behind the grid and your notes, so the notes stay as easy to read as before.
+- **Transposed parts:** if the part has a TRANSPOSE on the info line, the guide shows the rows that will *sound* right. For example, with the part transposed +2, the written B-flat row lights as the C chord's root.
+- **Where it doesn't show:**
+  - where there's no chord on the chord track (before the first chord, or in a gap between chords);
+  - in the drum view, or on a drum track.
+
+**What I couldn't check:** how it looks on your screen at your size; the screenshot shows how it renders here. The tests check every level: root, 3rd/5th, added notes and key notes under C, G7 and A minor; nothing in a gap; the transpose; drums left out; the stripes drawn redder than the plain rows; the key turning it off and on.
+
+## 0.120.0
+
+Your two composer tweaks.
+
+**Every lane's keys in two rows.**
+- When the lanes were short, all the keys were squeezed into one row and their words couldn't be read. Now every lane has two rows under its name, whatever its height:
+  - **First row:** ON, LOCK, ROLL, then the style.
+  - **Second row:** TRACK, BUSY, the string choice (bass and guitar), then OCTAVE.
+- The lane headers are 60 pixels wider to give the words room; the notes beside them are that much narrower.
+- The small "heard on ..." line under the keys shows only when the lane has room for it.
+
+**OCTAVE: a lane up or down an octave.**
+- A new key on every lane but the drums. Click it for Up an Octave, Down an Octave, or a set amount from +2 to -2 octaves (As Written is 0). The key lights up while the lane isn't as written.
+- It moves the whole lane's notes, your pasted riff included when it's on that lane. Keyswitches (string choice, power chords, articulations) stay on their notes.
+- It's done last, so a lane following through SYNC follows what was written, not the moved octave. For example, the bass doubling a guitar you moved up still plays the guitar's riff at its own octave.
+- It's kept with the composer's settings and with each built section, so BUILD INTO and later rebuilds (a chord or type change) keep the octave.
+- I don't stop you going past the instrument's range: if you move a 7-string guitar part down, the low notes go under its low A. That's on purpose, in case the track plays something else.
+
+**What I couldn't check:** how the moved parts sound. The tests check the notes move 12 semitones per octave, the keyswitches don't, the drums never move, the setting is kept, and every lane's keys sit in two rows inside the header without overlapping.
+
+## 0.119.0
+
+You asked for Cubase's Insert Silence / Delete Silence to move the whole song, and found that the section menu's insert made a copy of the Intro. Both fixed.
+
+**Insert Silence and Delete Time move everything, when the range covers every track.**
+- Press **2** for the Range tool and drag from the top track to the bottom one over the bars you want, e.g. bar 1 to bar 5 for four bars before the song. Then right-click and choose **Insert Silence** (Ctrl+Shift+E) or **Delete Time** (Shift+Backspace).
+- With every track in the range, it now moves:
+  - every track's parts, hidden tracks too;
+  - the chord track;
+  - the markers;
+  - the tempo changes;
+  - the time-signature changes;
+  - the automation, the master's included;
+  - the SECTIONS row.
+- Before, only the parts moved, so the chords, sections and tempo ended up out of line with the music.
+- **The SECTIONS row:**
+  - Silence on a block's edge (bar 1 before the Intro, for example) adds a new empty block of that many bars, named like the block it goes in front of.
+  - Silence inside a block makes that block longer.
+  - Delete Time shortens the blocks it covers and removes any block wholly inside it.
+  - A block made longer or shorter is unlinked from its linked copies, since its music no longer matches theirs.
+  - A block holds 64 bars at most. Anything past that becomes a new block after it.
+- **Whole bars:** the signatures and the SECTIONS row follow only when the range is whole bars (it is when SNAP is on and you drag along the bar lines). A range of a beat or two still moves the music, chords, markers, tempo and automation, but leaves the signatures and the blocks as they were.
+- A range over only some tracks works as before: just those tracks' parts move.
+- It's all one undo step.
+
+**The block menu's "Insert a Section Before / After" adds an empty block.**
+- It's renamed "Insert an Empty Section Before / After".
+- Before, choosing a name the song already had (Intro before the Intro) made a linked copy of that block, music and all. Now it's always an empty block of 8 bars; change its LENGTH to 4 if you want.
+- For a linked copy, use **Duplicate**.
+
+**What I couldn't check:** nothing here is sound, so the tests cover it: four bars inserted at bar 1 and taken out again (the notes, chords, marker, tempo ramp, the 3/4 change moving from bar 9 to bar 13, the automation, the blocks), silence inside a block, Delete Time across two blocks and over a whole one, a range over one track only, and the menu's empty block.
+
+## 0.118.0
+
+The verse round: ten new verse types from your song files, all in 4/4, plus two drum ideas. As before, they're shapes only; nothing is copied.
+
+**Ten new verse types.** A verse block's TYPE menu has them after MUTED DRIVE. A pre-chorus block's menu lists them too, since it offers the verse types after its own.
+- **PICKED LINE, KICK IN THREES** (Rose of Sharyn's 6/8 verse, in 4/4):
+  - One guitar picks single notes round each bar's root on every eighth. The other option adds a power chord rung under it.
+  - The drums play the kick three times a bar, on 1, the "and" of 2 and 4 (3+3+2), with the snare and the ride's bell on the eighths between.
+  - The other drum options: RUNNING THREES (a kick every third eighth, running across the bar lines, so it lines up again every three bars) and STRAIGHT ALTERNATION (kick on the beats, snare on the "ands").
+- **PICKED OSTINATO:**
+  - The power chords drop out for a high three-note picked cell, a low picked line round the root, a high tremolo, or the guitar out.
+  - Under it, a held-back full beat or KICK AND HATS ONLY (no snare).
+- **SKANK LINE:**
+  - A single-note line on every eighth: the bar's root as a pedal every other note, the notes a half step, minor third, fourth and fifth above it in between, and a falling turn in the eighth bar.
+  - The drums play the skank beat: snare on every beat, kick on every off-beat eighth.
+- **LINE OVER HITS:**
+  - The skank line over a chord struck on each bar's first beat and left ringing.
+  - The kick and crash play only with those hits, then on dotted quarters, then a fill.
+- **THREE BARS AND A STOP:**
+  - Three bars of muted sixteenths (a fixed low note under the chord, or a stream with gaps).
+  - Every fourth bar the whole band hits beat 1 together, then silence.
+  - FOUR ON THE FLOOR under it.
+- **SIDESTICK PULSE:**
+  - Low single eighths (or a chord rung each bar), a side stick on every beat and nothing else.
+  - The bass comes in halfway.
+  - A high pedal note on the keys at each phrase start.
+- **OFF-BEAT SNARE:**
+  - A chord rung every other bar, or low bursts.
+  - The snare and an open hat together on every off-beat, the kick syncopated, no backbeat.
+- **CHUGS, THEN DOTTED HITS:**
+  - Sixteenth chugs with holes for three bars, then a bar of dotted-quarter hits.
+  - The kick plays a displaced pattern with a china on each kick, or follows the chugs.
+- **PEDAL RIFF IN SIXTEENTHS:**
+  - One guitar's sixteenth riff: the low root every other note (or in pairs), the others climbing the minor pentatonic, a flick at the end of every second bar.
+  - A plain rock beat under it that doesn't follow the riff.
+- **TRESILLO RIFF:**
+  - Power chords on a 3+3+2 figure in the first half of the bar, then rest (every fourth bar the figure through the bar), or the figure one bar and chugs the next.
+  - A high keys ostinato on the key's fifth that ignores the chord changes.
+  - Hats and a sparse kick, or the snare on the riff's hits.
+
+Every type has its own guitar, bass, keys and drum options, and the bass's last option is always LOCKED WITH THE KICK. The lead keeps its own styles.
+
+**FOUR ON THE FLOOR** is also MUTED DRIVE's new fourth drum option: the kick on every beat, the snare on the "ands" of 1 and 2 and on 3 and 4, sixteenth hats.
+
+**Deleting a section** (you asked): right-click the block on the SECTIONS row, MORE..., Delete. The block and its music go, and everything after moves up to close the gap. It's one undo step.
+
+**What I couldn't check:** how any of it sounds. The tests check the shapes, such as the 3+3+2 kick, the stop bar's silence in every lane, the skank beat and the pedal, and that every option is a different part.
+
+## 0.117.0
+
+The last three ideas from your song files, put where we agreed. As before, they're shapes only; nothing is copied.
+
+**PUSHED FOUR-CHORD TURNAROUND: a guitar option under DRIVING and SYNCOPATED DRIVE.**
+- The last bar of every four plays four quick chords instead of one, each a pair of muted sixteenths into a hit (`mmx-x-mmx---mmx-`). The other three bars play the type's first shape.
+- In a minor key the four chords are bVII, i, III, iv (in A minor: G, A, C, D), as in your song. In a major key I use V, I, iii, IV: that's my own choice, the same moves through the major scale.
+- In that bar, whatever else is chosen:
+  - the bass plays the same pushes;
+  - the drums keep their downbeat, then put a tom on each push and a crash on the last one;
+  - the keys stay out, because their chords would be the chord track's, not the turnaround's.
+- What doesn't follow the turnaround: that bar plays its own four chords, not your chord track's. All four are in the key, but the lead and the melody keep playing over the chord track's chord there.
+
+**DOMINANT PEDAL ENDING: a bass option under DRIVING and SYNCOPATED DRIVE.**
+- The bass plays its line as usual, then holds the key's fifth (E in A minor) on every eighth while the chords keep moving above it. That's the last four bars of an 8-bar chorus, the last two of a 4-bar one.
+- The second half of the idea, the guitars climbing back into the chorus, is the WALK UP choice already in a block's INTO THE NEXT menu.
+- LOCKED WITH THE KICK is still last on the bass menu. One side effect: a DRIVING or SYNCOPATED DRIVE block built before this with LOCKED WITH THE KICK chosen now reads that choice as DOMINANT PEDAL ENDING when it's built again. Pick LOCKED WITH THE KICK again on those blocks.
+
+**FALLING OCTAVE PEDAL: a new outro type, and a lead option under DRIVING.**
+- **The outro** (last in the Outro / Ending / Tag / Coda TYPE menu):
+  - The guitar keeps a chug riff going (or open power-chord eighths).
+  - The lead plays one note of the key and its octave on every eighth, held four bars, then a step lower down the scale: in A minor A, then G, then F, then E.
+  - The drums play a kick on every eighth, a crash on every beat and a snare on the first beat of every second bar, or a straight groove instead.
+  - The last bar is three stabs on its dotted quarters from the whole band, the last left to ring.
+- **Under DRIVING**, FALLING OCTAVE PEDAL is the lead's fourth option, for a last chorus. It's close to 0.116.0's OCTAVE PEDAL, but that one picks the best-fitting note and stays on it; this one walks down a step every four bars.
+
+**What I couldn't check:** how any of it sounds. The tests check the shapes: the chords and their places in the turnaround bar, the bass on the fifth, the octaves falling, and that every option is a different part.
+
+## 0.116.0
+
+The other chorus candidates from your song files: four more chorus types, and three more drum parts under the chorus types you already had. As before, each was read from your songs for its shape only; nothing is copied.
+
+**Four more chorus types.** A chorus block's TYPE menu now has these after the four from 0.115.0:
+- **TOM GROOVE RIFF:**
+  - The guitar plays off the beat, in eighths or single notes.
+  - The drums play toms where the hats would be. The other options are a march (the kick and the floor tom together on every sixteenth) and toms alone.
+  - The bass plays a burst of sixteenths from the downbeat, then leaves space. Later in the section it fills each bar's second half with the chord's notes.
+  - The lead can play an eighth-note figure in the upper middle.
+- **RING, THEN ANSWER:**
+  - The guitar rings a chord, then answers it with hits or with eighths.
+  - The drums are half time, with open hats or the ride.
+  - The lead plays long high notes that fall a step every two bars.
+- **HALF-TIME CHORDS WITH AN OCTAVE PEDAL:**
+  - The guitar holds its chords, or splits each bar into two halves.
+  - The lead picks one note of the key doubled at the octave on every eighth, changing only every four bars. It picks the note that sits best with those bars' chords.
+  - The drums play half time with a 3-3-2 kick, or the snare and a crash on 1 and 3.
+- **CHUG BAR, CHORD BAR:**
+  - The guitar plays a bar of chugs, then a bar of chords (or chugs only).
+  - The kick follows every chug.
+  - The lead can add a high three-note squeal falling over the end of every other bar.
+
+The keys can hold one soft high note a bar, or stay out. The bass's last option is still LOCKED WITH THE KICK.
+
+**More drums under the chorus types you had:**
+- **DRIVING** has two new drum parts:
+  - CRASH ON THE BACKBEAT: a crash with every snare on 2 and 4, the kick and a closed hat on 1 and 3.
+  - TRIBAL CALL & ANSWER: a two-bar call and answer. One bar has snare-and-crash hits against the kick; the next has the kick under side-stick clicks.
+- **DRONING** has THE GROOVE CARRIES ON: a busier groove with open hats, so the drums keep moving while the guitar rings.
+
+**What I couldn't check:** how any of it sounds. The tests check the shapes (where each note lands, which drums play, that every option is a different part), not the feel.
+
+## 0.115.0
+
+Two of your asks: four new chorus types from your song files, and the guitar solo rebuilt from the Pink Floyd and Guns N' Roses solos you uploaded.
+
+**Four new chorus types.** A chorus block's TYPE menu now has these after DRIVING, SYNCOPATED DRIVE and DRONING. Each was read from your songs for its shape only; nothing is copied.
+- **PUSHED CHORDS UNDER A FIXED HOOK:**
+  - The guitar strikes power chords rarely and holds them, every chord change pushed a beat early over the bar line.
+  - The lead plays a two-bar hook using only the key's 1, 2, 3 and 5, so the same notes fit every chord.
+  - The bass doubles the pushes.
+  - The keys hold a high note with a second voice stepping under it.
+- **TWIN HARMONY, HALF TIME:**
+  - The lead plays a line on a 3+3+2 figure, doubled a third under.
+  - The guitar rings a chord on each bar's first beat, or locks to the line (at the end, or all through).
+  - The drums are half time.
+- **SIXTEENTH WALL, HALF-TIME KIT:**
+  - Muted power chords on every sixteenth, with a three-chord turnaround every fourth bar.
+  - The bass is in sixteenths on the roots.
+  - The kit plays half time under it, with crash or ride eighths and a kick-and-snare turnaround.
+- **GROUPED STREAM:**
+  - One guitar plays an unbroken wall of eighths, or eighths grouped five, a rest, five, a rest, four.
+  - The bass and the kick play in groups whose rests fall just off the beat.
+
+Each instrument has its own options in its style menu, and the bass's last option is always LOCKED WITH THE KICK.
+
+**The guitar solo, rebuilt.** Three readers measured every solo in the new files, shapes only. Real solos turned out to work quite differently from ours, so every solo style now follows what they do:
+- **Phrases end on held notes.** Most phrases are a short pickup running into one long held note, which gets the bend or the vibrato. That held note is the breath; real silences come only now and then (ours rested after every phrase).
+- **Phrases start off the beat.** Only about one in five real phrases starts on beat 1. Ours now start on an "and", on beat 3 or in the last beat, tied over the bar line.
+- **Busy passages come in waves.** There are one to three of them, each followed by a calm stretch. Ours used to get busier and busier to the end.
+- **The solo peaks past halfway and comes back down.** The register climbs to about 70% of the way through, then falls to end on a held root. Ours used to climb to the very end; the styles built around ending high still do.
+- **Bends are mostly whole steps**, onto chord tones. Bends of a step and a half or more are now rare (real solos had 4 in 101).
+- **Pre-bends.** Some notes are bent before they're struck and let down onto their note.
+- **Bends rise in about 0.2 seconds at any tempo**, not a share of the beat.
+- **Vibrato goes on held notes only.**
+- **Chord tones where a phrase lands, not forced onto every beat.** The pickups move by step, falling more often than rising.
+
+**Ten new solo styles** (our names), from those solos:
+- **SINGING BENDS:** few notes, each phrase a pickup into one long bent note.
+- **SHUFFLE CONVERSATION:** a blues shuffle in triplets; a call and its answer played twice.
+- **SLOW BUILD WITH RAKES:** a ballad build; waves of fast falling flurries with chord rakes between them.
+- **FALLING MAJOR MELODY:** major key, each phrase lower than the last, grace notes into the held notes.
+- **SUNG IN THE GAPS:** an eighth-note melody starting mid-bar. It comes back when the chords come round, and the second half is an octave lower.
+- **ROLLING SEQUENCES:** opens on one held low note, then builds in waves of turning cells.
+- **LAID-BACK SWEET BENDS:** behind the beat, slow bends, walking down to a long low root.
+- **THEME EVERY ROUND:** the opening phrase comes back each time the chords come round, with fast figures in the later rounds.
+- **TWO SPEEDS:** a slow, bendy first half, then one fast passage.
+- **LICK TWICE TO END:** the blues scale, fourth double stops, and a two-bar lick played twice to finish.
+
+**BY STYLE now picks one of these** from the guitar STYLE:
+
+| Guitar STYLE | Solo style |
+|---|---|
+| Rock, nu-metal | SINGING BENDS |
+| Thrash, groove | LICK TWICE TO END |
+| Metalcore | ROLLING SEQUENCES |
+| Shred | TWO SPEEDS |
+
+The sixteen player styles keep their own tricks (tapping, dives, sweeps, squeals) but now phrase the new way.
+
+What can't be checked here: how the solos sound. That's for your ears; tell me what to change.
+
+## 0.114.0
+
+Three of your asks: the song's key on the SECTIONS row, your riff on the lane you choose, and a CLEAN GUITAR lane.
+
+**The song's key on the SECTIONS row.** The row has a KEY button ("KEY: C MAJOR"). Choose a key and everything in the song moves into it in one undo step:
+- **Chords:** the chord track's chords.
+- **Notes:** every pitched track's notes. Drums aren't touched.
+- **What the composer built:** its recipe is noted in the new key, so a later rebuild stays in it.
+
+How the move works:
+- **Same mode** (C major to D major): everything moves up or down the short way.
+- **Major to minor, or minor to major:** each note goes to the same step of the new scale. E in C major becomes Eb in C minor. A chord built on the old key's own scale takes the new key's chord on that step: F becomes Fm, Am becomes Ab.
+
+**All Sections Synced to One Key** is in the same menu and is on to start with. While it's on, every section is in the song's key, and changing the key anywhere (the row, a block's editor, the composer's KEY box) changes it for the whole song.
+
+Untick it for key changes:
+- A block's editor then has THIS SECTION'S KEY, which moves only that section's music (and its linked copies).
+- The block shows its own key, and the KEY button reads "KEY: C MAJOR +".
+- The chord track's key strip follows each section's key.
+
+Tick it again and every section moves back into the song's key.
+
+**MY RIFF on the lane you choose, exactly as you played it.** + MY RIFF now has BUILD A SECTION FROM MY RIFF (from the selected part, or a MIDI file) as well as ONLY LOAD MY RIFF. After THIS RIFF IS MY... you choose the lane it plays on: guitar, bass, lead, clean guitar, chords, melody or drums.
+
+On that lane the riff is played note for note:
+- No humanize, no transition changes and no playable-note trimming.
+- No keyswitches added.
+- It's repeated to the section's length, nothing more.
+
+The lane is locked, and every other lane follows its rhythm. That's SYNC on your riff's lane, with the bass doubling it, so the band's first parts are built off your riff. Dragging a part onto the composer asks for the lane too. "My Riff Plays on the..." moves it to another lane later.
+
+**CLEAN GUITAR, a lane after LEAD.** Its styles are the clean parts:
+- Ringing arpeggio, picked chord, sparse clean notes, held chord & pulse.
+- Pedal hook, muted dyad walk.
+- Still shape in threes, still shape in sixteenths, still cluster.
+- Swelled melody.
+
+It's off until you turn it on, so songs build as before. It goes onto a "Clean Guitar" track. COMPOSER TRACKS in the Hub has a row for it, so you can point it at your own clean guitar track or tracks.
+
+**Your 22 song MIDI files** in the manuals repo have been read for their shapes only (nothing copied). What they suggest for new section types is in the reply that comes with this release. You choose which to build first.
+
+## 0.113.0
+
+Two of your reports: the screen pausing when you click a track, and the studio hanging when you close or open a song.
+
+**Closing a song shows its progress.** Closing a song unloads every plug-in in it, one after another. Kontakt and similar plug-ins can take several seconds each to unload. Before, nothing showed on screen while that happened, so the studio looked hung and Windows could call it "Not Responding". Now the progress box shows each track as its plug-ins unload ("Closing the song: unloading Bass's plug-ins (3 of 12)"). Opening a song does the same for the song it replaces, then shows each plug-in loading as before.
+
+**Closing back to the Hub no longer loads PR7-K for nothing.** Closing a song used to make a fresh empty song with a PR7-K track. The next song you opened unloaded that track straight away. Now closing to the Hub leaves no track at all, so one load and one unload are gone.
+
+**Clicking a track: what I found, and what I need from you.** I timed a track click in a heavy test song: 30 tracks of 2,000 notes each, the full window three screens wide, and the composer open with a 100,000-groove library. Each click took about 3 ms in the studio, plus about 40 ms to redraw the window. Nothing in the studio comes close to the second you see. That points at your plug-ins (Kontakt and the like) being asked something when a track is selected, and I can't load them here.
+
+To find it, the session log now writes down any pause of the screen over 0.7 s. It records what the screen was doing at that moment: which plug-in or which part of the studio, with the calls by name. It writes at most one such note every 15 seconds and 30 a session. A hang over 10 seconds is still written as FROZEN, as before.
+
+Please do this:
+1. Install 0.113.0.
+2. Click a few tracks, then close a song and open one.
+3. Send me the newest log from the Logs folder beside the studio's settings: `%APPDATA%\Paragon PR7-S\Logs`.
+
+The SLOW and FROZEN notes in it will show what to fix.
+
+## 0.112.1
+
+**The composer is fast again with your 100,000-groove PR7-D library.** You said the composer lagged so much it was unusable. Your library was the cause.
+
+What was wrong: on every roll, generate, style change or song edit, the composer went through all 100,000 grooves word by word, twice, looking for "verse", "chorus", "fill" and so on in each name, and copied the whole list each time. Measured here with 100,000 grooves:
+
+| | 0.112.0 | 0.112.1 |
+|---|---|---|
+| ROLL / GENERATE | about 0.5 s | about 1.5 ms |
+| The drums lane's menu | 3.5 s | 3 ms |
+| Opening the composer | 0.5 s | 26 ms |
+| Reading PR7-D's library (once, and again after PR7-D changes it) | 1-1.4 s with the screen frozen | in the background, the screen free |
+
+What changed:
+- Each groove's words are read once, when the library is read, not on every click.
+- Choosing a groove keeps only the best few (it picks among the top 8, and fills among the top 4) instead of sorting all 100,000.
+- The groove list is shared, not copied every time the composer looks at it.
+- PR7-D's library is read on a thread of its own. The first time you open the composer in a session, the drums lane uses its own beats for a second or two, then switches to your library grooves once they're read.
+
+The grooves chosen are exactly the same as before: a test checks the quick way against the old one for every section, beats and fills.
+
+## 0.112.0
+
+**COMPOSER TRACKS: choose which tracks each composer lane plays on, and play a lane on two (or more) tracks.** You asked for the bass lane to find your "Bass" track by default, and for the guitar to go to your guitar left and guitar right.
+
+- **A new Hub tab, COMPOSER TRACKS** (under TRACK COLOURS). A row for each composer lane: BASS, GUITAR, LEAD, CHORDS, MELODY, DRUMS. Each row has:
+  - **TRACK NAMES:** the names of the tracks that lane plays on, separated by commas (for example `Bass, Bass DI, Djinn`). Upper or lower case doesn't matter. The lane plays on the first track it finds with any of those names. The first name is also what BUILD calls a new track when none exists.
+  - **EVERY MATCHING TRACK:** on, the lane plays on every track with one of those names, so `Guitar L, Guitar R` with this on writes the riff onto both. Off, it plays on the first one only.
+  - Under each row: what that lane finds in the song you have open (`IN THIS SONG: GUITAR L + GUITAR R`), or the track BUILD will make.
+- **PLAY THE COPIES A LITTLE LOOSE** (on at first): when a lane plays on two or more tracks, each copy after the first is humanized again with its own small timing and velocity differences, like a second take, so left and right aren't the exact same performance. Velocities stay in their layers (palm mutes stay palm mutes). Off: the same notes on each track.
+- **ALL BACK TO THE USUAL NAMES** puts every lane back to Bass, Guitar, Lead Guitar, Piano, Melody and Drums, one track each.
+- In the composer, a lane's TRACK key shows every track it plays on (`TRACKS: GUITAR L + GUITAR R`). HEAR, USE ALL, BUILD and a lane's own Use write and play on all of them. A track you pick in a lane's TRACK menu still wins while the composer is open.
+- A block on the SECTIONS row built onto two tracks keeps both: change its chords and both are rebuilt, the second still its own looser take.
+
+Worth knowing:
+- The names must match whole track names (`Guitar L` won't match `Guitar Left`); add both if you use both.
+- A lane's volume in the composer moves the first of its tracks.
+- Dragging a lane out as a MIDI file gives the first take.
+- I can't hear these here: tell me if the looser copy is too loose or not loose enough.
+
+## 0.111.0
+
+**Intros and outros get types of their own** (the last step of your plan for section types; your songs' openings and endings read for their shapes only, our names). An **Intro** block's TYPE menu starts with ten new types, and an **Outro**, **Ending**, **Coda** or **Tag** block's with nine; DRONING and OPEN CHORDS / STABS are still under them. Each type writes the guitar, bass, keys and drums (one of them the lead too), with options in every lane's menu.
+
+Intros:
+- **RIFF ALONE, THEN THE BAND** (Faster, Black, Jaded, Going Under): one palm-muted line spelling the chords (each move an eighth early), or the chug riff, alone; the band lands together halfway, the drums with a fill into it.
+- **FULL BAND FROM THE DOWNBEAT** (Stricken, The End of the Dream, Wildfire, This Calling): the riff at full force from beat 1, or a unison three-note cell turning against the bar.
+- **ARPEGGIO BUILD** (Waterhaul, Come Clarity, Masterpiece, Waffle): a clean sixteenth arpeggio alone, the bass coming in by stages (a held note, eighths, then doubling), the heavy guitar and double kick as a wall for the last quarter.
+- **KEYS HOOK OVER A LOOP** (In The End, Papercut, Crawling): a keys hook in quarters (or a sixteenth ostinato) over a light loop, the bass from halfway, a guitar pickup of octave sixteenths at the end.
+- **SWELL AND DRONE** (Another Life, Circle With Me): two high notes swelling in every two bars, one guitar chord swelled in halfway, a snare pickup into the next section.
+- **STAB CALLS** (Clown, Sweet Sacrifice, Ten Ton Hammer): four stabs, a chord a half step down, the octave ringing, with the toms in unison; then a riff on the root and its half-step neighbours. Or burst-and-silence calls.
+- **TREMOLO SWELL** (At the End of August): root and fifth tremolo-picked over the ride alone, the groove coming in halfway, the last bars one guitar alone playing the riff.
+- **HOLD AND ANSWER** (The End of Heartache, Whole): a low chord held, answered by two hits a minor third up on 3 and 4, or by a high clash in eighths.
+- **DOWNBEAT HITS UNDER A LEAD** (All Night Lights): the band hits only each bar's first beat while the lead plays a sixteenth pedal melody; a snare roll at the end, or a blast from halfway.
+- **RIFF WITH DRUMS BUILDING** (This Fire Burns): a gallop or chug riff steady while the drums build from single hits to a groove to a double-kick carpet.
+
+Outros:
+- **INTRO RETURNS, LAST CHORD RINGS** (Parallels, This Calling, Clown, Left Behind): the opening riff (or muted line) back, then the last chord rung out with a crash.
+- **WINDING DOWN** (Tears Don't Fall, This Fire Burns, Another Life): chords on the beats, then half notes, then whole notes, then the last chord held. Your songs also slow the tempo there; this only thins the rhythm (slowing down would need the tempo track: say if you'd like that as an option).
+- **DEAD STOP** (Wildfire, Whole, Ten Ton Hammer, Crawling): the riff to the end, cut off on beat 3 of the last bar with nothing left ringing (a snare flam on the last hit).
+- **STABS, THEN RING** (Another Life, Masterpiece): two quarter-note stabs a bar (or pushed chords), then the last chord rung out.
+- **FILL AND FINAL HIT** (Faster, Sweet Sacrifice, your band's drums): the riff, a bar walking muted single notes over a fill down the toms, one big chord with a kick and a crash.
+- **HOOK ALONE TO THE END** (In The End, Waterhaul, Left Behind): the band stops on one hit; a clean arpeggio or the keys' hook carries on alone to one held note, the drums winding down or out.
+- **SPEEDING HITS** (The Void): one chord hit by the whole band in half notes, then quarters, then eighths, a crash on each, then a stop.
+- **SPACED STABS** (Clown): a chromatic walk down, then four chugs on beat 4 into a hit on 1 and three beats of silence, a high pulse in the gaps.
+- **TRIPLE STAB STOP** (Papercut, Going Under): the drive to the last bar, which is three sixteenths on the key's chord and silence.
+
+Worth knowing:
+- The bass's options end with **LOCKED WITH THE KICK** as always; some types start with their own (OUT, THEN DOUBLES, IN BY STAGES, HELD FROM HALFWAY, OUT, HIT, THEN OUT).
+- Several of the tab-only songs showed one guitar, so their bass and drums are my guess at the usual way.
+- I can't listen to these here, so tell me which ones don't sound like your songs.
+
+That finishes the plan for section types: every kind of section now has types from your songs.
+
+## 0.110.0
+
+**Post-choruses, interludes and instrumentals get types of their own** (the next step of your plan, starting with Faster's hook riff; your songs read for their shapes only, our names). A **Post-Chorus**, **Interlude** or **Instrumental** block's TYPE menu now starts with eleven new types; under them are the types it had before (a post-chorus the chorus's, an interlude or instrumental the bridge's). Each type writes the guitar, bass, keys and drums, and four of them the lead too, with options in every lane's menu.
+
+- **HOOK RIFF** (Faster's): open power chords in eighths, each new chord struck on the bar's last eighth and held over the bar line, with the bass, keys and kick pushing with it. The lead plays a two-voice hook in eighths: a small turn a step and two over the high root against one low note a bar from the chord, the fourth bar climbing to its peak and stepping home. Options: the hook an octave down (as the second guitar doubles it), a muted pedal teaser instead of the chords, or a high descant; the drums with a crash on every beat or ride-bell eighths (the short post-chorus's).
+- **CHORUS CARRIES ON** (Another Life, The End of the Dream): the chorus's driving eighths keep going under the tag, moving with the chords or frozen on the key's chord, the lead a three-note cell drifting across the bar line, ending on two bars of stabs.
+- **PEDAL IN THREES** (Stricken, Black): sixteenths with the low root on every third one and moving notes between, the band doubling it, double kick under it.
+- **HIGH TRILL HOOK** (The Heart and the Shape, The Void, The End of Heartache): a high half-step trill over a chord tone on 1, or chugs answered by a fast trill coming down every two bars, over a tom or ride groove.
+- **PEDAL & HIGH MELODY** (This Calling, Circle With Me): a muted low root carrying a high melody that steps down every two bars and ends on a bend, or gallops answered by high dyads; the bass holding roots under half time.
+- **BURST & ANSWER** (Waffle, The End of Heartache): a bar of high power chords answered by a walk down to the root, or a bar of chugs answered by a pinched dyad sliding down.
+- **STAB & ANSWER** (Call Me When You're Sober, Clown): the band stabs and stops, the lead answers in the gap, the next chord comes in a sixteenth early; or a unison burst left ringing on a high chord.
+- **TREMOLO OVER CHUGS** (All Night Lights, Jaded): root chugs in threes under double kick, long tremolo-picked octaves falling a step a bar.
+- **CLEAN BREATH** (Come Clarity, At the End of August): a clean arpeggio arching over each chord (the band climbing back in at the end), or a still pair under a falling top note over rolling toms; the bass comes in halfway.
+- **TRITONE AIR & BUILD** (Ten Ton Hammer, Capricorn): a chord sliding up to a high note and falling to the tritone, the tritone held, the guitar out (the ride carrying the gap), then dead-string scratches building back with the snare.
+- **CHROMATIC WOBBLE** (Wildfire): muted low sixteenths wobbling a half step in groups of odd lengths that slide across the bar line, the kick on every one.
+
+Worth knowing:
+- The bass's options: **DOUBLES THE GUITAR** (its low notes), **ROOTS HELD**, **LOCKED WITH THE KICK**; CLEAN BREATH's starts with **OUT, THEN IN HALFWAY**.
+- Hook and Riff blocks keep their old types (your choice).
+- Most of the tab-only songs showed one guitar, so their bass and drums are my guess at the usual way. Faster's band-out moment is the SILENT BAR transition.
+- I can't listen to these here, so tell me which ones don't sound like your songs (the HOOK RIFF above all).
+
+Next, as planned: intro and outro types.
+
+## 0.109.0
+
+**Breakdowns get types of their own** (the next step of your plan; your songs' breakdowns read for their shapes only, our names). A Breakdown block's TYPE menu now starts with ten new types, with HEAVY CHUG and STACCATO CHUG still under them. Each type writes the guitar, bass, keys and drums (and, for one of them, the lead), and every lane's menu has its options, as with the bridge types.
+
+- **CHROMATIC CRAWL** (Circle With Me): low power chords in quarters creeping up inside a minor third and back to the root on 4, with high harmonics (or a rake) ringing on 3, or plain quarters. Drums: the kick under the guitar, a china on 3 and the snare only once every two bars, or half time. Keys: one high note at a time, held two bars.
+- **HIT & HOLD, THEN CARPET** (This Fire Burns): a stab and a held chord, then four muted eighths, over half time; from halfway, muted eighths wandering inside a minor third over a sixteenth double-kick carpet. Either half on its own is an option too.
+- **CHUG & SQUEAL** (Clown, Whole): half-time root chugs answered by a high clashing chord held a minor ninth up (a chromatic pickup every fourth bar); or chug pairs and a high stab (a bar of the stab in eighths every fourth bar); or a high note bent up on 2 and 4. Drums: the kick on every chug with the ride, or with open hats and a crash every bar.
+- **DOTTED TRITONE PUSH** (Ten Ton Hammer, Capricorn): dead-string scratches growing into eighths, then power chords in a dotted push climbing to the tritone; or the push alone; or the root against the tritone on dotted eighths with scratches in the gaps.
+- **TRIPLET CLUSTER** (Wildfire): a low clashing cluster (a half step over the root, with its fifth and octave) in groups of triplets with gaps, the last bars in wider triplets so it sounds like it slows down.
+- **GAPPED SIXTEENTHS** (Parallels, Stricken): one muted chord in sixteenths, the groove made only by where the gaps fall; or a non-stop chug stream stabbed with dark chords. Drums: the kick with the chugs, or a double-kick carpet.
+- **THREES & TWOS** (The Heart and the Shape, Another Life, your band's drum MIDI): chugs grouped 3+3+2 (a high clashing chord every fourth bar), or a dark chord taking turns with the root chug in 3+3+3+3+2+2. Drums: the kick and china on the groups, or a bar of that in turn with a bar of double kick.
+- **CALL & CHUG** (The End of Heartache, Waffle): a bar of single low notes bent and let go, answered by a bar of chugs ending on a flat-second accent; or high octave stabs answered by a walk down to the root.
+- **HALF-TIME OPEN CHORDS** (The Void): wide open chords on a sparse half-time rhythm, moving with your chords, optionally building at the end (whole notes, quarters, eighths). The lead can play a slow melody on top.
+- **OFF-BEAT GALLOPS** (This Calling): single-note gallops on the low root coming in after the downbeat, in bursts of three and two, a pinch squeal in a gap; the kick on every gallop note.
+
+Worth knowing:
+- Every type's bass: **DOUBLES THE GUITAR** (its low notes only: not the harmonics, high stabs or scratches), **ROOTS HELD**, or **LOCKED WITH THE KICK**.
+- The breakdowns follow your chord track: the low root is each bar's chord root, and the clashing steps (the flat second, the tritone, the minor ninth) are the breakdowns' own, so KEY CHECK will point them out.
+- Five of these breakdowns came from guitar-only tabs (Ten Ton Hammer, Whole, Wildfire, Parallels, The End of Heartache), so their bass and drums are my guess at the usual way, not your songs'. Faster has no breakdown; its band-out moment is already the SILENT BAR transition.
+- I can't listen to these here, so tell me which ones don't sound like your songs.
+
+Next, as planned: interlude/post-chorus (Faster's HOOK RIFF), then intro/outro.
+
+## 0.108.0
+
+**PR7-D plays the composer's drums from its own song track** (you asked for full integration). This needs PR7-D 0.83.0, which comes in this zip.
+
+- **How it works.** When the composer builds drums on a track playing PR7-D (new drum tracks do), PR7-S doesn't send PR7-D the notes any more. It lays the drums out in PR7-D's SONG TRACK: a block per section, each holding that section's groove and fills on PR7-D's own drums. PR7-D swaps to that song (your kit isn't touched) and plays it in time with PR7-S's playhead.
+- **The Drums track keeps a muted copy to look at.** You still see the drums in the arrangement, greyed. The bass's LOCKED WITH THE KICK and SYNC still read their kicks, and MIDI export still has drums. The copy is muted because otherwise PR7-D would play every hit twice: once from its song, once from the track.
+- **Edit the drums in PR7-D.** EDIT PLAY STYLE, the grid editor, FIND SIMILAR, moving and lengthening blocks: about half a second after you stop editing, PR7-D writes the changes back and the copy on PR7-S's Drums track follows. A section you've edited this way counts as changed by hand, so a chord change won't rebuild over it.
+- **It keeps up with the song.** Move a section on the SECTIONS row, build a new one, change a type or a transition, or move the copy: PR7-D's song is updated to match.
+- **HEAR in the composer** asks PR7-D to keep its song quiet while the composer plays a drum idea through it, then lets it play again.
+- **Turning it off:** the composer's drums menu has **PR7-D Plays the Drums from Its Song Track**. Off, the drums go on the track as notes, as before.
+
+Worth knowing:
+- The link needs PR7-D 0.83.0 or newer (the one in this zip). An older PR7-D ignores the messages, so the drums would be silent: the copy on the track is muted.
+- Drum parts built before this release stay as they were (notes on the track). Building a section again links it.
+- I can't run PR7-D inside PR7-S here. Each side was tested on its own (PR7-S writes and sends exactly what PR7-D's tests read and play), so please try it on Windows and tell me if PR7-D stays silent or plays twice.
+
+## 0.107.0
+
+**The composer's drums come from PR7-D's groove library, and PR7-D ships with the studio as its house drum kit** (you asked: "you can't leverage the groove library that is scanned into the PR7-D?", and to ship PR7-D like PR7-K: the start of the Backline).
+
+- **PR7-D's grooves in the composer.** The drums lane now reads the grooves PR7-D already knows: the folders you linked on its GROOVES page, as PR7-D read them. Nothing to scan twice. PR7-S only reads PR7-D's list, never changes it. If PR7-D has no grooves listed on this computer, the MediaBay's drum MIDI is used as in 0.106.0.
+- **The right drums for each pack.** Packs are written for different kits, and PR7-D knows each linked folder's note layout (its FILES' MAP). Each groove's notes are now turned into the drum track's own: the PR7-D Map when the Drums track plays PR7-D, General MIDI otherwise. A hi-hat stays a hi-hat, and the toms and cymbals land on the right drums.
+- **Better choices.** The packs' own labels count when a groove is chosen: a groove labelled as a fill is used as a fill even without "fill" in its name, an ending counts as an ending, and the genre counts toward your style. Grooves in a different time signature from the song are left out. Folders you excluded in PR7-D are left out here too.
+- **PR7-D is the studio's drums.** It now comes in the zip beside the app, as PR7-K does (keep `Paragon PR7-D.vst3` in the same folder as the app). New drum tracks play it: the composer's Drums track, BUILD, IDEAS' drums, and a new **PR7-D (the studio's drums)** item in the Add Track menu. They open on the PR7-D Map, so the MIDI editor shows PR7-D's drum names. If PR7-D isn't found, drum tracks start on the studio's synth as before.
+- **The Backline.** The release now fetches the family's instruments in one step (PR7-K and PR7-D for now), so more of your instruments can join it the same way.
+
+Worth knowing:
+- It reads PR7-D's list as it was last scanned in PR7-D. A folder you've just added appears once PR7-D has read it (open GROOVES in PR7-D once).
+- Folders set to PR7-D's CUSTOM map are taken as they are, since only PR7-D knows that map.
+- Sections built before this release keep their drums until they're built again.
+- I can't run PR7-D here or see your library, so this was tested with groove files and a PR7-D list I made in its format. Tell me if a pack's drums land in the wrong places.
+
+## 0.106.0
+
+**The composer's drums come from your groove library by default** (you asked: "those are much better grooves than what we are currently generating").
+
+- **The drums lane now plays a groove from your own drum MIDI**: the files the MediaBay has scanned, the same ones IDEAS shows under DRUMS > FROM MY LIBRARY. It does this whenever the library has grooves, in every section, over the section types' own drum parts too.
+- **The groove is chosen by the section.** A file whose folder or name says Verse is used for a verse, Chorus for a chorus, and likewise Intro, Bridge, Breakdown, Outro and Solo (most groove packs are laid out in folders like that). Your style's words and the song's tempo count too, as in IDEAS.
+- **ROLL on the drums lane picks another of the section's best grooves.** In the drums lane's menu, **Library Groove** lists them by name if you want one in particular.
+- **Fills from your library.** A file with "fill" in its name puts its last bar at the end of every phrase (DRUM SETTINGS' FILL EVERY bars) and on the section's last bar.
+- **The bass's LOCKED WITH THE KICK follows the library groove's kick.**
+- **Turning it off:** the drums lane's menu has **Grooves from My Library**. Untick it to go back to the type's drums or the generator's for that section.
+- **When it doesn't apply:**
+  - With SYNC on another lane, the drums still follow that lane (they have to lock to its hits), so they're generated as before.
+  - With no drum MIDI scanned, nothing changes.
+  - A section built before this release changes only when it's built again (a new type, transition or chords).
+- I can't tell how your packs name their folders. If the wrong grooves come up for a section, tell me what the folders are called and I'll teach it those words.
+
+## 0.105.0
+
+**Bridges get types of their own** (the next step of the plan from your songs, read for their shapes only). A Bridge block's TYPE menu now starts with seven new types; the old three (CREEP, OPEN CHORDS, DRONING) are still under them. Each type writes every lane it has options for, and the options are in each lane's menu as usual.
+
+- **HALF-TIME MELODIC** (Another Life). Guitar: a chord rung with a short melody on it, power-chord stabs in 3+3+2, or colour chords (with the ninth) let ring. Bass held or in eighths. Keys: root octaves (silent under the stabs), pads or nothing. Drums: a half-time groove with ghost snares, the last two bars a triplet fill round the toms. The lead plays its own styles here, because in your song it carries the hook.
+- **HEAVY BUILD** (Ten Ton Hammer, Clown, Faint). Guitar: SCRATCH BUILD (dead-string scratches, then muted chords on every eighth from halfway), DOTTED CLIMB (power chords on dotted quarters: root, flat second, third, then the flat seventh and the root), SIREN CHUG (a syncopated chug that goes half time halfway), FALLING EIGHTHS & HARMONIC (octave, fifth, minor third, second, then a harmonic). Lead: SIREN BENDS (whole-step bends on 2 and 4) or silent. Drums: the kick on every guitar hit, half time, or a snare building from quarters to sixteenths.
+- **LATE-CHANGE CLIMB** (Sweet Sacrifice). Power chords on every sixteenth (or eighth), each new chord arriving one step late, the kick on every sixteenth, a sus4 pad on top.
+- **CLEAN BRIDGE** (At the End of August, All Night Lights, Waterhaul). Guitar: two notes struck in 3+3+2 with the top stepping down a scale step every two bars, held octaves, or a pedal in 3+3+2 with a melody between. The bass and a soft snare march come in halfway (or no drums, or just the ride). Keys: a fifths pulse, pads or nothing.
+- **SLIDING CHORDS** (This Calling). A four-bar guitar figure: a chord, four eighths, a chord; eighths then a lick; a line in quarters; a chord sliding down a half step. Or only the held chord and its slide. A driving or half-time beat.
+- **GUITARS OUT, THEN BACK** (Left Behind). No guitar until halfway (or the last quarter), then power chords on the eighths, the last bar an octave up to lift into the chorus. Half time (or a tom pulse) until the guitars come back, then a driving beat with a crash.
+- **SLIDE OVER A HELD ROOT** (Another Life). A palm-muted root rung on 1 with a sliding triplet figure on top, taking turns with bars of syncopated stabs (or every bar held). The kick on the stabs, or half time.
+
+Worth knowing:
+- An **Interlude, Instrumental, Middle 8 or Break** block counts as a bridge, so it gets these types too until those get their own.
+- The bass's last option is always **LOCKED WITH THE KICK**, as with the other types.
+- I can't listen to these here, so tell me which ones don't sound like your songs.
+
+**Your question about the drums:** the composer doesn't pick grooves from your MIDI library on its own. Its drums come from (1) the section type's own drum part when the type writes the drums (as these do), else (2) the beat generator's rules, or the drummer you taught it on LEARN A DRUMMER if you chose one with DRUMMER. Your library's grooves are on IDEAS, DRUMS tab, FROM MY LIBRARY (matched to the style and tempo); a card's USE IT has "Into the Composer's DRUMS lane", which puts that groove in the lane and locks it.
+
+Next, as planned: breakdown types, then interlude/post-chorus (Faster's HOOK RIFF), then intro/outro.
+
+## 0.104.0
+
+**Transitions: how each block hands over to the next** (the third step of the plan from your songs, read for their shapes only). Every block on the SECTIONS lane now has an **INTO THE NEXT** choice, in its editor (right-click the block) and in its MORE... menu. It changes the block's last bar (two bars for MUTED LINK) so the next part lands the way your songs do it:
+
+- **STOP:** the whole band hits the last bar's first beat together, then silence (the stop before a chorus: Faster, Left Behind, The End of the Dream).
+- **BREATH:** everyone stops for the last beat only.
+- **SNARE ROLL:** sixteenth snares from the "and" of three, louder each hit. Everything else plays on.
+- **DRUMS BUILD:** the last bar is the drums alone, eighth snares building into sixteenths.
+- **BASS ALONE:** the last bar is the bass alone.
+- **SILENT BAR:** the last bar silent, room for the singer alone (before a last chorus).
+- **WALK DOWN / WALK UP:** the bass and guitar walk a half step at a time into the next block's first chord, the kick with them.
+- **PINCH SLIDE:** the guitar's last two beats are one pinch harmonic diving down (the whammy bar).
+- **MUTED LINK:** the last two bars palm-muted eighths on the guitar and bass, hats, kick and snare; keys and lead out.
+- **SHORT BAR: 1, 2 or 3 BEATS:** the block's last bar is cut short (All Night Lights, At the End of August), and the band hits each of its beats together. This changes the song's time signature for that one bar and back after it, and everything after the block moves up to meet it.
+
+What you'll see: a block with a transition has a pink edge at its end and the transition's name after its bars.
+
+Worth knowing:
+- **The melody (the singer's line) is never changed**, whatever the transition.
+- **A lane that's silent stays silent:** a transition only writes into lanes that play in that block.
+- **A built block is rebuilt at once** with its new ending. Lanes you've edited by hand are kept as you left them. It's one undo step, the moved music of a SHORT BAR included.
+- **Linked copies share their transition**, as they share their length. To give the last chorus a different ending, unlink it first (MORE..., Unlink).
+- I can't listen to these here, so tell me which ones feel wrong.
+
+Next, as planned: the bridge, breakdown, interlude/post-chorus (Faster's HOOK RIFF) and intro/outro types.
+
+## 0.103.0
+
+**The SECTIONS lane, the way you asked for it** (the owner: "I need to be able to go to the lane where the blocks are, double-click an empty lane and add a block, add the entire song's worth of blocks ahead of time, and edit each block").
+
+- **The lane is there by default** in every song, new or old. You didn't know it existed because it was hidden until you added it from the track menu. You can still hide it from its menu, and a song where you hid it stays that way.
+- **Lay the whole song out first:** double-click the empty lane after the last block to add the next one (Intro, Verse, Pre-Chorus, Chorus...). Blocks sit end to end from bar 1, so a new block goes after the last.
+- **Drag a block** to change the order (start on the verse instead of the chorus); its music moves with it, as before.
+- **Double-click a block** to open the composer on it and build its music, as before.
+- **New: right-click a block for its editor:**
+  - **Name** (Verse, Chorus, Bridge...), **Type** (the section's types, e.g. DRIVING or DRONING for a chorus) and **Length** in bars (what follows moves).
+  - **Song key:** the scale for the whole song.
+  - **The block's chords, chosen from that key.** Click a chord to change it to another of the key's chords, change how long it lasts (half a bar up to 8 bars), move it earlier or later, or remove it. Drag a chord sideways to put it somewhere else in the order. **+ CHORD** adds one: the key's first chord to start, then the chord the one before suggests (always from the key). A chord outside the key is edged pink. The line above the chords tells you how many of the block's bars are filled.
+  - **OPEN IN THE COMPOSER** builds the block. **MORE...** has the rest: insert a block before or after, duplicate (linked or not), unlink, set the locators to it, delete.
+- If a block's music is already built, changing its chords builds it again over the new chords (as changing the chord track already did), and linked copies of the block follow.
+
+The chords live on the chord track, so you'll see them there too (it's shown when you give a block its first chords). As always, tell me what doesn't feel right. Next: transitions between the blocks (stops, rolls, pickups and short bars) as 0.104.0.
+
+## 0.102.0
+
+**Pre-choruses get types of their own** (the second step of the plan from all your songs, read for their shapes only). Until now a pre-chorus borrowed the verse's types. Now its TYPE menu starts with six new ones (the verse's types are still under them, so a block you've already typed keeps its type). Each one writes every lane it has options for, and the options are in each lane's menu as usual.
+
+- **BUILD & STOP** (Faster, Left Behind, Call Me When You're Sober, The End of the Dream). The verse's drive pushed toward the chorus, then the band stops for the last beat so the chorus lands harder.
+  - **Guitar:** MUTED EIGHTHS, THEN THE STOP. ROOTS, DYADS, CHORDS (Left Behind's build: single muted notes, then two-note shapes, then power chords in sixteenths, with half a bar of silence before the chorus). STRIKE, CHUG, RING (Call Me: a chord struck, three chugs, then struck again and left ringing).
+  - **Bass:** ROOT EIGHTHS, DOUBLES THE GUITAR, PULSES (The End of the Dream), LOCKED WITH THE KICK.
+  - **Keys:** DOMINANT PEDAL (Faster: the key's fifth held in octaves over every chord, the pull toward the chorus), HELD PADS, SILENT.
+  - **Lead:** SILENT or RISING LINE (a held note a bar, climbing).
+  - **Drums:** BEAT INTO A FILL (Faster: a snare and tom fill, then the stop), RIDE AND A ROLL (Call Me: a snare roll from the and of 3 straight into the chorus, through the stop), BUILDING SNARE.
+- **GUITARS OUT, BASS CLIMBS** (Crawling, Going Under, Waffle). The guitars drop out and the bass climbs in long notes, each next chord pushed in on the and of 3.
+  - **Keys:** OCTAVE PAD, PIANO SIXTEENTHS (Going Under's busy piano), HELD STRINGS.
+  - **Lead:** HIGH MOTIF (Crawling: each bar's root, then the same high figure).
+  - **Guitar:** GUITARS OUT, or a HIGH THREE-NOTE CELL (Waffle's dissonant cell against the beat).
+  - **Drums:** BROKEN BEAT, GHOST GROOVE, HALF TIME.
+- **CYCLE IN QUARTERS** (Circle With Me's pre-chorus). The verse's still clean shape carries on in eighths, with a second three-note cycle in quarters over it on the lead (three against four, a climb every fourth bar, the next phrase a step lower).
+  - **Drums:** a ghost-note groove (or the verse's grooves).
+  - **The ending:** the last two bars are the song's stop. The band hits once, then there's only one held note before the chorus.
+- **CHUGS UNDER THE SHAPE** (The Void's pre-chorus). Low muted chugs with the bass doubling them and the kick on every chug. Over them the lead plays the verse's still shape an octave up (STILL CLUSTER or STILL SHAPE).
+- **STABS & GAPS** (Sweet Sacrifice). The whole band on short sixteenth stabs together (the chord, then a step under it), then silence for the voice, and a two-note pickup into the next bar. The second bar fills in more of it. The toms (or the kick) and the bass play exactly the guitar's hits.
+- **RISING BASS** (At the End of August). Tremolo-picked or held power chords while the bass climbs a scale step every bar, in sixteenths or eighths, whatever the chords do. The kick builds from eighths to sixteenths.
+
+**Turn the lead lane on** for the types that use it (CYCLE IN QUARTERS and CHUGS UNDER THE SHAPE, mostly). Under STABS & GAPS and RISING BASS the lead plays its own styles.
+
+As always I can't hear these here, so tell me what needs work. Next in the plan: transitions (stops, rolls, pickups and short bars between sections).
+
+## 0.101.0
+
+**Circle With Me's clean verse** (the first step of the new plan from all your tabs and MIDI, read for their shapes only). You were right: our CLEAN VERSE named Circle With Me, but every clean part we had moved its shape with each chord, and that's not what the song does.
+
+**What the song does.** The clean guitar holds **one shape that never moves**: the key's own minor chord, up high on the top three strings. It picks those three notes low, middle, high, around and around over straight eighths, palm-muted. Three notes over eight eighths only come round every two bars, so the pattern lands in a new place each beat. The bass moves underneath, so the same three notes change colour on every chord. A second clean guitar swells single notes in and holds them, stepping down the scale, and the drums stay in, in half time.
+
+**New in CLEAN VERSE** (choices in each lane's menu; AUTOMATIC picks as before, so sections you've built don't change):
+- **Guitar: STILL SHAPE IN THREES.** The key's chord (its note, third and fifth) held up high and picked in threes over eighths, palm-muted, never moving with the chords. Every fourth bar one top note drops a step, as the open string does in the song.
+- **Guitar: STILL SHAPE, SIXTEENTHS.** The same in sixteenths, for when you set the song at its half-time tempo. The tab is written at 206 with the snare on 3, which most people would set as 103.
+- **Guitar: STILL CLUSTER.** From The Void and Jaded, which you sent today: the same idea on the key's third, fifth and sixth (in a minor key: b3, 5, b6, a close cluster), picked middle, top, low, dropping to the key's note on the last eighth of each cycle.
+- **Lead: SWELL MELODY.** Circle With Me's first clean guitar. Single notes swelled in from nothing and held, stepping down the key's scale from its third. Two bars a note at first, then one bar each near the end, so the verse quietly speeds up. It's on the lead lane, so turn the lead on and give it a clean guitar. The lead's own styles are still there beside it.
+- **Lead: SWELL, THEN WARBLE.** The song's second verse: each note held for its first half, then picked again in eighths, every other one bent a quarter tone.
+- **Drums: HALF-TIME HATS.** Hats on the eighths with every third one opened a little, the snare on 3, a few kicks round beat 1, toms at the end into the next section.
+- **Drums: TOM GROOVE.** The second verse: kick and toms on the eighths, the hat's foot on every beat, a flammed snare on 4.
+- Choose a still shape and leave the rest on AUTOMATIC, and the band goes as in the song: the bass in eighths changing a little late (whole notes under STILL CLUSTER), HALF-TIME HATS, and the keys out.
+
+**The swells** are written as expression (controller 11) rising from nothing at the start of each note. Most sampled guitars and Kontakt instruments answer controller 11; if yours doesn't, the notes just play without the fade.
+
+As always I can't hear these here, so tell me what needs work. Next in the plan: the pre-chorus types.
+
+## 0.100.0
+
+**The verses from your tabs** (the third step of the plan: This Fire Burns, Faster and Another Life's verses, read for their shapes only).
+
+**A new verse type, MUTED DRIVE** (Faster's verse). It sits after CLEAN VERSE in the verse's TYPE menu. The guitar plays palm-muted eighths the whole way and holds back for the chorus.
+- **Guitar:** SINGLE NOTES, THEN CHORDS (two bars of muted root notes, then muted power chords, the last bar rocking between two chords: Faster), MUTED POWER CHORDS, ROCKING CHORDS. Each one walks up into whatever comes next at its end.
+- **Bass:** ROOT EIGHTHS, DOUBLES THE GUITAR, ROOTS ON THE BEATS, LOCKED WITH THE KICK.
+- **Drums:** PLAIN BACKBEAT (closed hats in eighths, kick on 1 and 3, snare on 2 and 4), DRIVING KICK, HALF TIME, with a fill into every four bars.
+- **Keys:** SILENT or HELD PADS. **Lead:** DOUBLES THE RHYTHM AN OCTAVE UP (Faster's lead) or SILENT.
+
+**STACCATO CHUG gets This Fire Burns' verse:**
+- **GALLOP & SQUEAL** for the guitar: the root galloped (an eighth and two sixteenths, muted), the second bar answered by a pinch-harmonic squeal and a stab on the sixth, the fourth bar turning round on the seventh.
+- **DOUBLE-KICK CARPET** for the drums: sixteenths on the kick and the snare on every beat, whatever the guitar does, until the last bar of each four, where the kick locks to the guitar's hits.
+- Both are choices in the lane's menu. AUTOMATIC still picks among the original options, so a section already built on AUTOMATIC keeps its riff if it's rebuilt.
+
+**CLEAN VERSE gets Another Life's verse:**
+- **Guitar:** **PEDAL HOOK** (the key's note picked low in eighths, a short hook on top on the key's fifth and the steps either side of it, the same notes over every chord) and **MUTED DYAD WALK** (palm-muted two-note shapes in eighths, the root underneath, the top note stepping inside the chord).
+- **Keys:** **OCTAVE DRONE** (the key's note and its octave held two bars at a time through every chord).
+- **Bass and drums:** **OUT, THEN IN HALFWAY**: silent for the first half of the section, then in (the bass on its syncopated roots, the drums in half time). Another Life leaves the band out of its first verse and brings them in on the second. Our composer builds one section at a time, so the closest we can do inside one section is to come in halfway. For the song's exact shape, give verse 1 NO DRUMS and verse 2 the half-time groove.
+- These are choices in the lane's menus too; AUTOMATIC picks as before.
+
+As always I can't hear these here, so tell me what needs work. That finishes the three-song plan; next could be the pre-chorus, breakdown, interlude and bridge types from the same tabs, when you want them.
+
+## 0.99.0
+
+**A new chorus type, SYNCOPATED DRIVE** (the second step of the plan from your tabs; Another Life's chorus with Faster's syncopated bar, read for their shapes only). It sits between DRIVING and DRONING in the chorus's TYPE menu. The guitar still drives in eighths, but the bass and kick lock into a syncopated figure under it: **1, the and of 2, and 4 held over the bar line, then a bar of off-beats**.
+
+- **Rhythm guitar** (four options; AUTOMATIC picks one by the take):
+  - **STABS, THEN EIGHTHS** (Another Life): two bars of stabs (chord, chord, silence), then two bars of eighths.
+  - **SYNCOPATED THIRD BAR** (Faster): eighths, the third bar of every four rung across the beats.
+  - **PUSHED CHANGES:** eighths, with each bar's last eighth already playing the next chord (the change arrives early).
+  - **STABS, THEN PUSHES:** the stab opening, then pushed changes.
+- **Bass:** LOCKED SYNCOPATION (the figure above, the chord's root on each hit), ROOT EIGHTHS, DOUBLES THE GUITAR, LOCKED WITH THE KICK.
+- **Drums:** SYNCOPATED KICK, HALF-TIME SNARE (the kick on the figure, the snare on 3, open hats on the beats: Another Life), SYNCOPATED KICK, BACKBEAT (the snare on 2 and 4, the ride in eighths), KICK WITH THE GUITAR, CYMBALS ON THE BEATS, KICKS BETWEEN. A crash every four bars, a fill into them.
+- **Keys:** HELD PADS, STABS WITH THE BASS (the chord stabbed short on the figure), SILENT.
+- **Lead:** THREE AGAINST FOUR (Another Life: three of the chord's notes going round in eighths, so the figure crosses the beats), HELD NOTES & A SQUEAL, RINGING ARPEGGIO.
+
+The new riff kind also appears in the guitar's Riff Flavour list as SYNCOPATED DRIVE, and brings its band with it, the same way DRIVING EIGHTHS and DRONING do.
+
+**0.98.0 comes with it:** 0.98.0 (the DRIVING chorus's band, notes below) was never published. One of its new tests read a result after it had been thrown away, so it passed on Linux by luck and failed on Windows. The app itself was fine; the test is fixed, and this release carries both.
+
+**Not done yet:** in Another Life the chords also change halfway through some bars. The composer's chords are still one per bar (or as the chord track has them), so that part is up to the chords you write. I can't hear any of this here, so tell me what needs work. Next is 0.100.0, the verses.
+
+## 0.98.0
+
+**The DRIVING chorus gets a full band** (the first step of the plan from your This Fire Burns, Faster and Another Life tabs; the tabs were read for their shapes only, nothing copied). Until now DRIVING only set the rhythm guitar; the bass, drums, keys and lead played their usual styles over it. Now each of them has its own DRIVING options, listed in the lane's menu, like DRONING's.
+
+- **Rhythm guitar** (six options; AUTOMATIC picks any shape, as before):
+  - **STRAIGHT EIGHTHS:** power chords on every eighth, walking into the next chord at the end.
+  - **SYNCOPATED THIRD BAR** (Faster): eighths, but the third bar of every four is rung across the beats.
+  - **OPEN AND MUTED IN TURN** (This Fire Burns): one bar ringing open, the next palm-muted.
+  - **SLIDES INTO THE CHANGES** (Faster): eighths, with every second bar sliding into the next chord (a whole step under, a half step under, then the chord).
+  - **STRUMMED FULL CHORDS** (Faster's second guitar).
+  - **MOVING POWER CHORDS:** the power chord moving around inside the bar.
+- **Bass:** ROOT EIGHTHS, DOUBLES THE GUITAR, WALKING INTO THE CHANGES (This Fire Burns: up the scale into each new chord), OCTAVE EIGHTHS, LOCKED WITH THE KICK.
+- **Drums:** DRIVING BACKBEAT (the ride in eighths), HALF TIME, KICK ON THE EIGHTHS (This Fire Burns: the kick on every eighth, the snare on 3), CYMBALS ON THE BEATS, KICKS BETWEEN (Faster), KICK WITH THE GUITAR, DOUBLE KICK. Every option has a crash on each four bars and a fill into them.
+- **Keys:** HELD PADS, ANSWERS IN BARS 3 AND 4 (Faster: two bars out, then a short figure), HIGH EIGHTH PULSE, SILENT.
+- **Lead:** RINGING ARPEGGIO (This Fire Burns), HELD NOTES & A SQUEAL (a pinch harmonic bent up at the end of every four bars), DOUBLES THE RHYTHM AN OCTAVE UP (Faster).
+
+Left on AUTOMATIC, the bass, drums, keys and lead pick among their options by the take. ROLL gives you another. This also applies when you pick the DRIVING EIGHTHS riff flavour without a section type, the same way DRONING works. With SYNC on, the lanes follow the sync lane as before.
+
+I can't hear these here, so tell me which ones need work. Next is 0.99.0, the SYNCOPATED DRIVE chorus type from Another Life.
+
+## 0.97.2
+
+**The bass can always lock to the kick** (you asked). Under every section type that writes the bass (DRONING, STACCATO CHUG, HEAVY CHUG, SPLIT CHUG, CLEAN VERSE), the bass's options now end with **LOCKED WITH THE KICK**: the chord's root on every kick that type's drums play, so the bass and kick hit together whichever drum option you choose. With no drums in the part (CLEAN VERSE's NO DRUMS), it plays the root on every beat. STANDARD already had this as the bass's last style.
+
+**More keys and drums for the droning chorus**, seven options each.
+- **Keys:** HIGH PULSE, CLIMBING MOTIF, HELD THIRD, plus new:
+  - **HELD PADS:** each chord the guitar strikes, held softly to the next strike.
+  - **ARPEGGIO:** the chord's notes up and down in eighths, high and soft.
+  - **OCTAVE BELLS:** the root and its octave up high on 1 and 3.
+  - **SILENT.**
+- **Drums:** OPEN HATS, HALF TIME, LOCKED TO THE PUSHES, plus new:
+  - **RIDE GROOVE:** ride eighths with the bell on 1; kick on 1, 3 and the and of 3; snare on 2 and 4.
+  - **TOM PULSE:** floor tom in eighths, kick on 1, snare on 3, a tom fill into each four bars.
+  - **DOUBLE KICK:** sixteenths on the kick, snare on 2 and 4, china on every beat.
+  - **CYMBALS ONLY:** a crash every other bar, the ride soft on the beats, the kick on each bar's 1.
+
+As before, AUTOMATIC picks among the original options. The new ones are in each lane's menu. I can't hear them here; tell me which ones need work.
+
+## 0.97.1
+
+**The DRONING chorus's bass had one bassline listed seven times** (your report). Under a section type, the type writes some lanes itself (DRONING writes the bass, keys, lead and drums), and those lanes ignored the style you picked. So the STYLES list showed the same bassline over and over.
+
+Now, for a lane the section type writes, the lane's menu lists the type's own options instead, each a different part with its description. Picking one changes the part. This applies to DRONING (bass, keys, lead, drums), STACCATO CHUG and SPLIT CHUG (bass, drums) and CLEAN VERSE (guitar, bass, drums, keys). Lanes the type leaves alone keep their usual styles, and so does every lane with SYNC on.
+
+**Four more basslines for the droning chorus**, six in all:
+- HELD WITH THE GUITAR (as before)
+- HELD, PULSED AT THE LOOP'S END (as before)
+- **EIGHTHS UNDER THE DRONE:** the root in steady eighths under the ringing guitar.
+- **OCTAVE PULSE:** eighths jumping between the root and its octave.
+- **WALKING INTO THE CHANGES:** the root held, then two eighths stepping through the key's scale into the next chord.
+- **WHOLE NOTES:** the root struck once a bar.
+
+All of them follow the guitar's pushes: a chord the guitar hits a beat early changes the bass early too. AUTOMATIC still picks between the first two.
+
+## 0.97.0
+
+**CLEAN VERSE, a new verse type**, from your examples: Evanescence's Masterpiece and The End of the Dream, Spiritbox's Circle With Me, KoRn's Clown, Linkin Park's Crawling and In The End. I read them for their shapes only; nothing is copied, and your files aren't in the repo.
+
+In all of them the heavy guitar steps back and something lighter carries the verse. The guitar's five approaches:
+- **RINGING ARPEGGIO** (Masterpiece): the chord picked one note at a time in a pushed eighth-note pattern. The low note follows each chord's root while the top two notes stay put (the key's 2nd and 3rd) and ring over every chord.
+- **PICKED CHORD** (Circle With Me's second clean guitar): a close three-note shape of each chord picked in steady eighths, low, middle, high, in threes across the bar.
+- **SPARSE CLEAN NOTES** (Circle With Me's first clean guitar, Clown's clean line): one high chord tone struck twice a bar and held, stepping down every two bars. The last bar of eight is picked in eighths.
+- **GUITARS OUT** (Crawling, In The End): no guitar at all; the keys carry the verse.
+- **HELD CHORD & PULSE** (The End of the Dream): a power chord struck and left ringing for two bars, or until the chord changes.
+
+The band's options:
+- **Bass:** SYNCOPATED ROOTS (Masterpiece), EIGHTHS, CHANGING LATE (Circle With Me: each change lands an eighth after the chord), WHOLE NOTES (Crawling), OCTAVE EIGHTHS (The End of the Dream).
+- **Drums:** LIGHT GROOVE (Masterpiece: kick on 1 with a push after it, snare on 2 and 4, closed hats), HALF TIME, GHOST SNARES (Crawling), NO DRUMS (Circle With Me's verse).
+- **Keys:** HELD PADS, SIXTEENTH PULSE (Crawling's pulse on the key's fifth), PIANO LINE (In The End's low quarters), SILENT.
+
+Left on AUTOMATIC, the bass, drums and keys take the option that went with the guitar's part in your songs. For example, PICKED CHORD comes with no drums, no keys and the late-changing bass, as in Circle With Me. Any of them can be changed in the lane's style menu (Approach). The melody and lead play as usual.
+
+Notes:
+- In the Clown MIDI you sent, the heavy riff keeps going under the clean line in the verse, so I used only its clean line (for SPARSE CLEAN NOTES).
+- I can't hear it here. The tests check the notes (chord tones, the ringing top notes, where the bass changes), not the sound.
+
+## 0.96.0
+
+**SPLIT CHUG, a new verse type** (from your three: Linkin Park's Papercut, Evanescence's Going Under and Call Me When You're Sober). I read the MIDI for its shapes only; nothing is copied, and your files aren't in the repo.
+
+The idea: the bar is split. One part is played, chugs or stabs, and the rest is left open for the vocal. STACCATO CHUG fills the whole bar; SPLIT CHUG leaves room. The drums also keep time through the gaps instead of going quiet with the guitar.
+
+The guitar's approaches:
+- **SECOND-HALF STABS** (Going Under's shape): a chord on 1, the first half left empty, then stabs in the second half. The fourth bar of a phrase is one chord and a breath.
+- **FIRST-HALF BURST** (Papercut's shape): a burst of chugs and a chord move in the first half, the second half silent. Now and then the second half holds a chord instead, and the phrase's last bar picks up into the next.
+- **HIT & PUSH** (Call Me's shape): one chord on 1 (or three quick chugs), the bar left open, then a push a step under the next chord on the last sixteenths, held into the bar line.
+- **BURST & SILENCE** (Waffle's shape), moved here from STACCATO CHUG as you asked. STACCATO CHUG keeps its other six.
+
+The bass: **DOUBLES THE HITS** (the default: the guitar's rhythm and notes) or **HOLDS THROUGH THE GAPS** (the same notes, each held until the next, so the open space has a floor under it).
+
+The drums: **KICK WITH THE HITS** (the default: the kick catches every guitar hit, snare on 2 and 4) or **PLAIN BACKBEAT** (kick on 1 and 3, snare on 2 and 4, open hats and ride on the eighths, a little snare turn every fourth bar, whatever the guitar does: Call Me's feel).
+
+The names are a start; we can change them later. I can't hear any of this here, so tell me what sounds off.
+
+## 0.95.0
+
+**STACCATO CHUG, from your three verses** (Sevendust's Black and Waffle, Disturbed's Stricken). I read the MIDI for its shapes only; nothing is copied, and your files aren't in the repo.
+
+What all three verses share, now built into STACCATO CHUG:
+- **The bass doubles the guitar's chugs**: same rhythm, same notes, an octave down (Stricken) or in unison (Waffle).
+- **The kick plays every chug.** The snare stays on 2 and 4, the hats or ride play quarters, and every fourth bar turns.
+
+The bass's and drums' approaches under STACCATO CHUG (and HEAVY CHUG): DOUBLES THE GUITAR / ROOTS ON THE ACCENTS, and KICK ON EVERY CHUG / KICK ON THE ACCENTS.
+
+**Three new rhythm guitar riff kinds**, first in STACCATO CHUG's guitar approaches:
+- **PEDAL & STABS** (Black's shape): the low string chugged in sixteenths with a power chord stabbed every third sixteenth, so the stabs run in threes across the bar. The stab climbs every bar or two (4th, 5th...), and the phrase's last bar ends on a rest and two muted chords.
+- **CHUGS IN THREES** (Stricken's shape): a rest and two muted power chords over and over, with a chromatic walk up on the bar's last sixteenths. The second bar walks twice, and every fourth bar climbs on ringing power chords.
+- **BURST & SILENCE** (Waffle's shape): a hit, a gap, a burst of four chugs (the last held), a pair, then silence. A dissonant cluster stab fills the silence every other bar, and the phrase's last bar picks up into the next.
+
+TRITONE CHUG, CHUGS, GALLOP and STOP-START stay in the list after them. AUTOMATIC goes through all seven, one per take. The three are also in the guitar's Riff Flavour menu for any section.
+
+Notes:
+- The third file was **Waffle**, not My Last Serenade. I used Waffle, since it's what you sent.
+- I can't hear it here. The tests check that the bass and the kick land on the guitar's chugs, not how it sounds.
+- The keys, lead and melody keep their usual styles in a STACCATO CHUG verse; none of the examples had them.
+
+## 0.94.0
+
+**Section types** (you asked: a chorus is either DRIVING or DRONING, that decides what every instrument does, and each instrument has its own options within it).
+
+- **Every block has a TYPE.** Right-click a block on the SECTIONS row: **Type** lists that section's types. A new block starts as **STANDARD**, which is the composer as before (every lane its own styles). The block shows its type ("CHORUS 1 - DRONING"), linked copies share it, and it's saved with the song.
+- **The types:**
+  - **Chorus:** DRIVING and DRONING (yours).
+  - **Verse: STACCATO CHUG** (yours): one verse type whose rhythm guitar approaches are its chug kinds: TRITONE CHUG, CHUGS, GALLOP, STOP-START. Black, My Last Serenade and Stricken will flesh it out once I have their parts.
+  - **The other sections:** my suggestions, taken from the guitar riffs we already have. Keep or remove any of them.
+    - Intro: DRONING, OPEN CHORDS.
+    - Verse (besides STACCATO CHUG): DRONING, SPARSE (stabs, octaves or ringing chords, as approaches).
+    - Bridge: CREEP, OPEN CHORDS, DRONING.
+    - Breakdown: HEAVY CHUG (chugs, tritone grind, stop-start, stabs), STACCATO CHUG.
+    - Ending: DRONING, STABS.
+    - Solo: DRIVING, DRONING.
+  - A section plays as its kind: a Pre-Chorus has the verse's types, a Hook the chorus's, and so on.
+- **The type decides what the instruments do.** It sets the rhythm guitar's riff, and under DRONING the whole band follows: the bass doubles the ringing chords and the keys, lead and drums carry the movement (Crawling, Clown, Circle With Me).
+- **Each instrument's options within the type.** In the composer, a lane's style menu now starts with **Approach**. Under STACCATO CHUG, HEAVY CHUG and SPARSE the rhythm guitar picks its riff kind there. Under DRONING:
+  - **Rhythm guitar:** rung whole, pushed a beat early, moving top note, struck twice, sliding down.
+  - **Bass:** held with the guitar, or held and pulsed at the loop's end.
+  - **Keys:** high pulse, climbing motif, held third.
+  - **Lead:** octaves on the thirds, octaves on the roots, muted pedal in threes.
+  - **Drums:** open hats, half time, locked to the pushes.
+
+  AUTOMATIC lets the style and the take choose, as before. ROLL and GENERATE give a new take within the approach you chose.
+- **The composer's TYPE key** (next to SECTION) shows the block's type and changes it.
+- **Changing a built block's type builds it again at once.** The lanes you haven't touched are written again for the new type; your own edits stay. It's one undo step. **HUB SETTINGS** has "Ask before changing a built section's type", off by default.
+
+Honest gaps:
+- Only DRONING has a band part of its own. Under DRIVING, STACCATO CHUG and the suggested types, the guitar plays the type's riff and the bass, keys, lead and drums play their usual styles.
+- To give DRIVING and STACCATO CHUG their own band, send full MIDI or every instrument's tab (for STACCATO CHUG: Black, My Last Serenade, Stricken's verses), as you did for the droning choruses.
+
+## 0.93.0
+
+**The composer works block by block** (your song engine overhaul, part four, the last). With a SECTIONS row in the song, the composer follows it:
+
+- **The SONG strip shows your blocks.** Each block of the SECTIONS row is a chip in the composer's SONG strip, with its bar, its length and BUILT once it has music from the composer. The block you're composing is lit; click any chip to compose that block.
+- **The composer opens on the first block not yet built**, with its section, bars and chords.
+- **BUILD moves on by itself.** After BUILD INTO a block, the composer goes to the next block not yet built, with its section set, ready for the next BUILD. The song is built front to back, part by part.
+- **NEXT became + ADD.** The suggested next parts (a chorus after a verse, a bridge after a second chorus, an ending...) add a block of that kind at the end of the row and aim the composer at it. A name already in the song arrives as a linked copy, with its music.
+- **Songs without a SECTIONS row** keep the SONG strip as it was: sections built one after another at the playhead.
+
+That finishes the four parts we agreed:
+1. **Blocks on the SECTIONS row** that carry their music when moved.
+2. **Linked copies.**
+3. **Chords rewriting the music.**
+4. **The composer working block by block.**
+
+## 0.92.0
+
+**Change a section's chords and its music follows** (your song engine overhaul, part three). When the chords inside a block on the SECTIONS row change, the music in that block is rewritten to fit. That covers a chord swapped by hand on the chord track, a new progression, or the same chords in a different order.
+
+- **What the composer built is built again.** When you BUILD into a block, the block remembers how: the composer's settings and which lane went onto which track.
+  - Change the block's chords and each of those lanes is built again over the new chords from the same settings: the same rhythm, feel, riff shape and take, with the notes on the new chords.
+  - This only happens for a lane you haven't changed since, so your own work is never thrown away.
+- **Everything else follows the chords.** Any track with pitched notes in the block moves its notes onto the new chords, keeping your rhythm. That covers parts you played or edited, and built lanes you've changed by hand. It uses Follow Chord Track's "Chords & Scales" rule: a chord's third goes to the new chord's third, its fifth to its fifth, and other notes move along the scale.
+- **Drums are left alone.**
+- **Linked copies follow too.** Change the chords in one chorus and every linked chorus is rewritten the same way.
+- **One undo step** takes back the chord change and the rewrite together.
+- **Moving a block, or changing its length, doesn't count as a chord change**, so nothing is rewritten then. Undo never rewrites anything either.
+- The recipe is saved with the song, so a block you built last week still rebuilds when you change its chords.
+
+**Limits, honestly:**
+- A lane rebuilt from the recipe is built as the lane's own style. An idea you took from the IDEAS tab, or your pasted riff, comes back as the lane's own style, not the taken idea.
+- Notes that follow the chords keep their octave and rhythm. A followed line can land a little higher or lower than you'd have written it by hand.
+- I can't hear the results here, so please try it on a real section.
+
+## 0.91.0
+
+**Linked copies on the SECTIONS row** (your song engine overhaul, part two: "repeated parts should be a linked copy").
+
+- **Repeats are linked.** On the SECTIONS row:
+  - **Duplicate** now makes a linked copy.
+  - **Adding a section whose name is already in the song** gives a linked copy of the last one, with its length and its music. Add a second Chorus and you get your chorus again.
+  - Linked blocks show a small chain at their top right.
+- **Edit one, they all change.** Whatever you change inside a linked block is copied into its linked copies:
+  - notes in the MIDI editor;
+  - a part added, moved or deleted, on any track;
+  - quantize or humanize;
+  - the composer building into it;
+  - its chords on the chord track.
+
+  It happens as part of the same edit, so one Undo takes back the edit and its copies together.
+- **Linked blocks keep one length and one name.** Changing the length or the section of one changes them all.
+- **Making a block different:**
+  - **Unlink** in a block's menu makes it its own from then on. Its music stays as it is, ready to change into a variation.
+  - **Duplicate as Its Own Copy** makes an unlinked copy.
+- Links are saved with the song.
+
+**Not linked:** tempo and time-signature changes, markers, automation, and frozen tracks. A block's tempo, markers and automation are its own.
+
+**One limit:** if a single edit changes two linked blocks in different ways, the first in the song wins and is copied into the other. Dragging a part from Chorus 1 into Chorus 2 is an example. Undo puts it back.
+
+## 0.90.0
+
+**The SECTIONS row: the song as blocks** (your song engine overhaul, part one). A row at the top of the arrangement, above the chord track, where the song is laid out as its parts in order: intro, verse, pre-chorus, chorus, bridge, breakdown, solo, outro and the rest (21 names).
+
+- **Adding the row:** + ADD TRACK > Sections row. Or right-click it later for "Add a Section at the End".
+- **Adding blocks:** + SECTION on the row (or a double-click on the empty row after the last block) adds one after the last, 8 bars long.
+  - It names the bars that follow, so music already there isn't moved.
+  - The blocks always sit end to end from bar 1: no gaps, no overlaps.
+- **Each block's menu (right-click):**
+  - **Section:** change what it is.
+  - **Length:** 1 to 32 bars, or any number up to 64 with "Other...".
+  - **Insert a Section Before / After.**
+  - **Duplicate.**
+  - **Set the Locators to It** (to loop it).
+  - **Delete.**
+- **Repeats are numbered:** a name that comes back reads Chorus 1, Chorus 2...
+- **Drag a block to rearrange the song, and its music goes with it.** Everything inside the block moves to its new place:
+  - the parts on every track (a part crossing a block's edge is cut there);
+  - its chords and scales on the chord track;
+  - its markers and automation;
+  - its tempo and time-signature changes. A block in 3/4 stays in 3/4 wherever it lands.
+
+  The other blocks slide to make room, and the whole move is one undo step.
+- **What follows a block moves with the block's length:**
+  - **Inserting** a block before others moves them later.
+  - **Lengthening** a block moves what follows later; **shortening** it moves what follows sooner and drops what was past its new end.
+  - **Deleting** a block takes its music and closes the gap.
+- **Double-click a block to open the composer on it.**
+  - **SECTION** is set from the block's kind: Pre-Chorus plays as a verse, Post-Chorus as a chorus, Outro as an ending.
+  - **LENGTH** is the block's bars, and the chords are cut at its end.
+  - **HEAR** plays the block's place in the song, and the key reads BUILD INTO CHORUS 2 (or whichever block).
+  - **BUILD** writes into the block.
+  - Double-click another block to work on that one.
+
+**Not yet (the next releases, as we agreed):**
+- **Linked copies:** a repeated chorus that changes when any one of them changes. A block copied with Duplicate gets its own copy of the music for now.
+- **Changed chords rewriting the music** in their blocks.
+- **The composer working block by block**, with the SECTIONS row taking over from its SONG strip.
+
+**Two notes:**
+- **Frozen tracks don't move with their blocks** (their parts are locked). Unfreeze a track before rearranging.
+- **Duplicate makes a plain copy, not a linked one.** If you change one chorus, the other doesn't follow yet.
+
+## 0.89.1
+
+**Circle With Me's chorus in the droning band** (every instrument's tab you sent, read for how each part supports the ringing guitar; nothing of the song is copied). Its chorus confirmed what 0.89.0 does: the bass doubles the ringing guitar's roots, held, pushes and all, and the drums lock to the pushes. It also showed four more ways to carry the movement, so each is now one of the band's choices:
+
+- **Lead, third style: a muted pedal in threes.** Palm-muted eighths on the key's root, octave and fifth, in a cell of three notes against a bar of eight, so it runs across the bar lines. It stays on the key's note under every chord (Circle With Me's second guitar, the main motion in its chorus). Every fourth bar slips a whole step down and back at its end.
+- **Keys, third style: a held note a chord.** Each chord's third, held over it and moving by the nearest step, struck with the guitar, pushes included. In the second half of every eight bars, each new chord comes in from two scale steps above, a quarter at a time, down onto its third.
+- **Drums, a third take (ROLL): locked to the pushes.** Half time for a fast song:
+  - Cymbals on the half notes.
+  - The snare once every two bars.
+  - The kick on the downbeat and on every chord the guitar pushes early, with a crash.
+  - The fourth bar's kicks on beats 2, 3 and 4, the eighth bar's in eighths.
+- **Bass, every other take (ROLL):** the last bar of every eight is pulsed in eighths, to drive into the loop's start. The rest stays held.
+
+In Circle With Me's chorus the second keys and both clean guitars stay silent. That's a good sign the droning chorus wants fewer layers: you may want to switch the melody lane off for it.
+
+## 0.89.0
+
+**The droning chorus's band** (your next step after 0.88.0: with the rhythm guitar ringing its chords, "most of the rhythmic or interesting stuff comes from the lead guitar the bass guitar the keyboards in the drums"). From the full MIDI you sent for Crawling and Clown, read for how each instrument supports the ringing guitar; nothing of either song is copied.
+
+- **The band follows on its own.** When the composer's guitar lane is set to **Riff Flavour > DRONING**, the other lanes play their droning-chorus parts. Set the guitar to any other flavour (or WRITTEN RIFFS, or your own riff) and they go back to their usual styles.
+- **Bass:** doubles the guitar's low strikes and holds each as long as the guitar rings it. It follows the slides down and the chords pushed early, like the bass in both songs. The guitar's top notes, ringing over a held chord, are left to the guitar.
+- **Keys (the chords lane):** up high on the key's fifth, over every chord.
+  - Its first style is a steady pulse (Crawling's), in sixteenths or eighths: BUSY decides, and the beats lean in a little louder.
+  - Its second style is a short two-bar figure round the fifth (Clown's clean part), climbing a step at a time through the last bar of every four.
+  - Each ROLL draws another figure.
+- **Lead:** a shimmer of octaves in sixteenths on each chord's third. Its second style uses the root instead. The key's own note sits on top in the first half of every four bars, then drops out. BUSY under the low end plays eighths.
+- **Drums:** each ROLL draws one of two beats.
+  - **Open hats** (Crawling's): open hat on the eighths, kick on 1 and 3, snare on 2 and the and of 3. Every fourth bar pushes with extra kicks and a crash on its last beat.
+  - **Half time** (Clown's): closed hats on the beats, the snare on 3, the kick moving between bars, and a short fill closing every four bars.
+  - Both crash on the first beat of every four bars.
+- **The melody lane** plays as before (it's the singer's).
+- **SYNC still wins:** with SYNC on, the band follows the sync lane as in 0.86.0.
+- **A fix to 0.86.0's SYNC:** the chord stabs, the doubled bass and the guitar's chugs looked up the chord as if the section started at the song's beginning. For a section built later in the song (a second chorus after a verse), they could play the wrong chord's notes. They read the right chord now.
+
+## 0.88.0
+
+**DRONING: the ringing chorus** (your second chorus kind, from your examples: Without Me, Capricorn, Clown and Circle With Me, the rhythm guitar part you sent after). Read for their shapes only; nothing copied.
+
+- **A new riff flavour for the composer's guitar:** in the guitar lane's style menu, pick **Riff Flavour > DRONING**. The guitar strikes a chord and lets it ring across the bar, leaving the space to the lead, bass, keys and drums.
+- **Every GENERATE or ROLL draws one of these shapes:**
+  - **A chord a bar, rung whole** (Without Me's chord-a-bar shape). Big full chords with the third, or power chords.
+  - **Struck, then the next chord pushed a beat early** (Circle With Me). The chord rings through two bars, then the next chord is struck on beat 4 of the bar before (sometimes on the and of 4) and tied across the bar line.
+  - **The power chord held, a top note moving over it** (Capricorn). The low notes ring the whole bar while a single high note steps between the octave, the third and the fifth.
+  - **Struck again halfway.**
+  - **Rung, then the chord sliding down a half step at a time into the next bar** (Clown).
+  - **The last bar stepping into the next chord** on its last beat.
+- **The rings last.** A chord rings until the next thing the guitar strikes, never past its own chord. If the chord changes on a bar line where a push was meant to ring, the guitar strikes the new chord there instead of leaving a silent gap.
+- **BUSY** changes how often it strikes, not the riff. Over the middle, some whole-bar chords are struck again halfway; under it, struck-twice and moving bars ring whole instead.
+- **In a verse** it rings power chords only and keeps the moving top note for the chorus.
+- DRONING is never picked by ANY, like DRIVING EIGHTHS. ANY's riffs are the same as before.
+- **A fix to 0.87.0:** in DRIVING EIGHTHS' picked bars, the high notes (the octave and the fifth above it) were played at the palm-mute velocity. They ring open now.
+
+For now this is the guitar's part only. The rest of the droning chorus (the lead, bass, keys and drums carrying the movement) is the next step. See the note in my reply.
+
+## 0.87.0
+
+**DRIVING EIGHTHS: the hard driving chorus** (your idea, from your nine examples: This Fire Burns, The End of Heartache, Faint, Faster, Tears Don't Fall, This Calling, Left Behind, Come Clarity and Parallels). I read each tab for its shape only; nothing of any of them is copied.
+
+- **A new riff flavour for the composer's guitar.** In the guitar lane's style menu, pick **Riff Flavour > DRIVING EIGHTHS**. It's built for the chorus: power chords on every eighth note, left to ring, changing with the chords.
+- **Every GENERATE or ROLL draws one of these chorus shapes** (each from your examples):
+  - **The wall, then a muted stretch and a walk** (This Fire Burns). Open chords, then palm-muted ones, then single notes stepping down into the next chord.
+  - **All open, with the chord itself walking** (The End of Heartache). The whole power chord steps a whole step and a half step into the next chord.
+  - **Power chords moving inside the bar** (Faint). The eighths in groups of 3+3+2 (or 3+2+3), each group a power chord on another note over the root.
+  - **A punch bar, then a bar split in half** (Faster). Ringing hits with space between them, then the root for half the bar and another chord for the other half.
+  - **A chord a bar, the last bar split in half** (Left Behind).
+  - **Full chords strummed down and up** (Tears Don't Fall). Bigger chords with the chord's third, the top note moving halfway through the bar, and sometimes a dead-string scratch on the beat.
+  - **Big chords rung for whole bars** (This Calling: at a fast tempo the drums do the driving).
+  - **The chord picked one note an eighth** (Come Clarity's pre-chorus; its chorus has no guitar in that file), or **the muted low string as a pedal under high notes** (Parallels' double-time chorus).
+- **The walk only happens before a chord change.** If the next bar is the same chord, it plays muted chords there instead of walking to the chord it's already on.
+- **In other sections:**
+  - **Verse:** the muted stretch comes first, and the strummed and ringing bars are played muted.
+  - **Breakdown:** the same shapes in quarter notes.
+- **The whole band on it:** turn **SYNC** on with the guitar leading, and DOUBLE THE SYNC TRACK on the bass and drums. The kick lands on every eighth and the bass doubles the riff, walk included. Without DOUBLE, the kick and bass take the accents.
+- DRIVING EIGHTHS is never picked by ANY: it's a whole chorus shape you choose on purpose. ANY's riffs are the same as before.
+
+These are our own rules; tell me which shapes sound right and which don't, and I'll weight them.
+
+## 0.86.0
+
+**SYNC in the composer** (your idea: find a riff you love, then write the whole band to it).
+
+- **SYNC** in the composer's header: pick the lane that leads (any lane: guitar, drums, bass, chords, melody or lead). Its lane is locked so the riff you found stays, and it's marked SYNC LEADER. Every other lane is then written to its rhythm, and each lane says what it's doing (FOLLOWS THE GUITAR, DOUBLES THE GUITAR).
+- **It stays on.** Unlock the leader and roll it, and everything follows its new rhythm. GENERATE rolls the others, still following it. SYNC: OFF puts every lane back on its own.
+- **How each lane follows.** The leader's rhythm is every hit it plays; its accents are the ones that stand out (open notes, held notes and the first hit of each bar; with the drums leading, the kicks on the beat).
+  - **Drums:** the kick on the leader's accents, with the snare, cymbals and fills still the section's own (verse, chorus, breakdown...).
+  - **Bass:** the chords' roots on the accents.
+  - **Chords (piano):** a stab of the chord on each accent, held to the next.
+  - **Guitar** (when another lane leads): palm-muted chugs on every hit, power chords let ring on the accents.
+  - **Melody and lead:** looser, as you suggested. They keep their own line, and any note within a sixteenth of an accent moves onto it, so they land with the band without copying every chug.
+- **DOUBLE THE SYNC TRACK** (in the bass's and drums' style menus): every hit, metal style.
+  - The drums put a kick on every chug.
+  - The bass doubles the riff's notes, playing the lowest note of each hit in its own low octave and staying near the note before (no octave jumps between power chords). Under a high stab (like the tritone grind over the chugs) it holds the chord's root instead of doubling the stab.
+  - With the drums leading, the bass plays on every kick.
+
+What you hear is our own rule set; tell me where it sounds wrong and I'll change it.
+
+## 0.85.3
+
+**Your three tweaks.**
+
+- **One take by default.** Recording again over a part now replaces it: one take, recorded over again, no lanes. That goes for audio, MIDI and cycle recording; in a cycle the last whole lap is kept. Takes on lanes are still there when you want them: right-click the record key and tick **Keep Every Take on a Lane of Its Own** (or pick each mode below it, as before). The choice is saved with the song. Songs that were left on the old default now open on the new one.
+- **The studio's X goes back to the Hub.** Closing the studio window asks to save (if anything's unsaved), closes the song and shows the Hub on its own. The Hub's X then quits the program. Opening or creating a song from the Hub brings the studio back with it. The studio now starts that way too: just the Hub, so its X quits straight away. A HUB opened over a song still only closes when you click its X. Quitting from Windows itself (the taskbar's Close window, logging off) still quits.
+- **Chords on the chord track work like clips.**
+  - **Move:** drag a chord or a selection, snapped; Alt-drag copies. Where a chord lands, it cuts out the chords underneath, and where it came from is left empty (a gap, no chord) instead of the chord before running on.
+  - **Lengthen or shorten:** drag either edge (the pointer turns into the left-right arrow). Grown over the next chord, that one gives way; shortened, a gap is left. The last chord can be any length now, not just a bar.
+  - **Cut:** the SPLIT tool cuts a chord in two where you click, as does Split Here in its menu, or Alt+X at the playhead. GLUE joins a chord to the next one.
+  - **Copy, cut, paste and duplicate:** Ctrl+C, Ctrl+X, Ctrl+V (at the playhead) and Ctrl+D, and the same in the chord's right-click menu. Delete leaves a gap, as with clips.
+  - Each edit is one undo step. Chords from the progression library or the composer now each get their own length, so a two-bar last chord lasts two bars.
+- **It tells you when you go out of key.**
+  - The key you pick in the composer now goes onto the chord track's key strip with its chords. If you pick E minor and write the chords, the chord track knows it's E minor.
+  - A chord outside the key in force now has a pink edge (and OUT OF KEY where there's room), as well as the pink numeral it had before.
+  - After a move, a stretch, a paste, a split or a chord change that leaves the key, a note over the chord track says so for a few seconds, for example "OUT OF KEY: C# (BAR 5) ISN'T IN E MINOR".
+  - With the key strip following the chords (AUTO SCALES), it says when an edit moves the key instead.
+
+## 0.85.2
+
+**Speed, round four** (you asked for another round). Three reviewers read the code, one each for the sound, editing and the screen. I checked each finding before changing anything. Nothing sounds or looks different; things just take less time.
+
+- **Auto-save no longer holds up the screen.** Every few minutes the backup copy wrote the whole song out as text on the screen's own thread, the plug-ins' saved settings included. It now only checks whether anything changed (quickly, without writing the song out), and the writing happens in the background, as SAVE already does. On a test song with 100 MB of plug-in settings, the screen used to wait well over a second; now it waits 70 to 80 ms. A fader you dragged still counts as a change.
+- **The composer works again only when it has to.** Any edit to the song (a note moved anywhere, a part renamed) made the composer rewrite all six lanes while its window was open, and read the DRUMMER profile from disk each time. Now it keeps the lanes unless something they're made from changed (the key, chords, styles, settings, tempo, profiles, your riff), and keeps the drummer profile until its file changes.
+- **Play from a new place, jumps and the cycle coming round:** the instruments are brought up to date with the song's controllers (sustain, mod wheel, bends) from those alone, not by walking every note of the track. This happens as the sound starts, so a long, busy track starts sooner.
+- **Sends:** each block, the engine finds a track's send lanes in one pass, not one pass for each of the eight slots, twice.
+- **PERFORM on the pads:** the pattern player no longer works out every step's notes every 2 ms; only the steps due now.
+- **KEY CHECK:** each note is checked against the key without building the key's scale each time.
+- **Screen:**
+  - With Stationary Cursor on, the whole arrangement moves under the play bar every frame. While playing it now redraws 30 times a second, not 60: the bar stands still there, so smoothness isn't lost.
+  - The MIDI editor's controller lanes draw only the part that's on screen. A long recorded mod-wheel or pitch-bend lane was built and drawn end to end for every move of the play bar.
+  - Mixer strips repaint only when something they show changes (name, colour, selection, link group, pan, slots). Before, any edit repainted every strip, and docked in the wide layout they span the whole window.
+
+**Not done yet** (found, but bigger or riskier):
+
+- While recording, the whole arrangement is still redrawn with each new note.
+- The arrangement isn't drawn once and moved under a Stationary Cursor.
+- Waveforms are still drawn a pixel at a time.
+- Folder parts are worked out on every frame.
+- The EQ window's curve is redrawn even when nothing changed.
+- Saving still copies the song (the plug-ins' settings with it) before writing it in the background.
+- A chord edit with Follow Chord Track on is still about 5 ms.
+
+## 0.85.1
+
+**TRITONE CHUG learns your third example** (Flaw's Whole, the breakdown at 2:20; its shape only, nothing copied).
+
+- **The grind last.** The hammer kind can now put the grind on the bar's last eighth, ringing into the next bar, after the chugs instead of before them.
+- **The grind over a power chord.** The chugs can be a muted power chord in pairs of eighths, as in that breakdown, not only the open low string. Over the chugged chord the grind is its flat ninth and ninth, half a step apart: the same rub as Ten Ton Hammer's flat fifth and fifth.
+- **A new answer bar:** every fourth bar can strike the grind in straight eighths, where the others walk power chords.
+- Breakdowns lean to this shape. In a test run of 300 groove riffs, about 1 in 10 came out this way, for example three bars of muted power-chord chugs with the grind on the last eighth, then a bar of the grind in eighths.
+
+Everything else is as in 0.85.0: pick **Riff Flavour > TRITONE CHUG** in the guitar lane's style menu, then GENERATE.
+
+## 0.85.0
+
+**The rhythm guitar generator, first round: TRITONE CHUG** (you: GENERATE gave the same riff over and over; you're redesigning the song engine around the rhythm guitar, with the tritone chug riff first).
+
+- **A new riff every time.** The composer's guitar no longer picks from six written riffs a style. Every riff is built from scratch, so GENERATE or ROLL gives a brand-new one. A thousand GENERATEs give at least 950 different riffs (tested), and it never hands back any of the last 200 it gave you.
+- **The riff's type ("flavour"):** in the guitar lane's style menu, **Riff Flavour**. **TRITONE CHUG** is the one to try. The others (CHUGS, GALLOP, CREEP, STABS, OCTAVES, STOP-START, OPEN CHORDS) still use the first, rougher rules; ANY picks a different type each time. A chosen type stays until you change it.
+- **TRITONE CHUG is built from your two examples**, their shapes only (nothing of either song copied). It writes one of two kinds:
+  - **The hammer kind (Ten Ton Hammer's intro):** a high chord of the flat fifth and the fifth together, two octaves up (the half-step grind you love), struck and left to ring over the open low string, answered by chugs. The bar plays three times, then an answer bar: power chords walking dark notes (the flat second, flat third, fourth, flat fifth, fifth, flat sixth), a stop, a half-step creep, or a run of chugs. Each GENERATE draws all of it again: the grind's voicing (mostly yours; sometimes the flat fifth doubled, or the root and flat fifth up high, or the grind an octave lower), how long it rings, whether it lands on the downbeat, the "and" or after the chugs, the chug rhythm (kept the same bar to bar, as a riff repeats), a half-step chug or not, and the answer.
+  - **The djent kind (Wildfire's riffs):** the chug is the tritone itself (the low string a half step up under the open fifth and octave), palm-muted in groups of two, three or four sixteenths that run on across the bar line, pinch harmonics on the same shape, a bar of open chugs with low notes bent a half step, or the chord let ring at the end.
+  - Metalcore and nu-metal lean to the djent kind, groove and thrash to the hammer kind.
+- **The section shapes it:** a breakdown rings the grind longer with sparser chugs; a chorus leans to the bigger voicings.
+- **BUSY now thickens or thins the same riff.** Before this round it could swap the riff for a different one.
+- **Written Riffs** in the same menu brings back the old six of each style.
+
+This is a first round to judge by ear. Tell me what's off, from "the grind should ring longer" to "never use that answer bar", and send more riffs you love; I'll tune the rules. Then your questions about the other kinds of rhythm.
+
+## 0.84.1
+
+**Your three reports about selecting and dragging.**
+
+- **A big select box lagged.** Every move of the mouse redrew the whole arrangement, and your window spans three screens. Now only what changed is redrawn: the box's old and new edges and the strip it newly covers or leaves. Tested: a box over most of the view, grown by a few pixels, redraws under a tenth of the view (it was all of it).
+- **Selected clips on different tracks didn't all move.** Most likely you picked them with Ctrl-click, the other DAW's way. Ctrl-click only selected the one clicked, so the earlier clips dropped out of the selection (the track rows stayed lit, so it looked as if all three were selected), and only one moved. Now **Ctrl-click adds a clip or part to the selection**, and Ctrl-click on a selected one takes it out again. Shift-click and a box already worked and still do. Tested with three audio clips on three tracks, chosen each of the three ways: dragging one moves all three.
+- **Takes on lanes:** dragging several selected takes drew them all on the track's own row, stacked on top of each other, so it looked as if only one was moving. They're now drawn on their own lanes while you drag. (They did all move when you let go.)
+- **The select box scrolls at the edges of the view.** Before, the view only scrolled once the mouse went *past* its edge, and on the right-hand screen's edge the mouse can't go any further. Now holding the box within about 24 pixels of any edge scrolls the view that way, and the further in you go, the faster it scrolls. It works across the song and down the tracks.
+
+If the clips still don't all move together, tell me how you selected them (Ctrl-click, Shift-click, a box, or clicking the tracks in the track list) and I'll look again.
+
+## 0.84.0
+
+**KEY CHECK: every note and chord outside the key, in one list** (you asked how to make sure everything in a song is in the right key; your rules: the same rule the chord track uses, and skip the drums).
+
+- **Open it** from a part's right-click menu or the chord track's menu (Key Check: Notes Outside the Key...), or the Window > Key Check command (no key given; set one in KEYS if you want).
+- **What counts as in the key** is exactly the chord track's rule: the key's seven notes, and in a minor key also the raised seventh (G# in A minor, as the harmonic minor's V and V7 use). It's tested against the chord track's own check for every chord in all 30 keys.
+- **Which key:** AUTOMATIC uses the chord track's keys where the chord track has them (a key change part way through is followed), else the key guessed from the song's notes (the same guess as + MY RIFF). Or pick any of the 30 keys in the KEY box.
+- **What's checked:** every note on instrument tracks, as you hear it (a part's TRANSPOSE counted), and every chord on the chord track. Drum tracks are skipped (a drum map, the drum editor, MIDI channel 10, or "drum"/"perc" in the name). Muted parts and muted notes are skipped too.
+- **The list:** each note's bar, its track, the note, and the nearest note of the key (a half step away; a tie goes down). Click a row and the MIDI editor opens on that part with the note selected and the playhead on it. FIX moves that one note; FIX ALL NOTES moves every listed note. Each is one Undo. Chords outside the key are listed but not changed for you: swap them on the chord track. The list checks again whenever the song changes.
+- **In the MIDI editor:** while KEY CHECK is open, every note outside the key has a pearl-white ring. (A ring, not a colour: the notes' colours already show their velocities.)
+- A note outside the key isn't always a mistake (a passing note, a blues third, a borrowed chord): FIX only the ones you didn't mean.
+
+## 0.83.4
+
+**Drag a riff into the composer and it builds the section** (you asked: drag a MIDI part from the main window into MY RIFF and have it build that part).
+
+- **From the arrangement:** drag a MIDI part out of the main window and over the composer's window. The composer lights up in the family's gradient and says LET GO TO BUILD A SECTION AROUND THIS RIFF. Let go and it asks THIS RIFF IS MY... (intro, verse, chorus, bridge, breakdown, ending, solo). Pick one and that whole section is built: your riff becomes MY RIFF, its key and chords are read from it, the guitar plays it, and the drums, bass and everything else that's switched on are built around it, after the last section you built. The part you dragged stays where it was in the arrangement.
+- **MIDI files** dropped on the composer from the desktop or a folder do the same: the section question, then the build. (Before, a drop only set the riff and you had to click BUILD yourself.)
+- **+ MY RIFF's menu** still only takes the riff (From the Selected Part / From a MIDI File), so you can change the lanes before building.
+- The drag stays inside the studio (the part is handed to the composer directly), so it doesn't depend on Windows' file dragging. Dropped anywhere else, a part moves (or drags out as a file) as before.
+- One Undo takes the built section back.
+
+What can't be checked here: the drag on your Windows screens (tested with the mouse moves simulated, not a real hand on a real mouse).
+
+## 0.83.3
+
+**LEARN MY BAND: fast picking on the rhythm guitar** (you said the record's fast picking lost notes). The reader found each pick by a jump in loudness, smoothed over 40 ms so a low string's own waves wouldn't count. On a ringing string, picked fast, the loudness hardly moves between picks, so most picks were never seen. Measured on test DIs made the way a picked string sounds (each pick starts the string again, a short bright pick noise, the string ringing on):
+
+| Playing | Before | Now |
+|---|---|---|
+| Open 16ths at 180 BPM | 5 of 24 picks | 24 of 24 |
+| Tremolo 32nds at 140 BPM (power chord) | 1 of 36 | 36 of 36 |
+| Power-chord 16ths at 160 BPM | 1 of 20 | 20 of 20 |
+| Palm-muted 16th chugs at 200 BPM | 32 of 32 | 32 of 32 |
+
+- **The pick's click:** every pick starts with a short bright noise (the plectrum on the string), heard even when the loudness doesn't change. The reader now listens for it above 1.5 kHz as well as for the loudness jump. Only clicks about as loud as your own picks count, within 40 dB of the guitar's sound at that moment: a held chord's dying high end wobbles too, and that mustn't become extra notes (tested: a chord held 1.5 s stays one note, slow riffs keep their hits).
+- **Muted or open on fast picks:** "how fast does it die" was measured with a 25 ms window that reached into the next pick, so fast palm mutes read as open and some fast open picks as muted. It's now measured on each note's own cycle, just after the pick to just before the next one. On the tests: none of 112 fast notes read the wrong way (7 of 32 mutes were wrong before).
+- **Pitch on very short notes:** a pick 50 ms long is too short to tell a low A's harmonics apart, so tremolo notes were found and then thrown away. The pitch is now read over at least 80 ms, and a fast pick that still can't be read takes the note of the pick before.
+
+**What I can't check here:** your real DIs. These are made-up test guitars built to behave like picked strings. Read your songs again with READ THE SONGS, compare with the DI, and tell me what's still off.
+
+- **Reading a song again keeps the review song before it:** it was written over, so corrections you'd made in it were lost. Now the old one is kept beside the new one as "<song> before <date and time>.pr7s". If you can share one DI with your corrected MIDI, I can measure the reader on your own playing.
+
+## 0.83.2
+
+**Speed, round three's leftovers** (you asked: fix the remaining slow ones too). The places 0.83.1 left, each checked to give the same result as before:
+
+- **Chord edits with Follow Chord Track:** every note worked out its chord's key and notes again, one note at a time. Now notes under the same chords share one table of answers. A chord edit on the heavy test song: 11 ms -> 4.4 ms (the same pitches, tested note by note).
+- **Every undoable edit:** each one compared the whole song with the step before to name it for the Edit History. The names are now worked out only when the Edit History is opened (the same names). An edit with an undo step: about 1.9 ms -> 1.0 ms. One small difference: if more than MAX STEPS edits pass without the window being opened, the oldest step kept reads "Earliest Kept" (the copy it would be compared with has gone).
+- **Opening a song:** the recordings are read several at a time, on their own threads, while the plug-ins load (they were read one after another before the first plug-in started). How much faster depends on your disk and how many recordings the song has.
+- **The mixer and the track list while playing:** a mixer strip whose meter is the only thing moving now redraws just the meter, not the whole strip; track-list rows are drawn as solid (nothing behind them is painted first), and their state text only when it's in the strip being redrawn.
+- **The composer while you HEAR:** only the thin strip the playhead passes through is redrawn in each lane, not the whole lane every frame.
+
+Left as it is: **saving.** The file is already written in the background; what stays on the screen's thread is asking each plug-in for its settings (plug-ins must be asked there) and one copy of the song. That copy could only be avoided by taking the settings away from the song while the file is written, which disabled and frozen tracks rely on, so it isn't worth the risk.
+
+What can't be checked here: timings on your machine (these are this one's), and the song-open speed with your recordings and disk.
+
+## 0.83.1
+
+**Speed, round three** (you asked: the studio running even more efficiently). The studio's own speed tests and three reviews of the code (the audio engine, what happens on each edit, the screen's redraws) found the places where time went; each fix below was checked to give the same sound and picture as before.
+
+- **Fader, pan, send, EQ and BOOSTER drags are much lighter.** Every step of a drag used to rebuild every track's notes and clips in the engine (and the EQ and BOOSTER redrew every view). Now a drag's steps only set the levels; letting go does the full update and the undo step, as before. On a 30-track test song a drag's step went from 0.22 ms to 0.003 ms (more with warped audio).
+- **The composer while you hear it:** every change (a fader step too) copied every plug-in's saved settings, Kontakt-sized ones included. It no longer copies them: they were never needed for playing.
+- **The cores take the heaviest tracks first.** Each audio block hands the tracks to your computer's cores in turn; a heavy instrument late in the track list (your Kontakt bass) was started last, so the whole block waited on it. Now the tracks that usually take longest start first. The sound is the same to the last bit; the spikes from one heavy plug-in should be shorter.
+- **The transport redraws about twice as fast.** Half its time went on painting the pearl surface behind the screens (a large textured picture scaled down 30 times a second); it's now drawn once and reused. Measured here: the whole transport 9.5 ms -> 4.9 ms; the whole window 40 ms -> 19 ms (5760 wide: 50 -> 24).
+- **Meters and the MIDI editor while playing:** the track list's and mixer's meters redraw only when a lit segment changes, not on every tiny fall (about half the frames on the track list's meters, fewer on the tall mixer meters); the automation lanes' values only when the number changes; the MIDI editor draws only the strip the playhead passes through, and where following notes sound is worked out once, not on every redraw.
+- **Smaller ones:** solo with several soloed tracks (the composer solos up to six) worked out in one pass; the output meters measure the master once, not six times; warped audio clips looked up without writing their markers out as text on every update.
+
+What can't be checked here: how much smoother it feels on your three screens with software drawing; the timings above are this machine's.
+
 ## 0.83.0
 
 **The Edit History** (you asked: as the other DAW's Edit > History). Every edit you can undo is listed in a window, oldest at the top: what it was (ACTION), when (TIME), whether it's in force (STATE: DONE or UNDONE) and DETAILS (which track and part, or a note you type).

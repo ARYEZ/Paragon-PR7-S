@@ -948,8 +948,10 @@ void Inspector::followVisibilitySelection()
 
 void Inspector::timerCallback()
 {
-    followMix();
     followVisibilitySelection();
+    if (! isShowing())
+        return;   // (0.164.0: hidden (F1), it followed the mix, the Quick Controls and R/W 20 times a second all the same)
+    followMix();
     // The Quick Controls' bars as their controls are now (automation playing, the plugin's own window).
     for (int i = 0; i < pr7s::Track::numQuickControls; ++i)
         if (auto& bar = qcBars[(size_t) i]; bar.isVisible() && ! bar.isMouseButtonDown())

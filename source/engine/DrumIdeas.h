@@ -2,6 +2,7 @@
 
 #include "engine/Riffs.h"
 #include "engine/MediaBay.h"
+#include "engine/Pr7dGrooves.h"
 
 #include <optional>
 
@@ -47,9 +48,65 @@ namespace pr7s
         juce::String name, folder;
         double bpm = 0.0;      // 0: not known
         int score = 0;
+        // (0.107.0) From PR7-D's library: its labels ("Type:Fill|Genre:Metal"), its folder's note layout (-1: the
+        // MediaBay's, notes as written) and the drum notes it goes onto (convertDrumNote).
+        juce::String tags;
+        int layout = -1;
+        DrumNotes notes = DrumNotes::asWritten;
+        // (0.112.1) What libraryGroovesFor reads from its path, name and labels, worked out once when the groove is
+        // found (the owner's 100,000 grooves were read word by word on every click): the section words in it (a bit
+        // per section; -1: not worked out yet) and whether it's a fill.
+        int sectionMask = -1;
+        bool fill = false;
+        // (0.137.0, the owner's rules) Its length in whole bars (0: not known), whether it's in the owner's Toontrack
+        // folder (a folder with "toontrack" in its name on its path), whether a folder on its path (or its genre label)
+        // names a style the owner leaves out (excludedGrooveWords: electronic, brushes, jazz, big band, R&B, reggae),
+        // and its kick and snare (PR7-D's index; none: the MediaBay's files, not read for this).
+        int bars = 0;
+        bool toontrack = false;
+        bool excluded = false;
+        std::shared_ptr<const GrooveRhythm> rhythm;
+    };
+    // (0.137.0) The words that leave a groove out of the composer's drums (in a folder's name or a genre label).
+    const juce::StringArray& excludedGrooveWords();
+    // (0.112.1) Works out a groove's sectionMask and fill (findLibraryGrooves and findPr7dGrooves do it for theirs).
+    void classifyGroove (LibraryGroove&);
+
+    // (0.112.1) The composer's library grooves, shared (not copied) between every ComposerContext made from the same
+    // library: a vector's reading surface over a shared list.
+    struct GrooveList
+    {
+        GrooveList() = default;
+        GrooveList (std::vector<LibraryGroove> grooves) : list (std::make_shared<const std::vector<LibraryGroove>> (std::move (grooves))) {}
+        const std::vector<LibraryGroove>& get() const noexcept { static const std::vector<LibraryGroove> none; return list != nullptr ? *list : none; }
+        operator const std::vector<LibraryGroove>&() const noexcept { return get(); }
+        size_t size() const noexcept { return get().size(); }
+        bool empty() const noexcept { return get().empty(); }
+        const LibraryGroove& operator[] (size_t i) const noexcept { return get()[i]; }
+        auto begin() const noexcept { return get().begin(); }
+        auto end() const noexcept { return get().end(); }
+    private:
+        std::shared_ptr<const std::vector<LibraryGroove>> list;
     };
     // The MediaBay's MIDI files that look like drum grooves, best first.
     std::vector<LibraryGroove> findLibraryGrooves (const std::vector<MediaItem>&, GuitarStyle, double songBpm);
+    // (0.107.0) PR7-D's grooves, scored as findLibraryGrooves scores (its labels counted with the path), best first;
+    // only those whose bar is the song's (`songBarBeats` quarters; 0: any).
+    std::vector<LibraryGroove> findPr7dGrooves (const Pr7dLibrary&, GuitarStyle, double songBpm, double songBarBeats);
     // A groove as an idea over the chords (its file read; nothing if it can't be).
     std::optional<LineIdea> grooveIdea (const LibraryGroove&, const std::vector<ChordSpan>&, double beatsPerBar, juce::String& error);
+
+    // (0.106.0, the owner: "the composer reaches for my library grooves by default") The library's grooves for one
+    // section (drumSections()' index: intro 0, verse 1, chorus 2, bridge 3, breakdown 4, ending 5, solo 6), best first:
+    // the style score as found, +6 for the section's word in the file's path or name (folders such as "Verse" or
+    // "Chorus" in groove packs), -3 for another section's word. `fills`: only files with "fill" in them; else none of
+    // those. Our scoring.
+    // (0.112.1) `limit`: only the best that many (0: all), in the same order a full list would give them.
+    // (0.137.0) `ownersRules`: grooves in a left-out folder (excludedGrooveWords) skipped, and the Toontrack folder's
+    // first (the composer's fills).
+    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills, size_t limit = 0,
+                                                  bool ownersRules = false);
+    // The notes of a library file's last bar, from its first note in that bar (beats from that note's quarter; one bar
+    // at most). Empty if the file can't be read. Files are read once and kept (by path and date).
+    std::vector<LineNote> libraryFillBar (const LibraryGroove&, double beatsPerBar);
 }

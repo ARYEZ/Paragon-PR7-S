@@ -5,6 +5,7 @@
 
 class InstrumentsPage;
 class TrackTypeColoursPage;
+class ComposerTracksPage;
 
 // The Hub (0.12.0, the owner asked: a start window like the other DAW's Hub,
 // opening on the folder where the songs are kept), in the PR7 family's look.
@@ -50,6 +51,10 @@ public:
     void showColoursPage();
     bool isShowingColours() const noexcept { return coloursPage; }
     TrackTypeColoursPage* getColoursPage() noexcept { return colours.get(); }
+    // COMPOSER TRACKS (0.112.0): the fifth tab (ui/ComposerTracksPage.h), made the first time it's shown.
+    void showComposerTracksPage();
+    bool isShowingComposerTracks() const noexcept { return composerTracksPage; }
+    ComposerTracksPage* getComposerTracksPage() noexcept { return composerTracks.get(); }
     void refresh();
 
     void paint (juce::Graphics&) override;
@@ -63,12 +68,13 @@ private:
     std::unique_ptr<SongList> list;
     std::vector<Item> items;
     juce::StringArray folded;
-    bool settingsPage = false, instrumentsPage = false, coloursPage = false;
+    bool settingsPage = false, instrumentsPage = false, coloursPage = false, composerTracksPage = false;
     std::unique_ptr<InstrumentsPage> instruments;
     std::unique_ptr<TrackTypeColoursPage> colours;
+    std::unique_ptr<ComposerTracksPage> composerTracks;
     juce::Image satin;
 
-    juce::TextButton projectsTab { "PROJECTS" }, settingsTab { "HUB SETTINGS" }, instrumentsTab { "INSTRUMENTS" }, coloursTab { "TRACK COLOURS" },
+    juce::TextButton projectsTab { "PROJECTS" }, settingsTab { "HUB SETTINGS" }, instrumentsTab { "INSTRUMENTS" }, coloursTab { "TRACK COLOURS" }, composerTracksTab { "ARCHITECT TRACKS" },
                      createEmpty { "+  CREATE EMPTY" }, chooseFile { "CHOOSE FILE..." }, open { "OPEN" },
                      driverPanel { "DRIVER PANEL" }, audioSettings { "SETTINGS" },
                      chooseLocation { "CHOOSE..." }, addLocation { "ADD A FOLDER..." }, removeLocation { "REMOVE THE FOLDER" };
@@ -96,6 +102,8 @@ private:
     juce::Label autoSaveTitle, autoSaveNote;
     juce::ComboBox autoSaveBox, keepBox;
     juce::TextButton showBackups { "SHOW BACKUPS" };
+    // (0.94.0, the owner's) Section types: ask before a built section is built again for a new type (off).
+    juce::ToggleButton askTypeChange { "Ask before changing a built section's type" };
     static constexpr int autoSaveChoices[] = { 0, 1, 2, 5, 10, 15, 30 };
     static constexpr int keepChoices[] = { 3, 5, 10, 20, 50 };
     KeyCommands::Map* keyMap = nullptr;
@@ -121,6 +129,7 @@ public:
     juce::String getHumanizeKeyText() const;        // "ALT+H", "NONE"
     juce::Slider& getHumanizeAmount() noexcept { return humanizeAmount; }
     juce::ToggleButton& getHumanizeLayers() noexcept { return humanizeLayers; }
+    juce::ToggleButton& getAskTypeChange() noexcept { return askTypeChange; }
     bool keyPressed (const juce::KeyPress&) override;
     static constexpr const char* humanizeCommand = "MIDI.Humanize";
 private:

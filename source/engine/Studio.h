@@ -1,5 +1,8 @@
 #pragma once
 
+#include <atomic>
+#include <thread>
+
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "ProjectLibrary.h"
@@ -21,10 +24,13 @@
 #include "Progressions.h"
 #include "Melody.h"
 #include "ChordDetect.h"
+#include "KeyCheck.h"
 #include "TempoDetect.h"
 #include "MediaBay.h"
 #include "Composer.h"
 #include "SoloEngine.h"
+#include "Blueprints.h"
+#include "OptionFeel.h"
 
 #include <optional>
 #include <mutex>
@@ -88,11 +94,28 @@ namespace pr7s
         void setAutoSaveMinutes (int minutes);
         int getAutoSaveKeep() const;
         void setAutoSaveKeep (int copies);
+        // (0.156.0) The option browser's favourites and recent picks, per list ("lane:drums"...), by name: settings
+        // "optionFavourites" / "optionRecent" (lines "list|name"); without a settings file, kept for the run.
+        OptionMemory getOptionMemory() const;
+        void setOptionFavourite (const juce::String& list, const juce::String& name, bool on);
+        void noteOptionUsed (const juce::String& list, const juce::String& name);
+        // (0.94.0) HUB SETTINGS' ASK BEFORE CHANGING A BUILT SECTION'S TYPE (settings "askSectionTypeChange"; off).
+        bool getAskBeforeTypeChange() const;
+        void setAskBeforeTypeChange (bool ask);
         static constexpr int defaultAutoSaveMinutes = 5, defaultAutoSaveKeep = 10;
         juce::File backupFolder() const;
         // Writes a backup now (the timer calls it when due). False: nothing written (nothing changed
         // since the last one, or it couldn't be). `waitForSaves` waits for it (it's written on the save thread).
         bool writeBackup();
+        // (0.130.0) Auto-save asks a plug-in for its settings only when something may have changed them:
+        // a parameter moved, it said it changed, its window was opened (or is open), or the studio gave it
+        // settings. Otherwise the settings it gave last time are used (four Kontakt instances took about a
+        // second each, every five minutes, holding the screen). SAVE always asks every plug-in.
+        // `notePluginWindow`: a plug-in's window opened (true) or closed (false). `notePluginChanged`: the
+        // studio gave it settings. `getReusedStates`: how many times kept settings were used (tests).
+        void notePluginWindow (juce::AudioProcessor*, bool open);
+        void notePluginChanged (juce::AudioProcessor*);
+        int getReusedStates() const noexcept { return reusedStates; }
         juce::File getLastBackup() const noexcept { return lastBackup; }
         // The Hub's songs (0.12.0): recent ones, the project location, templates.
         ProjectLibrary& getLibrary() noexcept { return *library; }
@@ -359,7 +382,7 @@ namespace pr7s
         // back to 0 as it ends, a bend as pitch bend up a whole step by the instrument's bend range (the
         // INSTRUMENTS profile on the idea's lane, else 2 semitones) and back to none as it ends.
         Part partFromIdea (const LineIdea&, double start, double length, const juce::String& name) const;
-        static std::vector<Controller> effectControllers (const std::vector<LineNote>&, int bendRange);
+        static std::vector<Controller> effectControllers (const std::vector<LineNote>&, int bendRange, double bpm = 0.0);   // (0.116.0: bends rise in about 0.19 s at bpm; 0: a quarter beat)
         static void fitBends (std::vector<LineNote>&, int bendRange);   // (0.66.0) bends past the range made smaller
         // (0.57.0) BUILD SECTION: each idea onto the track named after its part (Drums, Bass, Guitar,
         // Lead Guitar, Piano, Melody: an instrument track of that name is reused, so section after
@@ -369,7 +392,27 @@ namespace pr7s
         // (0.58.0) `onto`: per idea, a track to write it on instead (when it can take MIDI; 0: as above).
         std::vector<int> buildSection (const std::vector<LineIdea>&, const std::vector<ChordSpan>&, const juce::String& sectionName,
                                        const std::vector<int>& onto = {});
-        int findIdeaTrack (LineIdea::Part) const;   // the instrument track named after the part (0: none)
+        int findIdeaTrack (LineIdea::Part) const;   // (0.112.0) the first instrument track with one of the part's COMPOSER TRACKS names (0: none)
+        // (0.112.0, the owner asked) COMPOSER TRACKS, a tab of the Hub: per composer lane (bass, guitar, lead,
+        // chords, melody, drums) the track names it looks for (any of them, upper or lower case alike; the
+        // first is what a new track is called), and whether it plays on EVERY track with one of those names
+        // (the owner's guitar left and guitar right). The copies after the first can be played a little
+        // looser (LOOSE COPIES: humanized again with a seed of their own, velocities kept in their layers),
+        // as two takes would be. Kept in the settings ("composerTracks", "composerLooseCopies"; in memory
+        // without a settings file).
+        struct ComposerTracks { juce::StringArray names; bool every = false; bool operator== (const ComposerTracks&) const = default; };
+        static constexpr int numComposerTrackLanes = 7;   // (0.114.0: CLEAN GUITAR the seventh)
+        static LineIdea::Part composerTrackPart (int lane);   // bass, rhythm, lead, chords, tune, drums
+        static int composerTrackLane (LineIdea::Part);        // (-1: not a composer lane's)
+        ComposerTracks getComposerTracks (LineIdea::Part) const;
+        void setComposerTracks (LineIdea::Part, ComposerTracks);
+        void resetComposerTracks();
+        bool getLooseCopies() const;
+        void setLooseCopies (bool);
+        juce::String newIdeaTrackName (LineIdea::Part) const;      // the first name (a new track's)
+        std::vector<int> findIdeaTracks (LineIdea::Part) const;    // every match when EVERY, else the first (none: empty)
+        // The `copy`th copy of an idea (0: itself) for another of its tracks: humanized again when LOOSE COPIES.
+        LineIdea doubledCopy (const LineIdea&, int copy, double originBeat, int copies = 1) const;   // (0.129.0) copies: how many tracks the lane is on (a twin lead's harmony onto the second)
         // THE COMPOSER (0.58.0): what its layers are made with (IDEAS' settings; the tempo and bar at `atBeat`).
         ComposerContext getComposerContext (double atBeat) const;
         juce::String getComposerState() const;            // (settings key "composer"; in memory without a settings file)
@@ -430,8 +473,40 @@ namespace pr7s
         // the DRUMS tab plays from (settings key "ideasDrummer"; empty: the style's rules).
         juce::File getDrummerFolder() const { return drummerFolderOverride != juce::File() ? drummerFolderOverride : defaultDrummerFolder(); }
         void setDrummerFolderForTests (const juce::File& f) { drummerFolderOverride = f; }
+        // (0.107.0) PR7-D's groove library (Pr7dGrooves.h), read from its presets folder (tests: their own folder; no
+        // settings file and no folder set: not read) and read again when its index changes. The composer's drums take
+        // their grooves from it when it has any, else from the MediaBay.
+        void setPr7dFolderForTests (const juce::File& f) { pr7dFolderOverride = f; keptPr7d = {}; }
+        const Pr7dLibrary& getPr7dLibrary() const;
+        // The drum notes the composer's library grooves go onto: the PR7-D Map's when the composer's drums track
+        // (the "Drums" track, or the one a new one would be) plays PR7-D on that map, else General MIDI.
+        DrumNotes composerDrumNotes() const;
+        // (0.107.0, the Backline) A new drum track's instrument: the studio's drums (PR7-D) when found, else the
+        // studio's synth; addDrumsTrack adds one with that name and its drum map (the default one).
+        Instrument drumsInstrument() const;
+        int addDrumsTrack (const juce::String& name = "Drums");
+        // (0.108.0, THE STUDIO LINK: Pr7dLink.h) PR7-D plays the composer's drums from its own song track: on (the
+        // default; settings `pr7dPlaysDrums`), a composer drum part put on a track playing PR7-D is a muted copy
+        // (`Part::linkCopy`) and PR7-D gets the song. `linksToPr7d`: that track would.
+        bool getPr7dPlaysDrums() const;
+        void setPr7dPlaysDrums (bool);
+        bool linksToPr7d (int trackId) const;
+        // A track's copies written as PR7-D's song and PR7-D told to load it, when they changed since (changed() does
+        // it; returns how many tracks were sent); PR7-D's edits read back into the copies (the timer: how many tracks
+        // changed). `pr7dLinkFile`: a track's link file (none: no link yet).
+        int syncPr7dLinks();
+        int readPr7dEdits();
+        juce::File pr7dLinkFile (int trackId) const;
+        // Tests: the link folder, which tracks count as PR7-D's, and every link message sent (track, message).
+        void setPr7dLinkFolderForTests (const juce::File& f) { linkFolderOverride = f; }
+        std::function<bool (int)> treatAsPr7dForTests;
+        std::function<void (int, const juce::MidiMessage&)> onPr7dMessage;
         std::vector<juce::String> getDrummerNames() const { return drummerNames (getDrummerFolder()); }
         std::optional<DrumProfile> loadDrummer (const juce::String& name) const;
+        // (0.85.2) The last profile read, kept while its file's size and date are the same: the composer
+        // asks for it on every change of the song, and read the whole file each time.
+        struct KeptDrummer { juce::File file; juce::Time modified; juce::int64 size = -1; std::optional<DrumProfile> profile; };
+        mutable KeptDrummer keptDrummer;
         bool saveDrummer (const DrumProfile&, juce::String& error);
         bool deleteDrummer (const juce::String& name);
         juce::String getIdeasDrummer() const;
@@ -461,10 +536,38 @@ namespace pr7s
         // A progression onto the pads from `firstPad` on (locked pads skipped); how many placed.
         int assignProgressionToPads (const std::vector<Chord>&, int firstPad);
         void setChordEventChord (int index, const Chord&);
-        void removeChordEvents (std::vector<int> indices);
+        void removeChordEvents (std::vector<int> indices);   // (0.85.3: a gap left where they were, as clips)
+        // (0.85.3, the owner) Chords edited like clips, each one undo step; every chord gets its own
+        // length first (`withLengths`), so a chord moved away leaves a gap. What a chord is placed over
+        // is cut out of the chords there. Each returns where the chords it placed are now.
+        std::vector<int> moveChordEvents (const std::vector<int>& indices, double delta, bool copy);   // delta in beats
+        int resizeChordEvent (int index, double newStart, double newEnd);
+        std::vector<int> splitChordEvents (double beat, const std::vector<int>& indices);   // empty: every chord there
+        int glueChordEvent (int index);                       // it takes over the next one's place
+        struct ChordClip { std::vector<ChordEvent> events; double length = 0.0; };   // beats from the first's start
+        ChordClip copyChordEvents (const std::vector<int>& indices) const;
+        std::vector<int> pasteChordEvents (const ChordClip&, double atBeat);
+        std::vector<int> duplicateChordEvents (const std::vector<int>& indices);       // right after them
+        // `placed` laid over `others` (placeChords), the chord track set to the result.
+        std::vector<int> placeChordEvents (const std::vector<ChordEvent>& placed, std::vector<ChordEvent> others);
         void setScaleEvents (std::vector<ScaleEvent>);    // by hand: the scales stop following the chords
+        // (0.85.3) The key chosen (the composer's) on the key strip from `fromBeat` on: the strip set by hand
+        // from there (what was worked out before it kept), so a chord moved out of that key shows it.
+        void setChordTrackKey (double fromBeat, const Key&);
         void setAutoScales (bool);
         Key chordTrackKeyAt (double beat) const;          // the scale in force (else the pads' key)
+        // (0.114.0, the owner: "in the sections lane I need to be able to set the key of the song and all parts need
+        // to be in that key ... by default all sections must be synced to the same key", with a switch for key
+        // changes) The song's key: chosen, everything moves into it (chords, every pitched track's notes, what the
+        // composer built and its recipes), one undo step. With ALL SECTIONS IN ONE KEY (the default) every block is
+        // in it; off, a block can have its own key (setSongSectionKey moves only that block's music, and its linked
+        // copies'). The chord track's key strip follows (a scale at each block whose key differs from the one before).
+        Key getSongKey() const;
+        void setSongKey (const Key&);
+        bool isOneKey() const noexcept { return project.songSections.oneKey; }
+        void setOneKey (bool);                             // on again: every block back in the song's key
+        Key getSongSectionKey (int index) const;           // the block's key (the song's in one-key songs)
+        void setSongSectionKey (int index, const Key&);    // one-key songs: the song's key
         // A new chord at `beat`: the best that could follow the chord before (else the key's I).
         Chord suggestChordAt (double beat) const;
         // The chords (or those at these indices) as a MIDI part, voiced with the least
@@ -478,6 +581,12 @@ namespace pr7s
         // ... onto the chord track (what was over the parts' span replaced; one undo step) or the
         // pads (each chord once, in order, from the first unlocked pad). How many chords.
         int detectChordsToTrack (const std::vector<int>& partIds, const DetectSettings&);
+        // (0.84.0) KEY CHECK: the notes and chords outside the key (KeyCheck.h); a chosen key, else the chord
+        // track's keys, else the song's key guessed. The fix moves each listed note to its suggestion (as heard:
+        // the part's transpose taken back off), all as one undo step; chords aren't changed (the chord track's own
+        // menus swap them). False if nothing was moved (a note since edited or gone is left alone).
+        std::vector<KeyIssue> checkSongKey (std::optional<Key> chosen = std::nullopt) const;
+        bool fixOutOfKeyNotes (const std::vector<KeyIssue>&);
         int detectChordsToPads (const std::vector<int>& partIds, const DetectSettings&);
         // The settings last used (settings key "chordDetect").
         DetectSettings getDetectSettings() const;
@@ -809,6 +918,9 @@ namespace pr7s
         RangeClip copyRange (const Range&) const;              // Ctrl+C
         RangeClip cutRange (const Range&, bool closeGap);      // Ctrl+X; Cut Time (Ctrl+Shift+X)
         void insertSilence (const Range&);                     // Ctrl+Shift+E: what's at or after its start moves on by its length
+        // (0.119.0) A range over every track shown (channels aside) moves the whole song: every track's parts, the
+        // chord track, markers, tempo, signatures (whole bars only), automation and the SECTIONS row.
+        bool coversEveryTrack (const Range&) const;
         // Paste (Ctrl+V): at a beat, from a track down (a clip's tracks onto
         // the tracks below it in order; audio only onto audio tracks, MIDI
         // onto instrument tracks, else that track's slices are left out).
@@ -1113,6 +1225,83 @@ namespace pr7s
         bool locateNextMarker (bool forward);   // Shift+N / Shift+B
 
         //======================================================================
+        // The SECTIONS row (0.90.0, engine/SongSections.h): the song as blocks end to end from bar 1. Each action is
+        // one undo step. Blocks that change place carry their music with them: every part on every track (frozen
+        // tracks stay as they are), the chords and scales, markers, automation, tempo and signature changes inside
+        // them; what comes after the last block moves by what the row grew or shrank. A block shortened loses
+        // what was past its new end; a block removed takes its music with it and the gap closes.
+        const SongSections& getSongSections() const noexcept { return project.songSections; }
+        std::vector<SectionPlace> getSongSectionPlaces() const;
+        void addSongSectionTrack();          // the row shown
+        void removeSongSectionTrack();       // hidden, the blocks kept
+        // A block after the last, over the bars that follow (nothing moves: it names what's there). Its index.
+        // (0.91.0) A name already in the song: a linked copy of the last block of that name instead (its bars, its
+        // music; what follows the row moves on), unless `linked` is false.
+        int appendSongSection (const juce::String& name, int bars, bool linked = true);
+        // A block at `index` (0 the first); everything from there on moves later by its length. (0.91.0) A name
+        // already in the song: a linked copy of the last block of that name, unless `linked` is false.
+        bool insertSongSection (int index, const juce::String& name, int bars, bool linked = true);
+        bool moveSongSection (int from, int to);          // to: its index once moved
+        bool setSongSectionBars (int index, int bars);    // what follows moves by the change (a linked block: all of them)
+        bool renameSongSection (int index, const juce::String& name);   // (a linked block: all of them)
+        bool duplicateSongSection (int index, bool linked = true);      // a copy after it, its music copied (0.91.0: linked)
+        // (0.91.0) Linked copies: the blocks with the same `link` keep the same music (their parts on every track but
+        // frozen ones, and their chords). After any change (but a fader's drag steps) the block whose music changed
+        // since the last look is copied into the others, inside the same undo step; a change to two of them at once:
+        // the first in the song wins. Unlinking keeps the block's music as it is, its own from then on.
+        bool unlinkSongSection (int index);
+        bool isSongSectionLinked (int index) const;
+        // (0.92.0) The composer built into a block (its id): its settings and which lane went onto which track
+        // (layer, track id), kept on the block (and its linked copies) with a mark of what each track holds there now.
+        // When the block's chords change (not when it moves or its length changes), each lane whose track still holds
+        // what was written is built again over the new chords from those settings; every other pitched track's notes
+        // in the block (not drums, not frozen) move to fit the new chords (Follow Chord Track's Chords & Scales), their
+        // rhythm kept. Inside the same undo step as the chords' change.
+        void noteSectionBuilt (int blockId, const juce::String& composerState, const std::vector<std::pair<int, int>>& layerTracks);
+        // (0.94.0, the owner's section types) A block's TYPE (engine/SectionTypes.h; empty or "STANDARD": none); linked
+        // copies too. A built block is built again at once for the type (its recipe's flavour and approaches), the lanes
+        // changed by hand since left as they are, in one undo step. False: not a type of that block's name.
+        bool setSongSectionType (int index, const juce::String& type);
+        // (0.104.0) A block's transition (engine/SectionTypes.h; empty or NONE: none). Linked copies share it. A SHORT
+        // BAR changes the song's signature for the block's last bar (everything after it moves up); a built block is
+        // built again (lanes changed by hand kept). One undo step.
+        bool setSongSectionTransition (int index, const juce::String& name);
+        bool isSongSectionBuilt (int index) const;
+        bool removeSongSection (int index);               // and its music; the gap closes
+        // A block's place in beats (none: no such block).
+        std::optional<SectionPlace> getSongSectionPlace (int index) const;
+        // (0.103.0, the owner: "the scale that is set for the entire song, then for each block what chords from that
+        // scale we're going to use, and the chance to edit and reorder them") A block's chords as the block editor
+        // shows them: each chord on the chord track inside it (cut to the block) with how long it sounds there, in
+        // order. Setting them replaces every chord inside the block with these, end to end from its start (any past its
+        // end left out); chords before and after it are kept (one reaching into it ends at its start). One undo step;
+        // linked copies follow, a built block's lanes are built again over them (0.92.0); the chord track is shown.
+        struct SectionChord
+        {
+            Chord chord;
+            double beats = 0.0;
+            bool operator== (const SectionChord&) const = default;
+        };
+        std::vector<SectionChord> getSectionChords (int index) const;
+        bool setSectionChords (int index, const std::vector<SectionChord>&);
+
+        // BLUEPRINTS (0.152.0, engine/Blueprints.h): a song's section layout as a preset. Using one replaces the
+        // SECTIONS row with its blocks (names, lengths, linked copies, types, transitions) from bar 1, sets the song's
+        // key, and, each a choice, the chords inside the row (the chord track's events there replaced; off: the chord
+        // track untouched) and the tempo (the fixed tempo, or a tempo track with one event). The music already in the
+        // song stays where it is (nothing is moved). One undo step (a SHORT BAR transition adds one each).
+        bool applyBlueprint (const Blueprint&, const Key&, bool withChords, bool withTempo);
+        // This song's row as a blueprint (its chords from the chord track, in the song's key; the tempo at bar 1).
+        Blueprint makeBlueprint (const juce::String& name) const;
+        // Ours, then the owner's (from the folder, A to Z).
+        std::vector<Blueprint> getBlueprints() const;
+        juce::File getBlueprintFolder() const;
+        void setBlueprintFolderForTests (const juce::File& f) { blueprintFolder = f; }
+        // This song's row saved as the owner's own (a file named after it; a taken name gets " 2"...). Its file.
+        juce::File saveSongAsBlueprint (const juce::String& name, juce::String& error);
+        bool deleteBlueprint (const Blueprint&);   // the owner's only
+
+        //======================================================================
         // Tap tempo (0.45.0, the manual's Tap Tempo Modes): each tap's time in seconds (the
         // transport's TAP, Shift+Space). From the second tap the tempo is the average step of
         // the last eight; a gap of 2 s starts again. Applied at each tap by the mode (not an
@@ -1189,7 +1378,22 @@ namespace pr7s
         // outside 20-300 BPM. `factor`: the Equivalent Tempo Scaling.
         bool processTempo (double start, double end, double newSeconds, double* factor = nullptr);
         static double tempoScaling (const TempoMap&, double start, double end, double newSeconds);
-        void setCycle (double start, double end);
+        // (0.123.0) `undoable` false: a drag's step (the locators only, to the engine and the two views'
+        // cycle strips; no undo step, no rebuild). The drag's release calls `finishCycleDrag` for the one step.
+        void setCycle (double start, double end, bool undoable = true);
+        void finishCycleDrag();
+        juce::uint64 getCycleVersion() const noexcept { return cycleVersion; }
+        // (0.164.0) Bumped by every change but a selection (a track clicked): the arrangement and the MIDI editor show
+        // nothing else of it, so they repaint only the rows it moved instead of everything.
+        juce::uint64 getContentVersion() const noexcept { return contentVersion; }
+        // (0.174.0) Bumped by every content change but those declared to change only some tracks' parts
+        // (a part's notes, controllers, length, mute, an event's fields): the views then redraw only the rows
+        // whose parts changed (found by PartList::sharesWith against what they drew).
+        juce::uint64 getLayoutVersion() const noexcept { return layoutVersion; }
+        // (0.173.0) While recording the take grows: this goes up (and a change message goes out) instead of the
+        // change version, so only the arrangement's recording row is drawn again, not every view in full.
+        juce::uint64 getRecordingVersion() const noexcept { return recordingVersion; }
+        int getRecordTrackId() const noexcept { return recordTrack; }
         void setCycleOn (bool);
         // Snap on/off (J) and the quantize value in beats (4: 1/1 ... 1/16: 1/64), the toolbar's (0.9.10).
         void setSnap (bool);
@@ -1219,7 +1423,9 @@ namespace pr7s
         // `getHistoryPosition` the one the song is at now (the separator under it: the ones after are
         // undone); `goToHistory` puts any step back (undo or redo as far as it takes, one engine update).
         // Step 0 is where the song started (opened, new, imported): it can't be undone.
-        const std::vector<HistoryStep>& getHistory() const noexcept { return undoInfo; }
+        // (0.83.2) Each step's name is worked out here, when the history is looked at, not on every edit
+        // (comparing the whole song with the step before cost more than the undo copy itself).
+        const std::vector<HistoryStep>& getHistory() const;
         int getHistoryPosition() const noexcept { return undoIndex; }
         void goToHistory (int index);
         void setHistoryDetails (int index, const juce::String& text);   // the Details column: anything typed
@@ -1229,7 +1435,7 @@ namespace pr7s
 
         //======================================================================
         // Files.
-        void newProject();
+        void newProject (bool starterTrack = true);   // (0.113.0: false = closed back to the Hub, no track)
         bool save (const juce::File&);
         // SAVE on screen (0.9.11): the file written on a thread of its own; `done` here after.
         void saveInBackground (const juce::File&, std::function<void (bool written)> done = {});
@@ -1444,6 +1650,55 @@ namespace pr7s
         void setMediaPreviewLevel (float);
 
     private:
+        // (0.90.0) The SECTIONS row's moves: the new blocks, each from an old block's index (its music carried, cut to
+        // its new length) or -1 (new and empty: what was there moves on). One undo step.
+        struct SectionMove { int from = -1; SongSection block; };
+        bool relayoutSections (const std::vector<SectionMove>&, bool announce = true);   // (announce: changed())
+        void shiftSongTime (double at, double length, bool insert);   // (0.119.0: everything but the parts, which the caller moves)
+        // (0.91.0) A block's music (relative to its start; part ids 0), by track id; its chords with their lengths.
+        struct SectionContent
+        {
+            std::vector<std::pair<int, std::vector<Part>>> tracks;
+            std::vector<ChordEvent> chords;
+            bool operator== (const SectionContent&) const = default;
+        };
+        SectionContent sectionContent (const SectionPlace&) const;
+        void writeSectionContent (const SectionPlace&, const SectionContent&);
+        void syncLinkedSections();
+        std::map<int, SectionContent> linkSnapshots;   // by block id: each linked block's music as last seen
+        // (0.173.0) What linkSnapshots were made from: every track's parts (their shared lists: one pointer to compare),
+        // the chord track, the tempo, the first signature and the blocks. All the same: nothing to look at again.
+        struct LinkInputs
+        {
+            struct TrackIn { int id = 0; bool skipped = false; PartList parts; };
+            std::vector<TrackIn> tracks;
+            ChordTrack chords;
+            double bpm = 0.0;
+            bool tempoOn = false;
+            std::vector<TempoEvent> tempo;
+            int numerator = 0, denominator = 0;
+            std::vector<std::tuple<int, int, int, double, double>> blocks;   // id, link, bars, start, end
+        };
+        std::optional<LinkInputs> linkInputs;
+        LinkInputs currentLinkInputs() const;
+        static bool sameLinkInputs (const LinkInputs&, const LinkInputs&);
+        bool linksReset = false;   // the next look only notes what's there (undo, open, new)
+        int linkedCopyOf (const juce::String& name) const;   // the last block of that name (-1: none)
+        // (0.92.0) Each block's chords (relative, with lengths) and length as last seen, by block id.
+        std::map<int, std::pair<int, std::vector<ChordEvent>>> chordSnapshots;
+        bool chordsReset = false;
+        juce::File blueprintFolder;   // (tests; else defaultBlueprintFolder())
+        std::vector<ChordEvent> sectionChords (const SectionPlace&) const;
+        juce::int64 trackMark (const SectionPlace&, int trackId) const;
+        void rewriteChangedSections();     // before syncLinkedSections in changed()
+        void noteSectionChords();          // after it
+        // (0.114.0) The music from `from` to `to` (beats) moved from one key to another (chords, pitched notes, built
+        // recipes, their marks renewed so the lanes still count as the composer's), and the key strip laid out from
+        // the blocks' keys. No changed(): the caller's.
+        void moveMusicToKey (double from, double to, const Key& oldKey, const Key& newKey);
+        void layOutSectionKeys();
+        void rewriteSection (int index, const std::vector<ChordEvent>& before, const std::vector<ChordEvent>& after);
+        std::vector<int> rebuildSectionLanes (int index, const std::vector<ChordEvent>& chords);   // the tracks rebuilt
         PadPlayer padPlayer;
         std::unique_ptr<PatternPerformer> performer;   // (0.39.0) the pads' performance
         class LinePreview;
@@ -1497,7 +1752,12 @@ namespace pr7s
         void setControlValue (int busId, const AutomationLane& control, float value);   // the static setting, without writing
         void effectGoing (int busId, int slot);
         void removeAllEffects();
+        void unloadSongTracks();
         void recordUndoState();
+    public:
+        static inline bool guardUndoSharing = false;   // (0.165.0, the tests turn it on)
+    private:
+        Project copyWithoutPluginStates (bool forUndo) const;   // (0.83.1)
         bool applyAutoColour();   // (0.79.0) the rule's colours onto its tracks; true if any changed
         void restore (const Project&);
         void joinFolderGroup (Track&);    // (0.50.0)
@@ -1603,10 +1863,18 @@ namespace pr7s
         juce::String ideasDrummer;
         float ideasHumanize = 0.0f, humanizeAmount = 0.5f;   // (without a settings file: the tests)
         bool ideasFeel = true, humanizeLayers = true;
-        void announce();               // (0.34.3) sendChangeMessage, the version counted
+        void announce (bool partsOnly = false);   // (0.34.3) sendChangeMessage, the version counted
         void mixOnly (bool onlyTheMix);
         juce::uint64 changeVersion = 1;
+        juce::uint64 cycleVersion = 1;   // (0.123.0) the locators moved by a drag's step
+        bool cycleStepped = false;
+        std::vector<int> sectionPassTracks;   // (0.123.0) the tracks when the sections were last looked at
         bool mixOnlyAsked = false, mixOnlyBroken = false;
+        bool selectionOnlyAsked = false;   // (0.164.0)
+        juce::uint64 contentVersion = 1;
+        bool partsOnlyAsked = false;   // (0.174.0) set just before changed() by an edit of parts alone
+        juce::uint64 layoutVersion = 1;
+        juce::uint64 recordingVersion = 0;   // (0.173.0)
         AlignSettings alignSettings;   // (without a settings file: the tests)
         float dropHighlight = defaultDropHighlight;   // (without a settings file: the tests)   // (a linked change being passed on: not passed on again)
         void pruneLinkGroups();
@@ -1666,10 +1934,18 @@ namespace pr7s
         juce::int64 lastBackupHash = 0;
         juce::uint32 lastBackupTime = juce::Time::getMillisecondCounter();
         int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;
+        bool askTypeChangeHere = false;
+        OptionMemory optionMemoryHere;   // (0.156.0; without a settings file)
+        void saveOptionMemory (const OptionMemory&);
         std::array<TrackTypeLook, numTrackTypes> trackTypeLooksHere;   // (0.80.0; without a settings file)
+        std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;
+        std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)
+        bool looseCopiesHere = true;
         std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;
         void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)
-        void collectPluginStates();
+        void collectPluginStates (bool reuseUnchanged = false);
+        juce::MemoryBlock pluginState (juce::AudioProcessor&, bool reuseUnchanged);
+        int reusedStates = 0;
         void backupIfDue();
         juce::String loggedDevice;   // the audio device's last line in the session log
         double progressBase = 0.0, progressSpan = 1.0;
@@ -1692,6 +1968,31 @@ namespace pr7s
         std::unique_ptr<ExportJob> exportJob;
         static bool writeBlock (ExportJob&, juce::AudioBuffer<float>&, int start, int length);
         std::unique_ptr<MediaDatabase> mediaBay;   // (0.21.0; made when first asked for)
+        // (0.106.0) The composer's library grooves, kept until the library, the style or the tempo changes.
+        struct KeptGrooves { const void* items = nullptr; size_t count = 0; int style = -1; int bpm = 0; GrooveList grooves; };
+        mutable KeptGrooves keptGrooves;
+        juce::File pr7dFolderOverride;
+        // (0.108.0) The studio link: the copies' fingerprint last sent or read per track, when we last wrote each file,
+        // and the PR7-D tracks paused while the composer is heard.
+        juce::File linkFolderOverride;
+        std::map<int, juce::String> pr7dSent;
+        std::map<int, juce::Time> pr7dWritten;
+        std::vector<int> pr7dPaused;
+        bool pr7dPlaysDrumsHere = true;
+        int pr7dLinkTicks = 0;
+        void linkForPr7d (int trackId, const LineIdea&, Part&) const;
+        void sendPr7d (int trackId, const juce::MidiMessage&);
+        void pausePr7dSongs (bool pause);
+        mutable Pr7dLibrary keptPr7d;
+        mutable juce::Time keptPr7dIndexDate;
+        mutable bool keptPr7dRead = false;
+        // (0.112.1) PR7-D's index read on a thread of its own in the app (the owner's 100,000 grooves held the screen
+        // over a second): the library kept until it's read, then swapped in by the timer and announced.
+        struct Pr7dReading { juce::File folder; juce::Time date; Pr7dLibrary result; std::atomic<bool> done { false }; std::thread thread; };
+        mutable std::unique_ptr<Pr7dReading> pr7dReading;
+        bool takePr7dReading() const;   // true when a finished read was swapped in
+        struct KeptPr7dGrooves { juce::Time date; int style = -1; int bpm = 0; int bar = 0; size_t count = 0; DrumNotes notes = DrumNotes::asWritten; GrooveList grooves; };
+        mutable KeptPr7dGrooves keptPr7dGrooves;
         std::shared_ptr<const AudioData> mediaPreviewSound;
         double mediaPreviewBeats = 0.0;
         bool mediaPreviewMidi = false;
@@ -1704,7 +2005,13 @@ namespace pr7s
         bool inBatch = false;
 
         std::vector<Project> undoStates;
-        std::vector<HistoryStep> undoInfo;   // (0.83.0) one per undo state: its name, time, details
+        mutable std::vector<HistoryStep> undoInfo;   // (0.83.0) one per undo state: its name, time, details
+        void dropOldestStep();
+        // (0.165.0) The tests' guard on shared parts: each recent undo step's parts as a plain copy, checked
+        // against the step itself on every new step, undo and redo (a write through a kept Part& would show).
+        void checkUndoSharing();
+        void noteUndoParts();
+        std::vector<std::vector<std::vector<Part>>> undoParts;
         int undoIndex = -1;
         int maxUndoHere = 100;               // (without a settings file)
         void clearHistory();

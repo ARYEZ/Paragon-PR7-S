@@ -35,13 +35,15 @@ namespace pr7s
         // (0.66.0) `dive`: the whammy bar pushed down over the note (pitch bend down by `amount` semitones, as
         // far as the bend range reaches). `amount`: a bend's size in semitones (0: a whole step), a vibrato's
         // depth 0-1 (0: the usual), a dive's depth in semitones.
-        enum class Effect { none, vibrato, bend, ring, dive };
+        enum class Effect { none, vibrato, bend, ring, dive, swell, release, slideIn, fallOff, slowBend, wobble, scoop, pullUp, bendDive };   // (0.134.0) pullUp: the whammy bar pulled up `amount` semitones a moment after the pick and held; bendDive: bent up into the note, held, then dived `amount` semitones away; (0.133.0) scoop: the whammy bar pulled up into the note from `amount` semitones under in 0.06 s; (0.101.0) swell: faded in by expression (CC 11); (0.116.0) release: bent up before it's struck, let down onto its note; (0.128.0) slideIn: slid up into its note from `amount` semitones under, fallOff: held, then slid down `amount` semitones as it ends; (0.129.0) slowBend: a bend rising over 0.5-1.3 s (the anthem bends), wobble: the whammy bar shaken `amount` semitones either way
         Effect effect = Effect::none;
         float amount = 0.0f;
         // (0.66.0) How the note is played, for an instrument with keys for it (Shreddage: Tapping A-1, Tremolo
         // F#-1, Harmonics G#-1): `useArticulationKeys` presses the key before it and Sustain after.
         enum class Technique { normal, tapping, tremolo, harmonic };
         Technique technique = Technique::normal;
+        // (0.129.0) A twin lead's harmony voice: on a lane with two tracks it goes onto the second (Studio::doubledCopy).
+        bool harmony = false;
         bool operator== (const LineNote&) const = default;
     };
 
@@ -56,7 +58,7 @@ namespace pr7s
     struct LineIdea
     {
         // (0.19.0: piano chords; guitar rhythm and lead.)
-        enum class Part { bass, melody, chords, rhythm, lead, pattern, tune, drums, groove };   // (0.54.0: drums, groove: the DRUMS tab's generated beats and library grooves)   // (0.39.0: patterns; 0.41.0: tune, the MELODY tab's composed melodies)
+        enum class Part { bass, melody, chords, rhythm, lead, pattern, tune, drums, groove, clean };   // (0.114.0: clean, the composer's CLEAN GUITAR)   // (0.54.0: drums, groove: the DRUMS tab's generated beats and library grooves)   // (0.39.0: patterns; 0.41.0: tune, the MELODY tab's composed melodies)
         Part part = Part::bass;
         juce::String style, description;
         std::vector<LineNote> notes;   // beats from the first span's start
@@ -137,7 +139,7 @@ namespace pr7s
     // (0.66.0) `solo`: SOLO STYLE for the seventh, the whole solo (automatic: made from the six; else
     // SoloEngine.h's `composeSolo`); `shortest` the instrument's SHORTEST NOTE (0: none).
     std::vector<LineIdea> guitarLeadIdeas (const std::vector<ChordSpan>&, double beatsPerBar, int variation, const GuitarTuning&,
-                                            const GuitarVelocities&, GuitarStyle, SoloStyle solo = {}, double shortest = 0.0);
+                                            const GuitarVelocities&, GuitarStyle, SoloStyle solo = {}, double shortest = 0.0, double bpm = 0.0);
 
     // Humanize (0.20.0, the owner asked): small, controlled differences so a part sounds played,
     // not programmed. Our rules:

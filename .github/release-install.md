@@ -6,7 +6,7 @@ Download the zip for your computer below and unzip it anywhere (your Desktop or 
 - **Windows:** `Paragon PR7-S.exe`. Windows may warn that it's from an unknown publisher (it isn't code-signed yet): click **More info**, then **Run anyway**.
 - **Linux:** `Paragon PR7-S`.
 
-**PR7-K, the studio's synth, comes in the zip:** keep `Paragon PR7-K.vst3` in the same folder as the app (new tracks play it). If you've installed PR7-K in your VST3 folder, the newer of the two is used.
+**The Backline comes in the zip:** PR7-K, the studio's synth, and PR7-D, the studio's drums. Keep `Paragon PR7-K.vst3` and `Paragon PR7-D.vst3` in the same folder as the app (new tracks play PR7-K, new drum tracks PR7-D). If you've installed either in your VST3 folder, the newer of the two is used.
 
 First time: **SETTINGS** to pick your audio interface, then **PLUGINS** > **SCAN / OPTIONS** to find your VST3 instruments and effects. Your settings and the plugins found are kept between versions.
 

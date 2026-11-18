@@ -1,5 +1,6 @@
 #include <catch2/catch_session.hpp>
 #include <juce_events/juce_events.h>
+#include "engine/Studio.h"
 
 #if JUCE_LINUX
  #include <X11/Xlib.h>
@@ -37,5 +38,7 @@ int main (int argc, char* argv[])
     // JUCE's windows, timers and plugin classes expect the message manager
     // to exist, as it does in the running app.
     const juce::ScopedJuceInitialiser_GUI juceInitialiser;
+    // (0.165.0) Every undo step checked for writes into parts it shares (a run stops at the first).
+    pr7s::Studio::guardUndoSharing = true;
     return Catch::Session().run (argc, argv);
 }

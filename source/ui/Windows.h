@@ -34,6 +34,7 @@ namespace Windows
         bool keyPressed (const juce::KeyPress&) override;
         std::function<void()> onClose;
         std::function<bool (const juce::KeyPress&)> onKey;
+        std::function<void()> onGone;   // (0.130.0: called as the window goes, however it goes)
 
     private:
         void timerCallback() override;

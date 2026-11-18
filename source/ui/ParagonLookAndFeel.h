@@ -179,6 +179,11 @@ public:
 
     // (0.71.0, the owner's) The cycle strip's red / pink / orange along a line: faders, pan, bars, lights.
     static juce::ColourGradient familyGradient (juce::Point<float> from, juce::Point<float> to);
+    // (0.132.0, the owner chose it) The playhead: a 4 px black bar outlined in the family gradient (pink at
+    // the top, orange at the foot) over `lineTop`..`bottom`, a soft halo of the gradient, and its marker
+    // (a black triangle `markerSize` wide, its point at `lineTop` + 4) outlined in the gradient.
+    // Recording: plain red, as before. Drawn within x - 4 .. x + 5 (the views repaint that strip).
+    static void drawPlayhead (juce::Graphics&, float x, float lineTop, float bottom, float markerSize, bool recording);
     static constexpr float barOpacity = 0.8f;   // (bars: their text stays readable over it)
 
     void drawButtonBackground (juce::Graphics&, juce::Button&, const juce::Colour& background,

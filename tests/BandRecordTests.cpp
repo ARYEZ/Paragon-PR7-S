@@ -265,6 +265,13 @@ TEST_CASE ("0.82.0: a review song: the drum MIDI, each DI on an audio track with
     REQUIRE (makeBandReviewSong (songs[0], folder.getChildFile ("Review"), {}, made, error));
     CHECK (made.existsAsFile());
     CHECK (made.getSiblingFile ("Opener Audio").getChildFile ("Opener bass.wav").existsAsFile());
+    {
+        // (0.83.3) Read again: the review song before (and the corrections in it) kept under a dated name.
+        juce::File again;
+        REQUIRE (makeBandReviewSong (songs[0], folder.getChildFile ("Review"), {}, again, error));
+        CHECK (again == made);
+        CHECK (made.getParentDirectory().findChildFiles (juce::File::findFiles, false, "Opener before *.pr7s").size() == 1);
+    }
 
     Studio studio (false);
     juce::String problems;

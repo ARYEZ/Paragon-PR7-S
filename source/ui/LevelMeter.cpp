@@ -45,6 +45,20 @@ bool LevelMeter::Ballistics::push (float peakGain)
     return changed;
 }
 
+int LevelMeter::Ballistics::shown (float length, float pitch) const
+{
+    // The same arithmetic as paintSegments.
+    const auto lit = proportionForDb (db);
+    const auto held = heldDb > minDb ? proportionForDb (heldDb) : -1.0f;
+    const auto count = juce::jmax (1, (int) (length / pitch));
+    const auto heldSegment = held > 0.0f ? juce::jlimit (0, count - 1, (int) (held * (float) count)) : -1;
+    auto litCount = 0;
+    for (int i = 0; i < count; ++i)
+        if (((float) i + 0.5f) / (float) count <= lit)
+            ++litCount;
+    return litCount * 4096 + heldSegment + 1;
+}
+
 void LevelMeter::timerCallback()
 {
     if (reading.push (source.takePeak()))

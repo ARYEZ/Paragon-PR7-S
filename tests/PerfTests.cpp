@@ -162,5 +162,18 @@ TEST_CASE ("Performance: saving with large plugin settings", "[.][perf]")
         auto t2 = juce::Time::getMillisecondCounterHiRes();
         std::printf ("  of which toXml %.1f ms, writeTo %.1f ms\n", t1 - t0, t2 - t1);
     }
+    // (0.85.2) An auto-save copy: what the screen's thread waits for (the writing goes on in the background).
+    studio.setAutoSaveMinutes (5);
+    for (int i = 0; i < 3; ++i)
+    {
+        studio.renameTrack (studio.getProject().tracks[0].id, "Changed " + juce::String (i));
+        const auto start = juce::Time::getMillisecondCounterHiRes();
+        studio.writeBackup();
+        const auto asked = juce::Time::getMillisecondCounterHiRes();
+        studio.waitForSaves (60000);
+        std::printf ("auto-save copy: the screen waits %.1f ms (written after %.1f ms)\n", asked - start,
+                     juce::Time::getMillisecondCounterHiRes() - start);
+    }
+    studio.backupFolder().deleteRecursively();
     file.deleteFile();
 }

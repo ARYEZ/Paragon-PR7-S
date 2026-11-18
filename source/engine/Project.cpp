@@ -1,4 +1,6 @@
 #include "Project.h"
+
+#include <unordered_map>
 #include "Controllers.h"
 
 #include <functional>
@@ -49,6 +51,18 @@ namespace pr7s
 
         const char* targetNames[] = { "volume", "pan", "mute", "instrument", "insert", "send" };
 
+        // (0.164.0) A fresh element's children gathered, then put in back to front in one go: JUCE's
+        // createNewChildElement walks the list for every child, so a part of thousands of notes and controller
+        // points took tens of milliseconds to write (the MediaBay's save, 0.163.0, was the same). The element must
+        // have no children before; the order comes out as added.
+        struct Children
+        {
+            juce::XmlElement& parent;
+            std::vector<juce::XmlElement*> made {};
+            juce::XmlElement* createNewChildElement (juce::StringRef tag) { made.push_back (new juce::XmlElement (tag)); return made.back(); }
+            ~Children() { for (auto i = made.rbegin(); i != made.rend(); ++i) parent.prependChildElement (*i); }
+        };
+
         void lanesToXml (const std::vector<AutomationLane>& lanes, juce::XmlElement& parent)
         {
             for (const auto& lane : lanes)
@@ -64,9 +78,10 @@ namespace pr7s
                 }
                 e->setAttribute ("shown", lane.shown);
                 e->setAttribute ("muted", lane.muted);
+                Children kids { *e };
                 for (const auto& point : lane.points)
                 {
-                    auto* p = e->createNewChildElement (pointTag);
+                    auto* p = kids.createNewChildElement (pointTag);
                     p->setAttribute ("beat", point.beat);
                     p->setAttribute ("value", point.value);
                     if (std::abs (point.curve) > 1.0e-6f)
@@ -76,7 +91,7 @@ namespace pr7s
                 }
                 for (const auto& point : lane.trim)
                 {
-                    auto* p = e->createNewChildElement ("Trim");
+                    auto* p = kids.createNewChildElement ("Trim");
                     p->setAttribute ("beat", point.beat);
                     p->setAttribute ("value", point.value);
                     if (std::abs (point.curve) > 1.0e-6f)
@@ -315,22 +330,69 @@ namespace pr7s
                     soloed.push_back (t.id);
         if (soloed.empty())
             return {};
+        // (0.83.1) Each track's way down worked out once (it was walked again for every soloed track and
+        // every other track: quadratic, with vectors made each time; while the composer plays up to six
+        // tracks are soloed and this runs on every change). Same answers as feedsInto / reaches.
+        const auto count = tracks.size();
+        std::unordered_map<int, size_t> indexOf;
+        indexOf.reserve (count);
+        for (size_t i = 0; i < count; ++i)
+            indexOf.emplace (tracks[i].id, i);
+        // down[i]: every track reached from track i by outputs and sends (as `reaches`, itself not counted
+        // unless a loop leads back); chain[i]: those its outputs alone lead through (as `feedsInto`).
+        std::vector<std::vector<char>> down (count, std::vector<char> (count, 0)), chain (count, std::vector<char> (count, 0));
+        std::vector<size_t> stack;
+        for (size_t i = 0; i < count; ++i)
+        {
+            auto id = tracks[i].output;
+            for (size_t steps = 0; id != 0 && steps <= count; ++steps)
+            {
+                const auto found = indexOf.find (id);
+                if (found == indexOf.end())
+                    break;
+                chain[i][found->second] = 1;
+                id = tracks[found->second].output;
+            }
+            const auto push = [&] (int target)
+            {
+                if (const auto found = target != 0 ? indexOf.find (target) : indexOf.end(); found != indexOf.end() && ! down[i][found->second])
+                {
+                    down[i][found->second] = 1;
+                    stack.push_back (found->second);
+                }
+            };
+            stack.clear();
+            push (tracks[i].output);
+            for (const auto& send : tracks[i].sends)
+                push (send.target);
+            while (! stack.empty())
+            {
+                const auto& t = tracks[stack.back()];
+                stack.pop_back();
+                push (t.output);
+                for (const auto& send : t.sends)
+                    push (send.target);
+            }
+        }
+        std::vector<size_t> soloedIndex;
+        for (const auto s : soloed)
+            if (const auto found = indexOf.find (s); found != indexOf.end())
+                soloedIndex.push_back (found->second);
         std::vector<int> out;
-        for (const auto& t : tracks)
+        for (size_t t = 0; t < count; ++t)
         {
             auto heard = false;
-            for (const auto s : soloed)
+            for (const auto s : soloedIndex)
             {
-                const auto* soloedTrack = findTrack (s);
-                heard = t.id == s
-                     || feedsInto (t.id, s)                                         // routed into it
-                     || (soloedTrack != nullptr && soloedTrack->isFx() && reaches (t.id, s))   // sending into a soloed FX channel
-                     || reaches (s, t.id);                                          // a channel it goes on into
+                heard = t == s
+                     || chain[t][s]                                   // routed into it
+                     || (tracks[s].isFx() && down[t][s])              // sending into a soloed FX channel
+                     || down[s][t];                                   // a channel it goes on into
                 if (heard)
                     break;
             }
             if (! heard)
-                out.push_back (t.id);
+                out.push_back (tracks[t].id);
         }
         return out;
     }
@@ -602,6 +664,8 @@ namespace pr7s
         }
         if (markerTrack.shown || ! markerTrack.isEmpty())
             xml->addChildElement (markerTrack.toXml().release());   // (0.49.0)
+        if (! songSections.shown || ! songSections.isEmpty())   // (0.103.0: shown by default; a hidden row is written)
+            xml->addChildElement (songSections.toXml().release());   // (0.90.0)
         if (! signatureChanges.empty() || signatureTrackShown)
         {
             auto* signature = xml->createNewChildElement ("Signatures");
@@ -663,6 +727,8 @@ namespace pr7s
                 t->setAttribute ("listColour", true);
             if (track.listColourAmount != Track::defaultListColourAmount)
                 t->setAttribute ("listColourAmount", track.listColourAmount);
+            if (track.drumLink.isNotEmpty())
+                t->setAttribute ("drumLink", track.drumLink);
             if (track.output != 0)
                 t->setAttribute ("output", track.output);
             if (track.sendsBypass)
@@ -760,9 +826,12 @@ namespace pr7s
                 p->setAttribute ("name", part.name);
                 if (part.muted)
                     p->setAttribute ("muted", true);
+                if (part.linkCopy)
+                    p->setAttribute ("linkCopy", true);
+                Children kids { *p };
                 for (const auto& m : part.warp)
                 {
-                    auto* w = p->createNewChildElement ("Warp");
+                    auto* w = kids.createNewChildElement ("Warp");
                     w->setAttribute ("beat", m.beat);
                     w->setAttribute ("seconds", m.seconds);
                 }
@@ -785,7 +854,7 @@ namespace pr7s
                     p->setAttribute ("velocityOffset", part.velocityOffset);
                 for (const auto& note : part.notes)
                 {
-                    auto* n = p->createNewChildElement (noteTag);
+                    auto* n = kids.createNewChildElement (noteTag);
                     n->setAttribute ("start", note.start);
                     n->setAttribute ("length", note.length);
                     n->setAttribute ("pitch", note.pitch);
@@ -795,7 +864,7 @@ namespace pr7s
                 }
                 for (const auto& c : part.controllers)
                 {
-                    auto* e = p->createNewChildElement ("Controller");
+                    auto* e = kids.createNewChildElement ("Controller");
                     e->setAttribute ("kind", ControllerKinds::toText (ControllerKinds::codeOf (c)));
                     e->setAttribute ("start", c.start);
                     e->setAttribute ("value", c.value);
@@ -930,6 +999,8 @@ namespace pr7s
         }
         if (const auto* markers = xml.getChildByName ("MarkerTrack"))
             project.markerTrack = MarkerTrack::fromXml (*markers);   // (0.49.0)
+        if (const auto* sections = xml.getChildByName ("SongSections"))
+            project.songSections = SongSections::fromXml (*sections);   // (0.90.0)
         if (const auto* signature = xml.getChildByName ("Signatures"))
         {
             project.signatureTrackShown = signature->getBoolAttribute ("shown");
@@ -1046,6 +1117,7 @@ namespace pr7s
             track.folder = juce::jmax (0, t->getIntAttribute ("folder"));
             track.listColourOn = t->getBoolAttribute ("listColour");
             track.listColourAmount = juce::jlimit (1, 100, t->getIntAttribute ("listColourAmount", Track::defaultListColourAmount));
+            track.drumLink = t->getStringAttribute ("drumLink");
             if (const auto* fades = t->getChildByName ("AutoFades"))
                 track.autoFades = autoFadesFrom (*fades);   // (0.52.0)
             track.output = juce::jmax (0, t->getIntAttribute ("output"));
@@ -1088,6 +1160,7 @@ namespace pr7s
                 if (part.warp.size() < 2 || p->getStringAttribute ("audioFile").isEmpty())
                     part.warp.clear();
                 part.order = p->getIntAttribute ("order");
+                part.linkCopy = p->getBoolAttribute ("linkCopy");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));
                 part.fadeIn = juce::jmax (0.0, p->getDoubleAttribute ("fadeIn"));

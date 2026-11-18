@@ -96,6 +96,10 @@ namespace pr7s
     // (or any other chord), the single notes' key: only where the kind changes (the keys latch), and before
     // the first notes always (the instrument may be left in either). A key on the same beat as its notes
     // (Shreddage takes keys first). Notes strummed apart aren't a power chord: they stay as they are.
+    // (0.127.0) No profile on the guitar lane: a Shreddage one goes there (the first guitar profile named Shreddage,
+    // else Shreddage Jupiter added), and on the lead lane when that has none either. True when something changed.
+    bool giveGuitarLaneShreddage (std::vector<InstrumentProfile>&, const GuitarVelocities&);
+
     void usePowerChordKeys (LineIdea&, int powerChordKey, int singleNoteKey);
 
     // (0.66.0) The same with the techniques' keys too: a note marked tapping, tremolo or harmonic (`LineNote::

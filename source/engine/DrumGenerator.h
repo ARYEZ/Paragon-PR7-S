@@ -31,6 +31,8 @@ namespace pr7s
         enum class Cymbal { automatic, hats, ride, china };
         Cymbal cymbal = Cymbal::automatic;
         bool lockToRiff = false;
+        // (0.86.0) Locked in every section, the intro and ending too (the composer's SYNC); not saved.
+        bool lockAlways = false;
 
         DrumSettings limited() const;
         juce::String toString() const;

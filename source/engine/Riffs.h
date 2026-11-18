@@ -2,6 +2,9 @@
 
 #include "engine/Lines.h"
 
+#include <functional>
+#include <string>
+
 // Guitar styles and riff settings (0.53.0, the owner asked for better guitar ideas: thrash,
 // nu-metal, metalcore / breakdowns and shred leads, and a RIFF SETTINGS panel with riff length,
 // palm-mute amount, busyness and ending fills). Our own riffs and rules, not taken from any
@@ -43,6 +46,15 @@ namespace pr7s
         static RiffSettings fromString (const juce::String&);   // (unreadable: the defaults)
         bool operator== (const RiffSettings&) const = default;
     };
+
+    // (0.85.0) A riff's bars, written in the riff characters Riffs.cpp lists (a character per step: 16 a bar,
+    // or 12 / 24 for triplets), played on the chords as the written riffs are: the riff starts again at each
+    // chord, `pedalBase`: its single notes over the key's low note on the lowest string, else over each chord's
+    // root low on the neck. `barOf` gives bar n's text (n counted from the first chord's bar). Folded into the
+    // tuning's range. Used by the written riffs and the riff generator (engine/RiffGenerator.h).
+    LineIdea riffFromBars (const std::function<std::string (int barIndex)>& barOf, bool pedalBase, const juce::String& name,
+                           const juce::String& description, const std::vector<ChordSpan>&, double beatsPerBar, int variation,
+                           const GuitarTuning&, const GuitarVelocities&);
 
     // The written styles' six rhythm ideas and six leads (not rock: Lines.cpp's own).
     std::vector<LineIdea> styleRhythmIdeas (GuitarStyle, const std::vector<ChordSpan>&, double beatsPerBar, int variation,

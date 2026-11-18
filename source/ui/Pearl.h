@@ -36,6 +36,42 @@ namespace Pearl
         g.drawRoundedRectangle (area.reduced (0.5f), radius, 1.0f);
     }
 
+    // (0.83.1) The unit drawn once into a picture and reused: its satin is a big image scaled down
+    // on every paint, and the transport's screens redraw 30 times a second (half their time went on it).
+    // Made again when the area, the finish, the satin or the screen's pixel scale changes.
+    struct UnitCache
+    {
+        juce::Image image;
+        juce::Rectangle<float> area;
+        float scale = 0.0f, radius = 0.0f;
+        int finish = -1;
+        const void* satin = nullptr;
+    };
+
+    inline void paintUnit (juce::Graphics& g, juce::Rectangle<float> area, const juce::Image& satin, UnitCache& cache, float radius = 10.0f)
+    {
+        const auto scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+        const auto margin = 8.0f;   // (the glow reaches 6 px out)
+        const auto outer = area.expanded (margin);
+        const auto finish = (int) Finish::get();
+        const void* satinId = satin.isValid() ? satin.getPixelData().get() : nullptr;
+        if (! cache.image.isValid() || cache.area != area || cache.scale != scale || cache.finish != finish
+            || cache.satin != satinId || cache.radius != radius)
+        {
+            const auto w = juce::jmax (1, juce::roundToInt (outer.getWidth() * scale)), h = juce::jmax (1, juce::roundToInt (outer.getHeight() * scale));
+            cache.image = juce::Image (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
+            juce::Graphics into (cache.image);
+            into.addTransform (juce::AffineTransform::translation (-outer.getX(), -outer.getY()).scaled (scale));
+            paintUnit (into, area, satin, radius);
+            cache.area = area;
+            cache.scale = scale;
+            cache.finish = finish;
+            cache.satin = satinId;
+            cache.radius = radius;
+        }
+        g.drawImageTransformed (cache.image, juce::AffineTransform::scale (1.0f / scale).translated (outer.getX(), outer.getY()));
+    }
+
     // A dark recessed panel, for the studio's work areas (the tracks, the arrangement).
     inline void paintWell (juce::Graphics& g, juce::Rectangle<float> area, float radius = 8.0f)
     {

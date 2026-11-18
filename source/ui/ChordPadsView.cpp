@@ -762,7 +762,7 @@ ChordPadsView::ChordPadsView (pr7s::Studio& s) : studio (s)
     progressionsKey.onClick = [this] { if (onProgressions) onProgressions(); };
     addAndMakeVisible (progressionsKey);
     styleKey (composerKey);
-    composerKey.setTooltip ("The composer: chords, melody, bass, guitar, lead and drums stacked, each locked or rolled, one GENERATE");
+    composerKey.setTooltip ("The Architect: chords, melody, bass, guitar, lead and drums stacked, each locked or rolled, one GENERATE");
     composerKey.onClick = [this] { if (onComposer) onComposer(); };
     addAndMakeVisible (composerKey);
     windowKey.onClick = [this] { if (onWindowToggle) onWindowToggle(); };

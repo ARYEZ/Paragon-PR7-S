@@ -1,4 +1,5 @@
 #include "ui/ComposerPage.h"
+#include "engine/SectionTypes.h"
 
 #include "engine/MidiImport.h"
 #include "ui/ChordUi.h"
@@ -13,7 +14,7 @@ namespace
     // As IDEAS' cards: bass and guitar orange, melody and lead pink, chords and drums red.
     juce::Colour colourOf (ComposerLayer l)
     {
-        return l == ComposerLayer::bass || l == ComposerLayer::guitar ? pr7s::FamilyColours::orange
+        return l == ComposerLayer::bass || l == ComposerLayer::guitar || l == ComposerLayer::clean ? pr7s::FamilyColours::orange
              : l == ComposerLayer::chords || l == ComposerLayer::drums ? pr7s::FamilyColours::red : pr7s::FamilyColours::pink;
     }
 
@@ -117,9 +118,21 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     pasteKey.onClick = [this] { showPasteMenu(); };
     addAndMakeVisible (pasteKey);
     pedal (mixerKey);
-    mixerKey.setTooltip ("The mixer in its own window over the composer: faders, inserts, EQ while you hear the layers (they keep playing)");
+    mixerKey.setTooltip ("The mixer in its own window over the Architect: faders, inserts, EQ while you hear the layers (they keep playing)");
     mixerKey.onClick = [this] { if (onOpenMixer) onOpenMixer(); };
     addAndMakeVisible (mixerKey);
+    // (0.86.0) SYNC.
+    pedal (typeKey, true);
+    typeKey.setTooltip ("TYPE: what kind of section this is (a chorus DRIVING or DRONING...). It sets what every instrument does; "
+                        "each lane's style menu then lists that type's approaches. STANDARD: the lanes' own styles");
+    typeKey.onClick = [this] { showTypeMenu(); };
+    addAndMakeVisible (typeKey);
+    pedal (syncKey, true);
+    syncKey.setTooltip ("SYNC: pick the lane that leads (the riff you like). Every other lane is written to its rhythm: the drums' kick and the bass "
+                        "on its accents (DOUBLE THE SYNC TRACK in their style menus: every hit, the bass doubling the notes), chord stabs on its "
+                        "accents, guitar chugs on its hits, the melody and lead leaning on its accents. It stays on: roll the leader and the rest follows");
+    syncKey.onClick = [this] { showSyncMenu(); };
+    addAndMakeVisible (syncKey);
     toChordTrackKey.onClick = [this] { setToChordTrack (! state.toChordTrack); };
 
     // (0.74.0) SECTION and BUILD.
@@ -146,12 +159,14 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     for (const auto l : pr7s::composerLayers())
     {
         auto& lane = lanes[(size_t) l];
-        for (auto* key : { &lane.on, &lane.lock, &lane.roll, &lane.style, &lane.track, &lane.busy, &lane.low })
+        for (auto* key : { &lane.on, &lane.lock, &lane.roll, &lane.style, &lane.track, &lane.busy, &lane.low, &lane.octave })
         {
-            pedal (*key, key == &lane.style || key == &lane.track || key == &lane.busy || key == &lane.low);
-            if (key != &lane.low || pr7s::hasLowString (l))
+            pedal (*key, key == &lane.style || key == &lane.track || key == &lane.busy || key == &lane.low || key == &lane.octave);
+            if ((key != &lane.low || pr7s::hasLowString (l)) && (key != &lane.octave || l != ComposerLayer::drums))
                 addAndMakeVisible (*key);
         }
+        lane.octave.setTooltip ("Moves this lane's notes up or down by whole octaves (its keyswitches stay where they are). Built sections keep it");
+        lane.octave.onClick = [this, l] { showOctaveMenu (l); };
         lane.on.setTooltip ("Lit: heard and used. Off: left out (still made, shown dimmed)");
         lane.lock.setTooltip ("Lit: kept through GENERATE (and ROLL on the others). Locked with the chords, its notes stay exactly as they are");
         lane.roll.setTooltip ("A new take of this style: another rhythm and other notes, the same approach (choose the approach in the menu beside it)");
@@ -194,11 +209,55 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
 
 ComposerPage::~ComposerPage()
 {
+    if (browserWindow != nullptr)
+    {
+        browserWindow->getBrowser().onClosed = nullptr;   // (no trial put back into a page that's going)
+        browserWindow.reset();
+    }
     if (hearing)
         studio.stopComposerAudition();
 }
 
 //==============================================================================
+juce::String ComposerPage::composeFingerprint() const
+{
+    // Everything `composeLayers` reads, as text: the state, the chords, and the context's every field.
+    juce::String f;
+    f << state.toString() << "|";
+    for (const auto& s : spans)
+        f << juce::String (s.start, 6) << "," << juce::String (s.end, 6) << "," << s.chord.toText() << "," << s.key.name() << ";";
+    const auto& c = context;
+    f << "|" << c.beatsPerBar << "|" << c.tuning.name;
+    for (const auto n : c.tuning.strings) f << "," << n;
+    f << "|" << c.bassTuning.name;
+    for (const auto n : c.bassTuning.strings) f << "," << n;
+    for (const auto* p : { &c.bassProfile, &c.guitarProfile, &c.leadProfile })
+        f << "|" << (p->has_value() ? pr7s::profilesToText ({ **p }) : juce::String ("-"));
+    f << "|" << c.velocities.toString() << "|" << (int) c.style << "|" << (int) c.solo << "|" << c.riff.toString()
+      << "|" << c.drums.toString() << "|" << c.melody.toString() << "|" << c.humanize << "|" << (int) c.feel << "|" << juce::String (c.bpm, 6)
+      << "|" << juce::String (c.lastBarBeats, 6) << "|" << (c.nextChord.has_value() ? c.nextChord->toText() : juce::String());
+    f << "|G:" << (int) c.libraryGrooves.size();
+    for (size_t i = 0; i < c.libraryGrooves.size() && i < 64; ++i)
+        f << ";" << c.libraryGrooves[i].file.getFullPathName();
+    if (c.drummer.has_value())
+    {
+        const auto file = pr7s::drummerFile (studio.getDrummerFolder(), c.drummer->name);
+        f << "|D:" << c.drummer->name << "," << file.getLastModificationTime().toMilliseconds() << "," << file.getSize();
+    }
+    if (c.myRiff.has_value())
+    {
+        f << "|R:" << c.myRiff->notes.size();
+        juce::uint64 h = 1469598103934665603ull;
+        for (const auto& n : c.myRiff->notes)
+            for (const auto v : { (juce::uint64) juce::roundToInt (n.beat * 960.0), (juce::uint64) juce::roundToInt (n.length * 960.0),
+                                  (juce::uint64) n.pitch, (juce::uint64) juce::roundToInt (n.velocity * 1000.0f), (juce::uint64) n.keyswitch,
+                                  (juce::uint64) n.effect, (juce::uint64) juce::roundToInt (n.amount * 1000.0f), (juce::uint64) n.technique })
+                h = (h ^ v) * 1099511628211ull;
+        f << "," << juce::String::toHexString ((juce::int64) h);
+    }
+    return f;
+}
+
 void ComposerPage::refresh (bool rehear)
 {
     // The chords.
@@ -207,7 +266,31 @@ void ComposerPage::refresh (bool rehear)
     const auto& riff = studio.getComposerRiff();
     if (fromRiff && ! riff.has_value())
         fromRiff = false;
+    const auto target = getTargetPlace();
+    {   // (0.104.0) The block's transition (none outside the SECTIONS row).
+        const auto& sections = studio.getSongSections();
+        const auto index = sections.indexOf (targetBlock);
+        state.transition = index >= 0 ? sections.blocks[(size_t) index].transition : juce::String();
+        if (usesSectionsRow() && ! state.fromChordTrack && ! fromRiff)
+            state.key = index >= 0 ? studio.getSongSectionKey (index) : studio.getSongKey();   // (0.114.0: the song's key)
+    }
+    if (target.has_value() && ! state.fromChordTrack && ! fromRiff)
+        state.bars = target->bars;   // (0.90.0: the block's length; the progression repeated to fill it, cut at its end)
     spans = chordSpans();
+    if (target.has_value())
+    {
+        const auto from = state.fromChordTrack ? target->start : 0.0;
+        const auto to = from + (target->end - target->start);
+        std::vector<pr7s::ChordSpan> inside;
+        for (auto s : spans)
+            if (s.end > from + 1.0e-6 && s.start < to - 1.0e-6)
+            {
+                s.start = juce::jmax (s.start, from);
+                s.end = juce::jmin (s.end, to);
+                inside.push_back (s);
+            }
+        spans = inside;
+    }
     if (! state.fromChordTrack && ! fromRiff)
         if (const auto index = pr7s::composerProgressionIndex (state); index >= 0)
             state.progression = pr7s::progressionLibrary()[(size_t) index].name;
@@ -228,7 +311,12 @@ void ComposerPage::refresh (bool rehear)
     context.myRiff.reset();
     if (riff.has_value() && useMyRiff && ! spans.empty())
         context.myRiff = pr7s::tileRiff (*riff, spans.back().end - spans.front().start, context.beatsPerBar);
-    ideas = pr7s::composeLayers (state, spans, context);
+    if (const auto fingerprint = composeFingerprint(); fingerprint != composedFrom)
+    {
+        composed = pr7s::composeLayers (state, spans, context);
+        composedFrom = fingerprint;
+    }
+    ideas = composed;
     // (0.74.0) Ideas taken from IDEAS stay in their lanes while the chords are the same.
     const auto sameChords = [] (const std::vector<pr7s::ChordSpan>& a, const std::vector<pr7s::ChordSpan>& b)
     {
@@ -265,9 +353,9 @@ void ComposerPage::refresh (bool rehear)
     progressionKey.setEnabled (! state.fromChordTrack && ! fromRiff);
     for (auto* box : { &genreBox, &moodBox })
         box->setEnabled (! state.fromChordTrack && ! fromRiff);
-    lengthBox.setEnabled (! state.fromChordTrack);
+    lengthBox.setEnabled (! state.fromChordTrack && ! getTargetPlace().has_value());   // (0.90.0: a block's length is its own)
     // (0.75.0) The key locked for the song once a section is built.
-    keyBox.setEnabled (! state.fromChordTrack && ! isKeyLocked());
+    keyBox.setEnabled (! state.fromChordTrack && (usesSectionsRow() || ! isKeyLocked()));
     keyBox.setTooltip (isKeyLocked() ? "The key is locked for the whole song now that a section is built (right-click the SONG strip to start the song again)"
                                      : "The key: the chords are the library's in it (a progression written in the other mode plays on the relative key); "
                                        "with your riff, guessed from it");
@@ -280,19 +368,34 @@ void ComposerPage::refresh (bool rehear)
     sectionBox.setSelectedItemIndex ((int) std::distance (pr7s::drumSections().begin(),
                                                           std::find (pr7s::drumSections().begin(), pr7s::drumSections().end(), getSection())),
                                      juce::dontSendNotification);
-    buildKey.setButtonText ("BUILD " + pr7s::sectionWord (getSection()).toUpperCase());
+    if (const auto target = getTargetPlace())
+        buildKey.setButtonText ("BUILD INTO " + pr7s::sectionLabel (studio.getSongSections().blocks, studio.getSongSections().indexOf (targetBlock)).toUpperCase());
+    else
+        buildKey.setButtonText ("BUILD " + pr7s::sectionWord (getSection()).toUpperCase());
+    typeKey.setButtonText ("TYPE: " + (state.sectionType.isNotEmpty() ? state.sectionType : juce::String (pr7s::standardSectionType)));
+    typeKey.setToggleState (state.sectionType.isNotEmpty(), juce::dontSendNotification);
+    typeKey.setEnabled (! pr7s::sectionTypesFor (typeSectionName()).empty());
     hearKey.setButtonText (hearing ? "STOP" : "HEAR");
     hearKey.setToggleState (hearing, juce::dontSendNotification);
+    {
+        const auto sync = state.syncLayer();
+        syncKey.setButtonText (sync.has_value() ? "SYNC: " + pr7s::composerLayerName (*sync) : juce::String ("SYNC: OFF"));
+        syncKey.setToggleState (sync.has_value(), juce::dontSendNotification);
+    }
     for (const auto l : pr7s::composerLayers())
     {
         auto& lane = lanes[(size_t) l];
         const auto& s = state.lane (l);
         lane.on.setToggleState (s.on, juce::dontSendNotification);
         lane.lock.setToggleState (s.locked, juce::dontSendNotification);
+        const auto approach = s.approach >= 0 ? pr7s::approachName (state, l) : juce::String();
         lane.style.setButtonText (taken[(size_t) l].has_value() ? "FROM IDEAS: " + ideas[(size_t) l].style.toUpperCase()
+                                  : approach.isNotEmpty() ? state.sectionType + ": " + approach
                                   : ideas[(size_t) l].style.isEmpty() ? juce::String ("STYLE") : ideas[(size_t) l].style.toUpperCase());
         lane.track.setButtonText (trackText (l));
         lane.busy.setButtonText ("BUSY " + juce::String (juce::roundToInt (s.busy * 100.0f)) + "%");
+        lane.octave.setButtonText ("OCTAVE " + (s.octave > 0 ? "+" + juce::String (s.octave) : juce::String (s.octave)));
+        lane.octave.setToggleState (s.octave != 0, juce::dontSendNotification);
         lane.low.setToggleState (s.lowString || s.onlyString > 0, juce::dontSendNotification);
         lane.low.setButtonText (stringText (l));
     }
@@ -307,8 +410,147 @@ void ComposerPage::refresh (bool rehear)
     repaint();
 }
 
+std::optional<pr7s::SectionPlace> ComposerPage::getTargetPlace() const
+{
+    if (targetBlock <= 0)
+        return std::nullopt;
+    return studio.getSongSectionPlace (studio.getSongSections().indexOf (targetBlock));
+}
+
+void ComposerPage::targetSection (int blockId)
+{
+    const auto index = studio.getSongSections().indexOf (blockId);
+    if (index < 0)
+        return;
+    targetBlock = blockId;
+    const auto& blocks = studio.getSongSections().blocks;
+    const auto place = getTargetPlace();
+    setSection (pr7s::drumSections()[(size_t) pr7s::composerSectionFor (blocks[(size_t) index].name)]);   // (refreshes)
+    applyBlockType();
+    if (place.has_value())
+    {
+        status = "Composing " + pr7s::sectionLabel (blocks, index) + " (bars " + juce::String (place->firstBar + 1) + " to "
+               + juce::String (place->firstBar + place->bars) + "): HEAR plays it there, BUILD writes into it";
+    }
+    repaint();
+}
+
+juce::String ComposerPage::typeSectionName() const
+{
+    const auto& sections = studio.getSongSections();
+    if (const auto index = sections.indexOf (targetBlock); index >= 0)
+        return sections.blocks[(size_t) index].name;
+    const auto word = pr7s::sectionWord (getSection());
+    return word.substring (0, 1).toUpperCase() + word.substring (1).toLowerCase();
+}
+
+void ComposerPage::applyBlockType()
+{
+    const auto& sections = studio.getSongSections();
+    const auto index = sections.indexOf (targetBlock);
+    if (index < 0)
+        return;
+    const auto& block = sections.blocks[(size_t) index];
+    if (block.type == state.sectionType)
+        return;
+    pr7s::applySectionType (state, block.name, block.type);
+    taken[(size_t) ComposerLayer::guitar].reset();
+    refresh();
+}
+
+void ComposerPage::setSectionType (const juce::String& type)
+{
+    const auto name = typeSectionName();
+    if (! pr7s::isSectionTypeOf (name, type))
+        return;
+    const auto index = studio.getSongSections().indexOf (targetBlock);
+    const auto shown = type.isEmpty() ? juce::String (pr7s::standardSectionType) : type.toUpperCase();
+    if (index < 0)
+    {
+        pr7s::applySectionType (state, name, type);
+        for (auto& t : taken)
+            t.reset();
+        status = "Type: " + shown;
+        refresh();
+        return;
+    }
+    const auto apply = [safe = juce::Component::SafePointer<ComposerPage> (this), index, type, shown]
+    {
+        if (safe == nullptr)
+            return;
+        const auto built = safe->studio.isSongSectionBuilt (index);
+        if (! safe->studio.setSongSectionType (index, type))
+            return;
+        for (auto& t : safe->taken)
+            t.reset();
+        safe->applyBlockType();
+        const auto label = pr7s::sectionLabel (safe->studio.getSongSections().blocks, index);
+        safe->status = label + ": " + shown + (built ? " (built again; your own edits kept)" : "");
+        safe->refresh();
+    };
+    if (studio.isSongSectionBuilt (index) && studio.getAskBeforeTypeChange())
+    {
+        const auto question = "Build " + pr7s::sectionLabel (studio.getSongSections().blocks, index) + " again as " + shown
+                            + "? The lanes you haven't changed by hand are written again.";
+        if (askToRebuild)
+            askToRebuild (question, apply);
+        else
+            juce::AlertWindow::showOkCancelBox (juce::MessageBoxIconType::QuestionIcon, "CHANGE THE TYPE", question, "REBUILD", "CANCEL", this,
+                                                juce::ModalCallbackFunction::create ([apply] (int ok) { if (ok == 1) apply(); }));
+        return;
+    }
+    apply();
+}
+
+void ComposerPage::setApproach (ComposerLayer l, int approach)
+{
+    const auto names = pr7s::sectionApproaches (state, l);
+    state.lane (l).approach = names.isEmpty() || approach < 0 ? -1 : juce::jlimit (0, names.size() - 1, approach);
+    taken[(size_t) l].reset();
+    if (l == ComposerLayer::guitar)
+        useMyRiff = false;
+    status = pr7s::composerLayerName (l) + ": " + (state.lane (l).approach >= 0 ? names[state.lane (l).approach] : juce::String ("AUTOMATIC"));
+    refresh();
+}
+
+void ComposerPage::setOwnStyles (ComposerLayer l, bool own)
+{
+    state.lane (l).ownStyles = own;
+    taken[(size_t) l].reset();
+    status = pr7s::composerLayerName (l) + (own ? ": ITS OWN STYLES" : ": FOLLOWS THE SECTION TYPE");
+    refresh();
+}
+
+bool ComposerPage::typeWouldWrite (ComposerLayer l) const
+{
+    auto with = state;
+    with.lane (l).ownStyles = false;
+    return pr7s::sectionTypeWritesLane (l, with, context);
+}
+
+void ComposerPage::showTypeMenu()
+{
+    // (0.157.0) The short list; MORE TYPES... the browser.
+    makeTypeMenu().showMenuAsync (juce::PopupMenu::Options().withTargetComponent (typeKey),
+                                  [safe = juce::Component::SafePointer<ComposerPage> (this)] (int chosen)
+                                  {
+                                      if (safe != nullptr && chosen > 0)
+                                          safe->typeMenuChosen (chosen);
+                                  });
+}
+
+void ComposerPage::clearTargetSection()
+{
+    if (targetBlock == 0)
+        return;
+    targetBlock = 0;
+    refresh();
+}
+
 double ComposerPage::placeStart() const
 {
+    if (const auto target = getTargetPlace())
+        return target->start;   // (0.90.0: the block composed)
     if (state.fromChordTrack)
     {
         const auto chords = studio.getLineChords();
@@ -321,7 +563,7 @@ double ComposerPage::placeStart() const
 double ComposerPage::buildStart() const
 {
     // (0.74.0) After the last section built (the song grows a section at a time); the first at the playhead's bar.
-    if (state.fromChordTrack)
+    if (state.fromChordTrack || getTargetPlace().has_value())
         return placeStart();
     const auto& built = studio.getBuiltSections();
     return built.empty() ? placeStart() : built.back().end;
@@ -352,6 +594,10 @@ void ComposerPage::generate()
         if (! state.lane (l).locked)
             taken[(size_t) l].reset();
     pr7s::generateComposer (state, random);
+    if (! state.lane (ComposerLayer::guitar).locked)
+        takeNewRiff();
+    if (! state.lane (ComposerLayer::drums).locked)
+        pr7s::rollLibraryGroove (state, placedSpans(), context, random);   // (0.137.0: the next of the section's 100)
     status = "Generated: a new take of every layer not locked";
     refresh();
 }
@@ -360,14 +606,142 @@ void ComposerPage::roll (ComposerLayer l)
 {
     taken[(size_t) l].reset();
     pr7s::rollLane (state, l, random);
+    if (l == ComposerLayer::guitar)
+        takeNewRiff();
     status = pr7s::composerLayerName (l) + ": a new take";
+    // (0.137.0, the owner: "it scrolls through all 100 ... in random order") The drums with library grooves: the next
+    // one of the section's pool none heard again until all have been.
+    if (l == ComposerLayer::drums)
+        if (pr7s::rollLibraryGroove (state, placedSpans(), context, random))
+            if (const auto now = pr7s::composerLibraryGroove (state, placedSpans(), context))
+            {
+                auto heard = juce::StringArray::fromTokens (state.groovesHeard, ",", "");
+                heard.removeEmptyStrings();
+                const auto pool = pr7s::composerGroovePool (state, placedSpans(), context);
+                auto count = 0;
+                for (const auto& g : pool)
+                    count += heard.contains (juce::String::toHexString ((juce::int64) g.file.getFullPathName().hashCode64())) ? 1 : 0;
+                status = "Drums: " + now->name + " (" + juce::String (count) + " of " + juce::String ((int) pool.size()) + " heard)";
+            }
     refresh();
+}
+
+void ComposerPage::takeNewRiff()
+{
+    // (0.85.0) A new riff every time: a take whose riff was given lately is drawn again (a few tries).
+    auto fingerprint = pr7s::guitarRiffFingerprint (state, context);
+    if (fingerprint.isEmpty())
+        return;
+    for (int tries = 0; tries < 40 && std::find (recentRiffs.begin(), recentRiffs.end(), fingerprint) != recentRiffs.end(); ++tries)
+    {
+        pr7s::rollLane (state, ComposerLayer::guitar, random);
+        fingerprint = pr7s::guitarRiffFingerprint (state, context);
+    }
+    recentRiffs.push_back (fingerprint);
+    while ((int) recentRiffs.size() > recentRiffsKept)
+        recentRiffs.pop_front();
+}
+
+void ComposerPage::setRiffFlavour (int flavour)
+{
+    state.riffFlavour = juce::jlimit (0, (int) pr7s::riffFlavours().size() - 1, flavour);
+    state.writtenRiffs = false;
+    taken[(size_t) ComposerLayer::guitar].reset();
+    status = "Guitar: " + pr7s::riffFlavourName (pr7s::riffFlavours()[(size_t) state.riffFlavour]) + " riffs";
+    refresh();
+}
+
+void ComposerPage::setWrittenRiffs (bool written)
+{
+    state.writtenRiffs = written;
+    taken[(size_t) ComposerLayer::guitar].reset();
+    status = written ? "Guitar: the written riffs" : "Guitar: generated riffs";
+    refresh();
+}
+
+void ComposerPage::setSync (std::optional<ComposerLayer> leader)
+{
+    state.syncLane = leader.has_value() ? (int) *leader : -1;
+    if (leader.has_value())
+    {
+        state.lane (*leader).locked = true;   // (the riff you found stays; unlock it to roll it, the rest follows)
+        for (const auto l : pr7s::composerLayers())
+            if (l != *leader)
+                taken[(size_t) l].reset();    // (an idea taken from IDEAS would ignore the leader)
+        status = "SYNC: every lane follows the " + pr7s::composerLayerName (*leader).toLowerCase() + "'s rhythm (its lane locked)";
+    }
+    else
+        status = "SYNC off: every lane its own";
+    refresh();
+}
+
+void ComposerPage::setSyncTo (ComposerLayer l, std::optional<ComposerLayer> leader)
+{
+    state.lane (l).syncTo = leader.has_value() && *leader != l ? (int) *leader : -1;
+    taken[(size_t) l].reset();   // (an idea taken from IDEAS would ignore the leader)
+    status = pr7s::composerLayerName (l) + (state.followsOwnLeader (l) ? ": follows the " + pr7s::composerLayerName (*leader).toLowerCase() + "'s rhythm"
+                                                                       : juce::String (": not synced on its own"));
+    refresh();
+}
+
+void ComposerPage::setDoubleSync (ComposerLayer l, bool on)
+{
+    if (! pr7s::hasDoubleSync (l))
+        return;
+    state.lane (l).doubleSync = on;
+    status = pr7s::composerLayerName (l) + (on ? ": doubling the sync track, every hit" : ": the sync track's accents");
+    refresh();
+}
+
+void ComposerPage::showSyncMenu()
+{
+    const auto now = state.syncLayer();
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("THE LANE THE OTHERS FOLLOW");
+    menu.addItem (1, "Off (every lane its own rhythm)", true, ! now.has_value());
+    menu.addSeparator();
+    for (const auto l : pr7s::composerLayers())
+        menu.addItem (10 + (int) l, "Sync to the " + pr7s::composerLayerName (l), true, now == l);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (syncKey),
+                        [safe = juce::Component::SafePointer<ComposerPage> (this)] (int chosen)
+                        {
+                            if (safe == nullptr || chosen <= 0)
+                                return;
+                            safe->setSync (chosen == 1 ? std::optional<ComposerLayer> {} : std::optional<ComposerLayer> ((ComposerLayer) (chosen - 10)));
+                        });
 }
 
 void ComposerPage::setBusy (ComposerLayer l, float busy)
 {
     state.lane (l).busy = juce::jlimit (0.0f, 1.0f, busy);
     refresh();
+}
+
+void ComposerPage::setOctave (ComposerLayer l, int octave)
+{
+    if (l == ComposerLayer::drums)
+        return;
+    state.lane (l).octave = juce::jlimit (-2, 2, octave);
+    refresh();
+}
+
+void ComposerPage::showOctaveMenu (ComposerLayer l)
+{
+    const auto current = state.lane (l).octave;
+    juce::PopupMenu menu;
+    menu.addItem (100, "Up an Octave", current < 2);
+    menu.addItem (101, "Down an Octave", current > -2);
+    menu.addSeparator();
+    for (int o = 2; o >= -2; --o)
+        menu.addItem (10 + o, o == 0 ? juce::String ("As Written") : (o > 0 ? "+" : "") + juce::String (o) + (std::abs (o) == 1 ? " Octave" : " Octaves"),
+                      true, o == current);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].octave),
+                        [safe = juce::Component::SafePointer<ComposerPage> (this), l, current] (int chosen)
+                        {
+                            if (safe == nullptr || chosen <= 0)
+                                return;
+                            safe->setOctave (l, chosen == 100 ? current + 1 : chosen == 101 ? current - 1 : chosen - 10);
+                        });
 }
 
 void ComposerPage::setLowString (ComposerLayer l, bool on)
@@ -505,6 +879,22 @@ void ComposerPage::setStyle (ComposerLayer l, int style)
 
 void ComposerPage::setKey (const pr7s::Key& k)
 {
+    // (0.114.0) With the SECTIONS row, the key is the song's (or, with key changes allowed, the block's): set there,
+    // everything already in the song moves into it.
+    if (usesSectionsRow())
+    {
+        const auto index = studio.getSongSections().indexOf (targetBlock);
+        if (index >= 0)
+            studio.setSongSectionKey (index, k);
+        else
+            studio.setSongKey (k);
+        state.key = k;
+        chordOverrides.clear();
+        status = (studio.isOneKey() ? "The song's key: " : "This section's key: ") + ChordUi::spokenKey (k)
+               + " (everything in it moved into it)";
+        refresh();
+        return;
+    }
     if (isKeyLocked() && ! (k == state.key))
     {
         status = "The key is locked for the song (a section is built): right-click the SONG strip to start again";
@@ -586,13 +976,45 @@ int ComposerPage::trackFor (ComposerLayer l, bool forHearing) const
     return 0;
 }
 
+std::vector<int> ComposerPage::tracksFor (ComposerLayer l, bool forHearing) const
+{
+    if (const auto chosen = trackChoice[(size_t) l]; studio.canTakeMidi (chosen))
+        return { chosen };
+    if (auto found = studio.findIdeaTracks (pr7s::composerPartOf (l)); ! found.empty())
+        return found;
+    return { trackFor (l, forHearing) };
+}
+
+ComposerPage::Placed ComposerPage::placeLanes (double originBeat, bool forHearing) const
+{
+    Placed p;
+    for (const auto l : pr7s::composerLayers())
+        if (state.lane (l).on && ! ideas[(size_t) l].notes.empty())
+        {
+            const auto tracks = tracksFor (l, forHearing);
+            for (size_t i = 0; i < tracks.size(); ++i)
+            {
+                if (forHearing && tracks[i] == 0)
+                    continue;
+                p.ideas.push_back (studio.doubledCopy (ideas[(size_t) l], (int) i, originBeat, (int) tracks.size()));
+                p.onto.push_back (tracks[i]);
+                p.layers.push_back ((int) l);
+            }
+        }
+    return p;
+}
+
 juce::String ComposerPage::trackText (ComposerLayer l) const
 {
-    const auto writes = trackFor (l, false);
-    if (writes != 0)
-        if (const auto* t = studio.getProject().findTrack (writes))
-            return "TRACK: " + t->name.toUpperCase();
-    return "TRACK: NEW (" + pr7s::Studio::linePartName (pr7s::composerPartOf (l)).toUpperCase() + ")";
+    juce::StringArray names;
+    for (const auto id : tracksFor (l, false))
+        if (const auto* t = studio.getProject().findTrack (id))
+            names.add (t->name.toUpperCase());
+    if (names.size() > 1)
+        return "TRACKS: " + names.joinIntoString (" + ");
+    if (names.size() == 1)
+        return "TRACK: " + names[0];
+    return "TRACK: NEW (" + studio.newIdeaTrackName (pr7s::composerPartOf (l)).toUpperCase() + ")";
 }
 
 //==============================================================================
@@ -607,10 +1029,11 @@ bool ComposerPage::hear()
         hearingStart = buildStart();
     const auto placed = placedSpans();
     std::vector<std::pair<int, pr7s::LineIdea>> layers;
-    for (const auto l : pr7s::composerLayers())
-        if (state.lane (l).on)
-            if (const auto t = trackFor (l, true))
-                layers.emplace_back (t, ideas[(size_t) l]);
+    {
+        auto lanesPlaced = placeLanes (placed.front().start, true);
+        for (size_t i = 0; i < lanesPlaced.ideas.size(); ++i)
+            layers.emplace_back (lanesPlaced.onto[i], std::move (lanesPlaced.ideas[i]));
+    }
     if (! studio.auditionComposer (layers, placed.front().start, placed.back().end))
     {
         status = "Nothing to hear them on: add an instrument track (or switch a layer on)";
@@ -649,16 +1072,9 @@ std::vector<int> ComposerPage::useAll()
     if (spans.empty())
         return {};
     const auto placed = spansAt (placeStart());
-    std::vector<pr7s::LineIdea> list;
-    std::vector<int> onto;
-    for (const auto l : pr7s::composerLayers())
-        if (state.lane (l).on && ! ideas[(size_t) l].notes.empty())
-        {
-            list.push_back (ideas[(size_t) l]);
-            onto.push_back (trackFor (l, false));
-        }
+    const auto lanesPlaced = placeLanes (placed.front().start, false);
     writeChordsAt (placed);
-    const auto tracks = studio.buildSection (list, placed, "Composer", onto);
+    const auto tracks = studio.buildSection (lanesPlaced.ideas, placed, "Architect", lanesPlaced.onto);
     juce::StringArray names;
     for (const auto id : tracks)
         if (const auto* t = studio.getProject().findTrack (id))
@@ -675,7 +1091,12 @@ int ComposerPage::useLayer (ComposerLayer l)
     stop();
     if (spans.empty() || ideas[(size_t) l].notes.empty())
         return 0;
-    const auto tracks = studio.buildSection ({ ideas[(size_t) l] }, spansAt (placeStart()), "Composer", { trackFor (l, false) });
+    const auto placed = spansAt (placeStart());
+    std::vector<pr7s::LineIdea> list;
+    const auto onto = tracksFor (l, false);
+    for (size_t i = 0; i < onto.size(); ++i)
+        list.push_back (studio.doubledCopy (ideas[(size_t) l], (int) i, placed.front().start, (int) onto.size()));
+    const auto tracks = studio.buildSection (list, placed, "Architect", onto);
     refresh (false);
     return tracks.empty() ? 0 : tracks.front();
 }
@@ -758,9 +1179,13 @@ void ComposerPage::writeChordsAt (const std::vector<pr7s::ChordSpan>& placed)
 {
     if (state.fromChordTrack || ! state.toChordTrack || placed.empty())
         return;
+    // (0.85.3) The key chosen here goes onto the chord track's key strip with the chords: moving or
+    // changing a chord there then shows when it leaves that key.
+    const auto keyOnTrack = [this, start = placed.front().start] { studio.setChordTrackKey (start, state.key); };
     if (! fromRiff && chordOverrides.empty())
     {
         studio.addProgressionToChordTrack (pr7s::composerSteps (state), placed.front().start);
+        keyOnTrack();
         return;
     }
     std::vector<pr7s::ProgressionStep> steps;
@@ -772,6 +1197,7 @@ void ComposerPage::writeChordsAt (const std::vector<pr7s::ChordSpan>& placed)
         steps.push_back (step);
     }
     studio.addProgressionToChordTrack (steps, placed.front().start);
+    keyOnTrack();
 }
 
 void ComposerPage::setFromRiff (bool on)
@@ -795,13 +1221,32 @@ void ComposerPage::setPlayMyRiff (bool on)
     useMyRiff = on && studio.getComposerRiff().has_value();
     if (useMyRiff)
     {
-        taken[(size_t) ComposerLayer::guitar].reset();
-        state.lane (ComposerLayer::guitar).on = true;
+        const auto l = state.riffLayer();
+        taken[(size_t) l].reset();
+        state.lane (l).on = true;
     }
     refresh();
 }
 
-bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff)
+void ComposerPage::setRiffLane (ComposerLayer l)
+{
+    // (0.114.0) Your riff onto that lane, as you played it; the others follow it (SYNC on it). The lane it left
+    // goes back to writing its own part.
+    const auto before = state.riffLayer();
+    state.riffLane = (int) l;
+    if (state.syncLane == (int) before)
+        state.syncLane = (int) l;
+    if (before != l)
+        state.lane (before).locked = false;
+    useMyRiff = studio.getComposerRiff().has_value();
+    taken[(size_t) l].reset();
+    state.lane (l).on = true;
+    state.lane (l).locked = true;
+    status = "Your riff plays on the " + pr7s::composerLayerName (l).toLowerCase() + " lane, as you played it; the others follow it";
+    refresh();
+}
+
+bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff, int lane)
 {
     if (riff.notes.empty())
     {
@@ -827,17 +1272,30 @@ bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff)
     state.fromChordTrack = false;
     useMyRiff = true;
     chordOverrides.clear();
-    taken[(size_t) ComposerLayer::guitar].reset();
-    state.lane (ComposerLayer::guitar).on = true;
+    // (0.114.0, the owner: "imported without being changed at all ... select what composer lane it goes to. The
+    // other composer lanes then have their initial riffs based off of it") Played unchanged on its lane, locked;
+    // every other lane follows its rhythm (SYNC on it), the bass doubling it.
+    const auto onto = juce::isPositiveAndBelow (lane, pr7s::composerLayerCount) ? (ComposerLayer) lane : state.riffLayer();
+    if (state.riffLayer() != onto)
+        state.lane (state.riffLayer()).locked = false;
+    state.riffLane = (int) onto;
+    for (const auto l : pr7s::composerLayers())
+        taken[(size_t) l].reset();
+    state.lane (onto).on = true;
+    state.lane (onto).locked = true;
+    state.syncLane = (int) onto;
+    if (onto != ComposerLayer::bass)
+        state.lane (ComposerLayer::bass).doubleSync = true;
     // The section's beat, and the riff's settings back to as written.
     studio.setRiffSettings ({});
     setSection (section);
-    status = "Your riff (" + juce::String (bars) + (bars == 1 ? " bar" : " bars") + ") as the " + pr7s::sectionWord (section).toLowerCase() + "; " + keyText;
+    status = "Your riff (" + juce::String (bars) + (bars == 1 ? " bar" : " bars") + ") as the " + pr7s::sectionWord (section).toLowerCase()
+           + " on the " + pr7s::composerLayerName (onto).toLowerCase() + " lane, the others following it; " + keyText;
     repaint();
     return true;
 }
 
-bool ComposerPage::pasteRiffFromPart (int partId, pr7s::DrumSection section)
+bool ComposerPage::pasteRiffFromPart (int partId, pr7s::DrumSection section, int lane)
 {
     const auto where = studio.findPart (partId);
     if (! where.has_value())
@@ -858,10 +1316,10 @@ bool ComposerPage::pasteRiffFromPart (int partId, pr7s::DrumSection section)
     }
     notes.erase (std::remove_if (notes.begin(), notes.end(), [&part] (const pr7s::Note& n) { return n.start >= part.length; }), notes.end());
     const auto bpb = studio.getProject().beatsPerBarAt (part.start);
-    return pasteRiff (pr7s::riffFromNotes (notes, part.start, bpb, track->name + (part.name.isNotEmpty() ? " - " + part.name : juce::String()), section));
+    return pasteRiff (pr7s::riffFromNotes (notes, part.start, bpb, track->name + (part.name.isNotEmpty() ? " - " + part.name : juce::String()), section), lane);
 }
 
-bool ComposerPage::pasteRiffFromFile (const juce::File& file, pr7s::DrumSection section)
+bool ComposerPage::pasteRiffFromFile (const juce::File& file, pr7s::DrumSection section, int lane)
 {
     juce::String error;
     const auto midi = pr7s::readMidiFile (file, error);
@@ -877,7 +1335,47 @@ bool ComposerPage::pasteRiffFromFile (const juce::File& file, pr7s::DrumSection 
         if (t.channel != 10)
             notes.insert (notes.end(), t.notes.begin(), t.notes.end());
     std::sort (notes.begin(), notes.end(), [] (const pr7s::Note& a, const pr7s::Note& b) { return a.start < b.start; });
-    return pasteRiff (pr7s::riffFromNotes (notes, 0.0, context.beatsPerBar, file.getFileNameWithoutExtension(), section));
+    return pasteRiff (pr7s::riffFromNotes (notes, 0.0, context.beatsPerBar, file.getFileNameWithoutExtension(), section), lane);
+}
+
+std::vector<int> ComposerPage::buildFromPart (int partId, pr7s::DrumSection section, int lane)
+{
+    if (! pasteRiffFromPart (partId, section, lane))
+        return {};
+    const auto riffStatus = status;
+    auto tracks = buildSection();
+    if (! tracks.empty())
+        status = riffStatus + ".  " + status;
+    repaint();
+    return tracks;
+}
+
+std::vector<int> ComposerPage::buildFromFile (const juce::File& file, pr7s::DrumSection section, int lane)
+{
+    if (! pasteRiffFromFile (file, section, lane))
+        return {};
+    const auto riffStatus = status;
+    auto tracks = buildSection();
+    if (! tracks.empty())
+        status = riffStatus + ".  " + status;
+    repaint();
+    return tracks;
+}
+
+bool ComposerPage::canTakePart (int partId) const
+{
+    const auto where = studio.findPart (partId);
+    if (! where.has_value())
+        return false;
+    const auto* track = studio.getProject().findTrack (where->first);
+    return track != nullptr && track->kind == pr7s::Track::Kind::instrument && juce::isPositiveAndBelow (where->second, (int) track->parts.size())
+        && ! track->parts[(size_t) where->second].notes.empty();
+}
+
+void ComposerPage::dropPart (int partId)
+{
+    askSectionAndLane ([safe = juce::Component::SafePointer<ComposerPage> (this), partId] (pr7s::DrumSection sec, int lane)
+                       { if (safe != nullptr) safe->buildFromPart (partId, sec, lane); }, &pasteKey);
 }
 
 void ComposerPage::forgetRiff()
@@ -907,6 +1405,27 @@ void ComposerPage::askSection (std::function<void (pr7s::DrumSection)> then, juc
                         });
 }
 
+void ComposerPage::askSectionAndLane (std::function<void (pr7s::DrumSection, int)> then, juce::Component* target)
+{
+    askSection ([safe = juce::Component::SafePointer<ComposerPage> (this), then, target] (pr7s::DrumSection sec)
+    {
+        if (safe == nullptr)
+            return;
+        juce::PopupMenu menu;
+        menu.addSectionHeader ("IT PLAYS ON THE... (AS YOU PLAYED IT)");
+        for (const auto l : pr7s::composerLayers())
+            menu.addItem (100 + (int) l, pr7s::composerLayerName (l) + " lane", true, l == safe->state.riffLayer());
+        auto options = juce::PopupMenu::Options();
+        if (target != nullptr)
+            options = options.withTargetComponent (target);
+        menu.showMenuAsync (options, [then, sec] (int chosen)
+                            {
+                                if (chosen >= 100 && chosen < 100 + pr7s::composerLayerCount)
+                                    then (sec, chosen - 100);
+                            });
+    }, target);
+}
+
 void ComposerPage::showPasteMenu()
 {
     const auto parts = getSelectedParts != nullptr ? getSelectedParts() : std::vector<int> {};
@@ -922,12 +1441,20 @@ void ComposerPage::showPasteMenu()
             }
     const auto& riff = studio.getComposerRiff();
     juce::PopupMenu menu;
+    menu.addSectionHeader ("BUILD A SECTION FROM MY RIFF");
+    menu.addItem (7, partId != 0 ? "From the Selected Part (" + partName + ")" : juce::String ("From the Selected Part (select a MIDI part first)"), partId != 0);
+    menu.addItem (8, "From a MIDI File...");
+    menu.addSectionHeader ("ONLY LOAD MY RIFF (BUILD LATER)");
     menu.addItem (1, partId != 0 ? "From the Selected Part (" + partName + ")" : juce::String ("From the Selected Part (select a MIDI part first)"), partId != 0);
     menu.addItem (2, "From a MIDI File...");
     if (riff.has_value())
     {
         menu.addSeparator();
-        menu.addItem (3, "The Guitar Plays My Riff", true, useMyRiff);
+        menu.addItem (3, "My Riff Plays (" + pr7s::composerLayerName (state.riffLayer()) + " lane)", true, useMyRiff);
+        juce::PopupMenu lanes;
+        for (const auto l : pr7s::composerLayers())
+            lanes.addItem (100 + (int) l, pr7s::composerLayerName (l), true, l == state.riffLayer());
+        menu.addSubMenu ("My Riff Plays on the...", lanes);
         menu.addItem (4, "The Chords from My Riff", true, fromRiff);
         menu.addItem (5, "Forget My Riff (" + riff->name + ")");
     }
@@ -944,21 +1471,43 @@ void ComposerPage::showPasteMenu()
                                     safe->onLearnMyBand();
                                 return;
                             }
-                            if (chosen == 1)
-                                safe->askSection ([safe, partId] (pr7s::DrumSection sec) { if (safe != nullptr) safe->pasteRiffFromPart (partId, sec); }, &safe->pasteKey);
-                            else if (chosen == 2)
+                            if (chosen >= 100 && chosen < 100 + pr7s::composerLayerCount)
+                                safe->setRiffLane ((ComposerLayer) (chosen - 100));
+                            else if (chosen == 1 || chosen == 7)
                             {
+                                const auto build = chosen == 7;
+                                safe->askSectionAndLane ([safe, partId, build] (pr7s::DrumSection sec, int lane)
+                                {
+                                    if (safe == nullptr)
+                                        return;
+                                    if (build)
+                                        safe->buildFromPart (partId, sec, lane);
+                                    else
+                                        safe->pasteRiffFromPart (partId, sec, lane);
+                                }, &safe->pasteKey);
+                            }
+                            else if (chosen == 2 || chosen == 8)
+                            {
+                                const auto build = chosen == 8;
                                 safe->chooser = std::make_unique<juce::FileChooser> ("Your riff (a MIDI file)", juce::File(), "*.mid;*.midi");
                                 safe->chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
-                                                            [safe] (const juce::FileChooser& fc)
+                                                            [safe, build] (const juce::FileChooser& fc)
                                                             {
                                                                 const auto file = fc.getResult();
                                                                 if (safe == nullptr || ! file.existsAsFile())
                                                                     return;
-                                                                juce::MessageManager::callAsync ([safe, file]
+                                                                juce::MessageManager::callAsync ([safe, file, build]
                                                                 {
                                                                     if (safe != nullptr)
-                                                                        safe->askSection ([safe, file] (pr7s::DrumSection sec) { if (safe != nullptr) safe->pasteRiffFromFile (file, sec); }, &safe->pasteKey);
+                                                                        safe->askSectionAndLane ([safe, file, build] (pr7s::DrumSection sec, int lane)
+                                                                        {
+                                                                            if (safe == nullptr)
+                                                                                return;
+                                                                            if (build)
+                                                                                safe->buildFromFile (file, sec, lane);
+                                                                            else
+                                                                                safe->pasteRiffFromFile (file, sec, lane);
+                                                                        }, &safe->pasteKey);
                                                                 });
                                                             });
                             }
@@ -985,8 +1534,9 @@ void ComposerPage::filesDropped (const juce::StringArray& files, int, int)
         if (juce::File (f).hasFileExtension ("mid;midi"))
         {
             const juce::File file (f);
-            askSection ([safe = juce::Component::SafePointer<ComposerPage> (this), file] (pr7s::DrumSection sec)
-                        { if (safe != nullptr) safe->pasteRiffFromFile (file, sec); }, nullptr);
+            // (0.83.4) Dropped in: taken and the section built around it.
+            askSectionAndLane ([safe = juce::Component::SafePointer<ComposerPage> (this), file] (pr7s::DrumSection sec, int lane)
+                               { if (safe != nullptr) safe->buildFromFile (file, sec, lane); }, nullptr);
             return;
         }
 }
@@ -1054,11 +1604,62 @@ void ComposerPage::setSection (pr7s::DrumSection section)
         state.lane (ComposerLayer::lead).on = true;
         state.lane (ComposerLayer::lead).style = pr7s::composerStyleCount (ComposerLayer::lead) - 1;
     }
+    // (0.94.0) A type this section doesn't have: STANDARD (a block's own type is put on by targetSection after).
+    if (state.sectionType.isNotEmpty() && ! pr7s::isSectionTypeOf (typeSectionName(), state.sectionType))
+        pr7s::applySectionType (state, typeSectionName(), {});
     refresh();
+}
+
+bool ComposerPage::usesSectionsRow() const
+{
+    return ! studio.getSongSections().blocks.empty();
+}
+
+void ComposerPage::aimAtSectionsRow()
+{
+    if (! usesSectionsRow() || getTargetPlace().has_value())
+        return;
+    const auto& blocks = studio.getSongSections().blocks;
+    for (const auto& b : blocks)
+        if (b.recipe.isEmpty())
+        {
+            targetSection (b.id);
+            return;
+        }
+    targetSection (blocks.front().id);
+}
+
+void ComposerPage::addNextSection (const pr7s::SectionSuggestion& next)
+{
+    // A block of that kind after the last (a name already there: a linked copy of it), then composed.
+    const auto index = studio.appendSongSection (pr7s::sectionWord (next.kind), 8);
+    if (index < 0)
+        return;
+    chooseNext (next);
+    targetSection (studio.getSongSections().blocks[(size_t) index].id);
 }
 
 std::vector<pr7s::SectionSuggestion> ComposerPage::getNextSuggestions() const
 {
+    if (usesSectionsRow())
+    {
+        // (0.93.0) What the SECTIONS row holds so far, as the sections of the song.
+        std::vector<pr7s::BuiltSection> song;
+        const auto places = studio.getSongSectionPlaces();
+        const auto& blocks = studio.getSongSections().blocks;
+        for (size_t i = 0; i < blocks.size(); ++i)
+        {
+            pr7s::BuiltSection b;
+            b.kind = pr7s::drumSections()[(size_t) pr7s::composerSectionFor (blocks[i].name)];
+            b.start = places[i].start;
+            b.end = places[i].end;
+            b.riff = state.lane (ComposerLayer::guitar).style;
+            b.riffSettings = studio.getRiffSettings();
+            b.variation = state.lane (ComposerLayer::drums).variation;
+            song.push_back (b);
+        }
+        return pr7s::suggestNextSections (song, studio.getGuitarStyle(), pr7s::composerStyleCount (ComposerLayer::guitar));
+    }
     // (0.75.0) With your riff, it's one of the riffs: the same one comes back, a new one is the next round.
     return pr7s::suggestNextSections (studio.getBuiltSections(), studio.getGuitarStyle(),
                                       pr7s::composerStyleCount (ComposerLayer::guitar) + (studio.getComposerRiff().has_value() ? 1 : 0));
@@ -1069,12 +1670,18 @@ void ComposerPage::chooseNext (const pr7s::SectionSuggestion& next)
     // What it relates to (engine/SectionPlan.h): the riff settings, the guitar's riff, the same family of beats.
     studio.setRiffSettings (next.riffSettings);
     auto& guitar = state.lane (ComposerLayer::guitar);
-    if (! guitar.locked && ! taken[(size_t) ComposerLayer::guitar].has_value())
+    // (0.114.0: a lane holding your riff is locked on it; a suggestion can still move off it or back)
+    const auto riffOnGuitar = useMyRiff && state.riffLayer() == ComposerLayer::guitar;
+    if ((! guitar.locked || riffOnGuitar) && ! taken[(size_t) ComposerLayer::guitar].has_value())
     {
-        // (0.75.0) Your riff: reshaped by the suggestion's riff settings, or a new riff for contrast.
+        // (0.75.0) Your riff, or a new riff for contrast.
         useMyRiff = studio.getComposerRiff().has_value() && next.riff == myRiffIndex;
         if (! useMyRiff)
+        {
             guitar.style = juce::jlimit (0, pr7s::composerStyleCount (ComposerLayer::guitar) - 1, next.riff);
+            if (riffOnGuitar)
+                guitar.locked = false;
+        }
     }
     state.lane (ComposerLayer::drums).variation = next.variation;
     status = "Next: " + pr7s::sectionWord (next.kind).toLowerCase() + ". " + next.reason;
@@ -1092,14 +1699,10 @@ std::vector<int> ComposerPage::buildSection()
     }
     const auto section = getSection();
     const auto placed = spansAt (buildStart());
-    std::vector<pr7s::LineIdea> list;
-    std::vector<int> onto;
-    for (const auto l : pr7s::composerLayers())
-        if (state.lane (l).on && ! ideas[(size_t) l].notes.empty())
-        {
-            list.push_back (ideas[(size_t) l]);
-            onto.push_back (trackFor (l, false));
-        }
+    auto lanesPlaced = placeLanes (placed.front().start, false);   // (0.112.0: a lane on each of its tracks)
+    const auto& list = lanesPlaced.ideas;
+    const auto& onto = lanesPlaced.onto;
+    const auto& layersBuilt = lanesPlaced.layers;   // (0.92.0) which lane each of `list` is
     if (list.empty())
     {
         status = "Nothing to build: switch a layer on";
@@ -1114,13 +1717,39 @@ std::vector<int> ComposerPage::buildSection()
         repaint();
         return {};
     }
+    // (0.92.0) Into a block of the SECTIONS row: the block keeps how it was built (its chords changing later rebuilds it).
+    if (getTargetPlace().has_value() && tracks.size() == layersBuilt.size())
+    {
+        std::vector<std::pair<int, int>> layerTracks;
+        for (size_t i = 0; i < tracks.size(); ++i)
+            layerTracks.emplace_back (layersBuilt[i], tracks[i]);
+        studio.noteSectionBuilt (targetBlock, state.toString(), layerTracks);
+    }
     studio.noteBuiltSection ({ section, placed.front().start, placed.back().end, isPlayingMyRiff() ? myRiffIndex : state.lane (ComposerLayer::guitar).style,
                                studio.getRiffSettings(), state.lane (ComposerLayer::drums).variation });
     const auto& sig = studio.getProject().signatures();
     const auto bar = sig.barAt (placed.front().start) + 1, bars = sig.barAt (placed.back().end) + 1 - bar;   // (barAt: a hair before a line is on it)
     const auto built = pr7s::sectionWord (section) + " built at bar " + juce::String (bar) + " (" + juce::String (bars) + " bars)";
     // The best next section chosen for you (change it with SECTION or the NEXT keys).
-    if (const auto next = getNextSuggestions(); ! next.empty())
+    if (const auto target = getTargetPlace())
+    {
+        const auto& blocks = studio.getSongSections().blocks;
+        const auto index = studio.getSongSections().indexOf (targetBlock);
+        const auto done = pr7s::sectionLabel (blocks, index) + " built";
+        // (0.93.0) On to the next block not built yet.
+        auto next = -1;
+        for (int i = index + 1; i < (int) blocks.size() && next < 0; ++i)
+            if (blocks[(size_t) i].recipe.isEmpty())
+                next = i;
+        if (next >= 0)
+        {
+            targetSection (blocks[(size_t) next].id);
+            status = done + ". Next: " + pr7s::sectionLabel (blocks, next);
+        }
+        else
+            status = done + ". The blocks after it are built: + ADD for more";
+    }
+    else if (const auto next = getNextSuggestions(); ! next.empty())
     {
         chooseNext (next.front());
         status = built + ".  Next: " + pr7s::sectionWord (next.front().kind).toLowerCase() + " (" + next.front().reason + ")";
@@ -1148,6 +1777,7 @@ std::optional<ComposerLayer> ComposerPage::layerOf (pr7s::LineIdea::Part part)
         case P::bass: return ComposerLayer::bass;
         case P::rhythm: return ComposerLayer::guitar;
         case P::lead: return ComposerLayer::lead;
+        case P::clean: return ComposerLayer::clean;
         case P::drums: case P::groove: return ComposerLayer::drums;
         default: return std::nullopt;
     }
@@ -1179,11 +1809,16 @@ void ComposerPage::refreshSong()
         const auto which = studio.getComposerRiff().has_value() && riff == myRiffIndex ? juce::String (" (MY RIFF)")
                          : ! built.empty() && riff == built.back().riff ? juce::String (" (SAME RIFF)")
                          : ! built.empty() ? juce::String (" (NEW RIFF)") : juce::String();
-        auto* key = nextKeys.add (new juce::TextButton ("NEXT: " + pr7s::sectionWord (nextShown[i].kind).toUpperCase() + which));
+        const auto row = usesSectionsRow();
+        auto* key = nextKeys.add (new juce::TextButton ((row ? "+ ADD: " : "NEXT: ") + pr7s::sectionWord (nextShown[i].kind).toUpperCase() + (row ? juce::String() : which)));
         pedal (*key);
-        key->setTooltip (nextShown[i].reason);
-        key->setToggleState (nextShown[i].kind == getSection() && i == 0, juce::dontSendNotification);
-        key->onClick = [this, next = nextShown[i]] { chooseNext (next); };
+        key->setTooltip (row ? "Add a " + pr7s::sectionWord (nextShown[i].kind).toLowerCase() + " after the last block and compose it: " + nextShown[i].reason
+                             : nextShown[i].reason);
+        key->setToggleState (! row && nextShown[i].kind == getSection() && i == 0, juce::dontSendNotification);
+        if (row)
+            key->onClick = [this, next = nextShown[i]] { addNextSection (next); };
+        else
+            key->onClick = [this, next = nextShown[i]] { chooseNext (next); };
         addAndMakeVisible (key);
     }
     resized();
@@ -1194,6 +1829,8 @@ juce::Button* ComposerPage::keyNamed (const juce::String& name)
     for (auto* key : { &hearKey, &useKey, &generateKey, &libraryKey, &chordTrackKey, &toChordTrackKey, &buildKey, &myRiffKey, &pasteKey, &mixerKey })
         if (key->getButtonText() == name)
             return key;
+    if (name == "SYNC")
+        return &syncKey;
     for (const auto l : pr7s::composerLayers())
     {
         auto& lane = lanes[(size_t) l];
@@ -1210,52 +1847,686 @@ juce::Button* ComposerPage::keyNamed (const juce::String& name)
 }
 
 //==============================================================================
-void ComposerPage::showStyleMenu (ComposerLayer l)
+juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
 {
-    const auto choices = pr7s::composerChoices (l, state, spans, context);
+    // (0.173.0: the lane's choices were worked out here and never used: laneOptions makes them)
     juce::PopupMenu menu;
-    for (int i = 0; i < (int) choices.size(); ++i)
-        menu.addItem (i + 1, choices[(size_t) i].style + (choices[(size_t) i].description.isNotEmpty() ? "  (" + choices[(size_t) i].description + ")" : juce::String()),
-                      true, i == state.lane (l).style);
+    // (0.97.1) A lane the section type writes: its options are the type's approaches, each a different part.
+    const auto typeWrites = pr7s::sectionTypeWritesLane (l, state, context);
+    // (0.156.0, the owner's mock-up D) The short list: Automatic, the type's own options, favourites and recent;
+    // everything else behind MORE OPTIONS... (the option browser, with the feel filters).
+    const auto options = laneOptions (l);
+    const auto memory = studio.getOptionMemory();
+    const auto key = optionListKey (l);
+    const auto itemOf = [] (int id) { return id >= approachId ? approachItems + 1 + (id - approachId) : id + 1; };
+    const auto isOn = [this, l] (int id) { return id >= approachId ? state.lane (l).approach == id - approachId
+                                                                     : state.lane (l).approach < 0 && id == state.lane (l).style; };
+    // (0.160.0, the owner: a long description made the menu as wide as the screen and its submenus open off to the side) names only: what
+    // each does is in the browser (MORE OPTIONS...)
+    const auto nameOf = [] (const OptionBrowser::Option& o) { return o.name; };
+    std::map<juce::String, int> groupSizes;
+    for (const auto& o : options)
+        ++groupSizes[o.group];
+    juce::StringArray shownNames;
+    const auto addGroup = [&] (const juce::String& group, const juce::String& heading)
+    {
+        if (groupSizes[group] == 0 || groupSizes[group] > shortListMost)
+            return;
+        menu.addSectionHeader (heading);
+        for (const auto& o : options)
+            if (o.group == group)
+            {
+                menu.addItem (itemOf (o.id), nameOf (o), true, isOn (o.id));
+                shownNames.add (o.name);
+            }
+    };
+    const auto approaches = pr7s::sectionApproaches (state, l);
+    if (! approaches.isEmpty())
+    {
+        menu.addSectionHeader (state.sectionType.isNotEmpty() ? state.sectionType : juce::String ("DRONING"));
+        menu.addItem (approachItems, typeWrites ? "Automatic (the take chooses)" : "Automatic (the style and the take choose)", true, state.lane (l).approach < 0);
+    }
+    addGroup (typeOwnGroup, "THIS TYPE'S OWN");
+    addGroup (stylesGroup, "STYLES");
+    // Favourites, then the recent, of what isn't shown already.
+    {
+        bool headed = false;
+        const auto addNamed = [&] (const juce::StringArray& names, bool star)
+        {
+            for (const auto& n : names)
+                for (const auto& o : options)
+                    if (o.name == n && ! shownNames.contains (n))
+                    {
+                        if (! headed)
+                            menu.addSectionHeader (juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 FAVOURITES & RECENT")));
+                        headed = true;
+                        menu.addItem (itemOf (o.id), (star ? juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 ")) : juce::String()) + o.name
+                                                         + (star ? juce::String() : juce::String ("  (recent)")), true, isOn (o.id));
+                        shownNames.add (n);
+                        break;
+                    }
+        };
+        addNamed (memory.favouritesOf (key), true);
+        addNamed (memory.recentOf (key), false);
+    }
+    if (! options.empty())
+    {
+        menu.addSeparator();
+        menu.addItem (moreOptionsItem, "MORE OPTIONS... (all " + juce::String ((int) options.size()) + ", with search and feel filters)");
+    }
+    // (0.126.0) A lane the section type writes can play its own styles instead, and come back.
+    if (typeWrites)
+    {
+        menu.addSeparator();
+        menu.addItem (ownStylesItem, "Play Its Own Styles (not the section type's part)");
+    }
+    else if (state.lane (l).ownStyles && typeWouldWrite (l))
+    {
+        menu.addSeparator();
+        menu.addItem (ownStylesItem, "Follow the Section Type Again (" + state.sectionType + ")");
+    }
     // (0.70.0, the owner asked) The lead's last choice is the whole solo: its SOLO STYLE chosen here too (the
     // same setting as IDEAS' SOLO box).
     if (l == ComposerLayer::lead)
     {
+        // (0.157.0) The short list: the one playing, favourites and recent; the rest in the browser.
         juce::PopupMenu solos;
         const auto now = studio.getSoloStyle();
-        for (int i = 0; i < (int) pr7s::soloStyles().size(); ++i)
-        {
-            const auto st = pr7s::soloStyles()[(size_t) i];
-            solos.addItem (soloItems + i, pr7s::soloStyleName (st) + "  (" + pr7s::soloStyleDescription (st) + ")", true, st == now);
-        }
+        const auto memory = studio.getOptionMemory();
+        juce::StringArray named { pr7s::soloStyleName (now) };
+        for (const auto& n : memory.favouritesOf (soloListKey))
+            named.addIfNotAlreadyThere (n);
+        for (const auto& n : memory.recentOf (soloListKey))
+            named.addIfNotAlreadyThere (n);
+        for (const auto& n : named)
+            for (int i = 0; i < (int) pr7s::soloStyles().size(); ++i)
+            {
+                const auto st = pr7s::soloStyles()[(size_t) i];
+                if (pr7s::soloStyleName (st) == n)
+                    solos.addItem (soloItems + i, (memory.isFavourite (soloListKey, n) ? juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 ")) : juce::String()) + n, true, st == now);
+            }
+        solos.addSeparator();
+        solos.addItem (moreSolosItem, "MORE SOLO STYLES... (all " + juce::String ((int) pr7s::soloStyles().size()) + ", with search and feel filters)");
         menu.addSeparator();
         menu.addSubMenu ("Solo Style: " + pr7s::soloStyleName (now), solos);
     }
-    if (l == ComposerLayer::guitar && studio.getComposerRiff().has_value())
+    if (l == ComposerLayer::guitar)
+    {
+        // (0.85.0) The riff generator's flavour: every ROLL / GENERATE another riff of it.
+        juce::PopupMenu flavours;
+        for (int i = 0; i < (int) pr7s::riffFlavours().size(); ++i)
+        {
+            const auto f = pr7s::riffFlavours()[(size_t) i];
+            flavours.addItem (flavourItems + i, pr7s::riffFlavourName (f), true,
+                              ! state.writtenRiffs && i == state.riffFlavour);
+        }
+        menu.addSeparator();
+        if (pr7s::sectionBand (state) == pr7s::SectionType::Band::clean || pr7s::sectionBand (state) == pr7s::SectionType::Band::preChorus
+            || pr7s::sectionBand (state) == pr7s::SectionType::Band::bridge
+            || pr7s::sectionBand (state) == pr7s::SectionType::Band::breakdown
+            || pr7s::sectionBand (state) == pr7s::SectionType::Band::interlude
+            || pr7s::sectionBand (state) == pr7s::SectionType::Band::bookend
+            || pr7s::sectionBand (state) == pr7s::SectionType::Band::chorus
+            || pr7s::sectionBand (state) == pr7s::SectionType::Band::verse)   // (0.97.0: the clean parts aren't riffs; 0.102.0: nor the pre-chorus's)
+            menu.addSubMenu ("Riff Flavour: (the type writes its own guitar part)", flavours, false);
+        else if (const auto typed = pr7s::typedGuitarFlavour (state))   // (0.94.0: the type's approach picks the riff kind)
+            menu.addSubMenu ("Riff Flavour: " + pr7s::riffFlavourName (*typed) + " (the type's approach)", flavours, false);
+        else
+            menu.addSubMenu ("Riff Flavour: " + (state.writtenRiffs ? juce::String ("(written riffs)")
+                                                                    : pr7s::riffFlavourName (pr7s::riffFlavours()[(size_t) state.riffFlavour])), flavours);
+        menu.addItem (writtenRiffsItem, "Written Riffs (the six of each style, not generated)", true, state.writtenRiffs);
+    }
+    if (studio.getComposerRiff().has_value())   // (0.114.0: on any lane: your riff moves to it)
     {
         menu.addSeparator();
-        menu.addItem (myRiffItem, "My Riff (" + studio.getComposerRiff()->name + ")", true, useMyRiff);
+        menu.addItem (myRiffItem, "My Riff (" + studio.getComposerRiff()->name + ")", true, useMyRiff && l == state.riffLayer());
     }
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].style),
-                        [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
-                        {
-                            if (safe == nullptr || chosen <= 0)
-                                return;
-                            if (chosen == myRiffItem)
-                                safe->setPlayMyRiff (true);
-                            else if (chosen >= soloItems)
-                                safe->setSoloStyle (pr7s::soloStyles()[(size_t) juce::jlimit (0, (int) pr7s::soloStyles().size() - 1, chosen - soloItems)]);
-                            else
-                                safe->setStyle (l, chosen - 1);
-                        });
+    // (0.106.0, the owner) The drums from the groove library: on by default; the grooves for this section to choose from.
+    if (l == ComposerLayer::drums)
+    {
+        menu.addSeparator();
+        menu.addItem (libraryItems, "Grooves from My Library (PR7-D's, else the MediaBay's)", true, state.libraryDrums);
+        // (0.108.0, the studio link) PR7-D plays the drums from its own song track (the track keeps a muted copy).
+        menu.addItem (libraryItems + 90, "PR7-D Plays the Drums from Its Song Track (on a track playing PR7-D)", true, studio.getPr7dPlaysDrums());
+        // (0.137.0, the owner's rules) The section's 100: two thirds from the Toontrack folder, 4 to 16 bars, naming
+        // the section, best fit to the guitar first; ROLL goes through them all in a random order.
+        menu.addItem (libraryItems + 91, "Fit the Kick to the Riff (kicks nudged onto its hits)", state.libraryDrums, state.fitKicks);
+        const auto grooves = pr7s::composerGroovePool (state, placedSpans(), context);
+        auto fromToontrack = 0;
+        for (const auto& g : grooves)
+            fromToontrack += g.toontrack ? 1 : 0;
+        juce::PopupMenu list;
+        list.addItem (libraryItems + 1, "Automatic (ROLL goes through all " + juce::String ((int) grooves.size()) + " in a random order)", state.libraryDrums,
+                      state.libraryGroove.isEmpty());
+        if (! grooves.empty())
+            list.addSectionHeader (juce::String ((int) grooves.size()) + " for this section, " + juce::String (fromToontrack)
+                                   + " from Toontrack, best fit to the riff first");
+        for (int i = 0; i < (int) grooves.size(); ++i)
+            list.addItem (libraryItems + 200 + i, grooves[(size_t) i].name + "  (" + grooves[(size_t) i].folder + ", " + juce::String (grooves[(size_t) i].bars)
+                                                      + " bars)", state.libraryDrums, state.libraryGroove == grooves[(size_t) i].file.getFullPathName());
+        const auto playing = pr7s::composerLibraryGroove (state, placedSpans(), context);
+        menu.addSubMenu ("Library Groove: " + (grooves.empty() ? juce::String ("(none found: scan your grooves in PR7-D or the MediaBay)")
+                                                               : playing.has_value() ? playing->name : juce::String ("(off)")),
+                         list, ! grooves.empty());
+    }
+    // (0.126.0, the owner) SYNC TO: this lane alone follows another lane's rhythm.
+    {
+        juce::PopupMenu to;
+        const auto own = state.lane (l).syncTo;
+        to.addItem (syncToItems, "Not Synced on Its Own" + juce::String (state.syncLayer().has_value() ? " (the SYNC key's lane leads)" : ""),
+                    true, own < 0 || own == (int) l);
+        for (const auto other : pr7s::composerLayers())
+            if (other != l)
+                to.addItem (syncToItems + 1 + (int) other, "Sync to the " + pr7s::composerLayerName (other), true, own == (int) other);
+        menu.addSeparator();
+        menu.addSubMenu ("Sync To: " + (state.followsOwnLeader (l) ? pr7s::composerLayerName ((ComposerLayer) own) : juce::String ("(not on its own)")), to);
+    }
+    // (0.86.0) The bass and the drums under SYNC: every hit of the sync lane.
+    if (pr7s::hasDoubleSync (l))
+    {
+        const auto sync = state.leaderOf (l);
+        menu.addSeparator();
+        menu.addItem (doubleSyncItem, sync.has_value() && *sync != l ? "Double the Sync Track (the " + pr7s::composerLayerName (*sync).toLowerCase() + ", every hit)"
+                                                                      : juce::String ("Double the Sync Track (with SYNC on)"),
+                      sync.has_value() && *sync != l, state.lane (l).doubleSync);
+    }
+    return menu;
+}
+
+void ComposerPage::showStyleMenu (ComposerLayer l)
+{
+    makeStyleMenu (l).showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].style),
+                                     [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
+                                     {
+                                         if (safe != nullptr && chosen > 0)
+                                             safe->styleMenuChosen (l, chosen);
+                                     });
+}
+
+void ComposerPage::styleMenuChosen (ComposerLayer l, int chosen)
+{
+    if (chosen <= 0)
+        return;
+    if (chosen == moreOptionsItem)
+    {
+        showOptionBrowser (l);
+        return;
+    }
+    if (chosen == moreSolosItem)
+    {
+        auto browser = makeSoloBrowser();
+        if (getPeer() != nullptr || getTopLevelComponent()->getPeer() != nullptr)
+            openBrowserWindow (std::move (browser));
+        return;
+    }
+    if (chosen >= libraryItems && chosen < libraryItems + 400)
+    {
+        if (chosen == libraryItems)
+            setLibraryDrums (! isUsingLibraryDrums());
+        else if (chosen == libraryItems + 90)
+            studio.setPr7dPlaysDrums (! studio.getPr7dPlaysDrums());
+        else if (chosen == libraryItems + 91)
+            setFitKicks (! state.fitKicks);
+        else if (chosen == libraryItems + 1)
+            setLibraryGroove ({});
+        else if (chosen >= libraryItems + 200)
+        {
+            const auto grooves = pr7s::composerGroovePool (state, placedSpans(), context);
+            const auto i = chosen - libraryItems - 200;
+            if (juce::isPositiveAndBelow (i, (int) grooves.size()))
+                setLibraryGroove (grooves[(size_t) i].file.getFullPathName());
+        }
+    }
+    else if (chosen >= syncToItems && chosen < syncToItems + 20)
+        setSyncTo (l, chosen == syncToItems ? std::optional<ComposerLayer> {}
+                                                  : std::optional<ComposerLayer> ((ComposerLayer) (chosen - syncToItems - 1)));
+    else if (chosen == ownStylesItem)
+        setOwnStyles (l, ! isPlayingOwnStyles (l));
+    else if (chosen == doubleSyncItem)
+        setDoubleSync (l, ! isDoublingSync (l));
+    else if (chosen == myRiffItem)
+        setRiffLane (l);
+    else if (chosen == writtenRiffsItem)
+        setWrittenRiffs (! isUsingWrittenRiffs());
+    else if (chosen == approachItems)
+        setApproach (l, -1);
+    else if (chosen > approachItems && chosen < approachItems + 100)
+        useOption (l, approachId + chosen - approachItems - 1);
+    else if (chosen >= flavourItems && chosen < writtenRiffsItem)
+        setRiffFlavour (chosen - flavourItems);
+    else if (chosen >= soloItems)
+        useSoloStyle (pr7s::soloStyles()[(size_t) juce::jlimit (0, (int) pr7s::soloStyles().size() - 1, chosen - soloItems)]);
+    else
+        useOption (l, chosen - 1);
+}
+
+std::vector<OptionBrowser::Option> ComposerPage::laneOptions (ComposerLayer l) const
+{
+    std::vector<OptionBrowser::Option> out;
+    const auto choices = pr7s::composerChoices (l, state, spans, context);
+    const auto drums = l == ComposerLayer::drums;
+    const auto bpb = context.beatsPerBar;
+    const auto approaches = pr7s::sectionApproaches (state, l);
+    const auto ownNames = pr7s::baseSectionApproaches (state, l);   // (0.160.0: by name: the bass's shared options sit in front of its own last)
+    if (pr7s::sectionTypeWritesLane (l, state, context))
+    {
+        // The type's options, each a different part (composerChoices made one each, in this order).
+        for (int i = 0; i < approaches.size(); ++i)
+        {
+            OptionBrowser::Option o;
+            o.id = approachId + i;
+            o.name = approaches[i];
+            o.group = ownNames.contains (approaches[i]) ? typeOwnGroup : songsGroup;
+            o.drums = drums;
+            if (i < (int) choices.size())
+            {
+                o.idea = choices[(size_t) i];
+                o.description = o.idea.description;
+                o.measure = pr7s::measureOption (o.idea, bpb, drums);
+            }
+            out.push_back (std::move (o));
+        }
+        return out;
+    }
+    // A type with options that only steer the lane's own styles (the guitar's riff kinds...): those, then the styles.
+    for (int i = 0; i < approaches.size(); ++i)
+    {
+        OptionBrowser::Option o;
+        o.id = approachId + i;
+        o.name = approaches[i];
+        o.group = ownNames.contains (approaches[i]) ? typeOwnGroup : songsGroup;
+        o.drums = drums;
+        out.push_back (std::move (o));
+    }
+    for (int i = 0; i < (int) choices.size(); ++i)
+    {
+        OptionBrowser::Option o;
+        o.id = i;
+        o.idea = choices[(size_t) i];
+        o.name = o.idea.style;
+        o.description = o.idea.description;
+        o.group = stylesGroup;
+        o.drums = drums;
+        o.measure = pr7s::measureOption (o.idea, bpb, drums);
+        out.push_back (std::move (o));
+    }
+    return out;
+}
+
+std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
+{
+    const auto& lane = state.lane (l);
+    const auto chosen = lane.approach >= 0 ? approachId + lane.approach : lane.style;
+    auto title = pr7s::composerLayerName (l) + (state.sectionType.isNotEmpty() ? juce::String (": ") + state.sectionType : juce::String());
+    auto browser = std::make_unique<OptionBrowser> (title, laneOptions (l), chosen, studio.getOptionMemory(), optionListKey (l));
+    juce::Component::SafePointer<ComposerPage> safe (this);
+    browser->onHear = [safe, l] (int id) { if (safe != nullptr) safe->tryOption (l, id); };
+    browser->onUse = [safe, l] (int id)
+    {
+        if (safe == nullptr)
+            return;
+        safe->endTrial (true);
+        safe->useOption (l, id);
+    };
+    browser->onFavourite = [safe, l] (const juce::String& name, bool on)
+    {
+        if (safe != nullptr)
+            safe->studio.setOptionFavourite (safe->optionListKey (l), name, on);
+    };
+    browser->onClosed = [safe] { if (safe != nullptr) safe->endTrial (false); };
+    return browser;
+}
+
+void ComposerPage::showOptionBrowser (ComposerLayer l)
+{
+    auto browser = makeOptionBrowser (l);
+    if (getPeer() == nullptr && getTopLevelComponent()->getPeer() == nullptr)
+        return;
+    openBrowserWindow (std::move (browser));
+}
+
+void ComposerPage::openBrowserWindow (std::unique_ptr<OptionBrowser> browser)
+{
+    browserWindow.reset();   // (the old one's trial ends as it goes)
+    browserWindow = std::make_unique<OptionBrowserWindow> (std::move (browser), this);
+    browserWindow->onClose = [safe = juce::Component::SafePointer<ComposerPage> (this)]
+    {
+        juce::MessageManager::callAsync ([safe]
+        {
+            if (safe != nullptr)
+                safe->browserWindow.reset();
+        });
+    };
+}
+
+void ComposerPage::useOption (ComposerLayer l, int id)
+{
+    const auto options = laneOptions (l);
+    for (const auto& o : options)
+        if (o.id == id)
+            studio.noteOptionUsed (optionListKey (l), o.name);
+    if (id >= approachId)
+    {
+        setApproach (l, id - approachId);
+        return;
+    }
+    // A style: the type's option let go, so the style plays.
+    if (state.lane (l).approach >= 0 && ! pr7s::sectionTypeWritesLane (l, state, context))
+        state.lane (l).approach = -1;
+    setStyle (l, id);
+}
+
+void ComposerPage::beginTrial (const juce::String& list, std::function<void()> restore)
+{
+    if (trial.active && trial.list == list)
+        return;   // (the first thing tried is what goes back)
+    endTrial (false);
+    trial = { true, list, std::move (restore), hearing };
+}
+
+void ComposerPage::tryOption (ComposerLayer l, int id)
+{
+    const auto approach = state.lane (l).approach, style = state.lane (l).style;
+    beginTrial (optionListKey (l), [this, l, approach, style]
+    {
+        state.lane (l).approach = approach;
+        taken[(size_t) l].reset();
+        setStyle (l, style);
+    });
+    if (id >= approachId)
+        setApproach (l, id - approachId);
+    else
+    {
+        if (! pr7s::sectionTypeWritesLane (l, state, context))
+            state.lane (l).approach = -1;
+        setStyle (l, id);
+    }
+    if (! hearing)
+        hear();
+}
+
+void ComposerPage::endTrial (bool keep)
+{
+    if (! trial.active)
+        return;
+    const auto was = trial;
+    trial = {};
+    if (keep)
+        return;
+    if (was.restore)
+        was.restore();
+    if (! was.wasHearing)
+        stop();
+}
+
+//==============================================================================
+std::vector<OptionBrowser::Option> ComposerPage::typeOptions() const
+{
+    std::vector<OptionBrowser::Option> out;
+    const auto name = typeSectionName();
+    const auto types = pr7s::sectionTypesFor (name);
+    // Each type measured by the drums it writes (the library's grooves off: they'd be the same under every type).
+    const auto measure = [this, &name] (const juce::String& type, OptionBrowser::Option& o)
+    {
+        if (spans.empty())
+            return;
+        auto each = state;
+        each.libraryDrums = false;
+        each.lane (ComposerLayer::drums).on = true;
+        pr7s::applySectionType (each, name, type);
+        const auto layers = pr7s::composeLayers (each, spans, context);
+        o.idea = layers[(size_t) ComposerLayer::drums];
+        o.drums = true;
+        o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, true);
+    };
+    {
+        OptionBrowser::Option o;
+        o.id = 0;
+        o.name = pr7s::standardSectionType;
+        o.description = "Every lane plays its own styles";
+        o.group = "STANDARD";
+        measure ({}, o);
+        out.push_back (std::move (o));
+    }
+    for (int i = 0; i < (int) types.size(); ++i)
+    {
+        OptionBrowser::Option o;
+        o.id = i + 1;
+        o.name = types[(size_t) i].name;
+        o.description = types[(size_t) i].description;
+        o.group = pr7s::typeGroupOf (types[(size_t) i]);
+        measure (o.name, o);
+        out.push_back (std::move (o));
+    }
+    return out;
+}
+
+std::vector<OptionBrowser::Option> ComposerPage::soloOptions() const
+{
+    std::vector<OptionBrowser::Option> out;
+    const auto& profile = context.leadProfile.has_value() ? context.leadProfile : context.guitarProfile;
+    const auto tuning = profile.has_value() ? profile->tuning() : context.tuning;
+    const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : context.velocities;
+    const auto shortest = profile.has_value() ? profile->shortestNote : 0.0;
+    for (const auto st : pr7s::soloStyles())
+    {
+        OptionBrowser::Option o;
+        o.id = (int) st;
+        o.name = pr7s::soloStyleName (st);
+        o.description = pr7s::soloStyleDescription (st);
+        o.group = st == pr7s::SoloStyle::automatic ? juce::String ("BY STYLE") : pr7s::soloGroupOf (st);
+        if (! spans.empty())
+        {
+            const auto chosen = st == pr7s::SoloStyle::automatic ? pr7s::soloStyleForGuitarStyle ((int) context.style, 0) : st;
+            o.idea = pr7s::composeSolo (chosen, spans, context.beatsPerBar, tuning, velocities, 0, shortest, context.bpm);
+            o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, false);
+        }
+        out.push_back (std::move (o));
+    }
+    return out;
+}
+
+bool ComposerPage::canTryType() const
+{
+    const auto index = studio.getSongSections().indexOf (targetBlock);
+    return index < 0 || ! studio.isSongSectionBuilt (index);
+}
+
+void ComposerPage::useType (const juce::String& name)
+{
+    studio.noteOptionUsed (typeListKey, name.isEmpty() ? juce::String (pr7s::standardSectionType) : name);
+    setSectionType (name);
+}
+
+void ComposerPage::useSoloStyle (pr7s::SoloStyle st)
+{
+    studio.noteOptionUsed (soloListKey, pr7s::soloStyleName (st));
+    setSoloStyle (st);
+}
+
+juce::PopupMenu ComposerPage::makeTypeMenu()
+{
+    const auto name = typeSectionName();
+    const auto types = pr7s::sectionTypesFor (name);
+    const auto memory = studio.getOptionMemory();
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("TYPE OF " + name.toUpperCase());
+    menu.addItem (1, juce::String (pr7s::standardSectionType) + "  (every lane its own styles)", true, state.sectionType.isEmpty());
+    juce::StringArray shown;
+    const auto add = [&] (const juce::String& n, const juce::String& prefix)
+    {
+        for (int i = 0; i < (int) types.size(); ++i)
+            if (types[(size_t) i].name == n && ! shown.contains (n))
+            {
+                menu.addItem (2 + i, prefix + n, true, n == state.sectionType);
+                shown.add (n);
+            }
+    };
+    if (state.sectionType.isNotEmpty())
+        add (state.sectionType, {});
+    if ((int) types.size() <= shortListMost)
+        for (const auto& t : types)
+            add (t.name, {});
+    else
+    {
+        bool headed = false;
+        for (const auto& n : memory.favouritesOf (typeListKey))
+        {
+            if (! headed && ! shown.contains (n))
+            {
+                menu.addSectionHeader (juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 FAVOURITES & RECENT")));
+                headed = true;
+            }
+            add (n, juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 ")));
+        }
+        for (const auto& n : memory.recentOf (typeListKey))
+        {
+            if (! headed && ! shown.contains (n))
+            {
+                menu.addSectionHeader (juce::String (juce::CharPointer_UTF8 ("\xe2\x98\x85 FAVOURITES & RECENT")));
+                headed = true;
+            }
+            add (n, {});
+        }
+    }
+    menu.addSeparator();
+    menu.addItem (moreTypesItem, "MORE TYPES... (all " + juce::String ((int) types.size()) + ", with search and feel filters)");
+    return menu;
+}
+
+void ComposerPage::typeMenuChosen (int item)
+{
+    if (item <= 0)
+        return;
+    if (item == moreTypesItem)
+    {
+        auto browser = makeTypeBrowser();
+        if (getPeer() != nullptr || getTopLevelComponent()->getPeer() != nullptr)
+            openBrowserWindow (std::move (browser));
+        return;
+    }
+    const auto types = pr7s::sectionTypesFor (typeSectionName());
+    if (item == 1)
+        useType ({});
+    else if (juce::isPositiveAndBelow (item - 2, (int) types.size()))
+        useType (types[(size_t) (item - 2)].name);
+}
+
+std::unique_ptr<OptionBrowser> ComposerPage::makeTypeBrowser()
+{
+    const auto types = pr7s::sectionTypesFor (typeSectionName());
+    auto chosen = 0;
+    for (int i = 0; i < (int) types.size(); ++i)
+        if (types[(size_t) i].name == state.sectionType)
+            chosen = i + 1;
+    auto browser = std::make_unique<OptionBrowser> ("TYPE OF " + typeSectionName().toUpperCase(), typeOptions(), chosen,
+                                                    studio.getOptionMemory(), typeListKey);
+    juce::Component::SafePointer<ComposerPage> safe (this);
+    const auto nameOf = [types] (int id) { return id <= 0 || id > (int) types.size() ? juce::String() : types[(size_t) id - 1].name; };
+    browser->setHearable (canTryType());
+    {
+        juce::StringArray order { "STANDARD" };
+        order.addArray (pr7s::typeGroupOrder());
+        browser->setGroupOrder (order);
+    }
+    browser->onHear = [safe, nameOf] (int id)
+    {
+        if (safe == nullptr || ! safe->canTryType())
+            return;
+        const auto was = safe->state.sectionType;
+        safe->beginTrial (typeListKey, [safe, was] { if (safe != nullptr) safe->setSectionType (was); });
+        safe->setSectionType (nameOf (id));
+        if (! safe->hearing)
+            safe->hear();
+    };
+    browser->onUse = [safe, nameOf] (int id)
+    {
+        if (safe == nullptr)
+            return;
+        safe->endTrial (true);
+        safe->useType (nameOf (id));
+    };
+    browser->onFavourite = [safe] (const juce::String& name, bool on) { if (safe != nullptr) safe->studio.setOptionFavourite (typeListKey, name, on); };
+    browser->onClosed = [safe] { if (safe != nullptr) safe->endTrial (false); };
+    return browser;
+}
+
+std::unique_ptr<OptionBrowser> ComposerPage::makeSoloBrowser()
+{
+    auto browser = std::make_unique<OptionBrowser> ("SOLO STYLE", soloOptions(), (int) studio.getSoloStyle(), studio.getOptionMemory(), soloListKey);
+    {
+        juce::StringArray order { "BY STYLE" };
+        order.addArray (pr7s::soloGroupOrder());
+        browser->setGroupOrder (order);   // (0.158.0)
+    }
+    juce::Component::SafePointer<ComposerPage> safe (this);
+    browser->onHear = [safe] (int id)
+    {
+        if (safe == nullptr)
+            return;
+        const auto was = safe->studio.getSoloStyle();
+        const auto lead = safe->state.lane (ComposerLayer::lead);
+        safe->beginTrial (soloListKey, [safe, was, lead]
+        {
+            if (safe == nullptr)
+                return;
+            safe->studio.setSoloStyle (was);
+            safe->state.lane (ComposerLayer::lead) = lead;
+            safe->taken[(size_t) ComposerLayer::lead].reset();
+            safe->refresh();
+        });
+        if (! safe->state.lane (ComposerLayer::lead).on)
+            safe->state.lane (ComposerLayer::lead).on = true;
+        safe->setSoloStyle ((pr7s::SoloStyle) id);
+        if (! safe->hearing)
+            safe->hear();
+    };
+    browser->onUse = [safe] (int id)
+    {
+        if (safe == nullptr)
+            return;
+        safe->endTrial (true);
+        safe->useSoloStyle ((pr7s::SoloStyle) id);
+    };
+    browser->onFavourite = [safe] (const juce::String& name, bool on) { if (safe != nullptr) safe->studio.setOptionFavourite (soloListKey, name, on); };
+    browser->onClosed = [safe] { if (safe != nullptr) safe->endTrial (false); };
+    return browser;
+}
+
+void ComposerPage::setLibraryDrums (bool on)
+{
+    state.libraryDrums = on;
+    taken[(size_t) ComposerLayer::drums].reset();
+    status = on ? "Drums: grooves from your library" : "Drums: the type's or the generator's";
+    refresh();
+}
+
+void ComposerPage::setFitKicks (bool on)
+{
+    state.fitKicks = on;
+    taken[(size_t) ComposerLayer::drums].reset();
+    status = on ? "Drums: the kick fitted to the riff" : "Drums: the groove's kick as written";
+    refresh();
+}
+
+void ComposerPage::setLibraryGroove (const juce::String& path)
+{
+    state.libraryGroove = path;
+    state.libraryDrums = true;
+    taken[(size_t) ComposerLayer::drums].reset();
+    refresh();
 }
 
 void ComposerPage::showTrackMenu (ComposerLayer l)
 {
     juce::PopupMenu menu;
-    const auto name = pr7s::Studio::linePartName (pr7s::composerPartOf (l));
+    const auto name = studio.newIdeaTrackName (pr7s::composerPartOf (l));
     const auto current = trackFor (l, false);
-    menu.addItem (1, "Automatic: the \"" + name + "\" track, else a new one when used", true, trackChoice[(size_t) l] == 0);
+    // (0.112.0) The names HUB SETTINGS > COMPOSER TRACKS gives this lane.
+    const auto tracks = studio.getComposerTracks (pr7s::composerPartOf (l));
+    const auto names = "\"" + tracks.names.joinIntoString ("\", \"") + "\"";
+    menu.addItem (1, juce::String ("Automatic: ") + (tracks.every ? "every track called " : "the track called ") + names
+                         + ", else a new \"" + name + "\" one when used (Hub > ARCHITECT TRACKS)", true, trackChoice[(size_t) l] == 0);
     if (studio.findIdeaTrack (pr7s::composerPartOf (l)) == 0)
         menu.addItem (2, "Make the \"" + name + "\" track now (to hear it on its own instrument)");
     menu.addSeparator();
@@ -1272,13 +2543,11 @@ void ComposerPage::showTrackMenu (ComposerLayer l)
                             else if (chosen == 2)
                             {
                                 auto& studio = safe->studio;
-                                const auto id = studio.addTrack (pr7s::Instrument {});
-                                if (id != 0)
-                                {
+                                // (0.107.0) A drums track plays the studio's drums (PR7-D) when found, on the
+                                // default map (0.77.3).
+                                const auto id = l == ComposerLayer::drums ? studio.addDrumsTrack (name) : studio.addTrack (pr7s::Instrument {});
+                                if (id != 0 && l != ComposerLayer::drums)
                                     studio.renameTrack (id, name);
-                                    if (l == ComposerLayer::drums)
-                                        studio.setTrackDrumMap (id, studio.defaultDrumMapFor (id));   // (0.77.3: the default map)
-                                }
                                 safe->setTrack (l, 0);
                             }
                             else
@@ -1367,6 +2636,15 @@ void ComposerPage::mouseDown (const juce::MouseEvent& e)
         showChordMenu (chord);
         return;
     }
+    if (songArea.contains (e.getPosition()) && ! e.mods.isPopupMenu() && usesSectionsRow())
+    {
+        for (const auto& [r, index] : songChips())
+            if (r.contains (e.getPosition()))
+            {
+                targetSection (studio.getSongSections().blocks[(size_t) index].id);   // (0.93.0: compose that block)
+                return;
+            }
+    }
     if (songArea.contains (e.getPosition()) && e.mods.isPopupMenu())
     {
         juce::PopupMenu menu;
@@ -1418,7 +2696,7 @@ juce::File ComposerPage::dragLaneOut (ComposerLayer l)
     // Where it would be placed (the tempo there goes in the file), on its track's channel; the drums on 10.
     const auto* track = studio.getProject().findTrack (trackFor (l, false));
     const auto channel = l == ComposerLayer::drums ? 10 : track != nullptr ? track->midiChannel : 1;
-    const auto name = juce::String ("Composer ") + pr7s::composerLayerName (l).toLowerCase() + " - " + idea.style;   // ("Composer bass - Walking")
+    const auto name = juce::String ("Architect ") + pr7s::composerLayerName (l).toLowerCase() + " - " + idea.style;   // ("Architect bass - Walking")
     juce::String error;
     const auto file = studio.writeLineForDrag (idea, placedSpans(), channel, name, error);
     if (file == juce::File())
@@ -1446,20 +2724,34 @@ void ComposerPage::timerCallback()
         hearKey.setToggleState (false, juce::dontSendNotification);
         repaint();
     }
+    if (! isShowing())
+        return;   // (0.164.0: behind the IDEAS tab or a closed window it rebuilt on every change; it catches up when shown)
     // The song changed (tracks added or renamed, the chord track): the lanes' tracks and chords again.
     if (! hearing && studio.getChangeVersion() != seenChange)
         refresh (false);
     // (0.76.0) The faders moved in the mixer (mix-only changes don't move the change version): the lanes follow.
     if (draggingVolume < 0)
         refreshVolumes();
-    if (hearing)
+    if (hearing && ! spans.empty())
     {
-        // The playhead across the lanes.
-        auto area = ruler;
-        for (const auto& lane : lanes)
-            area = area.getUnion (lane.notes);
-        repaint (area);
+        // The playhead across the lanes: (0.83.2) only its old and new strips in each lane (the whole of
+        // every lane's notes was redrawn 30 times a second, the notes and all).
+        const auto beat = studio.isComposerAuditioning() ? const_cast<pr7s::Studio&> (studio).getEngine().getPosition() - studio.getComposerAuditionStart() : -1.0;
+        if (! juce::approximatelyEqual (beat, shownHearBeat))
+        {
+            const auto total = spans.back().end - spans.front().start;
+            for (const auto& lane : lanes)
+                for (const auto at : { shownHearBeat, beat })
+                    if (at >= 0.0 && total > 0.0)
+                    {
+                        const auto x = (float) lane.notes.getX() + (float) (at / total) * (float) lane.notes.getWidth();
+                        repaint (juce::Rectangle<int> (juce::roundToInt (x) - 3, lane.notes.getY(), 8, lane.notes.getHeight()));
+                    }
+            shownHearBeat = beat;
+        }
     }
+    else
+        shownHearBeat = -1.0;
 }
 
 //==============================================================================
@@ -1489,7 +2781,7 @@ void ComposerPage::paint (juce::Graphics& g)
     auto head = getLocalBounds().removeFromTop (headerHeight).reduced (gap, 8);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (20.0f));
-    g.drawText ("COMPOSER", head.removeFromTop (26), juce::Justification::centredLeft, false);
+    g.drawText ("ARCHITECT", head.removeFromTop (26), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (interFont (12.5f));
     g.drawText (status.isNotEmpty() ? summary() + "     " + status : summary(), head.withTrimmedRight (1100), juce::Justification::centredLeft, true);
@@ -1555,6 +2847,36 @@ void ComposerPage::paintSong (juce::Graphics& g) const
     g.drawText ("SONG", area.removeFromLeft (52), juce::Justification::centredLeft, false);
     if (! nextKeys.isEmpty())
         area.setRight (nextKeys.getFirst()->getX() - 12);
+    if (usesSectionsRow())
+    {
+        // (0.93.0) The SECTIONS row's blocks: the one composed lit, the built ones with a mark.
+        const auto& blocks = studio.getSongSections().blocks;
+        const auto places = studio.getSongSectionPlaces();
+        for (const auto& [r, index] : songChips())
+        {
+            const auto& b = blocks[(size_t) index];
+            const auto kind = pr7s::drumSections()[(size_t) pr7s::composerSectionFor (b.name)];
+            const auto colour = kind == pr7s::DrumSection::chorus ? pr7s::FamilyColours::pink
+                              : kind == pr7s::DrumSection::verse || kind == pr7s::DrumSection::bridge ? pr7s::FamilyColours::orange
+                              : pr7s::FamilyColours::red;
+            const auto lit = b.id == targetBlock;
+            const auto rf = r.toFloat();
+            g.setColour (colour.withAlpha (lit ? 0.6f : 0.22f));
+            g.fillRoundedRectangle (rf, 4.0f);
+            g.setColour (lit ? juce::Colour (0xfff4eeea) : colour);
+            g.drawRoundedRectangle (rf.reduced (0.5f), 4.0f, lit ? 2.0f : 1.2f);
+            g.setColour (lit ? juce::Colours::white : ParagonColours::text);
+            g.setFont (ParagonLookAndFeel::titleFont (15.0f));
+            g.drawText (pr7s::sectionLabel (blocks, index).toUpperCase(), rf.reduced (8.0f, 2.0f).removeFromTop (rf.getHeight() * 0.55f),
+                        juce::Justification::bottomLeft, false);
+            g.setColour (ParagonColours::textDim);
+            g.setFont (ParagonLookAndFeel::titleFont (12.0f));
+            g.drawText ("BAR " + juce::String (places[(size_t) index].firstBar + 1) + ", " + juce::String (b.bars) + " BARS"
+                            + (b.recipe.isNotEmpty() ? "  BUILT" : ""),
+                        rf.reduced (8.0f, 2.0f).removeFromBottom (rf.getHeight() * 0.45f), juce::Justification::topLeft, false);
+        }
+        return;
+    }
     const auto& built = studio.getBuiltSections();
     if (built.empty())
     {
@@ -1596,6 +2918,37 @@ void ComposerPage::paintSong (juce::Graphics& g) const
     }
 }
 
+std::vector<std::pair<juce::Rectangle<int>, int>> ComposerPage::songChips() const
+{
+    std::vector<std::pair<juce::Rectangle<int>, int>> out;
+    if (songArea.isEmpty() || ! usesSectionsRow())
+        return out;
+    auto area = songArea.reduced (12, 6);
+    area.removeFromLeft (52);
+    if (! nextKeys.isEmpty())
+        area.setRight (nextKeys.getFirst()->getX() - 12);
+    const auto count = (int) studio.getSongSections().blocks.size();
+    const auto chip = 118;
+    const auto fits = juce::jmax (1, (area.getWidth() + 6) / (chip + 6));
+    // The one composed kept in view: from the start, or so that it's the last shown.
+    const auto target = juce::jmax (0, studio.getSongSections().indexOf (targetBlock));
+    const auto first = juce::jlimit (0, juce::jmax (0, count - fits), target - fits + 1);
+    for (int i = first; i < count && i < first + fits; ++i)
+    {
+        out.push_back ({ area.removeFromLeft (chip), i });
+        area.removeFromLeft (6);
+    }
+    return out;
+}
+
+juce::Rectangle<int> ComposerPage::getSongChipBounds (int blockIndex) const
+{
+    for (const auto& [r, index] : songChips())
+        if (index == blockIndex)
+            return r;
+    return {};
+}
+
 void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& lane) const
 {
     const auto& s = state.lane (l);
@@ -1612,22 +2965,39 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
         g.setColour (s.on ? ParagonColours::text : ParagonColours::textDim);
         g.setFont (ParagonLookAndFeel::titleFont (20.0f));
         g.drawText (pr7s::composerLayerName (l), lane.header.reduced (18, 6).removeFromTop (24), juce::Justification::centredLeft, false);
-        if (s.locked)
+        auto sync = state.leaderOf (l);
+        if (! sync.has_value())   // (0.126.0: a lane another lane follows by its own SYNC TO leads too)
+            for (const auto other : pr7s::composerLayers())
+                if (other != l && state.followsOwnLeader (other) && state.lane (other).syncTo == (int) l)
+                    sync = l;
+        if (! s.locked && ! sync.has_value() && (s.ownStyles ? typeWouldWrite (l) : pr7s::sectionTypeWritesLane (l, state, context)))
         {
-            g.setColour (ParagonColours::accent);
+            // (0.126.0) Whether the section type writes this lane, or it plays its own styles.
+            g.setColour (s.ownStyles ? ParagonColours::textDim : ParagonColours::accent);
             g.setFont (ParagonLookAndFeel::titleFont (11.0f));
-            g.drawText ("LOCKED", lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200), juce::Justification::centredRight, false);
+            g.drawText (s.ownStyles ? "OWN STYLES" : "FOLLOWS THE SECTION TYPE",
+                        lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200), juce::Justification::centredRight, false);
+        }
+        else if (s.locked || sync.has_value())
+        {
+            // (0.86.0) SYNC: the leader says so; a follower says whom it follows.
+            const auto word = sync == l ? juce::String ("SYNC LEADER") + (s.locked ? " - LOCKED" : "")
+                            : sync.has_value() ? (s.doubleSync ? "DOUBLES THE " : "FOLLOWS THE ") + pr7s::composerLayerName (*sync) + (s.locked ? " - LOCKED" : "")
+                                               : juce::String ("LOCKED");
+            g.setColour (sync == l ? pr7s::FamilyColours::pink : ParagonColours::accent);
+            g.setFont (ParagonLookAndFeel::titleFont (11.0f));
+            g.drawText (word, lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200), juce::Justification::centredRight, false);
         }
         // Where it's heard, when that's not where it's written.
         const auto writes = trackFor (l, false), heard = trackFor (l, true);
-        if (writes != heard || heard == 0)
+        if ((writes != heard || heard == 0) && ! lane.note.isEmpty())
         {
             g.setColour (ParagonColours::textDim);
             g.setFont (interFont (10.5f));
             const auto* t = studio.getProject().findTrack (heard);
             g.drawText (heard == 0 ? juce::String ("not heard: no track of its own yet (TRACK > make it)")
                                    : "heard on " + (t != nullptr ? t->name : juce::String()) + " until it has its own track",
-                        lane.header.reduced (18, 4).removeFromBottom (14), juce::Justification::centredLeft, true);
+                        lane.note, juce::Justification::centredLeft, true);
         }
     }
     // The notes.
@@ -1694,19 +3064,23 @@ void ComposerPage::resized()
 {
     auto area = getLocalBounds().reduced (gap, 0);
     auto head = area.removeFromTop (headerHeight).reduced (0, 14);
-    buildKey.setBounds (head.removeFromRight (200));
+    buildKey.setBounds (head.removeFromRight (190));
     head.removeFromRight (6);
-    sectionBox.setBounds (head.removeFromRight (190));
+    sectionBox.setBounds (head.removeFromRight (170));
     head.removeFromRight (6);
-    pasteKey.setBounds (head.removeFromRight (130));
+    typeKey.setBounds (head.removeFromRight (180));
     head.removeFromRight (6);
-    mixerKey.setBounds (head.removeFromRight (90));
-    head.removeFromRight (16);
-    generateKey.setBounds (head.removeFromRight (160));
-    head.removeFromRight (8);
-    useKey.setBounds (head.removeFromRight (140));
-    head.removeFromRight (8);
-    hearKey.setBounds (head.removeFromRight (110));
+    pasteKey.setBounds (head.removeFromRight (120));
+    head.removeFromRight (6);
+    mixerKey.setBounds (head.removeFromRight (80));
+    head.removeFromRight (6);
+    syncKey.setBounds (head.removeFromRight (140));
+    head.removeFromRight (12);
+    generateKey.setBounds (head.removeFromRight (130));
+    head.removeFromRight (6);
+    useKey.setBounds (head.removeFromRight (120));
+    head.removeFromRight (6);
+    hearKey.setBounds (head.removeFromRight (90));
 
     auto controls = area.removeFromTop (controlsHeight).withTrimmedBottom (8);
     for (auto* box : { &keyBox, &genreBox, &moodBox, &lengthBox, &styleBox })
@@ -1745,47 +3119,35 @@ void ComposerPage::resized()
         lane.header = row.removeFromLeft (laneHeaderWidth);
         row.removeFromLeft (gap);
         lane.notes = row;
-        auto keys = lane.header.reduced (18, 8);
+        // (0.120.0) Always two rows of keys under the name (they were crammed into one in a short lane).
+        auto keys = lane.header.reduced (16, 6);
         lane.volume.setBounds (keys.withHeight (22).removeFromRight (190).translated (0, 1));
-        keys.removeFromTop (28);
-        const auto two = keys.getHeight() >= 60;
-        auto first = keys.removeFromTop (juce::jmin (26, two ? keys.getHeight() / 2 - 3 : keys.getHeight()));
-        lane.on.setBounds (first.removeFromLeft (52));
+        keys.removeFromTop (26);
+        const auto rowHeight = juce::jlimit (16, 26, (keys.getHeight() - 4) / 2);
+        auto first = keys.removeFromTop (rowHeight);
+        keys.removeFromTop (4);
+        auto second = keys.removeFromTop (rowHeight);
+        lane.note = keys.getHeight() >= 14 ? keys.removeFromBottom (14) : juce::Rectangle<int>();
+        lane.on.setBounds (first.removeFromLeft (46));
         first.removeFromLeft (6);
-        lane.lock.setBounds (first.removeFromLeft (64));
+        lane.lock.setBounds (first.removeFromLeft (56));
         first.removeFromLeft (6);
-        lane.roll.setBounds (first.removeFromLeft (64));
+        lane.roll.setBounds (first.removeFromLeft (56));
         first.removeFromLeft (6);
-        const auto low = pr7s::hasLowString (l);
-        if (two)
+        lane.style.setBounds (first);
+        if (l != ComposerLayer::drums)
         {
-            lane.style.setBounds (first);
-            keys.removeFromTop (6);
-            auto second = keys.removeFromTop (26);
-            if (low)
-            {
-                lane.low.setBounds (second.removeFromRight (124));
-                second.removeFromRight (6);
-            }
-            lane.busy.setBounds (second.removeFromRight (96));
+            lane.octave.setBounds (second.removeFromRight (94));
             second.removeFromRight (6);
-            lane.track.setBounds (second);
         }
-        else
+        if (pr7s::hasLowString (l))
         {
-            auto rest = first;
-            const auto each = (rest.getWidth() - (low ? 18 : 12)) / (low ? 4 : 3);
-            lane.style.setBounds (rest.removeFromLeft (each));
-            rest.removeFromLeft (6);
-            lane.track.setBounds (rest.removeFromLeft (each));
-            rest.removeFromLeft (6);
-            lane.busy.setBounds (rest.removeFromLeft (each));
-            if (low)
-            {
-                rest.removeFromLeft (6);
-                lane.low.setBounds (rest);
-            }
+            lane.low.setBounds (second.removeFromRight (118));
+            second.removeFromRight (6);
         }
+        lane.busy.setBounds (second.removeFromRight (88));
+        second.removeFromRight (6);
+        lane.track.setBounds (second);
     }
 }
 
@@ -1818,9 +3180,9 @@ ComposerSuite::ComposerSuite (pr7s::Studio& s) : studio (s), composer (s)
         key->setWantsKeyboardFocus (false);
         addAndMakeVisible (*key);
     }
-    composeTab.setTooltip ("The composer: every layer stacked over the chords, SECTION and BUILD, the song so far");
-    ideasTab.setTooltip ("Every IDEAS card and setting (piano, guitar, bass, patterns, melody, drums) for the composer's chords. "
-                         "A card's USE IT menu puts it into its composer lane");
+    composeTab.setTooltip ("The Architect: every layer stacked over the chords, SECTION and BUILD, the song so far");
+    ideasTab.setTooltip ("Every IDEAS card and setting (piano, guitar, bass, patterns, melody, drums) for the Architect's chords. "
+                         "A card's USE IT menu puts it into its Architect lane");
     composeTab.onClick = [this] { showTab (Tab::compose); };
     ideasTab.onClick = [this] { showTab (Tab::ideas); };
     if (auto* settings = studio.getSettings())
@@ -1878,6 +3240,42 @@ void ComposerSuite::paint (juce::Graphics& g)
                 juce::Justification::centredLeft, true);
 }
 
+bool ComposerSuite::isInterestedInPart (int partId)
+{
+    return composer.canTakePart (partId);
+}
+
+void ComposerSuite::partDragHover (bool over)
+{
+    if (std::exchange (partHovering, over) != over)
+        repaint();
+}
+
+void ComposerSuite::partDropped (int partId)
+{
+    partDragHover (false);
+    showTab (Tab::compose);
+    if (auto* window = getTopLevelComponent())
+        window->toFront (true);
+    composer.dropPart (partId);
+}
+
+void ComposerSuite::paintOverChildren (juce::Graphics& g)
+{
+    if (! partHovering)
+        return;
+    // Lit in the family's gradient while a part is held over it, and what letting go does.
+    const auto area = getLocalBounds().toFloat().reduced (3.0f);
+    g.setGradientFill (ParagonLookAndFeel::familyGradient (area.getTopLeft(), area.getTopRight()));
+    g.drawRoundedRectangle (area, 8.0f, 4.0f);
+    auto note = getLocalBounds().withSizeKeepingCentre (620, 64);
+    g.setColour (juce::Colour (0xe0100c11));
+    g.fillRoundedRectangle (note.toFloat(), 10.0f);
+    g.setColour (juce::Colours::white);
+    g.setFont (ParagonLookAndFeel::titleFont (26.0f));
+    g.drawText ("LET GO TO BUILD A SECTION AROUND THIS RIFF", note, juce::Justification::centred, false);
+}
+
 void ComposerSuite::resized()
 {
     auto area = getLocalBounds();
@@ -1891,7 +3289,7 @@ void ComposerSuite::resized()
 
 //==============================================================================
 ComposerWindow::ComposerWindow (pr7s::Studio& studio)
-    : juce::DocumentWindow ("Paragon PR7-S: Composer", juce::Colour (0xff0c0a0d), juce::DocumentWindow::closeButton)
+    : juce::DocumentWindow ("Paragon PR7-S: Architect", juce::Colour (0xff0c0a0d), juce::DocumentWindow::closeButton)
 {
     suite = new ComposerSuite (studio);
     setContentOwned (suite, true);

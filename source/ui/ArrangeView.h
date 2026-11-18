@@ -4,6 +4,9 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
+#include "ui/PartDropTarget.h"
+
+class SectionEditor;   // (0.103.0, ui/SectionEditor.h)
 
 // Auto-Scroll, as the manual has it (the arrangement and the key editor
 // each have their own): on or off (F, or AUTO-SCROLL), and its settings menu
@@ -94,13 +97,15 @@ struct Timeline
     static constexpr int signatureHeight = 34;   // the signature track (0.45.0)
     int signatureRowHeight() const noexcept { return juce::jmax (28, juce::roundToInt (signatureHeight * rowZoom)); }
     static constexpr int markerHeight = 40;   // the marker track (0.49.0): cycle markers above, position markers below
+    static constexpr int sectionsHeight = 40; // (0.90.0) the SECTIONS row: the song's blocks
+    int sectionsRowHeight() const noexcept { return juce::jmax (30, juce::roundToInt (sectionsHeight * rowZoom)); }
     int markerRowHeight() const noexcept { return juce::jmax (32, juce::roundToInt (markerHeight * rowZoom)); }
     static constexpr int takeHeight = 52;   // a lane of takes (0.29.0): smaller than its track's row (our choice)
     int takeRowHeight() const noexcept { return juce::jmax (36, juce::roundToInt (takeHeight * rowZoom)); }
     struct Row
     {
         // (0.29.0) take: one of a track's lanes of takes (Show Lanes), under its row.
-        enum class Kind { track, lane, master, tempo, chords, take, signature, markers };   // (0.45.0: the signature track, under the tempo track; 0.49.0: the marker track, under it)
+        enum class Kind { track, lane, master, tempo, chords, take, signature, markers, sections };   // (0.45.0: the signature track, under the tempo track; 0.49.0: the marker track, under it)
         Kind kind = Kind::track;
         int busId = 0;          // a track's id, or the master's (0)
         int laneIndex = -1;     // a lane: its index in the bus's automation; a take lane: its lane
@@ -278,6 +283,10 @@ public:
     // no undo step. `onExternalDrag` stands in for the system's drag (tests); returns the file.
     juce::File dragPartOut();
     std::function<void (const juce::StringArray&)> onExternalDrag;
+    // (0.83.4) A part dragged over one of the studio's own windows that takes parts (the composer): it's
+    // handed over on release instead of moving. `findPartTarget` stands in for the screen in tests.
+    std::function<PartDropTarget* (juce::Point<float> screen)> findPartTarget;
+    bool isOverPartTarget() const noexcept { return partTarget != nullptr; }
     bool isDraggingOut() const noexcept { return draggingOut; }
     std::function<void (int partId)> onHarmonyVoices;   // its menu's Generate Harmony Voices (0.35.0)
     std::function<void()> onOpenAudioAlignment;   // the part's and range's menus (0.33.0)
@@ -319,6 +328,25 @@ public:
     juce::Rectangle<float> getMarkerBounds (int index) const;   // a marker's flag (a cycle marker's: its bar)
     int markerAt (juce::Point<float>) const;                     // the marker there, -1: none
     std::function<void()> onOpenMarkers;   // the menu's Markers window (Ctrl+M)
+
+    // The SECTIONS row (0.90.0, engine/SongSections.h): the song's blocks, each its name and bars. A click selects one
+    // (and puts the playhead at its start), a drag moves it to another place in the order (its music with it), a
+    // double-click opens the composer on it, a right-click its menu (name, length, insert, copy, delete). A double-
+    // click on the empty row after the last block (or + SECTION in the track list) adds one.
+    std::function<void (int index)> onOpenSection;
+    juce::Component::SafePointer<juce::Component> sectionEditor;   // (0.103.0: the one open, if any)
+    juce::Rectangle<float> getSectionArea() const;
+    juce::Rectangle<float> getSectionBounds (int index) const;   // a block where it's drawn (while dragged: where it would go)
+    int sectionBlockAt (juce::Point<float>) const;               // -1: none
+    int getSelectedSection() const noexcept;                     // its index, -1: none
+    void selectSection (int index);
+    int getSectionDragTarget() const noexcept { return drag == Drag::sectionMove ? sectionDragTo : -1; }
+    void changeSectionType (int index, const juce::String& type);   // (0.94.0: asks first when HUB SETTINGS says so)
+    void showSectionMenu (int index);                            // -1: the row's own menu (add a section)
+    // (0.103.0) A block's editor (a right-click on it): name, type, length, the song's key and the block's chords.
+    void showSectionEditor (int index);
+    SectionEditor* getSectionEditor() const;
+    void showAddSectionMenu (int insertAt, juce::Point<int> where = {});   // insertAt -1: after the last
 
     // Folder tracks (0.50.0, the manual's Folder Parts): a folder's row shows its tracks' parts as
     // blocks (where any of them has a part; each track a strip inside). A click on a block selects
@@ -422,12 +450,27 @@ public:
     const std::vector<int>& getChordSelection() const noexcept { return chordSelection; }
     bool hasSelectedChordEvents() const noexcept { return ! chordSelection.empty(); }
     void deleteSelectedChordEvents();
+    // (0.85.3, the owner) Chords as clips: Ctrl+C / X / V / D on the selected chords (pasted at the
+    // playhead, snapped), split at a beat (the SPLIT tool, or the playhead), glued to the next (GLUE).
+    void copySelectedChords (bool cut);
+    bool pasteChords();
+    bool hasChordClip() const noexcept { return ! chordClip.events.empty(); }
+    void duplicateSelectedChords();
+    void splitChordsAt (double beat);
+    void selectChords (const std::vector<int>& indices) { selectChordsAt (indices); repaint(); }
+    // What an edit just did to the key (a chord now out of the key, or the key changed with the scales
+    // following the chords): shown over the chord track for a few seconds. Empty: nothing.
+    juce::String getChordWarning() const { return chordWarning; }
+    // The edges of a chord's block that a drag resizes (5 px; the block at least 16 px wide).
+    static constexpr float chordEdgeGrab = 5.0f;
     juce::Rectangle<float> getChordArea() const;           // the chords' strip (the scales' below it)
     juce::Rectangle<float> getChordEventBounds (int index) const;
     void editChordEvent (int index);                      // the chord editor box (a double-click)
     ChordEventEditor* getChordEditor() noexcept { return chordEditor.getComponent(); }
     std::function<void()> onChordsToPads;                 // (the pads' view takes them)
     std::function<void()> onProgressions;   // the progression library (0.40.0)
+    std::function<void()> onBlueprints;   // (0.152.0) BLUEPRINTS: the SECTIONS row's menu
+    std::function<void()> onKeyCheck;   // (0.84.0) KEY CHECK: the part and chord menus
     std::function<void (std::vector<int> chordEvents)> onLineIdeas;
     std::function<void (std::vector<int> chordEvents)> onBuildSection;   // (0.57.0) IDEAS with BUILD SECTION open   // BASS & MELODY (0.18.0): for these chord events (none: the cycle's or all)
     std::optional<Timeline::Row> rowAt (float y) const;
@@ -444,6 +487,21 @@ public:
     const std::optional<DropPreview>& getDropPreview() const noexcept { return dropPreview; }
 
     void paint (juce::Graphics&) override;
+
+    // (0.165.0) While Stationary Cursor moves the whole view under the playing playhead, the arrangement
+    // is kept as a picture (a ring as wide as the view, in screen pixels): each frame copies it and draws
+    // only the strip the scroll uncovers. Anything else that asks for a redraw goes through these, which
+    // redraw those columns of the picture too (Component::repaint alone: only the playhead's strips, which
+    // aren't in the picture). The playhead and what stays put on the screen are drawn over it.
+    void repaint();
+    void repaint (int x, int y, int width, int height);
+    void repaint (juce::Rectangle<int>);
+    bool isScrollCacheActive() const;
+    void setScrollCacheForTests (std::optional<bool> on) { scrollCacheForced = on; }
+    int getScrollCacheColumnsDrawn() const noexcept { return cacheColumnsDrawn; }   // (tests) screen columns drawn last paint
+    void paintFreshForTests (juce::Graphics&);   // (tests) drawn whole, as without the picture
+    double scrollStep() const;   // (the smallest scroll that moves the picture by whole screen pixels; 0: none)
+
     void mouseDown (const juce::MouseEvent&) override;
     void mouseDrag (const juce::MouseEvent&) override;
     void mouseUp (const juce::MouseEvent&) override;
@@ -453,6 +511,28 @@ public:
     void mouseWheelMove (const juce::MouseEvent&, const juce::MouseWheelDetails&) override;
 
 private:
+    void paintContent (juce::Graphics&);
+    void paintPinned (juce::Graphics&);
+    void dirtyCache (juce::Rectangle<int>);
+    std::optional<bool> scrollCacheForced;
+    bool paintingCache = false;       // drawing into the picture: what stays put on the screen left out
+    bool playheadScroll = false;      // the playhead's own scroll: its repaint doesn't throw the picture away
+    juce::Image cacheImage;           // the ring (RGB, screen pixels)
+    struct CacheKey
+    {
+        int width = 0, height = 0, scrollY = 0;
+        float scale = 0.0f;
+        double pixelsPerBeat = 0.0, rowZoom = 0.0, barLength = 0.0;
+        int finish = 0;
+        bool operator== (const CacheKey&) const = default;
+    } cacheKey;
+    bool cacheValid = false;
+    juce::int64 cacheFrom = 0, cacheTo = 0;   // the song's screen pixels the ring holds
+    juce::int64 cacheBase = 0;                // the song's screen pixel at the ring's first column (set at each full redraw)
+    std::vector<std::pair<juce::int64, juce::int64>> cacheDirty;   // stretches to draw again
+    int cacheColumnsDrawn = 0;
+    int wholeFramesInARow = 0;   // (0.167.0) paints in a row that drew (nearly) all of the picture
+    float lastPaintScale = 1.0f;
     void changeListenerCallback (juce::ChangeBroadcaster*) override;
     void timerCallback() override;
     void paintPart (juce::Graphics&, juce::Rectangle<float>, const pr7s::Part&, juce::Colour, bool selected, bool recording) const;
@@ -469,6 +549,32 @@ private:
     pr7s::Studio& studio;
 
     juce::uint64 seenChange = 0;   // (0.34.3) the studio's change version last acted on
+    juce::uint64 seenContent = 0;   // (0.164.0) the content version: unchanged, a change was only a selection
+    // (0.174.0) What the rows were drawn from, for a change of parts alone (the layout version unchanged):
+    // only the rows of the tracks whose parts changed are redrawn (and the folders holding them).
+    juce::uint64 seenLayout = 0;
+    std::vector<std::pair<int, pr7s::PartList>> drawnParts;
+    pr7s::ChordTrack drawnChords;
+    void noteDrawnParts();
+    bool repaintPartChanges();
+    std::vector<juce::Rectangle<int>> lastPartRepaints;   // (tests)
+public:
+    const std::vector<juce::Rectangle<int>>& getPartRepaints() const noexcept { return lastPartRepaints; }
+private:
+    juce::uint64 seenRecording = 0;   // (0.173.0)
+    juce::Rectangle<int> recordingDrawn;
+    void repaintRecording();
+    int paintedSelection = 0;       // the selected track as last painted
+    void repaintSelectionChange();
+    // (0.123.0) The cycle as last drawn: a cycle drag's step repaints only the strips that changed.
+    juce::uint64 seenCycle = 0;
+    double shownCycleStart = -1.0, shownCycleEnd = -1.0;
+    bool shownCycleOn = false;
+    void repaintCycleChange();
+public:
+    int getCycleRepaints() const noexcept { return cycleRepaints; }   // (tests)
+private:
+    int cycleRepaints = 0;
     Timeline& timeline;
     Selection selection;
     int selectedPartId = 0;                     // its part's id (found again after the song changes)
@@ -477,9 +583,10 @@ private:
     enum class Drag { none, signatureMove, position, cycle, cycleMove, cycleLeft, cycleRight, move, resize, trimStart, fadeIn, fadeOut, points, band, draw,
                       erasePoints, linePoints, pointHandle, curve, segmentScale,
                       newPart, muteBand, zoomBand, play, rangeNew, rangeStart, rangeEnd, rangeMove, marquee,
-                      tempoPoints, tempoBand, tempoDraw, chordMove, comp, takeEdge, slip, audition, warpMarker,
+                      tempoPoints, tempoBand, tempoDraw, chordMove, chordStart, chordEnd, comp, takeEdge, slip, audition, warpMarker,
                       markerMove, markerStart, markerEnd, markerNewCycle,   // (0.49.0)
-                      folderMove };   // (0.50.0)
+                      folderMove,   // (0.50.0)
+                      sectionMove };   // (0.90.0) a block of the SECTIONS row dragged to another place in the order
     // WARP (0.32.0, the manual's Free Warp in the event display): the marker being dragged.
     int warpPartId = 0, warpIndex = -1;
     double warpTo = 0.0;
@@ -537,6 +644,15 @@ private:
     double marqueeBeat = 0.0;
     float marqueeRowY = 0.0f;
     bool scrollTowards (juce::Point<float>);   // past an edge: the view moves that way (true if it did)
+    void repaintBandChange (juce::Rectangle<float> before, juce::Rectangle<float> after);   // (0.84.1) only what the box's move changed
+    int ctrlToggledPart = 0;                   // (0.84.1) a selected part Ctrl-clicked: taken out on release unless dragged
+public:
+    // (0.84.1) Inside this far from the view's edge, a box or a part dragged scrolls the view (the owner's window
+    // reaches the screens' edges, where the mouse can't go past).
+    static constexpr float edgeScrollZone = 24.0f;
+    double getBandRepaintArea() const noexcept { return bandRepaintArea; }   // (tests: what the last box move redrew)
+private:
+    double bandRepaintArea = 0.0;
     juce::Point<float> pointDownAt;
     int anchor = -1;               // the point grabbed
     bool copyingPoints = false;
@@ -556,6 +672,8 @@ private:
     float lineValueAt (double t, float v1, float v2, double beatsInto, bool reverse) const;
     void paintAutomation (juce::Graphics&, const Timeline::Row&) const;
     void paintTempo (juce::Graphics&, const Timeline::Row&) const;
+    void paintTempoLabels (juce::Graphics&, const Timeline::Row&) const;   // (0.165.0: the scale's ends, pinned to the screen)
+    float dashStart (float left) const noexcept;   // (0.165.0) a dashed line's first dash at or before x, by the song
     bool tempoDown (const juce::MouseEvent&);
     void tempoDrag (const juce::MouseEvent&);
     void tempoUp();
@@ -571,6 +689,15 @@ private:
     int markerDragIndex = -1;
     bool markerNameAfter = false;   // Shift held when adding: the name box follows
     void paintMarkers (juce::Graphics&, const Timeline::Row&);
+    int sectionSelectedId = 0;          // (0.90.0) the block chosen (by id: kept through moves)
+    int sectionDragFrom = -1, sectionDragTo = -1;
+    float sectionDownX = 0.0f;
+    void paintSections (juce::Graphics&, const Timeline::Row&);
+    bool sectionDown (const juce::MouseEvent&);
+    void sectionDrag (const juce::MouseEvent&);
+    void sectionUp();
+    bool sectionDoubleClick (const juce::MouseEvent&);
+    std::vector<int> shownSectionOrder() const;   // the blocks' indices in the order drawn (a drag's on the way)
     void paintFolders (juce::Graphics&);
     bool folderDown (const juce::MouseEvent&);
     std::vector<int> folderDragIds;
@@ -585,8 +712,22 @@ private:
     bool signatureDown (const juce::MouseEvent&);
     void signatureDrag (const juce::MouseEvent&);
     void signatureUp();
-    std::vector<pr7s::ChordEvent> chordOriginal;
+    std::vector<pr7s::ChordEvent> chordOriginal;   // (0.85.3: with their lengths, as the drag began)
     double chordDownBeat = 0.0;
+    // (0.85.3) While a chord drag goes: the chords as they'd be (drawn instead of the song's), and what
+    // the drag will do when let go (one undo step then).
+    std::optional<pr7s::ChordTrack> chordPreview;
+    double chordDelta = 0.0, chordNewStart = 0.0, chordNewEnd = 0.0;
+    int chordEdited = -1;
+    std::vector<int> chordSelectionAtDown;
+    bool chordCopying = false;
+    pr7s::Studio::ChordClip chordClip;
+    juce::String chordWarning, chordWarningName;   // (the name: drawn in the chords' font)
+    juce::uint32 chordWarningUntil = 0;
+    const pr7s::ChordTrack& shownChordTrack() const;
+    int chordEdgeAt (juce::Point<float>, bool& atStart) const;
+    void noteChordKeyChange (const pr7s::ChordTrack& before);
+    void selectChordsAt (const std::vector<int>& indices);
     juce::Component::SafePointer<ChordEventEditor> chordEditor;
     bool chordDown (const juce::MouseEvent&);
     void chordDragTo (const juce::MouseEvent&);
@@ -625,6 +766,8 @@ private:
     double dragNewStart = 0.0, dragNewLength = 0.0;
     bool dragCopies = false, dragMoved = false;
     bool draggingOut = false;
+    juce::Component::SafePointer<juce::Component> partTarget;   // (0.83.4) the PartDropTarget the part is held over
+    void setPartTarget (PartDropTarget*);
     bool wantsDragOut (const juce::MouseEvent&) const;
     double lastPosition = 0.0;   // the playhead as last seen (Auto-Scroll follows a jump while stopped)
     float playheadX = -1.0e6f;   // where the playhead was last drawn (0.9.2: only its strip is redrawn as it moves)

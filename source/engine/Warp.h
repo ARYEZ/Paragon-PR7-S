@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include <juce_audio_basics/juce_audio_basics.h>
 
 #include "Project.h"
@@ -61,7 +63,10 @@ namespace pr7s
         size_t piecesKept() const noexcept { return pieces.size(); }
 
     private:
-        std::map<juce::String, std::shared_ptr<const juce::AudioBuffer<float>>> pieces, whole;
+        std::map<juce::String, std::shared_ptr<const juce::AudioBuffer<float>>> pieces;
+        // (0.83.1) The whole clips by an exact key of raw bytes (the numbers as they are, not written
+        // out as text: the key is made on every engine update for every warped clip, a fader step too).
+        std::map<std::string, std::shared_ptr<const juce::AudioBuffer<float>>> whole;
         juce::int64 samplesKept = 0, wholeSamplesKept = 0;
     };
 }

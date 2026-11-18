@@ -419,7 +419,7 @@ namespace pr7s::SessionLog
             return false;
         }
 
-        std::vector<std::unique_ptr<Captured>> captureThreads()
+        std::vector<std::unique_ptr<Captured>> captureThreads (bool screenOnly = false)
         {
             std::vector<DWORD> ids;
             const auto self = GetCurrentThreadId(), process = GetCurrentProcessId();
@@ -441,6 +441,8 @@ namespace pr7s::SessionLog
             });
             if (ids.size() > 160)
                 ids.resize (160);
+            if (screenOnly)   // (0.113.0: a slow moment: the screen's thread alone)
+                ids.erase (std::remove_if (ids.begin(), ids.end(), [] (DWORD id) { return id != screenThreadId; }), ids.end());
             std::vector<std::unique_ptr<Captured>> threads;
             for (const auto id : ids)
             {
@@ -598,14 +600,42 @@ namespace pr7s::SessionLog
            #endif
         }
 
+        // (0.113.0, the owner: a click on a track stuck the screen a second) A pause under the FROZEN limit:
+        // only the screen's thread is looked at, while it's still busy, and written with its calls by name.
+        void slowReport (double seconds)
+        {
+            writeRaw ("\r\n" + stamp() + "  SLOW: the screen has been busy " + juce::String (seconds, 1) + " seconds (still going).\r\n"
+                      + "  Under way:\r\n" + stepsUnderWay(), false);
+           #if defined (_WIN32)
+            const auto threads = captureThreads (true);
+            writeRaw (rawThreadReport (threads), false);
+            if (dbgLock.tryEnter())
+            {
+                for (const auto& c : threads)
+                    if (c->ok && c->handle != nullptr)
+                    {
+                        stackCopy = &c->copy;
+                        const auto calls = walkStack (c->handle, c->context, true);
+                        stackCopy = nullptr;
+                        writeRaw ("  " + c->label + ":\r\n" + calls, false);
+                    }
+                dbgLock.exit();
+            }
+            for (const auto& c : threads)
+                if (c->handle != nullptr)
+                    CloseHandle (c->handle);
+           #endif
+        }
+
         //======================================================================
         struct FreezeWatch final : juce::Thread
         {
             FreezeWatch (double s, double job) : juce::Thread ("PR7-S freeze watch"), limit (s), jobLimit (job) {}
             void run() override
             {
-                auto frozen = false, stuck = false;
-                auto frozenSince = 0.0, stuckSince = 0.0, lastRefresh = -1.0e9;
+                auto frozen = false, stuck = false, slow = false;
+                auto frozenSince = 0.0, stuckSince = 0.0, lastRefresh = -1.0e9, lastSlow = -1.0e9;
+                auto slowReports = 0;
                 while (! threadShouldExit())
                 {
                    #if defined (_WIN32)
@@ -618,11 +648,25 @@ namespace pr7s::SessionLog
                    #else
                     juce::ignoreUnused (lastRefresh);
                    #endif
-                    wait (250);
+                    wait (100);
                     const auto at = nowSeconds();
                     const auto last = lastBeat.load();
                     if (last > 0.0)
                     {
+                        // (0.113.0) A slow moment: written once a pause, at most one every 15 seconds and 30 a session.
+                        if (! frozen && ! slow && at - last > slowLimit && at - lastSlow > 15.0 && slowReports < 30 && ! closingNow.load())
+                        {
+                            slow = true;
+                            lastSlow = at;
+                            ++slowReports;
+                            slowReport (at - last);
+                        }
+                        else if (slow && at - last < slowLimit)
+                        {
+                            writeRaw (stamp() + "  The screen answered again (that pause lasted under " + juce::String (at - lastSlow + slowLimit + 0.25, 1)
+                                      + " seconds).", false);
+                            slow = false;
+                        }
                         if (! frozen && at - last > limit.load())
                         {
                             frozen = true;
@@ -665,6 +709,7 @@ namespace pr7s::SessionLog
                 }
             }
             std::atomic<double> limit;
+            static constexpr double slowLimit = 0.7;   // (the screen's beat comes every 250 ms)
             const double jobLimit;
             std::atomic<double> lastBeat { 0.0 };
         };

@@ -57,7 +57,11 @@ MediaRack::MediaRack (pr7s::Studio& s) : studio (s), database (s.getMediaBay())
     search.setColour (juce::TextEditor::textColourId, ParagonColours::text);
     search.setColour (juce::TextEditor::outlineColourId, ParagonColours::panelEdge);
     search.setColour (juce::TextEditor::focusedOutlineColourId, ParagonColours::accent);
-    search.onTextChange = [this] { setSearch (search.getText()); };
+    search.onTextChange = [this]
+    {
+        typedSearch = search.getText();
+        typedAt = juce::Time::getMillisecondCounterHiRes();
+    };
     addAndMakeVisible (search);
 
     for (auto* key : { &resetSearchKey, &allKey, &backKey, &homeKey, &audioKey, &midiKey, &presetsKey, &songsKey, &shuffleKey, &filterKey,
@@ -274,6 +278,7 @@ juce::String MediaRack::getAddress() const
 
 void MediaRack::setSearch (const juce::String& text)
 {
+    typedAt = -1.0;
     if (search.getText() != text)
         search.setText (text, false);
     // (A search on HOME looks through every file, as the manual's.)
@@ -363,11 +368,20 @@ std::vector<MediaRack::Tile> MediaRack::tiles() const
     auto* self = const_cast<MediaRack*> (this);
     if (state.page == Page::home)
     {
+        if (! counted || countedGeneration != database.getGeneration())
+        {
+            loopCount = presetCount = 0;
+            for (const auto& item : database.getItems())
+                if (item.type == pr7s::MediaType::audio || item.type == pr7s::MediaType::midi)
+                    ++loopCount;
+                else if (item.type == pr7s::MediaType::trackPreset || item.type == pr7s::MediaType::pluginPreset)
+                    ++presetCount;
+            counted = true;
+            countedGeneration = database.getGeneration();
+        }
         const auto count = [this] (std::set<pr7s::MediaType> types)
         {
-            pr7s::MediaQuery q;
-            q.types = types;
-            return (int) database.find (q).size();
+            return types.count (pr7s::MediaType::audio) > 0 ? loopCount : presetCount;
         };
         auto& host = studio.getPluginHost();
         const auto instruments = host.getInstruments().size(), effects = host.getEffects().size();
@@ -389,6 +403,23 @@ std::vector<MediaRack::Tile> MediaRack::tiles() const
         }
     }
     return found;
+}
+
+juce::String MediaRack::detailOf (const pr7s::MediaItem& item) const
+{
+    juce::StringArray detail;
+    detail.add (pr7s::mediaTypeName (item.type));
+    if (item.presetPlugin.isNotEmpty())
+        detail.add (item.presetPlugin.toUpperCase());
+    if (item.tempo() > 0.0)
+        detail.add (juce::String (item.tempo(), 0) + " BPM");
+    if (item.keyName().isNotEmpty())
+        detail.add (item.keyName());
+    if (item.tags.category.isNotEmpty())
+        detail.add (MediaUi::joinedPair (item.tags.category, item.tags.subCategory).toUpperCase());
+    if (item.tags.style.isNotEmpty())
+        detail.add (item.tags.style.toUpperCase());
+    return detail.joinIntoString ("  ");
 }
 
 std::vector<juce::Rectangle<int>> MediaRack::tileBounds (int count) const
@@ -593,20 +624,8 @@ void MediaRack::rebuild()
                 row.file = item.file;
                 row.type = item.type;
                 row.text = item.name;
-                juce::StringArray detail;
-                detail.add (pr7s::mediaTypeName (item.type));
-                if (item.presetPlugin.isNotEmpty())
-                    detail.add (item.presetPlugin.toUpperCase());
-                if (item.tempo() > 0.0)
-                    detail.add (juce::String (item.tempo(), 0) + " BPM");
-                if (item.keyName().isNotEmpty())
-                    detail.add (item.keyName());
-                if (item.tags.category.isNotEmpty())
-                    detail.add (joinedPair (item.tags.category, item.tags.subCategory).toUpperCase());
-                if (item.tags.style.isNotEmpty())
-                    detail.add (item.tags.style.toUpperCase());
-                row.detail = detail.joinIntoString ("  ");
-                rows.push_back (row);
+                row.item = index;   // (0.163.0: the detail made when the row is first drawn)
+                rows.push_back (std::move (row));
             }
             break;
         }
@@ -889,10 +908,13 @@ void MediaRack::paintListBoxItem (int index, juce::Graphics& g, int width, int h
     const auto* row = getRow (index);
     if (row == nullptr)
         return;
+    if (row->kind == Row::Kind::media && row->detail.isEmpty() && juce::isPositiveAndBelow (row->item, (int) database.getItems().size()))
+        if (const auto& item = database.getItems()[(size_t) row->item]; item.file == row->file)
+            rows[(size_t) index].detail = detailOf (item);
     auto area = juce::Rectangle<int> (0, 0, width, height);
     if (row->kind == Row::Kind::heading)
     {
-        g.setColour (ParagonColours::accent);
+        gradient (g, area.reduced (8, 0).withWidth (juce::jmin (width - 16, 200)));
         g.setFont (ParagonLookAndFeel::titleFont (13.0f));
         g.drawText (row->text, area.reduced (8, 0).withTrimmedTop (6), juce::Justification::centredLeft, true);
         g.setColour (ParagonColours::panelEdge);
@@ -900,12 +922,15 @@ void MediaRack::paintListBoxItem (int index, juce::Graphics& g, int width, int h
         return;
     }
     if (selected)
-        g.fillAll (ParagonColours::accent.withAlpha (0.22f));
+    {
+        gradient (g, area, 0.24f);
+        g.fillRect (area);
+    }
     else if (index % 2 == 1)
         g.fillAll (juce::Colour (0xff120f13));
     if (row->file == previewing && studio.isMediaPreviewing() && row->file != juce::File())
     {
-        g.setColour (ParagonColours::accent);
+        gradient (g, juce::Rectangle<int> (0, 0, 3, height), 1.0f, true);
         g.fillRect (0, 0, 3, height);
     }
     area.reduce (8, 2);
@@ -1128,8 +1153,21 @@ void MediaRack::refreshKeys()
 
 void MediaRack::timerCallback()
 {
-    if (database.takeScanResults())
+    if (typedAt >= 0.0 && juce::Time::getMillisecondCounterHiRes() - typedAt >= 180.0)
+    {
+        typedAt = -1.0;
+        setSearch (typedSearch);
+    }
+    // (0.174.0) Hidden (the right zone closed): nothing to follow. It looked for scans, read the settings
+    // and checked the previewer ten times a second all the same.
+    if (! isShowing())
+        return;
+    database.takeScanResults();
+    if (database.getScansTaken() != scansSeen)
+    {
+        scansSeen = database.getScansTaken();
         rebuild();
+    }
     // Favorites added in the MediaBay window's file browser (0.22.1) show here too.
     if (auto* settings = studio.getSettings(); settings != nullptr && ++favoritesCheck % 20 == 0)
     {
@@ -1155,9 +1193,9 @@ void MediaRack::paint (juce::Graphics& g)
     // The tab row: MEDIA (the only tab), lit.
     auto tabRow = getLocalBounds().removeFromTop (tabHeight);
     auto tab = tabRow.removeFromLeft (96).reduced (4, 4);
-    g.setColour (ParagonColours::accent.withAlpha (0.2f));
+    gradient (g, tab, 0.2f);
     g.fillRoundedRectangle (tab.toFloat(), 3.0f);
-    g.setColour (ParagonColours::accent);
+    gradient (g, tab);
     g.fillRect (tab.getX(), tab.getBottom() - 2, tab.getWidth(), 2);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (15.0f));
@@ -1225,7 +1263,7 @@ void MediaRack::paintPreviewer (juce::Graphics& g)
             const auto h = juce::jmin (1.0f, peak) * wave.getHeight() * 0.48f;
             shape.addRectangle (wave.getX() + (float) x, wave.getCentreY() - h, 1.0f, juce::jmax (1.0f, h * 2.0f));
         }
-        g.setColour (pr7s::FamilyColours::orange.withAlpha (0.8f));
+        gradient (g, wave, 0.85f);
         g.fillPath (shape);
     }
     else

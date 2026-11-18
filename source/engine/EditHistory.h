@@ -18,6 +18,7 @@ namespace pr7s
         juce::String action;    // "Move Part", "Volume" ...
         juce::String details;   // "Bass: Verse riff" (and whatever the owner types)
         juce::Time time;
+        bool named = false;     // (0.83.2) the action worked out yet (only when the history is looked at)
     };
 
     HistoryStep describeEdit (const Project& before, const Project& after);

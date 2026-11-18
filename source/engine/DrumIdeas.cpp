@@ -1,6 +1,9 @@
 #include "engine/DrumIdeas.h"
 #include "engine/MidiImport.h"
 
+#include <array>
+#include <map>
+
 #include <cstring>
 
 namespace pr7s
@@ -228,7 +231,7 @@ namespace pr7s
     {
         std::vector<double> hits;
         for (const auto& n : drums.notes)
-            if (n.pitch == GmDrum::kick || n.pitch == 35)
+            if (n.pitch == GmDrum::kick || n.pitch == 35 || n.pitch == 34)   // (34: the PR7-D Map's open kick, 0.107.0)
                 hits.push_back (n.beat);
         std::sort (hits.begin(), hits.end());
         hits.erase (std::unique (hits.begin(), hits.end(), [] (double a, double b) { return std::abs (a - b) < 1.0e-6; }), hits.end());
@@ -328,20 +331,58 @@ namespace pr7s
     }
 
     //==========================================================================
+    namespace
+    {
+        juce::StringArray styleWordsOf (GuitarStyle style)
+        {
+            switch (style)
+            {
+                case GuitarStyle::rock: return { "rock", "pop", "punk", "hard" };
+                case GuitarStyle::thrash: return { "thrash", "speed", "skank", "blast", "death" };
+                case GuitarStyle::numetal: return { "nu metal", "nu-metal", "numetal", "nu_metal", "bounce", "hip hop", "hiphop" };
+                case GuitarStyle::metalcore: return { "core", "breakdown", "djent", "chug" };
+                case GuitarStyle::shred: return { "power", "prog", "double", "shred", "speed" };
+                case GuitarStyle::groove: return { "groove", "pantera", "sludge", "nu metal", "nu-metal", "bounce" };
+            }
+            return {};
+        }
+
+        // A groove's score from its words (lower case) and tempo (0: not known).
+        int grooveScore (const juce::String& text, double bpm, GuitarStyle style, double songBpm)
+        {
+            auto score = 0;
+            for (const auto& w : styleWordsOf (style))
+                if (text.contains (w))
+                    score += 4;
+            if (style != GuitarStyle::rock && text.contains ("metal"))
+                score += 1;
+            if (text.contains ("fill"))
+                score -= 3;
+            if (bpm > 0.0 && songBpm > 0.0)
+            {
+                auto ratio = songBpm / bpm;
+                for (const auto k : { 0.5, 2.0 })
+                    if (std::abs (std::log2 (ratio * k)) < std::abs (std::log2 (ratio)))
+                        ratio *= k;
+                const auto off = std::abs (std::log2 (ratio));
+                score += off < 0.05 ? 4 : off < 0.12 ? 2 : off > 0.3 ? -2 : 0;
+            }
+            return score;
+        }
+
+        void sortGrooves (std::vector<LibraryGroove>& out)
+        {
+            std::stable_sort (out.begin(), out.end(), [] (const LibraryGroove& a, const LibraryGroove& b)
+            {
+                return a.score != b.score ? a.score > b.score : a.name.compareNatural (b.name) < 0;
+            });
+        }
+    }
+
     std::vector<LibraryGroove> findLibraryGrooves (const std::vector<MediaItem>& items, GuitarStyle style, double songBpm)
     {
         static const juce::StringArray drumWords { "drum", "groove", "beat", "kick", "snare", "ggd", "toontrack", "ezd", "ezdrummer", "sd3",
                                                    "superior", "getgood", "addictive", "bfd", "mtpdk", "perfect drums" };
-        juce::StringArray styleWords;
-        switch (style)
-        {
-            case GuitarStyle::rock: styleWords = { "rock", "pop", "punk", "hard" }; break;
-            case GuitarStyle::thrash: styleWords = { "thrash", "speed", "skank", "blast", "death" }; break;
-            case GuitarStyle::numetal: styleWords = { "nu metal", "nu-metal", "numetal", "nu_metal", "bounce", "hip hop", "hiphop" }; break;
-            case GuitarStyle::metalcore: styleWords = { "core", "breakdown", "djent", "chug" }; break;
-            case GuitarStyle::shred: styleWords = { "power", "prog", "double", "shred", "speed" }; break;
-            case GuitarStyle::groove: styleWords = { "groove", "pantera", "sludge", "nu metal", "nu-metal", "bounce" }; break;
-        }
         std::vector<LibraryGroove> out;
         for (const auto& item : items)
         {
@@ -353,30 +394,195 @@ namespace pr7s
                 drummy = drummy || text.contains (w);
             if (! drummy)
                 continue;
-            auto score = 0;
-            for (const auto& w : styleWords)
-                if (text.contains (w))
-                    score += 4;
-            if (style != GuitarStyle::rock && text.contains ("metal"))
-                score += 1;
-            if (text.contains ("fill"))
-                score -= 3;
             const auto bpm = item.tempo();
-            if (bpm > 0.0 && songBpm > 0.0)
-            {
-                auto ratio = songBpm / bpm;
-                for (const auto k : { 0.5, 2.0 })
-                    if (std::abs (std::log2 (ratio * k)) < std::abs (std::log2 (ratio)))
-                        ratio *= k;
-                const auto off = std::abs (std::log2 (ratio));
-                score += off < 0.05 ? 4 : off < 0.12 ? 2 : off > 0.3 ? -2 : 0;
-            }
-            out.push_back ({ item.file, item.name, item.file.getParentDirectory().getFileName(), bpm, score });
+            out.push_back ({ item.file, item.name, item.file.getParentDirectory().getFileName(), bpm, grooveScore (text, bpm, style, songBpm) });
+            if (item.beats > 0.0)   // (0.137.0: whole bars, a 4/4 bar's beats; a groove ending a hair short of a bar line counts it)
+                out.back().bars = juce::jmax (1, (int) std::ceil (item.beats / 4.0 - 0.05));
         }
-        std::stable_sort (out.begin(), out.end(), [] (const LibraryGroove& a, const LibraryGroove& b)
+        for (auto& g : out)
+            classifyGroove (g);   // (0.112.1)
+        sortGrooves (out);
+        return out;
+    }
+
+    std::vector<LibraryGroove> findPr7dGrooves (const Pr7dLibrary& library, GuitarStyle style, double songBpm, double songBarBeats)
+    {
+        std::vector<LibraryGroove> out;
+        out.reserve (library.grooves.size());
+        for (const auto& g : library.grooves)
         {
-            return a.score != b.score ? a.score > b.score : a.name.compareNatural (b.name) < 0;
-        });
+            if (songBarBeats > 0.0 && std::abs (g.barBeats() - songBarBeats) > 1.0e-6)
+                continue;
+            LibraryGroove groove { g.file, g.name, g.folder, g.bpm, 0 };
+            groove.tags = g.tags.joinIntoString ("|");
+            groove.layout = g.layout;
+            groove.bars = g.bars;   // (0.137.0)
+            groove.rhythm = g.rhythm;
+            groove.score = grooveScore ((g.file.getFullPathName() + " " + groove.tags).toLowerCase(), g.bpm, style, songBpm);
+            out.push_back (std::move (groove));
+        }
+        for (auto& g : out)
+            classifyGroove (g);   // (0.112.1)
+        sortGrooves (out);
+        return out;
+    }
+
+    namespace
+    {
+        // (0.106.0) A groove file's notes (every track), read once and kept by path and date: the composer asks for
+        // them on every change.
+        std::vector<Note> grooveNotes (const juce::File& file, juce::String& error)
+        {
+            struct Kept { juce::Time date; std::vector<Note> notes; };
+            static juce::CriticalSection lock;
+            static std::map<juce::String, Kept> kept;
+            const auto date = file.getLastModificationTime();
+            {
+                const juce::ScopedLock sl (lock);
+                if (const auto found = kept.find (file.getFullPathName()); found != kept.end() && found->second.date == date)
+                    return found->second.notes;
+            }
+            std::vector<Note> notes;
+            if (const auto read = readMidiFile (file, error))
+                for (const auto& track : read->tracks)
+                    notes.insert (notes.end(), track.notes.begin(), track.notes.end());
+            else
+                return {};
+            const juce::ScopedLock sl (lock);
+            if (kept.size() > 256)
+                kept.clear();
+            kept[file.getFullPathName()] = { date, notes };
+            return notes;
+        }
+
+        // (0.107.0) A groove's notes on the drum track's notes (PR7-D's grooves: from their folder's layout; notes no
+        // drum plays there left out).
+        std::vector<Note> notesOf (const LibraryGroove& groove, juce::String& error)
+        {
+            auto notes = grooveNotes (groove.file, error);
+            if (groove.layout < 0 || groove.notes == DrumNotes::asWritten)
+                return notes;
+            std::vector<Note> out;
+            out.reserve (notes.size());
+            for (auto n : notes)
+                if (const auto pitch = convertDrumNote (n.pitch, groove.layout, groove.notes); pitch >= 0)
+                {
+                    n.pitch = pitch;
+                    out.push_back (n);
+                }
+            return out;
+        }
+
+        const std::array<juce::StringArray, 7>& sectionWords()
+        {
+            static const std::array<juce::StringArray, 7> words {
+                juce::StringArray { "intro" }, juce::StringArray { "verse" }, juce::StringArray { "chorus", "refrain", "hook" },
+                juce::StringArray { "bridge", "middle 8", "interlude" }, juce::StringArray { "breakdown" },
+                juce::StringArray { "outro", "ending" }, juce::StringArray { "solo" } };
+            return words;
+        }
+    }
+
+    const juce::StringArray& excludedGrooveWords()
+    {
+        static const juce::StringArray words { "electronic", "electro", "brush", "jazz", "big band", "bigband", "big-band", "r&b", "rnb", "r'n'b",
+                                               "r n b", "rhythm and blues", "reggae" };
+        return words;
+    }
+
+    void classifyGroove (LibraryGroove& g)
+    {
+        {
+            // (0.137.0) The folders on its path (not the file's own name) and its labels.
+            const auto folders = (g.file.getParentDirectory().getFullPathName() + " " + g.tags).toLowerCase();
+            g.toontrack = g.file.getParentDirectory().getFullPathName().toLowerCase().contains ("toontrack");
+            g.excluded = false;
+            for (const auto& w : excludedGrooveWords())
+                if (folders.contains (w))
+                {
+                    g.excluded = true;
+                    break;
+                }
+        }
+        const auto& words = sectionWords();
+        const auto text = (g.file.getFullPathName() + " " + g.name + " " + g.tags).toLowerCase();   // (0.107.0: PR7-D's labels too)
+        g.fill = text.contains ("fill");
+        g.sectionMask = 0;
+        for (int k = 0; k < (int) words.size(); ++k)
+            for (const auto& w : words[(size_t) k])
+                if (text.contains (w))
+                {
+                    g.sectionMask |= 1 << k;
+                    break;
+                }
+    }
+
+    std::vector<LibraryGroove> libraryGroovesFor (const std::vector<LibraryGroove>& found, int section, bool fills, size_t limit, bool ownersRules)
+    {
+        const auto& words = sectionWords();
+        section = juce::jlimit (0, (int) words.size() - 1, section);
+        // (0.112.1) Each groove's score from its words worked out once (classifyGroove), only the indices sorted,
+        // only the best `limit` copied out: the same answer as scoring and sorting every groove each time.
+        std::vector<std::pair<int, size_t>> scored;   // (score, index in `found`)
+        scored.reserve (found.size());
+        LibraryGroove worked;
+        for (size_t i = 0; i < found.size(); ++i)
+        {
+            const auto* c = &found[i];
+            if (c->sectionMask < 0)   // (a groove made by hand: worked out here)
+            {
+                worked = found[i];
+                classifyGroove (worked);
+                c = &worked;
+            }
+            if (c->fill != fills || (ownersRules && c->excluded))
+                continue;
+            auto score = found[i].score + (fills ? 3 : 0);   // (findLibraryGrooves took 3 off for a fill)
+            if (ownersRules && c->toontrack)
+                score += 1000;
+            for (int k = 0; k < (int) words.size(); ++k)
+                if ((c->sectionMask & (1 << k)) != 0)
+                    score += k == section ? 6 : -3;
+            scored.push_back ({ score, i });
+        }
+        const auto better = [] (const std::pair<int, size_t>& a, const std::pair<int, size_t>& b)
+        {
+            return a.first != b.first ? a.first > b.first : a.second < b.second;   // (as the stable sort by score kept them)
+        };
+        const auto wanted = limit > 0 ? juce::jmin (limit, scored.size()) : scored.size();
+        std::partial_sort (scored.begin(), scored.begin() + (std::ptrdiff_t) wanted, scored.end(), better);
+        std::vector<LibraryGroove> out;
+        out.reserve (wanted);
+        for (size_t i = 0; i < wanted; ++i)
+        {
+            out.push_back (found[scored[i].second]);
+            if (out.back().sectionMask < 0)
+                classifyGroove (out.back());
+            out.back().score = scored[i].first - (ownersRules && out.back().toontrack ? 1000 : 0);
+        }
+        return out;
+    }
+
+    std::vector<LineNote> libraryFillBar (const LibraryGroove& groove, double beatsPerBar)
+    {
+        juce::String error;
+        const auto notes = notesOf (groove, error);
+        if (notes.empty() || beatsPerBar <= 0.0)
+            return {};
+        auto end = 0.0;
+        for (const auto& n : notes)
+            end = juce::jmax (end, n.start);
+        const auto lastBar = std::floor (end / beatsPerBar + 1.0e-9) * beatsPerBar;
+        auto first = end;
+        for (const auto& n : notes)
+            if (n.start >= lastBar - 1.0e-9)
+                first = juce::jmin (first, n.start);
+        const auto from = std::floor ((first - lastBar) / (beatsPerBar / 4.0) + 1.0e-9) * (beatsPerBar / 4.0) + lastBar;
+        std::vector<LineNote> out;
+        for (const auto& n : notes)
+            if (n.start >= from - 1.0e-9)
+                out.push_back ({ n.start - from, n.length, n.pitch, n.velocity });
+        std::stable_sort (out.begin(), out.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
         return out;
     }
 
@@ -384,17 +590,10 @@ namespace pr7s
     {
         if (spans.empty() || beatsPerBar <= 0.0)
             return std::nullopt;
-        const auto file = readMidiFile (groove.file, error);
-        if (! file)
-            return std::nullopt;
-        std::vector<Note> notes;
+        auto notes = notesOf (groove, error);
         auto end = 0.0;
-        for (const auto& track : file->tracks)
-            for (const auto& n : track.notes)
-            {
-                notes.push_back (n);
-                end = juce::jmax (end, n.start + n.length);
-            }
+        for (const auto& n : notes)
+            end = juce::jmax (end, n.start + n.length);
         if (notes.empty())
         {
             error = "No notes in " + groove.file.getFileName();

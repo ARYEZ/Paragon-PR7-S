@@ -2,6 +2,8 @@
 
 #include "ui/LinesPage.h"
 #include "ui/ProgressionsPage.h"
+#include "ui/KeyCheckPage.h"
+#include "ui/BlueprintsPage.h"
 #include "ui/ComposerPage.h"
 #include "ui/BandRecordPage.h"
 #include "ui/MediaBayPage.h"
@@ -78,6 +80,13 @@ public:
     // The Hub (0.12.0): the start window, HUB in the header. What it asks for
     // is done here, after the unsaved-changes question; it closes once a song is open.
     void openHub();
+    // (0.85.3, the owner) The studio window's X: the song closes (after the unsaved-changes question)
+    // and the Hub shows on its own; the Hub's X then quits. A song opened from the Hub brings the
+    // studio back. `showHubAlone` is the same without closing the song (at start).
+    void closeToHub();
+    void showHubAlone();
+    bool isAtHub() const noexcept { return atHub; }
+    std::function<void()> onQuit;   // (Main: the program ends)
     // The Tempo Track Editor (0.13.0, Ctrl+T as the manual has it): opened, or closed if it's open.
     void toggleTempoEditor();
     // The Drum Map Setup (0.26.0): its window (the MIDI editor's MAP menu, the drum list's menu, the Inspector's DRUM MAP).
@@ -104,10 +113,15 @@ public:
     // BASS & MELODY (0.18.0): ideas for these chord events (none: the cycle's, else all), in a window of its own.
     void openLineIdeas (std::vector<int> chordEvents = {}, bool buildSection = false);   // (0.57.0: with BUILD SECTION open)
     void openProgressions();
+    void openBlueprints();   // (0.152.0) BLUEPRINTS: song layouts as presets
+    BlueprintsWindow* getBlueprintsWindow() noexcept { return blueprintsWindow.get(); }
+    void openKeyCheck();   // (0.84.0) KEY CHECK: notes and chords outside the key
+    KeyCheckWindow* getKeyCheckWindow() noexcept { return keyCheckWindow.get(); }
     void openEq (int busId);   // (0.43.0) the EQ window on a channel (one window: moved to another channel)
     EqWindow* getEqWindow() noexcept { return eqWindow.get(); }   // the progression library (0.40.0): opened, or brought to the front
     ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
     void openComposer();   // (0.58.0) THE COMPOSER
+    void openSectionInComposer (int index);   // (0.90.0) the SECTIONS row's block double-clicked: the composer on it
     void openBandRecord();   // (0.82.0) LEARN MY BAND
     BandRecordWindow* getBandRecordWindow() noexcept { return bandRecordWindow.get(); }
     ComposerWindow* getComposerWindow() noexcept { return composerWindow.get(); }
@@ -308,12 +322,16 @@ private:
     std::unique_ptr<juce::DocumentWindow> keysWindow, hubWindow, tempoEditorWindow, drumMapWindow, automationWindow, alignmentWindow, variAudioWindow, tempoDetectionWindow,
                                           markersWindow, historyWindow;
     std::unique_ptr<juce::MouseListener> historyOpener;   // (0.83.0) right-click on UNDO / REDO
+    bool atHub = false;   // (0.85.3) the studio window hidden, the Hub alone
+    void showStudioAgain();
 public:
     bool historyRightClick = false;
 private:
     int trackListScrollY = 0;          // (0.34.1) what the track list was last laid out for
     double trackListRowZoom = 1.0;
     std::unique_ptr<ProgressionsWindow> progressionsWindow;
+    std::unique_ptr<KeyCheckWindow> keyCheckWindow;
+    std::unique_ptr<BlueprintsWindow> blueprintsWindow;
     std::unique_ptr<ComposerWindow> composerWindow;
     std::unique_ptr<BandRecordWindow> bandRecordWindow;
     std::unique_ptr<EqWindow> eqWindow;
@@ -376,7 +394,7 @@ private:
     bool inspectorShown = true;
     bool keysToEditor = false;
     bool rangeCopiedLast = false;
-    enum class Copied { none, range, notes, parts };
+    enum class Copied { none, range, notes, parts, chords };
     Copied copiedLast = Copied::none;   // what Ctrl+V pastes in the arrangement
     bool wasWide = false;            // the last layout's: turning wide opens the mixer, short, racks hidden   // Ctrl+V: a range's contents (in the arrangement), else notes (the key editor)
     juce::ScrollBar arrangeAcross { false }, arrangeDown { true };

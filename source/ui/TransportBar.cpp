@@ -37,7 +37,7 @@ TransportBar::TransportBar (pr7s::Studio& studioToUse)
     stopKey.setTooltip ("Stop. Press again to go back to where playing started. Space toggles play and stop");
     playKey.setTooltip ("Play. Space");
     recordKey.setTooltip ("Record into the armed track (red R in the track list). R key. Press again while recording to stop recording and keep playing. "
-                          "Right-click: the record modes (what happens to what's there, and to a cycle's laps)");
+                          "Recording again over a take replaces it. Right-click: the record modes, and Keep Every Take on a Lane of Its Own");
     cycleKey.setTooltip ("CYCLE: play round the range marked on the ruler (drag across the ruler's top strip to set it). / key");
     clickKey.setTooltip ("CLICK: the metronome, on every beat (higher on the first of each bar). C key");
 
@@ -105,12 +105,21 @@ void TransportBar::timerCallback()
 
 void TransportBar::followOutput()
 {
-    // (0.73.2, the owner asked) OUT holds the loudest peak since it was last clicked, as a mixer's
-    // max readout does. The output's peaks are read every tick (30 a second, so none is missed);
-    // the number only ever rises, so the screen is redrawn only when a louder peak comes.
+    // (0.131.0, the owner asked) The level going out now, as the channel meters show, as a number: the
+    // output's peaks are read every tick (30 a second, so none is missed) and the loudest of each 5 s
+    // shown when they're over (it was the loudest since OUT was clicked, 0.73.2). Repainted only then.
     auto& engine = studio.getEngine();
     outPeak = juce::jmax (outPeak, engine.getOutputMeter (0).takePeak(), engine.getOutputMeter (1).takePeak());
+    if (++outTicks < outWindowTicks)
+        return;
+    showOutPeak();
+}
+
+void TransportBar::showOutPeak()
+{
     const auto db = juce::Decibels::gainToDecibels (outPeak, LevelMeter::minDb);
+    outPeak = 0.0f;
+    outTicks = 0;
     if (std::abs (db - shownOutDb) >= 0.05f)
     {
         shownOutDb = db;
@@ -120,9 +129,10 @@ void TransportBar::followOutput()
 
 void TransportBar::resetOutPeak()
 {
-    outPeak = 0.0f;
-    shownOutDb = LevelMeter::minDb;
-    repaint (outScreen.expanded (4.0f).getSmallestIntegerContainer());
+    // A click: what this window has heard so far shown now, and a new window from here.
+    auto& engine = studio.getEngine();
+    outPeak = juce::jmax (outPeak, engine.getOutputMeter (0).takePeak(), engine.getOutputMeter (1).takePeak());
+    showOutPeak();
 }
 
 void TransportBar::followPerformance()
@@ -147,8 +157,8 @@ juce::String TransportBar::getTooltip()
                  ? "The tempo track's tempo where the playhead is (change it on the tempo track). Right-click: Activate Tempo Track"
                  : "The song's tempo: drag up or down, or double-click to type it. Right-click: Activate Tempo Track, or add the tempo track";
     if (outScreen.contains (getMouseXYRelative().toFloat()))
-        return "OUT: the loudest peak of the output (left or right) since you last clicked here, in dB. "
-               "Red over 0 dB (clipping). Click to start again";
+        return "OUT: the level going out (the louder of left and right): the loudest peak of each 5 seconds, in dB. "
+               "Red over 0 dB (clipping). Click to see it now";
     if (! cpuScreen.contains (getMouseXYRelative().toFloat()))
         return {};
     const auto overloads = studio.getEngine().getOverloads();   // (not takePerformance: that takes the peak the meter shows)
@@ -346,7 +356,7 @@ void TransportBar::resized()
 
 void TransportBar::paint (juce::Graphics& g)
 {
-    Pearl::paintUnit (g, getLocalBounds().toFloat().reduced (4.0f), satin);
+    Pearl::paintUnit (g, getLocalBounds().toFloat().reduced (4.0f), satin, unitCache);
     glasses.clear();
     // (0.34.4) The screens' redraws are of their own strips (the position 30 times a second), but
     // every screen was drawn again each time, its shadow's blur and all, for JUCE to clip away.
@@ -390,7 +400,7 @@ void TransportBar::paint (juce::Graphics& g)
         {
             if (outside (screen))
                 return;
-            const auto glass = LedDisplay::paintScreen (g, screen, screenSize);
+            const auto glass = paintScreenCached (g, screen == positionScreen ? 0 : 1, screen);
             glasses.push_back (glass);
             auto inside = glass.reduced (12.0f, 6.0f);
             g.setColour (orange.withAlpha (0.6f));
@@ -407,7 +417,7 @@ void TransportBar::paint (juce::Graphics& g)
     // takes (the average, big; the peak, small); OVER lit after an overload.
     if (! outside (cpuScreen))
     {
-        const auto glass = LedDisplay::paintScreen (g, cpuScreen, screenSize);
+        const auto glass = paintScreenCached (g, 2, cpuScreen);
         glasses.push_back (glass);
         auto inside = glass.reduced (9.0f, 6.0f);
         auto top = inside.removeFromTop (12.0f);
@@ -428,7 +438,7 @@ void TransportBar::paint (juce::Graphics& g)
     // TEMPO and SIGNATURE.
     if (! outside (tempoScreen))
     {
-        const auto glass = LedDisplay::paintScreen (g, tempoScreen, screenSize);
+        const auto glass = paintScreenCached (g, 3, tempoScreen);
         glasses.push_back (glass);
         auto inside = glass.reduced (10.0f, 6.0f);
         g.setColour (orange.withAlpha (0.6f));
@@ -442,7 +452,7 @@ void TransportBar::paint (juce::Graphics& g)
     }
     if (! outside (signatureScreen))
     {
-        const auto glass = LedDisplay::paintScreen (g, signatureScreen, screenSize);
+        const auto glass = paintScreenCached (g, 4, signatureScreen);
         glasses.push_back (glass);
         auto inside = glass.reduced (10.0f, 6.0f);
         g.setColour (orange.withAlpha (0.6f));
@@ -456,10 +466,10 @@ void TransportBar::paint (juce::Graphics& g)
                           juce::Justification::centred, 1, 0.7f);
     }
     // OUT (0.73.0, the owner's: the output's level as a screen beside CPU; 0.73.1: the number only;
-    // 0.73.2: the loudest peak since OUT was last clicked, in dB; red over 0 dB).
+    // 0.73.2: the loudest peak since OUT was last clicked; 0.131.0: the loudest of every 5 s; red over 0 dB).
     if (! outside (outScreen))
     {
-        const auto glass = LedDisplay::paintScreen (g, outScreen, screenSize);
+        const auto glass = paintScreenCached (g, 5, outScreen);
         glasses.push_back (glass);
         auto inside = glass.reduced (9.0f, 6.0f);
         auto top = inside.removeFromTop (12.0f);
@@ -468,7 +478,7 @@ void TransportBar::paint (juce::Graphics& g)
         g.drawText ("OUT", top, juce::Justification::topLeft, false);
         auto bottom = inside.removeFromBottom (12.0f);
         g.setColour (orange.withAlpha (0.75f));
-        g.drawText ("DB MAX", bottom, juce::Justification::bottomRight, false);
+        g.drawText ("DB PEAK", bottom, juce::Justification::bottomRight, false);
         const auto silent = shownOutDb <= LevelMeter::minDb + 0.1f;
         g.setColour (shownOutDb > 0.0f ? ParagonColours::meterRed : orange);
         g.setFont (font (juce::jmin (26.0f, inside.getHeight() * 0.95f)));
@@ -480,7 +490,62 @@ void TransportBar::paint (juce::Graphics& g)
 void TransportBar::paintOverChildren (juce::Graphics& g)
 {
     for (const auto& glass : glasses)
-        LedDisplay::paintGlassOverlay (g, glass, screenSize);
+    {
+        auto index = -1;
+        for (const auto& [i, screen] : glassIndex)
+            if (LedDisplay::glassOf (screen, screenSize) == glass)
+                index = i;
+        if (index >= 0)
+            paintGlassCached (g, index, glass);
+        else
+            LedDisplay::paintGlassOverlay (g, glass, screenSize);
+    }
+}
+
+namespace
+{
+    // A picture drawn at the context's pixel scale, placed back where it was drawn (as Pearl's unit cache).
+    template <typename Draw>
+    void keepPicture (juce::Graphics& g, TransportBar::ScreenPicture& picture, juce::Rectangle<float> area, float size,
+                      juce::Rectangle<float> key, Draw&& draw, int& made)
+    {
+        const auto scale = g.getInternalContext().getPhysicalPixelScaleFactor();
+        if (! picture.image.isValid() || picture.screen != key || picture.scale != scale || picture.size != size)
+        {
+            const auto w = juce::jmax (1, juce::roundToInt (area.getWidth() * scale)), h = juce::jmax (1, juce::roundToInt (area.getHeight() * scale));
+            picture.image = juce::Image (juce::Image::ARGB, w, h, true, juce::SoftwareImageType());
+            juce::Graphics into (picture.image);
+            into.addTransform (juce::AffineTransform::translation (-area.getX(), -area.getY()).scaled (scale));
+            draw (into);
+            picture.screen = key;
+            picture.area = area;
+            picture.scale = scale;
+            picture.size = size;
+            ++made;
+        }
+        g.drawImageTransformed (picture.image, juce::AffineTransform::scale (1.0f / scale).translated (picture.area.getX(), picture.area.getY()));
+    }
+}
+
+juce::Rectangle<float> TransportBar::paintScreenCached (juce::Graphics& g, int index, juce::Rectangle<float> screen) const
+{
+    const auto area = screen.expanded (LedDisplay::screenReach (screenSize)).getSmallestIntegerContainer().toFloat();
+    auto made = screenPicturesMade;
+    keepPicture (g, screenCaches[(size_t) index], area, screenSize, screen,
+                 [&] (juce::Graphics& into) { LedDisplay::paintScreen (into, screen, screenSize); }, made);
+    const_cast<TransportBar*> (this)->screenPicturesMade = made;
+    glassIndex.erase (std::remove_if (glassIndex.begin(), glassIndex.end(), [index] (const auto& p) { return p.first == index; }), glassIndex.end());
+    glassIndex.emplace_back (index, screen);
+    return LedDisplay::glassOf (screen, screenSize);
+}
+
+void TransportBar::paintGlassCached (juce::Graphics& g, int index, juce::Rectangle<float> glass) const
+{
+    const auto area = glass.expanded (2.0f).getSmallestIntegerContainer().toFloat();
+    auto made = screenPicturesMade;
+    keepPicture (g, glassCaches[(size_t) index], area, screenSize, glass,
+                 [&] (juce::Graphics& into) { LedDisplay::paintGlassOverlay (into, glass, screenSize); }, made);
+    const_cast<TransportBar*> (this)->screenPicturesMade = made;
 }
 
 void TransportBar::showRecordModes()
@@ -488,6 +553,10 @@ void TransportBar::showRecordModes()
     using Modes = pr7s::Project::RecordModes;
     const auto modes = studio.getProject().recordModes;
     juce::PopupMenu menu;
+    // (0.85.3) One switch for the two ways of working: one take recorded over again (the default),
+    // or every take kept on a lane of its own.
+    menu.addItem (30, "Keep Every Take on a Lane of Its Own", true, modes.keepsTakesOnLanes());
+    menu.addSeparator();
     menu.addSectionHeader ("AUDIO RECORD MODE");
     menu.addItem (1, "Keep History (what's there stays; each take on a lane)", true, modes.audio == Modes::Audio::keepHistory);
     menu.addItem (2, "Cycle History + Replace (replaces what's there; a cycle's laps kept)", true, modes.audio == Modes::Audio::cycleHistoryReplace);
@@ -505,7 +574,9 @@ void TransportBar::showRecordModes()
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&recordKey), [this] (int chosen)
     {
         auto m = studio.getProject().recordModes;
-        if (chosen >= 1 && chosen <= 3)
+        if (chosen == 30)
+            m = m.keepsTakesOnLanes() ? Modes {} : Modes::onLanes();
+        else if (chosen >= 1 && chosen <= 3)
             m.audio = (Modes::Audio) (chosen - 1);
         else if (chosen >= 11 && chosen <= 13)
             m.midi = (Modes::Midi) (chosen - 11);
@@ -521,7 +592,7 @@ void TransportBar::mouseDown (const juce::MouseEvent& event)
 {
     if (outScreen.contains (event.position))
     {
-        resetOutPeak();   // (0.73.2) the loudest from now on
+        resetOutPeak();   // (0.131.0) shown now, a new 5 s from here
         return;
     }
     if (cpuScreen.contains (event.position))

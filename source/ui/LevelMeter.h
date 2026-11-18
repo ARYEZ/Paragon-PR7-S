@@ -37,6 +37,10 @@ public:
         float db = minDb, heldDb = minDb;
         int heldFor = 0;
         bool push (float peakGain);   // true if what's shown changed
+        // (0.83.1) What a meter `length` px long with segments every `pitch` px shows: the lit segments
+        // and the held one, as one number. The level falls a little every frame, but most frames light the
+        // same segments: those needn't be drawn again.
+        int shown (float length, float pitch = 3.0f) const;
     };
 
 private:

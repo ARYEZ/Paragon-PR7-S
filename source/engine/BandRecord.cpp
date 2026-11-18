@@ -1,5 +1,7 @@
 #include "BandRecord.h"
 
+#include <iostream>
+
 #include "DrumMaps.h"
 #include "DrumLearning.h"
 #include "Markers.h"
@@ -138,6 +140,116 @@ namespace pr7s
                 }
             }
             return attacks;
+        }
+
+        // (0.83.3) The pick's own click: a pick always starts with a short bright noise (the plectrum on the string)
+        // and puts back the string's high harmonics, which die within a few tens of milliseconds. So above 1.5 kHz
+        // a pick jumps even when the string was ringing as loud before (fast picking on an open string: the level
+        // hardly moves, and attacksOf alone missed those picks). Where the high band jumps at least `riseDb` within
+        // 4 ms over the quietest of the 10 ms before, loud enough (within 40 dB of its loud jumps).
+        std::vector<double> pickClicksOf (const std::vector<float>& mono, double rate, float riseDb = 12.0f)
+        {
+            std::vector<double> clicks;
+            if (mono.size() < 64)
+                return clicks;
+            // Two second-order high passes at 1.5 kHz (24 dB an octave: the notes' low harmonics kept out).
+            const auto w = juce::MathConstants<double>::twoPi * 1500.0 / rate;
+            const auto alpha = std::sin (w) / (2.0 * 0.7071);
+            const auto c = std::cos (w), a0 = 1.0 + alpha;
+            const double b0 = (1.0 + c) / 2.0 / a0, b1 = -(1.0 + c) / a0, b2 = b0, a1 = -2.0 * c / a0, a2 = (1.0 - alpha) / a0;
+            std::vector<float> high (mono.size());
+            double x1 = 0, x2 = 0, y1 = 0, y2 = 0, u1 = 0, u2 = 0, v1 = 0, v2 = 0;
+            for (size_t i = 0; i < mono.size(); ++i)
+            {
+                const double x = mono[i];
+                const auto y = b0 * x + b1 * x1 + b2 * x2 - a1 * y1 - a2 * y2;
+                x2 = x1; x1 = x; y2 = y1; y1 = y;
+                const auto v = b0 * y + b1 * u1 + b2 * u2 - a1 * v1 - a2 * v2;
+                u2 = u1; u1 = y; v2 = v1; v1 = v;
+                high[i] = (float) v;
+            }
+            // Its level every millisecond: the peak over the last 2 ms (the band's waves are short).
+            const auto step = juce::jmax (1, (int) std::lround (rate * 0.001));
+            std::vector<float> peaks (high.size() / (size_t) step + 1, 0.0f);
+            for (size_t f = 0; f < peaks.size(); ++f)
+                for (size_t i = f * (size_t) step; i < juce::jmin (high.size(), (f + 1) * (size_t) step); ++i)
+                    peaks[f] = juce::jmax (peaks[f], std::abs (high[i]));
+            std::vector<float> level (peaks.size(), -120.0f);
+            for (size_t f = 0; f < peaks.size(); ++f)
+                level[f] = 20.0f * std::log10 (juce::jmax (peaks[f], f > 0 ? peaks[f - 1] : 0.0f) + 1.0e-9f);
+            // The whole sound's level every millisecond (its peak over 20 ms): a click counts only within 40 dB of
+            // it, and over -90 dBFS (the high band of a dying note, or of silence, wobbles in its own noise).
+            std::vector<float> whole (peaks.size(), -120.0f);
+            {
+                std::vector<float> broad (peaks.size(), 0.0f);
+                for (size_t f = 0; f < broad.size(); ++f)
+                    for (size_t i = f * (size_t) step; i < juce::jmin (mono.size(), (f + 1) * (size_t) step); ++i)
+                        broad[f] = juce::jmax (broad[f], std::abs (mono[i]));
+                for (size_t f = 0; f < broad.size(); ++f)
+                {
+                    auto held = 0.0f;
+                    for (size_t k = f >= 19 ? f - 19 : 0; k <= juce::jmin (broad.size() - 1, f + 5); ++k)
+                        held = juce::jmax (held, broad[k]);
+                    whole[f] = 20.0f * std::log10 (held + 1.0e-9f);
+                }
+            }
+            std::vector<float> rises;
+            for (size_t f = 10; f + 4 < level.size(); ++f)
+                rises.push_back (level[f + 3]);
+            const auto loud = percentile (rises, 0.98f);
+            auto last = -1.0;
+            std::vector<float> tops;
+            for (int f = 0; f + 4 < (int) level.size(); ++f)
+            {
+                auto before = f < 10 ? -120.0f : level[(size_t) f];
+                for (int k = juce::jmax (0, f - 10); k < f; ++k)
+                    before = juce::jmin (before, level[(size_t) k]);
+                auto after = -120.0f;
+                auto top = f;
+                for (int k = f; k <= f + 4; ++k)
+                    if (level[(size_t) k] > after)
+                    {
+                        after = level[(size_t) k];
+                        top = k;
+                    }
+                if (after - before < riseDb || after < loud - 40.0f || after < -90.0f || after < whole[(size_t) top] - 40.0f)
+                    continue;
+                // The click starts where the band first comes within 6 dB of that jump's top.
+                auto onset = f;
+                while (onset < top && level[(size_t) onset] < after - 6.0f)
+                    ++onset;
+                const auto t = juce::jmax (0, onset - 1) * 0.001;
+                if (last < 0.0 || t - last >= 0.025)
+                {
+                    clicks.push_back (t);
+                    tops.push_back (after);
+                    last = t;
+                    f = onset + 20;
+                }
+            }
+            // Only clicks about as loud as this player's own picks: a ringing note's dying high harmonics wobble
+            // too (beats between the strings), far under a pick's click.
+            const auto usual = percentile (tops, 0.9f) - 20.0f;
+            std::vector<double> kept;
+            for (size_t i = 0; i < clicks.size(); ++i)
+                if (tops[i] >= usual)
+                    kept.push_back (clicks[i]);
+            return kept;
+        }
+
+        // (0.83.3) A rhythm guitar's picks: the level's jumps and the pick clicks together, one hit per 25 ms (the
+        // earlier time kept: a click comes at the pick, the level's steepest rise a little after it).
+        std::vector<double> picksOf (const std::vector<float>& mono, double rate)
+        {
+            auto all = attacksOf (mono, rate);
+            const auto clicks = pickClicksOf (mono, rate);
+            all.insert (all.end(), clicks.begin(), clicks.end());
+            std::sort (all.begin(), all.end());
+            std::vector<double> picks;
+            for (const auto t : all)
+                if (picks.empty() || t - picks.back() >= 0.025)
+                    picks.push_back (t);
+            return picks;
         }
 
         bool attackNear (const std::vector<double>& attacks, double seconds, double within)
@@ -742,7 +854,7 @@ namespace pr7s
             return notes;
         const auto mono = monoOf (sound);
         const auto levels = levelsOf (mono, rate);
-        const auto attacks = attacksOf (mono, rate);
+        const auto attacks = picksOf (mono, rate);   // (0.83.3: the pick clicks too)
         if (attacks.empty())
             return notes;
         const auto analysis = analysePitch (sound, rate, 25.0f, 700.0f);
@@ -777,10 +889,14 @@ namespace pr7s
             if (end - start < 0.03)
                 continue;
             // How fast it dies (dB a millisecond over the next 60 ms, or what there is) and how bright it starts.
-            const auto measureTo = juce::jmin (frameOf (end), peakFrame + 12);
+            // (0.83.3: stopping 15 ms before the next pick: the level's 25 ms window reaches into it, and fast
+            // palm mutes read as ringing.)
+            const auto measureTo = juce::jmin (frameOf (end) - (end < next ? 0 : 3), peakFrame + 12);
             const auto decay = measureTo > peakFrame ? (peak - levels[(size_t) measureTo]) / (float) ((measureTo - peakFrame) * hop * 1000.0) : 0.0f;
             const auto from = (size_t) ((start + 0.005) * rate);
-            const auto to = juce::jmin (mono.size(), (size_t) (juce::jmin (end, start + 0.25) * rate));
+            // (0.83.3: at least 80 ms heard for the pitch: tremolo picks 50 ms apart are too short to tell a low A's
+            // harmonics apart; the string goes on sounding the same note through the next picks.)
+            const auto to = juce::jmin (mono.size(), (size_t) (juce::jmax (start + 0.08, juce::jmin (end, start + 0.25)) * rate));
             const auto brightTo = juce::jmin (to, from + (size_t) (0.05 * rate));
             double whole = 0.0, edge = 0.0;
             for (size_t i = from + 1; i < brightTo; ++i)
@@ -793,7 +909,7 @@ namespace pr7s
             // The lowest note: candidates from the pitch found over the hit (a power chord's sounds as an octave
             // under its root), checked by its harmonics with its own fundamental required.
             std::vector<float> heard;
-            for (int f = (int) ((start + 0.01) / hop); f < (int) (juce::jmin (end, start + 0.2) / hop); ++f)
+            for (int f = (int) ((start + 0.01) / hop); f < (int) (juce::jmax (start + 0.06, juce::jmin (end, start + 0.2)) / hop); ++f)
                 if (f >= 0 && f < (int) analysis.frames.size() && analysis.frames[(size_t) f].isVoiced())
                     heard.push_back (analysis.frames[(size_t) f].midi);
             std::vector<int> candidates;
@@ -828,8 +944,36 @@ namespace pr7s
                     best = m;
                 }
             }
+            if (best < 0 && ! hits.empty() && start - hits.back().note.start < 0.15)
+                best = hits.back().note.pitch;   // (0.83.3: a fast pick too short to read: the same note as the one before)
             if (best < 0)
                 continue;
+            // (0.83.3) How fast it dies, measured on its own cycle: the level is the peak over one period of its
+            // root, from just after the pick to just before the next one (the 25 ms level above is too coarse for
+            // picks 50-75 ms apart: open tremolo read as muted, fast palm mutes as open).
+            auto ownDecay = -1.0f;
+            {
+                const auto period = 1.0 / hzOf (best);
+                const auto envAt = [&] (double t)
+                {
+                    const auto a = (size_t) juce::jmax (0.0, (t - period) * rate), b = juce::jmin (mono.size(), (size_t) (t * rate));
+                    auto top = 0.0f;
+                    for (size_t i = a; i < b; ++i)
+                        top = juce::jmax (top, std::abs (mono[i]));
+                    return 20.0f * std::log10 (top + 1.0e-9f);
+                };
+                const auto lastT = juce::jmin (next - 0.002, juce::jmin (end, start + 0.065));
+                auto peakT = start + period;
+                auto peakLevel = -200.0f;
+                for (auto t = start + 0.002; t <= juce::jmin (start + 0.015, lastT); t += 0.001)
+                    if (const auto l = envAt (t); l > peakLevel)
+                    {
+                        peakLevel = l;
+                        peakT = t;
+                    }
+                if (lastT - peakT >= period && lastT - peakT >= 0.015)
+                    ownDecay = juce::jmax (0.0f, (peakLevel - envAt (lastT)) / (float) ((lastT - peakT) * 1000.0));
+            }
             Hit hit;
             hit.note.start = start;
             hit.note.end = end;
@@ -837,7 +981,7 @@ namespace pr7s
             const auto root = magnitudeAt (mono, from, to, hzOf (best), rate);
             hit.note.powerChord = magnitudeAt (mono, from, to, hzOf (best + 7), rate) > 0.3 * root;
             hit.note.level = levelOf (peak, loud);
-            hit.decay = decay;
+            hit.decay = ownDecay >= 0.0f ? ownDecay : decay;
             hit.bright = bright;
             hits.push_back (hit);
         }
@@ -1331,6 +1475,10 @@ namespace pr7s
             return false;
         }
         made = folder.getChildFile (name + Project::fileExtension);
+        // (0.83.3) Read again: the review song before is kept under a dated name (your corrections in it aren't lost).
+        if (made.existsAsFile())
+            made.moveFileTo (folder.getChildFile (name + " before " + juce::Time::getCurrentTime().formatted ("%Y-%m-%d %H-%M-%S")
+                                                  + Project::fileExtension).getNonexistentSibling());
         const auto xml = project.toXml();
         if (xml == nullptr || ! xml->writeTo (made))
         {

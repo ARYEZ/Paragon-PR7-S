@@ -202,7 +202,7 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         // (0.73.1) OUT showing a peak (-4.3 dB): the demo is silent in a snapshot.
         const float peak[] = { juce::Decibels::decibelsToGain (-4.3f) };
         studio.getEngine().getOutputMeter (0).pushSamples (peak, 1);
-        view.getTransport().followOutputForTests();
+        view.getTransport().resetOutPeak();   // (0.131.0: shown at once)
     }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_LISTCOLOUR", {}).isNotEmpty())
     {
@@ -334,6 +334,31 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         studio.addPositionMarker (32.0, "Chorus");
         studio.addPositionMarker (24.0, "Fill");
         view.getArrangeView().selectMarkers ({ 1 });
+    }
+    // PARAGON_SNAPSHOT_SECTIONS=1 (0.90.0): the SECTIONS row over the demo (intro, verse, pre-chorus, chorus, verse,
+    // chorus, bridge, outro), the chorus selected.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SECTIONS", {}).isNotEmpty())
+    {
+        studio.addChordTrack();
+        studio.appendSongSection ("Intro", 4);
+        studio.appendSongSection ("Verse", 8);
+        studio.appendSongSection ("Pre-Chorus", 4);
+        studio.appendSongSection ("Chorus", 8);
+        studio.appendSongSection ("Verse", 8);
+        studio.appendSongSection ("Chorus", 8);
+        studio.appendSongSection ("Bridge", 4);
+        studio.appendSongSection ("Outro", 4);
+        studio.setSongSectionType (3, "DRONING");          // (0.94.0: a typed chorus, its linked copy too)
+        studio.setSongSectionType (1, "STACCATO CHUG");
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SECTIONS", {}) == "transitions")
+        {   // (0.104.0) Transitions: the pre-chorus stops, the bridge's last bar two beats.
+            studio.setSongSectionTransition (2, "STOP");
+            studio.setSongSectionTransition (6, "SHORT BAR: 2 BEATS");
+            studio.setSongSectionTransition (1, "SNARE ROLL");
+        }
+        view.getArrangeView().selectSection (3);
+        studio.duplicateSongSection (3);   // (0.91.0: the chorus's linked copy)
+        view.getArrangeView().zoomTo (0.0, studio.getSongSectionPlaces().back().end);
     }
     // PARAGON_SNAPSHOT_INFOLINE=1 (0.37.0, with PARAGON_SNAPSHOT_AUTOMATION): three of the lead's volume points selected (the info line shows them).
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_INFOLINE", {}).isNotEmpty())
@@ -604,6 +629,26 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
                 studio.dispatchPendingMessages();
                 break;
             }
+    // PARAGON_SNAPSHOT_CHORDCLIPS=1 (0.85.3, with PARAGON_SNAPSHOT_CHORDS): chords edited as clips: C major on the key
+    // strip, Am shortened to half a bar (a gap after it), F lengthened over G7, then Am copied as Ab onto bar 9:
+    // out of the key, the warning over the chords.
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_CHORDCLIPS", {}).isNotEmpty())
+    {
+        studio.setChordTrackKey (0.0, pr7s::Key { 0, 0, false });
+        studio.resizeChordEvent (1, 4.0, 6.0);
+        studio.resizeChordEvent (2, 8.0, 14.0);
+        auto& arrange = view.getArrangeView();
+        arrange.selectChords ({ 1 });
+        arrange.copySelectedChords (false);
+        studio.setChordEventChord (1, { 8, pr7s::Chord::Type::major, pr7s::Chord::Tension::none, -1 });
+        arrange.selectChords ({ 1 });
+        arrange.copySelectedChords (false);
+        studio.setChordEventChord (1, { 9, pr7s::Chord::Type::minor, pr7s::Chord::Tension::none, -1 });
+        studio.setPosition (32.0);
+        arrange.pasteChords();
+        studio.setPosition (22.0);
+        studio.dispatchPendingMessages();
+    }
     if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_DROP", {}).isNotEmpty())
     {
         // A MIDI file being dragged over the lead's track (0.18.1): where it will land, lit.
@@ -723,6 +768,22 @@ TEST_CASE ("Render the key editor's own window to a PNG", "[.][snapshot-window]"
         riff.notes.push_back ({ i * 0.3125, i % 5 == 0 ? 1.0 : 0.25, 52 + (i * 7) % 19, 0.4f + 0.6f * (float) ((i * 3) % 10) / 9.0f });
     studio.addPart (track, riff);
     studio.setPosition (21.0);
+    // PARAGON_SNAPSHOT_CHORDS=1 (0.121.0): a chord track (C, Am, F, G7 a bar each, over and over), so the
+    // editor's CHORD GUIDES show; the editor at 100% so more octaves are in view.
+    const auto withChords = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_CHORDS", {}).isNotEmpty();
+    if (withChords)
+    {
+        Chord am { 9 };
+        am.type = Chord::Type::minor;
+        Chord g7 { 7 };
+        g7.tension = Chord::Tension::seven;
+        const Chord cycle[] = { Chord { 0 }, am, Chord { 5 }, g7 };
+        std::vector<ChordEvent> events;
+        for (int bar = 0; bar < 16; ++bar)
+            events.push_back ({ bar * 4.0, cycle[bar % 4], 4.0 });
+        studio.setChordEvents (events);
+        studio.setPosition (17.0);
+    }
 
     const auto mixerWindow = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_ZONE", {}) == "mixer";
     if (mixerWindow)
@@ -789,6 +850,11 @@ TEST_CASE ("Render the key editor's own window to a PNG", "[.][snapshot-window]"
         REQUIRE (window != nullptr);
         window->setSize (size[0].getIntValue(), size[1].getIntValue());
         auto& editor = view.getKeyEditor();
+        if (withChords)
+        {
+            view.setKeyEditorSize (100);
+            studio.dispatchPendingMessages();
+        }
         editor.fitToPart();
         editor.selectNotes ({ 10, 11, 12 });
         shown = &editor;
@@ -1379,6 +1445,7 @@ TEST_CASE ("Snapshot: the progress box, and SAVE lit", "[.][snapshot-progress]")
 
 #include "ui/Hub.h"
 #include "ui/TrackTypeColours.h"
+#include "ui/ComposerTracksPage.h"
 #include "ui/InstrumentsPage.h"
 
 TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
@@ -1422,6 +1489,16 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
             hub.getColoursPage()->setColour (pr7s::Track::Kind::audio, pr7s::FamilyColours::paletteColour (6, 4));
             hub.getColoursPage()->setListColour (pr7s::Track::Kind::audio, true, 40);
             hub.getColoursPage()->setColour (pr7s::Track::Kind::group, pr7s::FamilyColours::paletteColour (0, 2));
+        }
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "composertracks")
+        {
+            // (0.112.0) Guitar left and right, the bass on "Bass DI".
+            for (const auto* name : { "Guitar L", "Guitar R", "Bass DI" })
+                studio.renameTrack (studio.addTrack (pr7s::Instrument {}), name);
+            hub.showComposerTracksPage();
+            hub.getComposerTracksPage()->setNames (1, "Guitar L, Guitar R");
+            hub.getComposerTracksPage()->setEvery (1, true);
+            hub.getComposerTracksPage()->setNames (0, "Bass, Bass DI");
         }
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "instruments")
         {
@@ -1999,6 +2076,71 @@ TEST_CASE ("Snapshot: a band review song (0.82.0)", "[.][snapshot-bandreview]")
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
         juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: KEY CHECK and the MIDI editor's rings (0.84.0; PARAGON_SNAPSHOT_EDITOR: the editor's image)", "[.][snapshot-keycheck]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "keycheck.png");
+    const auto editorPath = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EDITOR", "keycheck-editor.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        MainView view (studio);
+        view.setSize (1600, 1000);
+        auto& project = const_cast<pr7s::Project&> (studio.getProject());
+        const auto lead = project.tracks[0].id;
+        studio.renameTrack (lead, "Lead");
+        // An A minor line with three slips: Bb, F#, C# (G# is A minor's raised seventh: in).
+        studio.addPart (lead, { 0.0, 8.0, "Lead", { { 0.0, 1.0, 69, 0.8f }, { 1.0, 0.5, 72, 0.6f }, { 1.5, 0.5, 70, 0.6f }, { 2.0, 1.0, 76, 0.9f },
+                                                   { 3.0, 1.0, 74, 0.5f }, { 4.0, 1.0, 72, 0.8f }, { 5.0, 0.5, 66, 0.6f }, { 5.5, 0.5, 68, 0.7f },
+                                                   { 6.0, 1.0, 69, 0.9f }, { 7.0, 1.0, 61, 0.4f } } });
+        const auto bass = studio.addTrack (pr7s::Instrument {});
+        studio.renameTrack (bass, "Bass");
+        studio.addPart (bass, { 0.0, 8.0, "Bass", { { 0.0, 4.0, 45, 0.8f }, { 4.0, 4.0, 46, 0.8f } } });
+        studio.addChordEvent (0.0, pr7s::Chord { 9, pr7s::Chord::Type::minor });
+        studio.addChordEvent (4.0, pr7s::Chord { 3, pr7s::Chord::Type::major });   // Eb: outside A minor
+        studio.setScaleEvents ({ pr7s::ScaleEvent { 0.0, pr7s::Key { 5, 0, true } } });
+        studio.dispatchPendingMessages();
+        view.openKeyCheck();
+        auto& page = view.getKeyCheckWindow()->getPage();
+        page.setSize (KeyCheckPage::preferredWidth, 520);
+        page.onShowIssue (page.getIssues()[0]);
+        studio.dispatchPendingMessages();
+        view.setKeyEditorSize (100);
+        auto& editor = view.getKeyEditor();
+        editor.setSize (1300, 600);
+        editor.fitToPart();
+        auto write = [] (const juce::Image& image, const juce::String& to)
+        {
+            juce::File (to).deleteFile();
+            juce::FileOutputStream out { juce::File (to) };
+            juce::PNGImageFormat().writeImageToStream (image, out);
+        };
+        write (page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f), path);
+        write (editor.createComponentSnapshot (editor.getLocalBounds(), true, 1.0f), editorPath);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}
+
+TEST_CASE ("Snapshot: BLUEPRINTS (0.152.0; PARAGON_SNAPSHOT_BLUEPRINT: which, from 0)", "[.][snapshot-blueprints]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "blueprints.png");
+    const auto which = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_BLUEPRINT", "0").getIntValue();
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        BlueprintsPage page (studio);
+        page.setSize (BlueprintsPage::preferredWidth, BlueprintsPage::preferredHeight);
+        page.choose (which);
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f), out);
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }

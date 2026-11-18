@@ -145,6 +145,9 @@ namespace pr7s
     juce::String sectionBaseOf (const juce::String& name)
     {
         auto text = name.trim();
+        for (const auto& n : songSectionNames())   // (0.90.0: "Middle 8" is a name, not "Middle" numbered 8)
+            if (n.equalsIgnoreCase (text))
+                return n;
         const auto space = text.lastIndexOfChar (' ');
         if (space > 0 && text.substring (space + 1).containsOnly ("0123456789"))
             text = text.substring (0, space).trim();

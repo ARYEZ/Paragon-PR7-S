@@ -6,6 +6,7 @@ FetchContent_MakeAvailable(catch2)
 
 add_executable(ParagonPR7STests
     TestMain.cpp
+    PowerChordKeyTests.cpp
     ProjectTests.cpp
     EngineTests.cpp
     MixerTests.cpp
@@ -30,6 +31,7 @@ add_executable(ParagonPR7STests
     LinkTests.cpp
     LineTests.cpp
     RiffTests.cpp
+    RiffGeneratorTests.cpp
     DragOutTests.cpp
     DrumIdeaTests.cpp
     DrumGeneratorTests.cpp
@@ -37,6 +39,8 @@ add_executable(ParagonPR7STests
     DrumLearnUiTests.cpp
     BuildSectionTests.cpp
     ComposerTests.cpp
+    ComposerTracksTests.cpp
+    ComposerSpeedTests.cpp
     InstrumentTests.cpp
     GrooveTests.cpp
     SoloTests.cpp
@@ -61,12 +65,40 @@ add_executable(ParagonPR7STests
     ProgressionTests.cpp
     MelodyTests.cpp
     ChordDetectTests.cpp
+    KeyCheckTests.cpp
     EqTests.cpp
     ChordTool2Tests.cpp
     SignatureTests.cpp
     InfoLinePartsTests.cpp
     MarkerTests.cpp
     HistoryTests.cpp
+    Speed083Tests.cpp
+    Speed0852Tests.cpp
+    Speed0123Tests.cpp
+    Speed0164Tests.cpp
+    Speed0165Tests.cpp
+    Speed0166Tests.cpp
+    AutomationDotTests.cpp
+    Speed0174Tests.cpp
+    Speed0173Tests.cpp
+    MediaBaySpeedTests.cpp
+    Speed0113Tests.cpp
+    CleanGuitarTests.cpp
+    MyRiffLaneTests.cpp
+    SongKeyTests.cpp
+    BlueprintTests.cpp
+    Tweaks0853Tests.cpp
+    SyncTests.cpp
+    DroningBandTests.cpp
+    SongSectionTests.cpp
+    InsertSilenceTests.cpp
+    ComposerOctaveTests.cpp
+    OptionBrowserTests.cpp
+    ChordGuideTests.cpp
+    LibraryDrumsTests.cpp
+    GroovePoolTests.cpp
+    Pr7dGroovesTests.cpp
+    Pr7dLinkTests.cpp
     FolderTests.cpp
     StemExportTests.cpp
     PerformanceTests.cpp
@@ -79,6 +111,7 @@ add_executable(ParagonPR7STests
     Tweaks080Tests.cpp
     Tweaks081Tests.cpp
     BandRecordTests.cpp
+    FastPickingTests.cpp
     BandSectionTests.cpp
     AutoSaveTests.cpp
     PerfTests.cpp

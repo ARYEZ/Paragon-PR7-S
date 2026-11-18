@@ -1,6 +1,7 @@
 #include "Hub.h"
 #include "ui/InstrumentsPage.h"
 #include "ui/TrackTypeColours.h"
+#include "ui/ComposerTracksPage.h"
 #include "engine/DrumMaps.h"
 
 #include "ui/Finish.h"
@@ -157,7 +158,7 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
 {
     list = std::make_unique<SongList> (*this);
     addAndMakeVisible (*list);
-    for (auto* b : { &projectsTab, &settingsTab, &instrumentsTab, &coloursTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
+    for (auto* b : { &projectsTab, &settingsTab, &instrumentsTab, &coloursTab, &composerTracksTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
     {
         styleKey (*b);
         addAndMakeVisible (*b);
@@ -255,6 +256,11 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     autoSaveNote.setJustificationType (juce::Justification::topLeft);
     autoSaveNote.setFont (juce::Font (ParagonLookAndFeel::textFont (12.0f)));
     addAndMakeVisible (autoSaveNote);
+    askTypeChange.setToggleState (studio.getAskBeforeTypeChange(), juce::dontSendNotification);
+    askTypeChange.setTooltip ("Off: changing the TYPE of a section already built (a chorus from DRIVING to DRONING) builds it again at once, "
+                              "keeping the lanes you changed by hand. On: you're asked first");
+    askTypeChange.onClick = [this] { studio.setAskBeforeTypeChange (askTypeChange.getToggleState()); };
+    addAndMakeVisible (askTypeChange);
 
     // HUMANIZE (0.20.1).
     for (auto* l : { &humanizeTitle, &humanizeKeyLabel, &humanizeAmountLabel, &humanizeNote })
@@ -299,11 +305,14 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     instrumentsTab.setClickingTogglesState (false);
     projectsTab.onClick = [this] { showSettingsPage (false); };
     settingsTab.onClick = [this] { showSettingsPage (true); };
-    instrumentsTab.setTooltip ("Each instrument's range, tuning, velocity layers and keyswitches (the composer writes for them)");
+    instrumentsTab.setTooltip ("Each instrument's range, tuning, velocity layers and keyswitches (the Architect writes for them)");
     instrumentsTab.onClick = [this] { showInstrumentsPage(); };
     coloursTab.setClickingTogglesState (false);
     coloursTab.setTooltip ("The colour each type of new track starts with, and its colour in the track list");
     coloursTab.onClick = [this] { showColoursPage(); };
+    composerTracksTab.setClickingTogglesState (false);
+    composerTracksTab.setTooltip ("The tracks each Architect lane plays on: their names, and a lane on every matching track (guitar left and right)");
+    composerTracksTab.onClick = [this] { showComposerTracksPage(); };
     createEmpty.setTooltip ("Create Empty: a new song, in a folder of its own at the project location");
     createEmpty.onClick = [this]
     {
@@ -556,6 +565,7 @@ void Hub::showSettingsPage (bool on)
     }
     instrumentsPage = false;
     coloursPage = false;
+    composerTracksPage = false;
     resized();
     repaint();
 }
@@ -570,7 +580,24 @@ void Hub::showColoursPage()
     colours->refresh();
     settingsPage = false;
     instrumentsPage = false;
+    composerTracksPage = false;
     coloursPage = true;
+    resized();
+    repaint();
+}
+
+void Hub::showComposerTracksPage()
+{
+    if (composerTracks == nullptr)
+    {
+        composerTracks = std::make_unique<ComposerTracksPage> (studio);
+        addChildComponent (*composerTracks);
+    }
+    composerTracks->refresh();
+    settingsPage = false;
+    instrumentsPage = false;
+    coloursPage = false;
+    composerTracksPage = true;
     resized();
     repaint();
 }
@@ -584,6 +611,7 @@ void Hub::showInstrumentsPage()
     }
     settingsPage = false;
     coloursPage = false;
+    composerTracksPage = false;
     instrumentsPage = true;
     resized();
     repaint();
@@ -709,7 +737,7 @@ void Hub::paint (juce::Graphics& g)
 
     g.setColour (ParagonColours::textDim);
     g.setFont (font (12.0f));
-    if (instrumentsPage || coloursPage)
+    if (instrumentsPage || coloursPage || composerTracksPage)
         return;
     if (! settingsPage && studio.getLibrary().showsLocation())
     {
@@ -757,7 +785,10 @@ void Hub::resized()
         instrumentsTab.setBounds (n.removeFromTop (34));
         n.removeFromTop (8);
         coloursTab.setBounds (n.removeFromTop (34));
-        projectsTab.setToggleState (! settingsPage && ! instrumentsPage && ! coloursPage, juce::dontSendNotification);
+        n.removeFromTop (8);
+        composerTracksTab.setBounds (n.removeFromTop (34));
+        composerTracksTab.setToggleState (composerTracksPage, juce::dontSendNotification);
+        projectsTab.setToggleState (! settingsPage && ! instrumentsPage && ! coloursPage && ! composerTracksPage, juce::dontSendNotification);
         coloursTab.setToggleState (coloursPage, juce::dontSendNotification);
         settingsTab.setToggleState (settingsPage, juce::dontSendNotification);
         instrumentsTab.setToggleState (instrumentsPage, juce::dontSendNotification);
@@ -774,13 +805,18 @@ void Hub::resized()
         colours->setVisible (coloursPage);
         colours->setBounds (page.reduced (24, 18));
     }
-    if (instrumentsPage || coloursPage)
+    if (composerTracks != nullptr)
+    {
+        composerTracks->setVisible (composerTracksPage);
+        composerTracks->setBounds (page.reduced (24, 18));
+    }
+    if (instrumentsPage || coloursPage || composerTracksPage)
     {
         for (auto* c : std::initializer_list<juce::Component*> { list.get(), &search, &createEmpty, &chooseFile, &open, &showPaths, &showLocation, &atStart,
                                                                          &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,
                                                                          &humanizeTitle, &humanizeKeyLabel, &humanizeSetKey, &humanizeClearKey,
                                                                          &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote,
-                                                                         &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote,
+                                                                         &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote, &askTypeChange,
                                                                          &drumMapLabel, &drumMapBox, &templateLabel, &templateBox, &saveTemplate,
                                                                          &useDefault, &locationLabel, &chooseLocation, &folderName })
             c->setVisible (false);
@@ -795,7 +831,7 @@ void Hub::resized()
     for (auto* c : std::initializer_list<juce::Component*> { &showPaths, &showLocation, &atStart, &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,
                                                                      &humanizeTitle, &humanizeKeyLabel, &humanizeSetKey, &humanizeClearKey,
                                                                      &humanizeAmountLabel, &humanizeAmount, &humanizeLayers, &humanizeNote,
-                                                                     &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote,
+                                                                     &autoSaveTitle, &autoSaveBox, &keepBox, &showBackups, &autoSaveNote, &askTypeChange,
                                                                      &drumMapLabel, &drumMapBox, &templateLabel, &templateBox, &saveTemplate })
         c->setVisible (settingsPage);
     for (auto* c : std::initializer_list<juce::Component*> { &useDefault, &locationLabel, &chooseLocation, &folderName })
@@ -877,6 +913,8 @@ void Hub::resized()
             showBackups.setBounds (column.removeFromTop (28).withWidth (juce::jmin (220, column.getWidth())));
             column.removeFromTop (6);
             autoSaveNote.setBounds (column.removeFromTop (70));
+            column.removeFromTop (4);
+            askTypeChange.setBounds (column.removeFromTop (28));
         }
         for (auto* t : { &showPaths, &showLocation, &atStart })
         {

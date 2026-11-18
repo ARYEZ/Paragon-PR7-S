@@ -56,6 +56,7 @@ class TrackList::Row final : public juce::Component
 public:
     Row (TrackList& ownerList, int id) : owner (ownerList), trackId (id)
     {
+        setOpaque (true);   // (0.83.2: it fills itself: the list behind isn't painted under it again)
         // (0.9.9: M, S, REC, R and W aren't on the row, as the owner asked: they're in the Inspector and the mixer.
         // The row says which are on, under the name.)
         AutomationKeys::setUp (read, write, owner.studio, trackId);
@@ -219,15 +220,22 @@ public:
 
     void setLevel (float peak)
     {
-        if (reading.push (peak))
-            repaint (levelArea.toNearestInt().expanded (2));
+        if (reading.push (peak) && ! levelArea.isEmpty())
+            if (const auto now = reading.shown (levelArea.getWidth()); now != shownLevel)   // (0.83.1: only when a segment changes)
+            {
+                shownLevel = now;
+                repaint (levelArea.toNearestInt().expanded (2));
+            }
     }
 
     void paint (juce::Graphics& g) override
     {
         const auto* t = track();
         if (t == nullptr)
+        {
+            g.fillAll (juce::Colour (0xff100c11));   // (opaque: it must cover itself)
             return;
+        }
         const auto bounds = getLocalBounds().toFloat();
         const auto selected = owner.studio.isTrackSelected (trackId);
         g.setColour (selected ? juce::Colour (0xff1f1720) : juce::Colour (0xff100c11));
@@ -260,7 +268,8 @@ public:
         }
 
         // What's on, under its name (0.9.9: the keys are in the Inspector and the mixer): SOLO, MUTED, REC, READ, WRITE, FROZEN.
-        if (getHeight() >= 66)
+        // (0.83.2: not worked out for a redraw that doesn't reach it: the meter's, 30 times a second.)
+        if (getHeight() >= 66 && g.getClipBounds().intersects (name.getBounds().withTrimmedLeft (4).removeFromBottom (16)))
         {
             juce::StringArray states;
             if (t->isFolder())
@@ -407,6 +416,7 @@ public:
     Arrow arrow, folderArrow;
     juce::Rectangle<float> levelArea;
     LevelMeter::Ballistics reading;
+    int shownLevel = -1;   // (0.83.1) what the meter last drew
 };
 
 //==============================================================================
@@ -580,6 +590,7 @@ public:
     const int busId, laneIndex;
     juce::TextButton control, mute { "M" }, append { "+" }, remove { "X" };
     juce::Rectangle<float> valueArea;
+    juce::String shownValue;   // (0.83.1) the value the row last drew
 };
 
 juce::Button* TrackList::getLaneRemoveKey (int busId, int laneIndex)
@@ -852,6 +863,122 @@ public:
 // The marker track's row (0.49.0, the manual's Marker Track controls): its name (double-click:
 // rename), + POS (Add Position Marker at the cursor), + CYC (Add Cycle Marker at the locators;
 // Shift-click: and name it), LOCK, and GO TO (the manual's Locate, Cycle and Zoom pop-up menus).
+// The SECTIONS row (0.90.0): its name, the song's length in bars, and + SECTION (a block after the last).
+class TrackList::SectionsRow final : public juce::Component,
+                                     public juce::SettableTooltipClient
+{
+public:
+    explicit SectionsRow (TrackList& ownerList) : owner (ownerList)
+    {
+        add.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        add.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+        add.setWantsKeyboardFocus (false);
+        add.setTooltip ("Add a section after the last: intro, verse, pre-chorus, chorus, bridge, breakdown, solo...");
+        add.onClick = [this] { if (owner.onAddSection) owner.onAddSection(); };
+        addAndMakeVisible (add);
+        // (0.114.0, the owner: "in the sections lane I need to be able to set the key of the song")
+        key.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        key.getProperties().set (ParagonLookAndFeel::menuArrowProperty, true);
+        key.setWantsKeyboardFocus (false);
+        key.setTooltip ("The song's key: every part moves into it (chords, notes, what the Architect built). "
+                        "ALL SECTIONS SYNCED TO ONE KEY (on to start with): untick it for key changes, then each block's own key in its editor (right-click a block)");
+        key.onClick = [this] { showKeyMenu(); };
+        addAndMakeVisible (key);
+        // (0.152.0) BLUEPRINTS: a song's layout to start from.
+        blueprints.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+        blueprints.setWantsKeyboardFocus (false);
+        blueprints.setTooltip ("Blueprints: a song's whole layout to start from (sections, linked copies, types, chords, tempo), or this song's saved as your own");
+        blueprints.onClick = [this] { if (owner.onBlueprints) owner.onBlueprints(); };
+        addAndMakeVisible (blueprints);
+        setTooltip ("The song's sections: drag a block to rearrange (its music goes with it), double-click one to open the Architect on it, right-click for its menu");
+        refresh();
+    }
+
+    void refresh()
+    {
+        const auto text = "KEY: " + ChordUi::spokenKey (owner.studio.getSongKey()).toUpperCase() + (owner.studio.isOneKey() ? "" : " +");
+        if (key.getButtonText() != text)
+            key.setButtonText (text);
+        repaint();
+    }
+
+    void showKeyMenu()
+    {
+        juce::PopupMenu menu;
+        menu.addSectionHeader ("THE SONG'S KEY (EVERY PART MOVES INTO IT)");
+        const auto& keys = pr7s::Key::all();
+        const auto now = owner.studio.getSongKey();
+        juce::PopupMenu majors, minors;
+        for (size_t i = 0; i < keys.size(); ++i)
+            (keys[i].minor ? minors : majors).addItem (1 + (int) i, ChordUi::spokenKey (keys[i]).toUpperCase(), true, keys[i] == now);
+        menu.addSubMenu ("Major Keys", majors, true, nullptr, ! now.minor);
+        menu.addSubMenu ("Minor Keys", minors, true, nullptr, now.minor);
+        menu.addSeparator();
+        menu.addItem (1000, "All Sections Synced to One Key", true, owner.studio.isOneKey());
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (key),
+                            [safe = juce::Component::SafePointer<SectionsRow> (this)] (int chosen)
+                            {
+                                if (safe == nullptr || chosen == 0)
+                                    return;
+                                auto& studio = safe->owner.studio;
+                                if (chosen == 1000)
+                                    studio.setOneKey (! studio.isOneKey());
+                                else if (juce::isPositiveAndNotGreaterThan (chosen, (int) pr7s::Key::all().size()))
+                                    studio.setSongKey (pr7s::Key::all()[(size_t) chosen - 1]);
+                            });
+    }
+
+    juce::TextButton& getKeyButton() noexcept { return key; }
+
+    void paint (juce::Graphics& g) override
+    {
+        const auto bounds = getLocalBounds().toFloat();
+        g.setColour (juce::Colour (0xff140f14));
+        g.fillRect (bounds);
+        g.setColour (juce::Colour (0xff050405));
+        g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
+        g.setColour (pr7s::FamilyColours::pink);
+        g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
+        const auto& sections = owner.studio.getSongSections();
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (14.0f));
+        const auto bars = sections.totalBars();
+        g.drawFittedText ("SECTIONS" + (bars > 0 ? "  " + juce::String (bars) + " BARS" : juce::String()), nameArea.toNearestInt(),
+                          juce::Justification::centredLeft, 1, 0.7f);
+    }
+
+    void resized() override
+    {
+        auto area = getLocalBounds().withTrimmedLeft (16).reduced (0, 4);
+        area.removeFromRight (6);
+        add.setBounds (area.removeFromRight (92).withSizeKeepingCentre (92, juce::jmin (24, area.getHeight())));
+        area.removeFromRight (4);
+        const auto blueprintWidth = area.getWidth() >= 92 + 190 + 80 ? 92 : 0;
+        blueprints.setVisible (blueprintWidth > 0);
+        blueprints.setBounds (area.removeFromRight (blueprintWidth).withSizeKeepingCentre (blueprintWidth, juce::jmin (24, area.getHeight())));
+        if (blueprintWidth > 0)
+            area.removeFromRight (4);
+        const auto keyWidth = juce::jmin (190, juce::jmax (0, area.getWidth() - 80));
+        key.setBounds (area.removeFromRight (keyWidth).withSizeKeepingCentre (keyWidth, juce::jmin (24, area.getHeight())));
+        area.removeFromRight (4);
+        nameArea = area.toFloat();
+    }
+
+    void mouseDown (const juce::MouseEvent& e) override
+    {
+        if (e.mods.isPopupMenu() && owner.onSectionsMenu)
+            owner.onSectionsMenu();
+    }
+
+private:
+    TrackList& owner;
+    juce::TextButton add { "+ SECTION" }, key, blueprints { "BLUEPRINTS" };
+    juce::Rectangle<float> nameArea;
+};
+
+juce::Button* TrackList::getSongKeyButton() { return sectionsRow != nullptr ? &sectionsRow->getKeyButton() : nullptr; }
+void TrackList::showSongKeyMenu() { if (sectionsRow != nullptr) sectionsRow->showKeyMenu(); }
+
 class TrackList::MarkerRow final : public juce::Component,
                                    public juce::SettableTooltipClient
 {
@@ -1207,7 +1334,11 @@ void TrackList::timerCallback()
         row->followMix();
     }
     for (auto& lane : laneRows)
-        lane->repaint (lane->valueArea.toNearestInt());
+        if (auto text = lane->valueText(); text != lane->shownValue)   // (0.83.1: only when the value shown changes)
+        {
+            lane->shownValue = std::move (text);
+            lane->repaint (lane->valueArea.toNearestInt());
+        }
     if (tempoRow != nullptr)
         tempoRow->followTempo();
     if (signatureRow != nullptr)
@@ -1281,6 +1412,15 @@ void TrackList::rebuild()
         signatureRow = nullptr;
     if (signatureRow != nullptr)
         signatureRow->refresh();
+    if (studio.getSongSections().shown && sectionsRow == nullptr)
+    {
+        sectionsRow = std::make_unique<SectionsRow> (*this);
+        addAndMakeVisible (*sectionsRow);
+    }
+    else if (! studio.getSongSections().shown)
+        sectionsRow = nullptr;
+    if (sectionsRow != nullptr)
+        sectionsRow->refresh();
     if (studio.getMarkerTrack().shown && markerRow == nullptr)
     {
         markerRow = std::make_unique<MarkerRow> (*this);
@@ -1377,6 +1517,11 @@ void TrackList::placeRows()
             if (markerRow != nullptr)
                 markerRow->setBounds (bounds);
         }
+        else if (row.kind == Timeline::Row::Kind::sections)
+        {
+            if (sectionsRow != nullptr)
+                sectionsRow->setBounds (bounds);
+        }
         else if (row.kind == Timeline::Row::Kind::chords)
         {
             if (chordRow != nullptr)
@@ -1422,6 +1567,9 @@ juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
     menu.addSectionHeader ("ADD AN INSTRUMENT TRACK");
     menu.addItem (offset + 1, studio.getPluginHost().isStudioSynthFound() ? juce::String ("PR7-K (the studio's synth)")
                                                                   : juce::String ("PR7-K not found: the old Paragon Synth"));
+    // (0.107.0, the Backline) The studio's drums.
+    if (studio.getPluginHost().isStudioDrumsFound())
+        menu.addItem (offset + 15, "PR7-D (the studio's drums)");
     const auto instruments = studio.getPluginHost().getInstruments();
     if (! instruments.isEmpty())
     {
@@ -1446,6 +1594,7 @@ juce::PopupMenu TrackList::makeAddTrackMenu (int offset)
     menu.addItem (offset + 12, "Folder track (holds tracks: fold them away, mute or solo them together)");
     menu.addItem (offset + 13, "Folder track with group channel (its tracks summed)");
     menu.addItem (offset + 9, "Chord track (the song's chords and scales)", ! studio.getChordTrack().shown);
+    menu.addItem (offset + 14, "Sections row (the song's parts as blocks: verse, chorus...)", ! studio.getSongSections().shown);
     menu.addSeparator();
     menu.addItem (offset + 7, "Track from a preset...");
     menu.addSeparator();
@@ -1476,6 +1625,10 @@ bool TrackList::addTrackChosen (int chosen)
         {
             studio.addMarkerTrack();
         }
+        else if (chosen == 14)
+        {
+            studio.addSongSectionTrack();
+        }
         else if (chosen == 12 || chosen == 13)
         {
             studio.addFolderTrack ({}, chosen == 13);
@@ -1501,6 +1654,10 @@ bool TrackList::addTrackChosen (int chosen)
         else if (chosen == 1)
         {
             studio.addTrack ({});
+        }
+        else if (chosen == 15)
+        {
+            studio.addDrumsTrack();
         }
         else if (chosen == 3 || chosen == 4)
         {

@@ -1,5 +1,9 @@
 #include "engine/Eq.h"
 
+#if defined (__SSE2__) || defined (_M_X64) || (defined (_M_IX86_FP) && _M_IX86_FP >= 2)
+ #include <emmintrin.h>
+#endif
+
 namespace pr7s
 {
     namespace
@@ -340,54 +344,197 @@ namespace pr7s
         eqState = {};
     }
 
+    namespace
+    {
+        // (0.165.0) Up to four stages run together, sample by sample, in doubles: each sample goes through
+        // them one after another without being written out and read back (and rounded to a float) between
+        // stages, and the stages' sums overlap in the processor. Transposed direct form II, as before.
+        template <int N, int C>
+        void runStages (const Biquad* f, double (*state)[2], double* const* buffers, int numSamples) noexcept
+        {
+            double s1[C][N], s2[C][N];
+            for (int c = 0; c < C; ++c)
+                for (int k = 0; k < N; ++k)
+                {
+                    s1[c][k] = state[c * EqDesign::maxStages + k][0];
+                    s2[c][k] = state[c * EqDesign::maxStages + k][1];
+                }
+            for (int i = 0; i < numSamples; ++i)
+                for (int c = 0; c < C; ++c)
+                {
+                    auto x = buffers[c][i];
+                    for (int k = 0; k < N; ++k)
+                    {
+                        const auto y = f[k].b0 * x + s1[c][k];
+                        s1[c][k] = f[k].b1 * x - f[k].a1 * y + s2[c][k];
+                        s2[c][k] = f[k].b2 * x - f[k].a2 * y;
+                        x = y;
+                    }
+                    buffers[c][i] = x;
+                }
+            for (int c = 0; c < C; ++c)
+                for (int k = 0; k < N; ++k)
+                {
+                    state[c * EqDesign::maxStages + k][0] = s1[c][k];
+                    state[c * EqDesign::maxStages + k][1] = s2[c][k];
+                }
+        }
+
+        // (0.173.0) Both sides at once: the left and right samples side by side in one SSE2 register, every
+        // stage's arithmetic in exactly runStages' order (packed multiplies, adds and subtracts round as the
+        // scalar ones, and intrinsics are never fused), so the output is the same to the bit. `held` holds the
+        // two sides interleaved (L, R, L, R...). Only where SSE2 is there; else runStages on the sides.
+       #if defined (__SSE2__) || defined (_M_X64) || (defined (_M_IX86_FP) && _M_IX86_FP >= 2)
+        #define PR7S_PACKED_EQ 1
+        template <int N>
+        void runStagesPacked (const Biquad* f, double (*state)[2], double* held, int numSamples) noexcept
+        {
+            __m128d s1[N], s2[N], b0[N], b1[N], b2[N], a1[N], a2[N];
+            for (int k = 0; k < N; ++k)
+            {
+                s1[k] = _mm_set_pd (state[EqDesign::maxStages + k][0], state[k][0]);
+                s2[k] = _mm_set_pd (state[EqDesign::maxStages + k][1], state[k][1]);
+                b0[k] = _mm_set1_pd (f[k].b0);
+                b1[k] = _mm_set1_pd (f[k].b1);
+                b2[k] = _mm_set1_pd (f[k].b2);
+                a1[k] = _mm_set1_pd (f[k].a1);
+                a2[k] = _mm_set1_pd (f[k].a2);
+            }
+            for (int i = 0; i < numSamples; ++i)
+            {
+                auto x = _mm_load_pd (held + 2 * i);
+                for (int k = 0; k < N; ++k)
+                {
+                    const auto y = _mm_add_pd (_mm_mul_pd (b0[k], x), s1[k]);
+                    s1[k] = _mm_add_pd (_mm_sub_pd (_mm_mul_pd (b1[k], x), _mm_mul_pd (a1[k], y)), s2[k]);
+                    s2[k] = _mm_sub_pd (_mm_mul_pd (b2[k], x), _mm_mul_pd (a2[k], y));
+                    x = y;
+                }
+                _mm_store_pd (held + 2 * i, x);
+            }
+            for (int k = 0; k < N; ++k)
+            {
+                _mm_storel_pd (&state[k][0], s1[k]);
+                _mm_storeh_pd (&state[EqDesign::maxStages + k][0], s1[k]);
+                _mm_storel_pd (&state[k][1], s2[k]);
+                _mm_storeh_pd (&state[EqDesign::maxStages + k][1], s2[k]);
+            }
+        }
+
+        // One stage alone: packing costs more than it saves there, so the two sides one after the other
+        // (runStages' arithmetic) on the interleaved samples.
+        void runOneStageInterleaved (const Biquad& f, double (*state)[2], double* held, int numSamples) noexcept
+        {
+            for (int c = 0; c < 2; ++c)
+            {
+                auto s1 = state[c * EqDesign::maxStages][0], s2 = state[c * EqDesign::maxStages][1];
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto x = held[2 * i + c];
+                    const auto y = f.b0 * x + s1;
+                    s1 = f.b1 * x - f.a1 * y + s2;
+                    s2 = f.b2 * x - f.a2 * y;
+                    held[2 * i + c] = y;
+                }
+                state[c * EqDesign::maxStages][0] = s1;
+                state[c * EqDesign::maxStages][1] = s2;
+            }
+        }
+       #endif
+
+        template <int C>
+        void runCascade (const std::array<Biquad, EqDesign::maxStages>& stages, int count, double (*state)[2],
+                         float* const* samples, int numSamples) noexcept
+        {
+            constexpr int piece = 256;
+            double held[C][piece];
+            double* buffers[C];
+            for (int c = 0; c < C; ++c)
+                buffers[c] = held[c];
+            if (count <= 0)   // (0.173.0: nothing to run: no copy to doubles and back)
+                return;
+           #if PR7S_PACKED_EQ
+            if constexpr (C == 2)
+            {
+                alignas (16) double both[2 * piece];
+                for (int from = 0; from < numSamples; from += piece)
+                {
+                    const auto n = juce::jmin (piece, numSamples - from);
+                    for (int i = 0; i < n; ++i)
+                    {
+                        both[2 * i] = samples[0][from + i];
+                        both[2 * i + 1] = samples[1][from + i];
+                    }
+                    for (int k = 0; k < count; k += 4)
+                    {
+                        const auto* f = stages.data() + k;
+                        auto* s = state + k;
+                        switch (juce::jmin (4, count - k))
+                        {
+                            case 1:  runOneStageInterleaved (*f, s, both, n); break;
+                            case 2:  runStagesPacked<2> (f, s, both, n); break;
+                            case 3:  runStagesPacked<3> (f, s, both, n); break;
+                            default: runStagesPacked<4> (f, s, both, n); break;
+                        }
+                    }
+                    for (int i = 0; i < n; ++i)
+                    {
+                        samples[0][from + i] = (float) both[2 * i];
+                        samples[1][from + i] = (float) both[2 * i + 1];
+                    }
+                }
+                for (int c = 0; c < 2; ++c)
+                    for (int k = 0; k < count; ++k)
+                        for (auto& v : state[c * EqDesign::maxStages + k])
+                            v = std::abs (v) < 1.0e-25 ? 0.0 : v;
+                return;
+            }
+           #endif
+            for (int from = 0; from < numSamples; from += piece)
+            {
+                const auto n = juce::jmin (piece, numSamples - from);
+                for (int c = 0; c < C; ++c)
+                    for (int i = 0; i < n; ++i)
+                        held[c][i] = samples[c][from + i];
+                for (int k = 0; k < count; k += 4)
+                {
+                    const auto* f = stages.data() + k;
+                    auto* s = state + k;
+                    switch (juce::jmin (4, count - k))
+                    {
+                        case 1:  runStages<1, C> (f, s, buffers, n); break;
+                        case 2:  runStages<2, C> (f, s, buffers, n); break;
+                        case 3:  runStages<3, C> (f, s, buffers, n); break;
+                        default: runStages<4, C> (f, s, buffers, n); break;
+                    }
+                }
+                for (int c = 0; c < C; ++c)
+                    for (int i = 0; i < n; ++i)
+                        samples[c][from + i] = (float) held[c][i];
+            }
+            // (Values too small to hear flushed: no slow denormals in a long silence.)
+            for (int c = 0; c < C; ++c)
+                for (int k = 0; k < count; ++k)
+                    for (auto& v : state[c * EqDesign::maxStages + k])
+                        v = std::abs (v) < 1.0e-25 ? 0.0 : v;
+        }
+    }
+
     void EqProcessor::run (const std::array<Biquad, EqDesign::maxStages>& stages, int count,
                            std::array<std::array<double, 2>, EqDesign::maxStages>& state, float* samples, int numSamples)
     {
-        // Transposed direct form II, in doubles.
-        for (int k = 0; k < count; ++k)
-        {
-            const auto& f = stages[(size_t) k];
-            auto s1 = state[(size_t) k][0], s2 = state[(size_t) k][1];
-            for (int i = 0; i < numSamples; ++i)
-            {
-                const double x = samples[i];
-                const auto y = f.b0 * x + s1;
-                s1 = f.b1 * x - f.a1 * y + s2;
-                s2 = f.b2 * x - f.a2 * y;
-                samples[i] = (float) y;
-            }
-            // (Values too small to hear flushed: no slow denormals in a long silence.)
-            state[(size_t) k][0] = std::abs (s1) < 1.0e-25 ? 0.0 : s1;
-            state[(size_t) k][1] = std::abs (s2) < 1.0e-25 ? 0.0 : s2;
-        }
+        float* one[] = { samples };
+        runCascade<1> (stages, count, reinterpret_cast<double (*)[2]> (state.data()), one, numSamples);
     }
 
     void EqProcessor::runStereo (const std::array<Biquad, EqDesign::maxStages>& stages, int count,
                                  std::array<std::array<std::array<double, 2>, EqDesign::maxStages>, 2>& state,
                                  float* left, float* right, int numSamples)
     {
-        for (int k = 0; k < count; ++k)
-        {
-            const auto& f = stages[(size_t) k];
-            auto l1 = state[0][(size_t) k][0], l2 = state[0][(size_t) k][1];
-            auto r1 = state[1][(size_t) k][0], r2 = state[1][(size_t) k][1];
-            for (int i = 0; i < numSamples; ++i)
-            {
-                const double xl = left[i], xr = right[i];
-                const auto yl = f.b0 * xl + l1;
-                const auto yr = f.b0 * xr + r1;
-                l1 = f.b1 * xl - f.a1 * yl + l2;
-                r1 = f.b1 * xr - f.a1 * yr + r2;
-                l2 = f.b2 * xl - f.a2 * yl;
-                r2 = f.b2 * xr - f.a2 * yr;
-                left[i] = (float) yl;
-                right[i] = (float) yr;
-            }
-            state[0][(size_t) k][0] = std::abs (l1) < 1.0e-25 ? 0.0 : l1;
-            state[0][(size_t) k][1] = std::abs (l2) < 1.0e-25 ? 0.0 : l2;
-            state[1][(size_t) k][0] = std::abs (r1) < 1.0e-25 ? 0.0 : r1;
-            state[1][(size_t) k][1] = std::abs (r2) < 1.0e-25 ? 0.0 : r2;
-        }
+        // (The two sides' states are one after the other: side 1's start maxStages pairs after side 0's.)
+        static_assert (sizeof (state) == sizeof (double) * 2 * EqDesign::maxStages * 2);
+        float* both[] = { left, right };
+        runCascade<2> (stages, count, reinterpret_cast<double (*)[2]> (state[0].data()), both, numSamples);
     }
 
     void EqProcessor::processPre (float* const* channels, int numChannels, int numSamples)

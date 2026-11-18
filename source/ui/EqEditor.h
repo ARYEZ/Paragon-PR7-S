@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
+#include "ui/PictureCache.h"
 
 #include <juce_dsp/juce_dsp.h>
 
@@ -79,6 +80,23 @@ private:
     pr7s::ChannelEq atDown;
     juce::Point<float> hover { -1.0f, -1.0f };
     pr7s::ChannelEq shown;   // (repainted when the studio's differs: undo, the other views)
+    // (0.174.0) The grid and the curve kept as pictures (PictureCache.h).
+    PictureCache backPicture, frontPicture;
+    struct FrontKey
+    {
+        pr7s::ChannelEq eq;
+        int dragging = -1;
+        bool keys = true;
+        bool operator== (const FrontKey& o) const { return eq == o.eq && dragging == o.dragging && keys == o.keys; }
+    };
+    std::optional<FrontKey> frontShown;
+    std::optional<bool> backKeys;
+    void paintBack (juce::Graphics&);
+    void paintFront (juce::Graphics&);
+public:
+    int getPicturesMade() const noexcept { return backPicture.made + frontPicture.made; }
+    void refreshForTests() { if (const auto now = current(); ! (now == shown)) { shown = now; repaint(); } }
+private:
 };
 
 // The whole EQ of a channel: BYPASS, PRESETS, the curve, a column per band (ON, TYPE, GAIN,

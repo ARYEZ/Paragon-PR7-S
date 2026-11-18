@@ -193,8 +193,10 @@ void MainView::registerCommands()
     {
         openEq (studio.isMasterSelected() ? pr7s::Engine::masterBus : studio.getSelectedTrack());
     });
+    add ("Window.Blueprints", "Window", "Blueprints", {}, [this] { openBlueprints(); });   // (0.152.0)
+    add ("Window.KeyCheck", "Window", "Key Check", {}, [this] { openKeyCheck(); });   // (0.84.0)
     add ("Window.Progressions", "Window", "Progression Library", {}, [this] { openProgressions(); });   // (0.40.0)
-    add ("Window.Composer", "Window", "Composer", {}, [this] { openComposer(); });   // (0.58.0)
+    add ("Window.Composer", "Window", "Open Architect", { KP (KP::F7Key) });   // (0.58.0)
     add ("Window.LearnMyBand", "Window", "Learn My Band (Read the Record)", {}, [this] { openBandRecord(); });   // (0.82.0)
     add ("Window.AudioAlignment", "Window", "Open/Close Audio Alignment Panel", {}, [this] { toggleAudioAlignment(); });   // (0.33.0)
     add ("Automation.Touch", "Automation", "Automation Mode: Touch", {}, [this] { studio.setAutomationMode (pr7s::Studio::AutomationSettings::Mode::touch); });
