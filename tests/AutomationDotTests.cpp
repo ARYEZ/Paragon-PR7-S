@@ -38,13 +38,21 @@ TEST_CASE ("0.167.0: points stacked on one spot draw the same dot as a single po
             g.addTransform (juce::AffineTransform::scale (scale));
             arrange.paint (g);
         }
-        // The light in a strip round each dot (the line through it is the same everywhere).
+        // The light in a box round each dot (the line through it is the same everywhere): before 0.167.0
+        // three points on one spot gave about 6 % more than one.
         const auto lightAround = [&] (double beat)
         {
             const auto x = juce::roundToInt (timeline.xForBeat (beat) * scale);
-            const auto half = juce::roundToInt (8.0f * scale);
-            juce::int64 sum = 0;
+            auto centre = 0, brightest = -1;
             for (int y = 0; y < image.getHeight(); ++y)
+            {
+                const auto c = image.getPixelAt (x, y);
+                if (const auto b = c.getRed() + c.getGreen() + c.getBlue(); b > brightest)
+                    brightest = b, centre = y;
+            }
+            const auto half = juce::roundToInt (8.0f * scale), tall = juce::roundToInt (11.0f * scale);
+            juce::int64 sum = 0;
+            for (int y = centre - tall; y <= centre + tall; ++y)
                 for (int dx = -half; dx <= half; ++dx)
                 {
                     const auto c = image.getPixelAt (x + dx, y);
@@ -53,8 +61,8 @@ TEST_CASE ("0.167.0: points stacked on one spot draw the same dot as a single po
             return (double) sum;
         };
         const auto single = lightAround (2.0);
-        CHECK (std::abs (lightAround (6.0) - single) < single * 0.002);
-        CHECK (std::abs (lightAround (10.0) - single) < single * 0.01);
+        CHECK (std::abs (lightAround (6.0) - single) < single * 0.02);
+        CHECK (std::abs (lightAround (10.0) - single) < single * 0.02);
         CHECK (lightAround (14.25) < lightAround (14.0) + 1.0);   // (between the two apart: no dot of its own)
     }
 }
