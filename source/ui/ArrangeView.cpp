@@ -3558,6 +3558,10 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
 
     // The points: selected ones dark (as the manual has them).
     const auto selectedHere = pointSelection.busId == row.busId && pointSelection.laneIndex == row.laneIndex;
+    // (0.167.0, the owner: some dots looked bigger and brighter) Points on the same spot on screen
+    // (a write pass leaves several within a pixel or two) are drawn as one dot: the glow's see-through
+    // halos stacked into a blob.
+    auto lastDot = juce::Point<float> (-1.0e9f, -1.0e9f);
     for (int i = 0; i < (int) points.size(); ++i)
     {
         const auto at = juce::Point<float> (timeline.xForBeat (points[(size_t) i].beat), yForValue (area, points[(size_t) i].value));
@@ -3577,6 +3581,9 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
             g.drawEllipse (lit, 1.0f);
             continue;
         }
+        if (std::abs (at.x - lastDot.x) < 2.0f && std::abs (at.y - lastDot.y) < 2.0f)
+            continue;
+        lastDot = at;
         if (active)
         {
             // (0.153.0) A glowing dot on the neon line: a halo, the colour, a pale core.
