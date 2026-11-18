@@ -2548,7 +2548,7 @@ TEST_CASE ("0.105.0: a bridge's own types, every lane's options a different part
     const std::vector<juce::String> names { "HALF-TIME MELODIC", "HEAVY BUILD", "LATE-CHANGE CLIMB", "CLEAN BRIDGE",
                                             "SLIDING CHORDS", "GUITARS OUT, THEN BACK", "SLIDE OVER A HELD ROOT" };
     const auto bridge = sectionTypesFor ("Bridge");
-    REQUIRE (bridge.size() == names.size() + 9 + 11 + 14 + 1 + 3);   // (0.161.0: RISING BASS before the old three)   // (0.142.0: eleven more)   // (0.122.0: nine more after them)
+    REQUIRE (bridge.size() == names.size() + 9 + 11 + 14 + 1 + 6 + 3);   // (0.171.0: six more)   // (0.161.0: RISING BASS before the old three)   // (0.142.0: eleven more)   // (0.122.0: nine more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (bridge[i].name == names[i]);
     CHECK (bridge[names.size() + 20 + 14 + 1].name == "CREEP");   // (the old three kept after them)
@@ -6572,5 +6572,92 @@ TEST_CASE ("0.170.0: round five's post-chorus and interlude types, every lane's 
     {
         const auto layers = layersOf ("HELD SECOND CLUSTER, SIXTEENTH PICKUP", 0, 0, 0);
         CHECK (at (layers[(size_t) ComposerLayer::guitar], 3.0) == std::vector<int> { 41, 48 });
+    }
+}
+
+TEST_CASE ("0.171.0: round five's bridge types, every lane's options a different part", "[sections][types][bridge171]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars; the guitar's low A 33)
+    const std::vector<juce::String> names { "PEDAL CELL, FALLING TOP, CHORDS IN THE GAP", "BASS AND RIDE ALONE, THE GUITAR DRIFTS IN", "LOW HIT, HIGH MAJOR-7TH DYAD, CHROMATIC CLIMB",
+                                            "FLAT-SEVEN OCTAVES, SUS TO MAJOR TOP", "FLAT-TWO DRIVE TO THE SEVEN", "GUITAR ALONE: A BAR OF LINE, A BAR RUNG" };
+    const auto bridge = sectionTypesFor ("Bridge");
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << ";";
+        return k;
+    };
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        INFO (names[i]);
+        CHECK (bridge[bridge.size() - 9 + i].name == names[i]);
+        CHECK (sectionTypeCalled (names[i])->band == SectionType::Band::bridge);
+        ComposerState s;
+        applySectionType (s, "Bridge", names[i]);
+        REQUIRE (s.sectionType == names[i]);
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                INFO (composerLayerName (l) << " " << o << " " << sectionApproaches (s, l)[(int) o]);
+                CHECK (seen.insert (key (choices[o])).second);
+                const auto name = sectionApproaches (s, l)[(int) o];
+                if (name != "OUT" && name != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+    }
+
+    const auto layersOf = [&] (const juce::String& type, int guitar, int bass, int drums)
+    {
+        ComposerState s;
+        applySectionType (s, "Bridge", type);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::bass).approach = bass;
+        s.lane (ComposerLayer::drums).approach = drums;
+        return composeLayers (s, spans, c);
+    };
+    const auto at = [] (const LineIdea& idea, double beat)
+    {
+        std::vector<int> pitches;
+        for (const auto& n : idea.notes)
+            if (std::abs (n.beat - beat) < 1.0e-6 && ! n.keyswitch)
+                pitches.push_back (n.pitch);
+        std::sort (pitches.begin(), pitches.end());
+        return pitches;
+    };
+    // FLAT-TWO DRIVE: the half step over the key's root on every eighth, the flat seven held for the last bar.
+    {
+        const auto layers = layersOf ("FLAT-TWO DRIVE TO THE SEVEN", 0, 0, 0);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        CHECK (at (g, 0.5) == std::vector<int> { 34, 41 });
+        CHECK (at (g, 4.5) == std::vector<int> { 34, 41 });   // (whatever the chord)
+        CHECK (at (g, 28.0) == std::vector<int> { 43, 50, 55 });
+    }
+    // BASS AND RIDE ALONE: the guitar out for the first half; the bass's two empty bars in every four.
+    {
+        const auto layers = layersOf ("BASS AND RIDE ALONE, THE GUITAR DRIFTS IN", 0, 0, 0);
+        for (const auto& n : layers[(size_t) ComposerLayer::guitar].notes)
+            CHECK (n.beat >= 16.0);
+        for (const auto& n : layers[(size_t) ComposerLayer::bass].notes)
+            CHECK (std::fmod (n.beat, 16.0) < 8.0);
+    }
+    // THE FALLING TOP: the fifth over the root in the first bar, the root's octave in the fourth.
+    {
+        const auto layers = layersOf ("PEDAL CELL, FALLING TOP, CHORDS IN THE GAP", 1, 0, 0);
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        CHECK (at (g, 0.0) == std::vector<int> { 33, 40, 52 });
     }
 }

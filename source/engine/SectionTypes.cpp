@@ -323,6 +323,13 @@ namespace pr7s
                          { "ARPEGGIO UP AN OCTAVE, BASS STEPPING DOWN", "The drums out, an arpeggio an octave up, the bass falling a scale step a bar", r, {}, b },
                          // (0.161.0, round four's versions: All I Need's bridge) the pre-chorus's RISING BASS as a bridge too
                          { "RISING BASS", "Chords held or tremolo picked while the bass climbs a step a bar underneath", RiffFlavour::openChords, {}, SectionType::Band::preChorus },
+                         // (0.171.0) Round five (the owner's 12 songs; shapes only, our names).
+                         { "PEDAL CELL, FALLING TOP, CHORDS IN THE GAP", "A pedal cell whose top note falls each bar, then high chords rung in the gap it leaves", r, {}, b },
+                         { "BASS AND RIDE ALONE, THE GUITAR DRIFTS IN", "The bass's four-bar cell and the ride alone, then single held clashing notes drifting in", r, {}, b },
+                         { "LOW HIT, HIGH MAJOR-7TH DYAD, CHROMATIC CLIMB", "Low hits answered by a high dissonant dyad, then power chords climbing by half steps", r, {}, b },
+                         { "FLAT-SEVEN OCTAVES, SUS TO MAJOR TOP", "Octave dyads round the flat seven, the top note turning from suspended to major", r, {}, b },
+                         { "FLAT-TWO DRIVE TO THE SEVEN", "Eighths on the chord a half step over the root, landing on the flat seven", r, {}, b },
+                         { "GUITAR ALONE: A BAR OF LINE, A BAR RUNG", "One guitar alone: a bar of single-note line, then a held figure and a rung chord", r, {}, b },
                          creep, open, droning };
             }
             case 4:
@@ -1098,6 +1105,19 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "BUSY KICK, RIDE BELL, CHINA ON FOUR", "BUSY KICK, CRASH EVERY BAR" }, {} },
                 { "CHANGES ON THREE", { "OPEN EIGHTHS, CHANGING ON THREE", "WITH A PASSING CHORD ON TWO" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "HELD PADS", "SILENT" }, { "FOUR ON THE FLOOR, BACKBEAT", "FOUR ON THE FLOOR, PICKUP SIXTEENTH" }, {} },
+                // (0.171.0) Round five's bridges.
+                { "PEDAL CELL, FALLING TOP, CHORDS IN THE GAP", { "FALLING TOP, CHORDS IN THE GAP", "PEDAL CELL, FALLING TOP" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SOFT CRASH QUARTERS, SNARE ON THREE", "HALF TIME, SPARSE HATS" }, {} },
+                { "BASS AND RIDE ALONE, THE GUITAR DRIFTS IN", { "OUT, THEN HELD CLASH TONES", "HELD CLASH TONES ALL THROUGH" }, { "FOUR-BAR CELL WITH EMPTY BARS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE QUARTERS, CHINA EVERY EIGHT BARS", "RIDE QUARTERS, SNARE ON THREE" }, {} },
+                { "LOW HIT, HIGH MAJOR-7TH DYAD, CHROMATIC CLIMB", { "LOW HITS, HIGH DYAD, CLIMB", "LOW HITS AND HIGH DYAD ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CRASH, CHINA AND KICK TOGETHER", "BACKBEAT, CLOSED HATS" }, {} },
+                { "FLAT-SEVEN OCTAVES, SUS TO MAJOR TOP", { "OCTAVES ROUND THE FLAT SEVEN", "OCTAVES ROUND THE FLAT SEVEN, NO TOP" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, OPEN HATS, THEN CRASH QUARTERS", "BACKBEAT, CLOSED HATS" }, {} },
+                { "FLAT-TWO DRIVE TO THE SEVEN", { "FLAT TWO IN EIGHTHS, THEN THE SEVEN", "FLAT TWO IN EIGHTHS ALL THROUGH" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CRASH EVERY TWO BARS, DRIVING", "DRIVING EIGHTHS BEAT" }, {} },
+                { "GUITAR ALONE: A BAR OF LINE, A BAR RUNG", { "A BAR OF LINE, A BAR RUNG", "LINE AND RUNG BARS IN TURN" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT", "OUT, A SNARE ROLL TO END" }, {} },
                 // (0.170.0) Round five's post-choruses and interludes.
                 { "NINTH CLASH IN EIGHTHS", { "NINTH CLUSTER, TRITONE ENDING", "NINTH CLUSTER IN EIGHTHS" }, { "A WHOLE STEP ABOVE THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "HIGH FIFTH EVERY TWO BARS", "SILENT" }, { "CRASH QUARTERS, KICK OFF THE BEAT", "SNARE ON THE DOTTED EIGHTHS" }, {} },
