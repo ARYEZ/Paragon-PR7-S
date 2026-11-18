@@ -78,6 +78,7 @@ add_executable(ParagonPR7STests
     Speed0164Tests.cpp
     Speed0165Tests.cpp
     Speed0166Tests.cpp
+    AutoDotProbe.cpp
     MediaBaySpeedTests.cpp
     Speed0113Tests.cpp
     CleanGuitarTests.cpp
