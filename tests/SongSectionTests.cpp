@@ -2289,7 +2289,7 @@ namespace
 TEST_CASE ("0.104.0: transitions: the last bar written for each, the melody untouched", "[sections][transitions]")
 {
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 14 + 21 + 27);   // (0.144.0: 21 more; 0.154.0: 27 more)
+    REQUIRE (list.size() == 14 + 21 + 27 + 6);   // (0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
     CHECK (list.front().name == noTransition);
     CHECK_FALSE (sectionTransitionNamed ("NONE").has_value());
     CHECK_FALSE (sectionTransitionNamed ("").has_value());
@@ -4978,7 +4978,7 @@ TEST_CASE ("0.154.0: round four's 27 transitions", "[sections][transitions][tran
                                             "TOM RUMBLE BARS", "HALF-STEP BURST BAR", "RIFF ALONE, TWO BARS", "UNISON SIXTEENTHS BAR",
                                             "SIXTEENTH SWELL, CUT SHORT", "SIX-SIXTEENTH TURNAROUND", "DROP TO KEYS AND LEAD", "CUT AT THE HALF BAR" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 35 + names.size());
+    REQUIRE (list.size() == 35 + names.size() + 6);   // (0.172.0: six more)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (list[35 + i].name == names[i]);
     const auto plain = withTransition (noTransition);
