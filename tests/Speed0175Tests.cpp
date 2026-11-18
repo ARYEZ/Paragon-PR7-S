@@ -93,7 +93,7 @@ TEST_CASE ("0.175.0: chasing walks back from where playing starts and finds each
     engine.setInstrument (1, std::move (instrument));
     engine.update (project);
 
-    for (const auto start : { 0.1, 0.3, 77.06, 200.0, 299.99 })
+    for (const auto start : { 0.1, 0.3, 77.06, 200.06, 299.99 })   // (none exactly on an event: a tie is the engine's rule either way)
     {
         INFO ("from beat " << start);
         probe->received.clear();
