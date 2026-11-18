@@ -1624,7 +1624,7 @@ namespace pr7s
             { "CUT AT THE HALF BAR", "Everyone stops halfway through the last bar" },
             // (0.172.0) Round five (the owner's 12 songs; shapes only, our names).
             { "UNISON HIT BAR A HALF STEP UNDER", "The last bar everyone hitting together in threes and twos on the chord a half step under, the snare and toms on every hit" },
-            { "THREE SILENT BARS, KICK PICKUP", "One hit, three empty bars, then a lone kick on the last sixteenth" },
+            { "A HIT, TWO SILENT BARS, KICK PICKUP", "One hit on the last two bars' first beat, then silence, then a lone kick on the last sixteenth" },
             { "TWO STABS AND A SILENT BAR", "The last bar two stabs on its first two sixteenths, then nothing" },
             { "HALF-BAR TOM FILL", "The band stops halfway through the last bar, the drums filling the first half on the snare and toms" },
             { "MUTED BREATH BAR", "The last bar only a palm-muted root in eighths, a snare on 1 and a hat on 3" },

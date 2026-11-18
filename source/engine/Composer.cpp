@@ -20841,9 +20841,9 @@ namespace pr7s
                         }
                     }
                 }
-                else if (name == "THREE SILENT BARS, KICK PICKUP")
+                else if (name == "A HIT, TWO SILENT BARS, KICK PICKUP")
                 {
-                    const auto from = juce::jmax (0.0, end - 3.0 * bar);
+                    const auto from = juce::jmax (0.0, end - 2.0 * bar);
                     cutAt (idea, from);
                     if (! playing)
                         return;

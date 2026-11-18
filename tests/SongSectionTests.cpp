@@ -6729,7 +6729,7 @@ TEST_CASE ("0.172.0: round five's shared options and transitions", "[sections][t
         return composeLayers (t, spans, c);
     };
     const auto plain = composeLayers (s, spans, c);
-    for (const auto* name : { "UNISON HIT BAR A HALF STEP UNDER", "THREE SILENT BARS, KICK PICKUP", "TWO STABS AND A SILENT BAR",
+    for (const auto* name : { "UNISON HIT BAR A HALF STEP UNDER", "A HIT, TWO SILENT BARS, KICK PICKUP", "TWO STABS AND A SILENT BAR",
                               "HALF-BAR TOM FILL", "MUTED BREATH BAR", "HIGH SOFT NOTES, BAND OUT" })
     {
         INFO (name);
