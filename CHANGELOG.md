@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.169.0
+
+Seven new chorus types from your 12 songs (round five, the second of five releases). Shapes only, our names; under TYPE on a chorus block (the hook, post-chorus and interlude lists take the chorus types too).
+
+- **HALF-STEP GRIND IN THREES, HIGH TONIC TREMOLO:** low power chords grinding in three-sixteenth cells, the half step over the root then the root held, every second bar turning on the half step and the fourth; a second guitar holds the key's root high in straight sixteenths. Drums: the kick on every hit of the grind, crashes in sixteenth pairs on 1 and 3.
+- **FIXED DISSONANT CHORD, BASS ROCKS UNDER IT:** one dissonant cluster on the key's root (its fifth, sixth and a raised fourth) struck on every beat for the whole chorus, whatever the chords, with a high major-seventh dyad on each bar's last sixteenth; the bass moves under it on whole notes. Drums: a china on the eighths, floor tom accents.
+- **LOW CHORD, HIGH CLASH, WALK BAR:** a low power chord answered by a high minor triad a half step over it, every third bar a walk of power chords stepping down by half steps on the pushes. Drums: the new CRASH ON THE KICKS, RIDE BETWEEN (a crash on every eighth with a kick, the ride on the others).
+- **RINGING, THEN DRIVING:** four-bar phrases thickening from a rung chord to a syncopated figure to two bars of driving eighths over a half-time kit (it suits chords a third apart, as the song had: put them on the chord track).
+- **TONIC BAR, CHROMATIC FALL BAR:** a bar of the key's root on 3+3+2, then a bar of the flat seven falling by half steps, every fourth bar cut at the half; the keys play a high seesaw over it.
+- **CALL, AIR, DRIVE:** four-bar cycles: a bar of short-long hits, a bar of air with one soft high chord, two bars of eighths rocking to the half step over the root, the snare and kick interlocking.
+- **RING THE OCTAVE OVER A MOVING BASS:** one high octave rung a bar (the key's root, fifth, flat sixth, then an empty bar), the bass doing the moving under a half-time ride.
+
+Not checked here: how they sound.
+
 ## 0.168.0
 
 Six new verse types from the 12 songs you uploaded, the first of the five releases for them (then choruses, post-choruses, bridges, and the smaller additions). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a verse block (they're also under the pre-chorus's list, which takes every verse type).

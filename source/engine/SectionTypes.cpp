@@ -258,7 +258,7 @@ namespace pr7s
                          { "BASS SIXTEENTHS, GUITARS OUT", "The bass on root sixteenths under a keys ostinato and a hip-hop break; the guitars out, stabbing or in a wall", r, {}, c },
                          { "THREE CHORDS, THEN A HELD BAR", "Three chords on 1, the and of 2 and 4, the next bar holding the last; the snare on 3 only", r, {}, c },
                          { "HELD CHORD WITH A RINGING TOP, BUSY KICK", "A chord struck and held with its ninth ringing on top, pushed into the next, over a busy sixteenth kick", r, {}, c },
-                         { "CHANGES ON THREE", "Open eighths with each chord arriving on beat 3 over four on the floor", r, {}, c ,
+                         { "CHANGES ON THREE", "Open eighths with each chord arriving on beat 3 over four on the floor", r, {}, c },
                          // (0.169.0) Round five (the owner's 12 songs; shapes only, our names).
                          { "HALF-STEP GRIND IN THREES, HIGH TONIC TREMOLO", "Low power chords grinding in threes between the root and the half step over it, the key's root high in sixteenths over them", r, {}, c },
                          { "FIXED DISSONANT CHORD, BASS ROCKS UNDER IT", "One dissonant cluster struck on every beat all chorus, the bass moving under it, a china on the eighths", r, {}, c },
