@@ -1,5 +1,9 @@
 #include "engine/Eq.h"
 
+#if defined (__SSE2__) || defined (_M_X64) || (defined (_M_IX86_FP) && _M_IX86_FP >= 2)
+ #include <emmintrin.h>
+#endif
+
 namespace pr7s
 {
     namespace
@@ -376,6 +380,68 @@ namespace pr7s
                 }
         }
 
+        // (0.173.0) Both sides at once: the left and right samples side by side in one SSE2 register, every
+        // stage's arithmetic in exactly runStages' order (packed multiplies, adds and subtracts round as the
+        // scalar ones, and intrinsics are never fused), so the output is the same to the bit. `held` holds the
+        // two sides interleaved (L, R, L, R...). Only where SSE2 is there; else runStages on the sides.
+       #if defined (__SSE2__) || defined (_M_X64) || (defined (_M_IX86_FP) && _M_IX86_FP >= 2)
+        #define PR7S_PACKED_EQ 1
+        template <int N>
+        void runStagesPacked (const Biquad* f, double (*state)[2], double* held, int numSamples) noexcept
+        {
+            __m128d s1[N], s2[N], b0[N], b1[N], b2[N], a1[N], a2[N];
+            for (int k = 0; k < N; ++k)
+            {
+                s1[k] = _mm_set_pd (state[EqDesign::maxStages + k][0], state[k][0]);
+                s2[k] = _mm_set_pd (state[EqDesign::maxStages + k][1], state[k][1]);
+                b0[k] = _mm_set1_pd (f[k].b0);
+                b1[k] = _mm_set1_pd (f[k].b1);
+                b2[k] = _mm_set1_pd (f[k].b2);
+                a1[k] = _mm_set1_pd (f[k].a1);
+                a2[k] = _mm_set1_pd (f[k].a2);
+            }
+            for (int i = 0; i < numSamples; ++i)
+            {
+                auto x = _mm_load_pd (held + 2 * i);
+                for (int k = 0; k < N; ++k)
+                {
+                    const auto y = _mm_add_pd (_mm_mul_pd (b0[k], x), s1[k]);
+                    s1[k] = _mm_add_pd (_mm_sub_pd (_mm_mul_pd (b1[k], x), _mm_mul_pd (a1[k], y)), s2[k]);
+                    s2[k] = _mm_sub_pd (_mm_mul_pd (b2[k], x), _mm_mul_pd (a2[k], y));
+                    x = y;
+                }
+                _mm_store_pd (held + 2 * i, x);
+            }
+            for (int k = 0; k < N; ++k)
+            {
+                _mm_storel_pd (&state[k][0], s1[k]);
+                _mm_storeh_pd (&state[EqDesign::maxStages + k][0], s1[k]);
+                _mm_storel_pd (&state[k][1], s2[k]);
+                _mm_storeh_pd (&state[EqDesign::maxStages + k][1], s2[k]);
+            }
+        }
+
+        // One stage alone: packing costs more than it saves there, so the two sides one after the other
+        // (runStages' arithmetic) on the interleaved samples.
+        void runOneStageInterleaved (const Biquad& f, double (*state)[2], double* held, int numSamples) noexcept
+        {
+            for (int c = 0; c < 2; ++c)
+            {
+                auto s1 = state[c * EqDesign::maxStages][0], s2 = state[c * EqDesign::maxStages][1];
+                for (int i = 0; i < numSamples; ++i)
+                {
+                    const auto x = held[2 * i + c];
+                    const auto y = f.b0 * x + s1;
+                    s1 = f.b1 * x - f.a1 * y + s2;
+                    s2 = f.b2 * x - f.a2 * y;
+                    held[2 * i + c] = y;
+                }
+                state[c * EqDesign::maxStages][0] = s1;
+                state[c * EqDesign::maxStages][1] = s2;
+            }
+        }
+       #endif
+
         template <int C>
         void runCascade (const std::array<Biquad, EqDesign::maxStages>& stages, int count, double (*state)[2],
                          float* const* samples, int numSamples) noexcept
@@ -385,6 +451,45 @@ namespace pr7s
             double* buffers[C];
             for (int c = 0; c < C; ++c)
                 buffers[c] = held[c];
+            if (count <= 0)   // (0.173.0: nothing to run: no copy to doubles and back)
+                return;
+           #if PR7S_PACKED_EQ
+            if constexpr (C == 2)
+            {
+                alignas (16) double both[2 * piece];
+                for (int from = 0; from < numSamples; from += piece)
+                {
+                    const auto n = juce::jmin (piece, numSamples - from);
+                    for (int i = 0; i < n; ++i)
+                    {
+                        both[2 * i] = samples[0][from + i];
+                        both[2 * i + 1] = samples[1][from + i];
+                    }
+                    for (int k = 0; k < count; k += 4)
+                    {
+                        const auto* f = stages.data() + k;
+                        auto* s = state + k;
+                        switch (juce::jmin (4, count - k))
+                        {
+                            case 1:  runOneStageInterleaved (*f, s, both, n); break;
+                            case 2:  runStagesPacked<2> (f, s, both, n); break;
+                            case 3:  runStagesPacked<3> (f, s, both, n); break;
+                            default: runStagesPacked<4> (f, s, both, n); break;
+                        }
+                    }
+                    for (int i = 0; i < n; ++i)
+                    {
+                        samples[0][from + i] = (float) both[2 * i];
+                        samples[1][from + i] = (float) both[2 * i + 1];
+                    }
+                }
+                for (int c = 0; c < 2; ++c)
+                    for (int k = 0; k < count; ++k)
+                        for (auto& v : state[c * EqDesign::maxStages + k])
+                            v = std::abs (v) < 1.0e-25 ? 0.0 : v;
+                return;
+            }
+           #endif
             for (int from = 0; from < numSamples; from += piece)
             {
                 const auto n = juce::jmin (piece, numSamples - from);
