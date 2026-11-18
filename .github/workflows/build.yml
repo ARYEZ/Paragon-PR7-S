@@ -165,6 +165,23 @@ jobs:
         with:
           path: artifacts
 
+      # (0.167.0) When only one build uploaded (Linux failed), the download puts its files
+      # straight into artifacts/ with no folder of its own: put them back in the folder the
+      # steps below look in, so the Windows build is still released.
+      - name: One build only? Give it its folder
+        if: steps.version.outputs.publish != 'false'
+        run: |
+          ls -la artifacts || true
+          if [ -e "artifacts/Paragon PR7-S.exe" ] && [ ! -d artifacts/ParagonPR7S-Windows ]; then
+            mkdir -p artifacts/ParagonPR7S-Windows
+            find artifacts -maxdepth 1 -mindepth 1 ! -name 'ParagonPR7S-*' -exec mv {} artifacts/ParagonPR7S-Windows/ \;
+            echo "The Windows build came alone; moved into artifacts/ParagonPR7S-Windows"
+          elif [ -e "artifacts/Paragon PR7-S" ] && [ ! -d artifacts/ParagonPR7S-Linux ]; then
+            mkdir -p artifacts/ParagonPR7S-Linux
+            find artifacts -maxdepth 1 -mindepth 1 ! -name 'ParagonPR7S-*' -exec mv {} artifacts/ParagonPR7S-Linux/ \;
+            echo "The Linux build came alone; moved into artifacts/ParagonPR7S-Linux"
+          fi
+
       # THE BACKLINE: the family's instruments, each from its own latest release, its VST3 beside the app in
       # each zip (the app looks there first): PR7-K, the studio's synth (0.9.11), and PR7-D, the studio's drums
       # (0.107.0). One that can't be had is left out with a warning (the app then uses what it has).
