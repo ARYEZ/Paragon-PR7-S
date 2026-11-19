@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.179.0
+
+Quicker with a big groove library (you asked: "do all of it so long as it doesn't negatively affect the experience"). Nothing you see or hear is different: the same grooves, the same counts, the same parts, sooner. Timed here with a made-up library of 100,000 grooves (your own disk and folders will give other numbers).
+
+- **The GROOVE FOLDERS tab.** Each folder's count was worked out by going through every groove in it one at a time, every time its row was drawn (a top folder: about 100,000 steps a row, on every scroll). Now both ends of the folder are found by halving (about 17 steps), and each count and each folder's list of subfolders is kept until the library is read again. Your favourites are read once, not once a row. A redraw went from 50-110 ms to about 1 ms, a star clicked from 53 ms to about 1 ms. A star you mark in ARCHITECT shows on the tab while it's open too.
+- **The drums lane's short menu** no longer makes all 200 grooves' parts just to show their names (it only needs the names): 114 ms down to about 1 ms the first time.
+- **MORE OPTIONS opens straight away** with the 200 names. Each groove's feel, energy and picture are made a few at a time while the window is open (about a frame's worth of work at once, so it never stops answering): the one chosen first, then the rows you can see, then the rest. The top line says "MEASURING: n TO GO" until it's done (a second or so here). The FEEL and ENERGY keys are there from the start; a groove not measured yet joins a FEEL filter when it is. What's made is kept, so opening it again is instant.
+- **More groove files kept in memory:** 1,024 (was 256), so going back to a section you've heard doesn't read its 200 files again.
+
+Not done: sorting by feel from PR7-D's own rhythm notes without opening the files. Its notes hold the kick and snare only, so the feel and energy could come out differently from what the groove really plays; making the real ones in the background got the browser open at once without that.
+
 ## 0.178.0
 
 Favourite groove folders, and 200 library grooves for each section (you asked: 50 from your favourites, 100 from the rest of Toontrack, 50 from your other packs).

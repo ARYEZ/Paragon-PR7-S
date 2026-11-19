@@ -141,7 +141,9 @@ public:
     // everything. Options' ids: a style's number, or `approachId` + an approach's number.
     static constexpr int approachId = 100000;
     static constexpr int shortListMost = 12;   // a group longer than this is left to the browser (favourites and recent still shown)
-    std::vector<OptionBrowser::Option> laneOptions (pr7s::ComposerLayer) const;
+    // (0.179.0) withParts false: the library grooves' names only (pending, made by fillGrooveOption), for the short
+    // menu and the browser; the other options are always whole.
+    std::vector<OptionBrowser::Option> laneOptions (pr7s::ComposerLayer, bool withParts = true) const;
     juce::String optionListKey (pr7s::ComposerLayer l) const { return "lane:" + pr7s::composerLayerName (l).toLowerCase(); }
     // (0.177.0, the owner: "if it is selecting 100 riffs from my library why wouldn't I literally hear 100 different
     // options") While the drums play grooves from the library, the drums lane's options ARE the section's grooves
@@ -154,7 +156,8 @@ public:
                                      favouriteFoldersGroup = "FAVOURITE FOLDERS";   // (0.178.0)
     bool showsLibraryGrooves (pr7s::ComposerLayer) const;
     std::vector<pr7s::LibraryGroove> sectionGrooves() const;   // the section's list (the one chosen by hand left out of the key)
-    std::vector<OptionBrowser::Option> libraryGrooveOptions() const;
+    std::vector<OptionBrowser::Option> libraryGrooveOptions (bool withParts = true) const;
+    bool fillGrooveOption (OptionBrowser::Option&) const;   // (0.179.0) a pending groove's part made (and kept)
     // (0.178.0) A groove option's folder; the favourite folder holding it (none: not in one); marked or unmarked
     // (the browser's list made again when given).
     juce::File grooveFolderOf (int grooveOptionId) const;
@@ -321,6 +324,8 @@ private:
     // (0.177.0) The library grooves' options made once for the chords and state they were made from (100 drum parts).
     mutable juce::String grooveOptionsKey;
     mutable std::vector<OptionBrowser::Option> grooveOptionsKept;
+    mutable std::vector<juce::String> grooveFilesKept;   // (0.179.0) each kept option's groove
+    mutable pr7s::ComposerState grooveOptionsState;      // (0.179.0) what the kept parts are made from
     std::array<int, pr7s::composerLayerCount> trackChoice {};
     std::array<Lane, pr7s::composerLayerCount> lanes;
     juce::Random random;

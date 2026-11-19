@@ -84,6 +84,7 @@ add_executable(ParagonPR7STests
     Speed0176Tests.cpp
     LibraryOptionsTests.cpp
     FavouriteFoldersTests.cpp
+    Speed0179Tests.cpp
     Speed0173Tests.cpp
     MediaBaySpeedTests.cpp
     Speed0113Tests.cpp

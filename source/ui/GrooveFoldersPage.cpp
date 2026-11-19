@@ -62,8 +62,8 @@ public:
     {
         if (hiddenRoot)
             return;
-        const auto marked = page.studio.isGrooveFolderFavourite (folder);
-        const auto inherited = ! marked && isInFavouriteFolder (folder.getChildFile ("x"), page.studio.getGrooveFavouriteFolders());
+        const auto marked = page.isFavourite (folder);
+        const auto inherited = ! marked && isInFavouriteFolder (folder.getChildFile ("x"), page.favourites);
         drawStar (g, juce::Rectangle<float> (2.0f, 4.0f, (float) height - 8.0f, (float) height - 8.0f), marked, inherited);
         const auto count = page.countIn (folder);
         auto text = juce::Rectangle<int> (starWidth + 6, 0, width - starWidth - 6, height);
@@ -120,6 +120,7 @@ GrooveFoldersPage::GrooveFoldersPage (Studio& s) : studio (s)
     clearKey.onClick = [this]
     {
         studio.setGrooveFavouriteFolders ({});
+        favourites = studio.getGrooveFavouriteFolders();
         tree.repaint();
         refreshSummary();
     };
@@ -128,6 +129,19 @@ GrooveFoldersPage::GrooveFoldersPage (Studio& s) : studio (s)
     summary.setColour (juce::Label::textColourId, ParagonColours::textDim);
     addAndMakeVisible (summary);
     refresh();
+    startTimerHz (2);
+}
+
+void GrooveFoldersPage::timerCallback()
+{
+    if (! isShowing())
+        return;
+    if (const auto now = studio.getGrooveFavouriteFolders(); now != favourites)
+    {
+        favourites = now;
+        tree.repaint();
+        refreshSummary();
+    }
 }
 
 GrooveFoldersPage::~GrooveFoldersPage()
@@ -135,44 +149,66 @@ GrooveFoldersPage::~GrooveFoldersPage()
     tree.setRootItem (nullptr);
 }
 
+// (0.179.0) Both ends found by halving: a folder holding 100,000 grooves was walked one by one to its end, on every
+// row drawn. Every path starting with the prefix (which ends in a separator) sorts at or after it and before the
+// prefix with that separator one character higher.
 std::pair<size_t, size_t> GrooveFoldersPage::rangeOf (const juce::String& prefix) const
 {
     const auto from = std::lower_bound (paths.begin(), paths.end(), prefix);
-    auto to = from;
-    while (to != paths.end() && to->startsWith (prefix))
-        ++to;
+    auto past = prefix.dropLastCharacters (1);
+    past += juce::String::charToString ((juce::juce_wchar) (prefix.getLastCharacter() + 1));
+    const auto to = std::lower_bound (from, paths.end(), past);
     return { (size_t) std::distance (paths.begin(), from), (size_t) std::distance (paths.begin(), to) };
 }
 
 int GrooveFoldersPage::countIn (const juce::File& folder) const
 {
+    const auto key = folder.getFullPathName();
+    if (const auto found = counts.find (key); found != counts.end())
+        return found->second;
     const auto [from, to] = rangeOf (withSeparator (folder));
-    return (int) (to - from);
+    return counts[key] = (int) (to - from);
 }
 
 juce::StringArray GrooveFoldersPage::childrenOf (const juce::File& folder) const
 {
+    const auto key = folder.getFullPathName();
+    if (const auto found = children.find (key); found != children.end())
+        return found->second;
     const auto prefix = withSeparator (folder);
-    const auto [from, to] = rangeOf (prefix);
+    auto [from, to] = rangeOf (prefix);
     juce::StringArray names;
-    for (auto i = from; i < to; ++i)
+    // (0.179.0) A subfolder's name taken from its first groove, then the rest of that subfolder jumped over.
+    while (from < to)
     {
-        const auto rest = paths[i].substring (prefix.length());
+        const auto rest = paths[from].substring (prefix.length());
         const auto cut = rest.indexOfChar (juce::File::getSeparatorChar());
-        if (cut > 0)
+        if (cut <= 0)
         {
-            const auto name = rest.substring (0, cut);
-            if (names.isEmpty() || names[names.size() - 1] != name)
-                names.addIfNotAlreadyThere (name);
+            ++from;   // (a groove right in the folder)
+            continue;
         }
+        const auto name = rest.substring (0, cut);
+        names.addIfNotAlreadyThere (name);
+        const auto [_, next] = rangeOf (prefix + name + juce::File::getSeparatorChar());
+        from = juce::jmax (from + 1, next);
     }
     names.sortNatural();
-    return names;
+    return children[key] = names;
+}
+
+bool GrooveFoldersPage::isFavourite (const juce::File& folder) const
+{
+    for (const auto& f : favourites)
+        if (juce::File (f) == folder)
+            return true;
+    return false;
 }
 
 void GrooveFoldersPage::toggle (const juce::File& folder)
 {
     studio.setGrooveFolderFavourite (folder, ! studio.isGrooveFolderFavourite (folder));
+    favourites = studio.getGrooveFavouriteFolders();
     tree.repaint();
     refreshSummary();
 }
@@ -184,7 +220,7 @@ juce::String GrooveFoldersPage::getSummary() const
 
 void GrooveFoldersPage::refreshSummary()
 {
-    const auto folders = studio.getGrooveFavouriteFolders();
+    const auto& folders = favourites;
     auto grooves = 0;
     for (const auto& f : folders)
         if (! isInFavouriteFolder (juce::File (f), folders))   // (one inside another counted with it)
@@ -201,7 +237,11 @@ void GrooveFoldersPage::refresh()
     if (root != nullptr)
         open = tree.getOpennessState (false);
     paths.clear();
+    counts.clear();
+    children.clear();
+    favourites = studio.getGrooveFavouriteFolders();
     const auto context = studio.getComposerContext (0.0);
+    paths.reserve (context.libraryGrooves.size());
     for (const auto& g : context.libraryGrooves)
         paths.push_back (g.file.getFullPathName());
     std::sort (paths.begin(), paths.end());

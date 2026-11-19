@@ -1861,7 +1861,7 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
     const auto typeWrites = pr7s::sectionTypeWritesLane (l, state, context);
     // (0.156.0, the owner's mock-up D) The short list: Automatic, the type's own options, favourites and recent;
     // everything else behind MORE OPTIONS... (the option browser, with the feel filters).
-    const auto options = laneOptions (l);
+    const auto options = laneOptions (l, false);   // (0.179.0: the grooves' names: none of their parts is shown here)
     const auto memory = studio.getOptionMemory();
     const auto key = optionsKeyFor (l);
     const auto showingGrooves = showsLibraryGrooves (l);
@@ -2136,7 +2136,7 @@ std::vector<pr7s::LibraryGroove> ComposerPage::sectionGrooves() const
     return pr7s::composerGroovePool (s, placedSpans(), context);
 }
 
-std::vector<OptionBrowser::Option> ComposerPage::libraryGrooveOptions() const
+std::vector<OptionBrowser::Option> ComposerPage::libraryGrooveOptions (bool withParts) const
 {
     const auto grooves = sectionGrooves();
     auto s = state;
@@ -2148,36 +2148,63 @@ std::vector<OptionBrowser::Option> ComposerPage::libraryGrooveOptions() const
         key << juce::String (sp.start, 6) << "," << juce::String (sp.end, 6) << "," << sp.chord.toText() << ";";
     for (const auto& g : grooves)
         key << g.file.getFullPathName().hashCode64() << (g.favourite ? "f," : ",");
-    if (key == grooveOptionsKey)
-        return grooveOptionsKept;
-    std::vector<OptionBrowser::Option> out;
-    for (int i = 0; i < (int) grooves.size(); ++i)
+    if (key != grooveOptionsKey)
     {
-        const auto& g = grooves[(size_t) i];
-        OptionBrowser::Option o;
-        o.id = grooveId + i;
-        // (names repeat across packs ("Verse 1"): the folder makes each one its own, for favourites too)
-        o.name = g.name + " (" + g.folder + ")";
-        o.description = g.folder + ", " + juce::String (g.bars) + (g.bars == 1 ? " bar" : " bars")
-                      + (g.bpm > 0.0 ? ", " + juce::String (juce::roundToInt (g.bpm)) + " BPM" : juce::String())
-                      + "  -  " + g.file.getFullPathName();
-        o.group = g.favourite ? favouriteFoldersGroup : g.toontrack ? toontrackGroup : otherPacksGroup;
-        o.drums = true;
-        auto each = s;
-        each.libraryGroove = g.file.getFullPathName();
-        o.idea = pr7s::composeLayer (ComposerLayer::drums, each, spans, context);
-        o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, true);
-        out.push_back (std::move (o));
+        // (0.179.0) The names first (instant); each part made when it's asked for, then kept with the list.
+        grooveOptionsKey = key;
+        grooveOptionsKept.clear();
+        grooveFilesKept.clear();
+        grooveOptionsState = s;
+        for (int i = 0; i < (int) grooves.size(); ++i)
+        {
+            const auto& g = grooves[(size_t) i];
+            OptionBrowser::Option o;
+            o.id = grooveId + i;
+            // (names repeat across packs ("Verse 1"): the folder makes each one its own, for favourites too)
+            o.name = g.name + " (" + g.folder + ")";
+            o.description = g.folder + ", " + juce::String (g.bars) + (g.bars == 1 ? " bar" : " bars")
+                          + (g.bpm > 0.0 ? ", " + juce::String (juce::roundToInt (g.bpm)) + " BPM" : juce::String())
+                          + "  -  " + g.file.getFullPathName();
+            o.group = g.favourite ? favouriteFoldersGroup : g.toontrack ? toontrackGroup : otherPacksGroup;
+            o.drums = true;
+            o.pending = true;
+            grooveFilesKept.push_back (g.file.getFullPathName());
+            grooveOptionsKept.push_back (std::move (o));
+        }
     }
-    grooveOptionsKey = key;
-    grooveOptionsKept = out;
-    return out;
+    if (withParts)
+        for (auto& o : grooveOptionsKept)
+            fillGrooveOption (o);
+    return grooveOptionsKept;
 }
 
-std::vector<OptionBrowser::Option> ComposerPage::laneOptions (ComposerLayer l) const
+bool ComposerPage::fillGrooveOption (OptionBrowser::Option& o) const
+{
+    const auto i = o.id - grooveId;
+    if (! juce::isPositiveAndBelow (i, (int) grooveOptionsKept.size()))
+        return false;
+    auto& kept = grooveOptionsKept[(size_t) i];
+    if (kept.pending)
+    {
+        auto each = grooveOptionsState;
+        each.libraryGroove = grooveFilesKept[(size_t) i];
+        kept.idea = pr7s::composeLayer (ComposerLayer::drums, each, spans, context);
+        kept.measure = pr7s::measureOption (kept.idea, context.beatsPerBar, true);
+        kept.pending = false;
+    }
+    if (&o != &kept)
+    {
+        o.idea = kept.idea;
+        o.measure = kept.measure;
+        o.pending = false;
+    }
+    return true;
+}
+
+std::vector<OptionBrowser::Option> ComposerPage::laneOptions (ComposerLayer l, bool withParts) const
 {
     if (showsLibraryGrooves (l))
-        return libraryGrooveOptions();
+        return libraryGrooveOptions (withParts);
     std::vector<OptionBrowser::Option> out;
     const auto choices = pr7s::composerChoices (l, state, spans, context);
     const auto drums = l == ComposerLayer::drums;
@@ -2246,10 +2273,13 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
                     chosen = grooveId + i;
         title = "DRUMS: " + juce::String ((int) pool.size()) + " LIBRARY GROOVES FOR THIS SECTION";
     }
-    auto browser = std::make_unique<OptionBrowser> (title, laneOptions (l), chosen, studio.getOptionMemory(), optionsKeyFor (l));
+    auto browser = std::make_unique<OptionBrowser> (title, laneOptions (l, false), chosen, studio.getOptionMemory(), optionsKeyFor (l));
     if (grooves)
     {
         browser->setGroupOrder ({ favouriteFoldersGroup, toontrackGroup, otherPacksGroup });
+        // (0.179.0) The list at once; the grooves' parts made a few a frame (the chosen first, then those in view).
+        juce::Component::SafePointer<ComposerPage> filler (this);
+        browser->onFill = [filler] (OptionBrowser::Option& o) { return filler != nullptr && filler->fillGrooveOption (o); };
         // (0.178.0) Right-click a groove: its folder marked (or unmarked) as a favourite, the list made again.
         juce::Component::SafePointer<ComposerPage> page (this);
         auto* shown = browser.get();
@@ -2353,7 +2383,7 @@ void ComposerPage::markGrooveFolder (int id, bool favourite, OptionBrowser* brow
     if (browser != nullptr)
     {
         // The list again (the groups changed), the same groove still chosen.
-        browser->setOptions (laneOptions (ComposerLayer::drums));
+        browser->setOptions (laneOptions (ComposerLayer::drums, false));
         const auto again = sectionGrooves();
         for (int k = 0; k < (int) again.size(); ++k)
             if (again[(size_t) k].file == file)

@@ -521,7 +521,7 @@ namespace pr7s
             else
                 return {};
             const juce::ScopedLock sl (lock);
-            if (kept.size() > 256)
+            if (kept.size() > 1024)   // (0.179.0: was 256; 200 a section, so a few sections kept)
                 kept.clear();
             kept[file.getFullPathName()] = { date, notes };
             return notes;
