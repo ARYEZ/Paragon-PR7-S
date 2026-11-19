@@ -1051,6 +1051,11 @@ bool ComposerPage::hear()
     return true;
 }
 
+void ComposerPage::closeOptionBrowser()
+{
+    browserWindow.reset();   // (as its X: a trial not used puts the lane back)
+}
+
 void ComposerPage::stop()
 {
     if (hearing)
@@ -3312,6 +3317,7 @@ ComposerWindow::ComposerWindow (pr7s::Studio& studio)
 void ComposerWindow::closeButtonPressed()
 {
     suite->getComposer().stop();
+    suite->getComposer().closeOptionBrowser();   // (0.176.0: the window is kept hidden, not taken down: its browser goes)
     suite->getIdeas().stop();
     if (onClose)
         onClose();

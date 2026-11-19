@@ -1984,11 +1984,12 @@ namespace pr7s
         void sendPr7d (int trackId, const juce::MidiMessage&);
         void pausePr7dSongs (bool pause);
         mutable Pr7dLibrary keptPr7d;
+        mutable std::shared_ptr<const PreparedPr7dGrooves> keptPr7dPrepared;   // (0.176.0: labelled once per read)
         mutable juce::Time keptPr7dIndexDate;
         mutable bool keptPr7dRead = false;
         // (0.112.1) PR7-D's index read on a thread of its own in the app (the owner's 100,000 grooves held the screen
         // over a second): the library kept until it's read, then swapped in by the timer and announced.
-        struct Pr7dReading { juce::File folder; juce::Time date; Pr7dLibrary result; std::atomic<bool> done { false }; std::thread thread; };
+        struct Pr7dReading { juce::File folder; juce::Time date; Pr7dLibrary result; std::shared_ptr<const PreparedPr7dGrooves> prepared; std::atomic<bool> done { false }; std::thread thread; };
         mutable std::unique_ptr<Pr7dReading> pr7dReading;
         bool takePr7dReading() const;   // true when a finished read was swapped in
         struct KeptPr7dGrooves { juce::Time date; int style = -1; int bpm = 0; int bar = 0; size_t count = 0; DrumNotes notes = DrumNotes::asWritten; GrooveList grooves; };

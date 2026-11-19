@@ -3071,6 +3071,7 @@ namespace pr7s
         if (folder == juce::File())
         {
             keptPr7d = {};
+            keptPr7dPrepared.reset();
             return keptPr7d;
         }
         // Read again when PR7-D has written its index since (or the folder changed).
@@ -3092,12 +3093,14 @@ namespace pr7s
                     reading->thread = std::thread ([reading]
                     {
                         reading->result = readPr7dLibrary (reading->folder);
+                        reading->prepared = preparePr7dGrooves (reading->result);   // (0.176.0: off the screen's thread too)
                         reading->done = true;
                     });
                 }
                 return keptPr7d;
             }
             keptPr7d = readPr7dLibrary (folder);
+            keptPr7dPrepared = preparePr7dGrooves (keptPr7d);
             keptPr7dIndexDate = date;
             keptPr7dRead = true;
             if (keptPr7d.found)
@@ -3112,6 +3115,7 @@ namespace pr7s
             return false;
         pr7dReading->thread.join();
         keptPr7d = std::move (pr7dReading->result);
+        keptPr7dPrepared = std::move (pr7dReading->prepared);
         keptPr7dIndexDate = pr7dReading->date;
         keptPr7dRead = true;
         pr7dReading.reset();
@@ -11357,7 +11361,11 @@ namespace pr7s
             if (keptPr7dGrooves.date != pr7d.indexDate || keptPr7dGrooves.count != pr7d.grooves.size() || keptPr7dGrooves.style != (int) c.style
                 || keptPr7dGrooves.bpm != bpm || keptPr7dGrooves.bar != bar || keptPr7dGrooves.notes != notes)
             {
-                auto found = findPr7dGrooves (pr7d, c.style, c.bpm, c.beatsPerBar);
+                // (0.176.0) From the list labelled when the library was read: only the scores added and sorted here
+                // (each groove's words were read again on the screen's thread: over a second with 100,000).
+                if (keptPr7dPrepared == nullptr)
+                    keptPr7dPrepared = preparePr7dGrooves (pr7d);
+                auto found = findPr7dGrooves (*keptPr7dPrepared, c.style, c.bpm, c.beatsPerBar);
                 for (auto& g : found)
                     g.notes = notes;
                 keptPr7dGrooves = { pr7d.indexDate, (int) c.style, bpm, bar, pr7d.grooves.size(), notes, GrooveList (std::move (found)) };

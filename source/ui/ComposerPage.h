@@ -104,6 +104,7 @@ public:
     struct Placed { std::vector<pr7s::LineIdea> ideas; std::vector<int> onto, layers; };
     Placed placeLanes (double originBeat, bool hearing) const;   // (0: a new track when used / not heard)
     bool hear();                             // false: nothing to play them on
+    void closeOptionBrowser();   // (0.176.0) the OPTIONS browser window, if one is open
     void stop();
     bool isHearing() const;
     std::vector<int> useAll();               // the tracks written
