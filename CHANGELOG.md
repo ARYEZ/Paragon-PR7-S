@@ -2,6 +2,13 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.176.0
+
+ARCHITECT opens and closes without the lag (you said there was still a decent amount).
+
+- **Your groove library is labelled once per read, not every time ARCHITECT needs it.** Every groove in PR7-D's library gets labelled by its section words, fills and left-out styles. With your 100,000 grooves that took over a second on the screen's thread. It ran the first time ARCHITECT opened after a song loaded, and again whenever the tempo, style or bar length changed, or PR7-D rewrote its index after checking its folders. Now it happens once, on the background thread that already reads PR7-D's index. After a change only the scores are added up and sorted. Here, the first opening's first paint went from 1.2 seconds to under 50 ms. The list and its order are exactly the same as before; a test checks it for every style.
+- **The window is kept when you close it.** Before, ARCHITECT's whole window was built from scratch on every opening and taken down on every closing. On Windows that costs more than on our test machine. Now closing hides it and opening shows it again (its timers rest while hidden). It opens on the block you were on; if that block is gone, it opens on the first block not built, as before. Going back to the Hub still closes it with the song's other tools.
+
 ## 0.175.0
 
 Speed, round eight. Three reviewers read the audio thread, the screen and the edit path again. I checked every finding in the code before changing anything, and each change is tested to give exactly what it gave before.
