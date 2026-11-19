@@ -2,6 +2,13 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.177.0
+
+The drums lane's options are your library's grooves now (you asked: "if it is selecting 100 riffs from my library why wouldn't I literally hear 100 different options?").
+
+- **The options are the grooves.** While the drums play grooves from your library, the drums lane's style menu and MORE OPTIONS show the section's grooves themselves: up to 100, each with its name, folder, length and tempo, a picture of its first bars, and HEAR / USE IT. Before, the options list showed the section type's drum options, and the library groove played over every one of them, so they all sounded the same. They're grouped TOONTRACK and YOUR OTHER PACKS, with the feel and energy filters and the search as for any options. HEAR plays a groove and puts the one before back if you close without USE IT; USE IT keeps that groove on the section. The menu's short list has Automatic (ROLL goes through them all in a random order, as before) and your favourite and recent grooves, kept apart from the type's options. Turn **Grooves from My Library** off and the type's drum options come back.
+- **Fit the Kick to the Riff is off by default.** You hear each groove's kick as the drummer played it. Turn it on in the drums lane's menu when you want the kicks pulled onto your riff. A song or ARCHITECT setting saved before this version opens with it off too (it was on only because that was the old default); once you turn it on it stays on.
+
 ## 0.176.0
 
 ARCHITECT opens and closes without the lag (you said there was still a decent amount).

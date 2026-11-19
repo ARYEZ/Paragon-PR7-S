@@ -74,7 +74,8 @@ namespace pr7s
              + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
              + "|" + sectionType.removeCharacters ("|") + "|" + transition.removeCharacters ("|")
              + "|" + (libraryDrums ? "1" : "0") + "|" + libraryGroove.removeCharacters ("|") + "|" + juce::String (riffLane)
-             + "|" + libraryPick.removeCharacters ("|") + "|" + groovesHeard.removeCharacters ("|") + "|" + (fitKicks ? "1" : "0");   // (0.137.0)
+             + "|" + libraryPick.removeCharacters ("|") + "|" + groovesHeard.removeCharacters ("|") + "|" + (fitKicks ? "1" : "0")   // (0.137.0)
+             + "|2";   // (0.177.0: FIT THE KICK chosen in this version or later; older text reads as off, the new default)
     }
 
     ComposerState ComposerState::fromString (const juce::String& text)
@@ -144,7 +145,8 @@ namespace pr7s
         {
             s.libraryPick = parts[14];
             s.groovesHeard = parts[15];
-            s.fitKicks = parts[16] != "0";
+            // (0.177.0, the owner: "turn fit the kick off by default") On only when chosen since 0.177.0.
+            s.fitKicks = parts.size() >= 18 && parts[16] != "0";
         }
         return s;
     }

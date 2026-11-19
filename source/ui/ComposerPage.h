@@ -143,6 +143,18 @@ public:
     static constexpr int shortListMost = 12;   // a group longer than this is left to the browser (favourites and recent still shown)
     std::vector<OptionBrowser::Option> laneOptions (pr7s::ComposerLayer) const;
     juce::String optionListKey (pr7s::ComposerLayer l) const { return "lane:" + pr7s::composerLayerName (l).toLowerCase(); }
+    // (0.177.0, the owner: "if it is selecting 100 riffs from my library why wouldn't I literally hear 100 different
+    // options") While the drums play grooves from the library, the drums lane's options ARE the section's grooves
+    // (the type's drum options sit under every one of them, so they'd all sound the same): ids `grooveId` + the
+    // groove's place in the section's list (composerGroovePool), grouped Toontrack / your other packs; favourites and
+    // recent kept apart from the type's options (`optionsKeyFor`).
+    static constexpr int grooveId = 200000;
+    static constexpr int libraryItems = 7000;     // (0.106.0) the drums' style menu: 7000 on/off, 7001 automatic, 7002 + i a groove
+    static inline const juce::String toontrackGroup = "TOONTRACK", otherPacksGroup = "YOUR OTHER PACKS";
+    bool showsLibraryGrooves (pr7s::ComposerLayer) const;
+    std::vector<pr7s::LibraryGroove> sectionGrooves() const;   // the section's list (the one chosen by hand left out of the key)
+    std::vector<OptionBrowser::Option> libraryGrooveOptions() const;
+    juce::String optionsKeyFor (pr7s::ComposerLayer l) const { return optionListKey (l) + (showsLibraryGrooves (l) ? ":library" : ""); }
     juce::PopupMenu makeStyleMenu (pr7s::ComposerLayer);
     void styleMenuChosen (pr7s::ComposerLayer, int item);
     std::unique_ptr<OptionBrowser> makeOptionBrowser (pr7s::ComposerLayer);   // (tests: shown by showOptionBrowser)
@@ -261,7 +273,6 @@ private:
     static constexpr int soloItems = 5000;
     static constexpr int flavourItems = 6000, writtenRiffsItem = 6100;   // (0.85.0) the guitar's style menu
     static constexpr int doubleSyncItem = 6200;   // (0.86.0) the bass's and drums' style menus
-    static constexpr int libraryItems = 7000;     // (0.106.0) the drums' style menu: 7000 on/off, 7001 automatic, 7002 + i a groove
     static constexpr int ownStylesItem = 6290;
     static constexpr int syncToItems = 6260;      // (0.126.0) SYNC TO: 6260 none, 6261 + layer    // (0.126.0) the type's lanes: Play Its Own Styles / Follow Again
     // (0.157.0) HEAR in a browser: what to put back (the list it was tried from) unless USE IT.
@@ -301,6 +312,9 @@ private:
     juce::String composedFrom;
     std::array<pr7s::LineIdea, pr7s::composerLayerCount> composed;   // (before the ideas taken from IDEAS)
     juce::String composeFingerprint() const;
+    // (0.177.0) The library grooves' options made once for the chords and state they were made from (100 drum parts).
+    mutable juce::String grooveOptionsKey;
+    mutable std::vector<OptionBrowser::Option> grooveOptionsKept;
     std::array<int, pr7s::composerLayerCount> trackChoice {};
     std::array<Lane, pr7s::composerLayerCount> lanes;
     juce::Random random;

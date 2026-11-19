@@ -1862,10 +1862,21 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
     // everything else behind MORE OPTIONS... (the option browser, with the feel filters).
     const auto options = laneOptions (l);
     const auto memory = studio.getOptionMemory();
-    const auto key = optionListKey (l);
-    const auto itemOf = [] (int id) { return id >= approachId ? approachItems + 1 + (id - approachId) : id + 1; };
-    const auto isOn = [this, l] (int id) { return id >= approachId ? state.lane (l).approach == id - approachId
-                                                                     : state.lane (l).approach < 0 && id == state.lane (l).style; };
+    const auto key = optionsKeyFor (l);
+    const auto showingGrooves = showsLibraryGrooves (l);
+    std::vector<pr7s::LibraryGroove> pool;
+    if (showingGrooves)
+        pool = sectionGrooves();
+    const auto itemOf = [] (int id) { return id >= grooveId ? libraryItems + 200 + (id - grooveId)
+                                           : id >= approachId ? approachItems + 1 + (id - approachId) : id + 1; };
+    const auto isOn = [this, l, &pool] (int id)
+    {
+        if (id >= grooveId)
+            return juce::isPositiveAndBelow (id - grooveId, (int) pool.size())
+                && state.libraryGroove == pool[(size_t) (id - grooveId)].file.getFullPathName();
+        return id >= approachId ? state.lane (l).approach == id - approachId
+                                : state.lane (l).approach < 0 && id == state.lane (l).style;
+    };
     // (0.160.0, the owner: a long description made the menu as wide as the screen and its submenus open off to the side) names only: what
     // each does is in the browser (MORE OPTIONS...)
     const auto nameOf = [] (const OptionBrowser::Option& o) { return o.name; };
@@ -1886,7 +1897,13 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
             }
     };
     const auto approaches = pr7s::sectionApproaches (state, l);
-    if (! approaches.isEmpty())
+    if (showingGrooves)
+    {
+        // (0.177.0) The library's grooves are the drums' options: the section's list behind MORE OPTIONS.
+        menu.addSectionHeader ("LIBRARY GROOVES FOR THIS SECTION");
+        menu.addItem (libraryItems + 1, "Automatic (ROLL goes through all " + juce::String ((int) pool.size()) + ")", true, state.libraryGroove.isEmpty());
+    }
+    else if (! approaches.isEmpty())
     {
         menu.addSectionHeader (state.sectionType.isNotEmpty() ? state.sectionType : juce::String ("DRONING"));
         menu.addItem (approachItems, typeWrites ? "Automatic (the take chooses)" : "Automatic (the style and the take choose)", true, state.lane (l).approach < 0);
@@ -1917,7 +1934,8 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
     if (! options.empty())
     {
         menu.addSeparator();
-        menu.addItem (moreOptionsItem, "MORE OPTIONS... (all " + juce::String ((int) options.size()) + ", with search and feel filters)");
+        menu.addItem (moreOptionsItem, (showingGrooves ? "MORE OPTIONS... (all " + juce::String ((int) options.size()) + " grooves, each to hear, with search and feel filters)"
+                                                : "MORE OPTIONS... (all " + juce::String ((int) options.size()) + ", with search and feel filters)"));
     }
     // (0.126.0) A lane the section type writes can play its own styles instead, and come back.
     if (typeWrites)
@@ -1996,7 +2014,7 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
         // (0.137.0, the owner's rules) The section's 100: two thirds from the Toontrack folder, 4 to 16 bars, naming
         // the section, best fit to the guitar first; ROLL goes through them all in a random order.
         menu.addItem (libraryItems + 91, "Fit the Kick to the Riff (kicks nudged onto its hits)", state.libraryDrums, state.fitKicks);
-        const auto grooves = pr7s::composerGroovePool (state, placedSpans(), context);
+        const auto grooves = sectionGrooves();   // (0.177.0: the same list as the options)
         auto fromToontrack = 0;
         for (const auto& g : grooves)
             fromToontrack += g.toontrack ? 1 : 0;
@@ -2075,12 +2093,7 @@ void ComposerPage::styleMenuChosen (ComposerLayer l, int chosen)
         else if (chosen == libraryItems + 1)
             setLibraryGroove ({});
         else if (chosen >= libraryItems + 200)
-        {
-            const auto grooves = pr7s::composerGroovePool (state, placedSpans(), context);
-            const auto i = chosen - libraryItems - 200;
-            if (juce::isPositiveAndBelow (i, (int) grooves.size()))
-                setLibraryGroove (grooves[(size_t) i].file.getFullPathName());
-        }
+            useOption (l, grooveId + chosen - libraryItems - 200);
     }
     else if (chosen >= syncToItems && chosen < syncToItems + 20)
         setSyncTo (l, chosen == syncToItems ? std::optional<ComposerLayer> {}
@@ -2105,8 +2118,61 @@ void ComposerPage::styleMenuChosen (ComposerLayer l, int chosen)
         useOption (l, chosen - 1);
 }
 
+bool ComposerPage::showsLibraryGrooves (ComposerLayer l) const
+{
+    // (when SYNC makes another lane lead, the groove's kicks follow that lane, but it's still the groove that plays)
+    return l == ComposerLayer::drums && state.libraryDrums && ! sectionGrooves().empty();
+}
+
+std::vector<pr7s::LibraryGroove> ComposerPage::sectionGrooves() const
+{
+    auto s = state;
+    s.libraryGroove = {};   // (the list is the section's, whichever one is chosen)
+    return pr7s::composerGroovePool (s, placedSpans(), context);
+}
+
+std::vector<OptionBrowser::Option> ComposerPage::libraryGrooveOptions() const
+{
+    const auto grooves = sectionGrooves();
+    auto s = state;
+    s.libraryGroove = {};
+    s.libraryPick = {};
+    s.groovesHeard = {};
+    juce::String key = s.toString() + "|" + juce::String (context.beatsPerBar) + "|" + juce::String (context.bpm);
+    for (const auto& sp : spans)
+        key << juce::String (sp.start, 6) << "," << juce::String (sp.end, 6) << "," << sp.chord.toText() << ";";
+    for (const auto& g : grooves)
+        key << g.file.getFullPathName().hashCode64() << ",";
+    if (key == grooveOptionsKey)
+        return grooveOptionsKept;
+    std::vector<OptionBrowser::Option> out;
+    for (int i = 0; i < (int) grooves.size(); ++i)
+    {
+        const auto& g = grooves[(size_t) i];
+        OptionBrowser::Option o;
+        o.id = grooveId + i;
+        // (names repeat across packs ("Verse 1"): the folder makes each one its own, for favourites too)
+        o.name = g.name + " (" + g.folder + ")";
+        o.description = g.folder + ", " + juce::String (g.bars) + (g.bars == 1 ? " bar" : " bars")
+                      + (g.bpm > 0.0 ? ", " + juce::String (juce::roundToInt (g.bpm)) + " BPM" : juce::String())
+                      + "  -  " + g.file.getFullPathName();
+        o.group = g.toontrack ? toontrackGroup : otherPacksGroup;
+        o.drums = true;
+        auto each = s;
+        each.libraryGroove = g.file.getFullPathName();
+        o.idea = pr7s::composeLayer (ComposerLayer::drums, each, spans, context);
+        o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, true);
+        out.push_back (std::move (o));
+    }
+    grooveOptionsKey = key;
+    grooveOptionsKept = out;
+    return out;
+}
+
 std::vector<OptionBrowser::Option> ComposerPage::laneOptions (ComposerLayer l) const
 {
+    if (showsLibraryGrooves (l))
+        return libraryGrooveOptions();
     std::vector<OptionBrowser::Option> out;
     const auto choices = pr7s::composerChoices (l, state, spans, context);
     const auto drums = l == ComposerLayer::drums;
@@ -2161,9 +2227,23 @@ std::vector<OptionBrowser::Option> ComposerPage::laneOptions (ComposerLayer l) c
 std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
 {
     const auto& lane = state.lane (l);
-    const auto chosen = lane.approach >= 0 ? approachId + lane.approach : lane.style;
+    auto chosen = lane.approach >= 0 ? approachId + lane.approach : lane.style;
     auto title = pr7s::composerLayerName (l) + (state.sectionType.isNotEmpty() ? juce::String (": ") + state.sectionType : juce::String());
-    auto browser = std::make_unique<OptionBrowser> (title, laneOptions (l), chosen, studio.getOptionMemory(), optionListKey (l));
+    const auto grooves = showsLibraryGrooves (l);
+    if (grooves)
+    {
+        // (0.177.0) The section's grooves: the one playing chosen.
+        const auto pool = sectionGrooves();
+        chosen = -1;
+        if (const auto playing = pr7s::composerLibraryGroove (state, placedSpans(), context))
+            for (int i = 0; i < (int) pool.size(); ++i)
+                if (pool[(size_t) i].file == playing->file)
+                    chosen = grooveId + i;
+        title = "DRUMS: " + juce::String ((int) pool.size()) + " LIBRARY GROOVES FOR THIS SECTION";
+    }
+    auto browser = std::make_unique<OptionBrowser> (title, laneOptions (l), chosen, studio.getOptionMemory(), optionsKeyFor (l));
+    if (grooves)
+        browser->setGroupOrder ({ toontrackGroup, otherPacksGroup });
     juce::Component::SafePointer<ComposerPage> safe (this);
     browser->onHear = [safe, l] (int id) { if (safe != nullptr) safe->tryOption (l, id); };
     browser->onUse = [safe, l] (int id)
@@ -2176,7 +2256,7 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
     browser->onFavourite = [safe, l] (const juce::String& name, bool on)
     {
         if (safe != nullptr)
-            safe->studio.setOptionFavourite (safe->optionListKey (l), name, on);
+            safe->studio.setOptionFavourite (safe->optionsKeyFor (l), name, on);
     };
     browser->onClosed = [safe] { if (safe != nullptr) safe->endTrial (false); };
     return browser;
@@ -2206,10 +2286,23 @@ void ComposerPage::openBrowserWindow (std::unique_ptr<OptionBrowser> browser)
 
 void ComposerPage::useOption (ComposerLayer l, int id)
 {
+    if (id >= grooveId)
+    {
+        // (0.177.0) A library groove: kept on this section's drums.
+        const auto pool = sectionGrooves();
+        const auto i = id - grooveId;
+        if (! juce::isPositiveAndBelow (i, (int) pool.size()))
+            return;
+        const auto& g = pool[(size_t) i];
+        studio.noteOptionUsed (optionsKeyFor (l), g.name + " (" + g.folder + ")");
+        setLibraryGroove (g.file.getFullPathName());
+        status = "Drums: " + g.name + " (" + g.folder + ")";
+        return;
+    }
     const auto options = laneOptions (l);
     for (const auto& o : options)
         if (o.id == id)
-            studio.noteOptionUsed (optionListKey (l), o.name);
+            studio.noteOptionUsed (optionsKeyFor (l), o.name);
     if (id >= approachId)
     {
         setApproach (l, id - approachId);
@@ -2231,6 +2324,24 @@ void ComposerPage::beginTrial (const juce::String& list, std::function<void()> r
 
 void ComposerPage::tryOption (ComposerLayer l, int id)
 {
+    if (id >= grooveId)
+    {
+        // (0.177.0) HEAR a library groove: the one playing before goes back unless USE IT.
+        const auto pool = sectionGrooves();
+        const auto i = id - grooveId;
+        if (! juce::isPositiveAndBelow (i, (int) pool.size()))
+            return;
+        const auto groove = state.libraryGroove, pick = state.libraryPick;
+        beginTrial (optionsKeyFor (l), [this, groove, pick]
+        {
+            state.libraryPick = pick;
+            setLibraryGroove (groove);
+        });
+        setLibraryGroove (pool[(size_t) i].file.getFullPathName());
+        if (! hearing)
+            hear();
+        return;
+    }
     const auto approach = state.lane (l).approach, style = state.lane (l).style;
     beginTrial (optionListKey (l), [this, l, approach, style]
     {
