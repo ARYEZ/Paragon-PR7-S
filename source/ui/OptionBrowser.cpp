@@ -41,15 +41,7 @@ OptionBrowser::OptionBrowser (const juce::String& t, std::vector<Option> list, i
         addAndMakeVisible (*k);
     if (find (chosen) == nullptr && ! options.empty())
         chosen = options.front().id;
-    for (const auto& o : options)
-    {
-        measured = measured || o.measure.feel != pr7s::OptionFeel::unknown;
-        drawn = drawn || ! o.idea.notes.empty();
-    }
-    for (auto& k : feelKeys)
-        k->setVisible (measured);
-    for (auto& k : energyKeys)
-        k->setVisible (measured);
+    noteKinds();
     for (auto* k : getChildren())
         if (auto* b = dynamic_cast<juce::Button*> (k))
         {
@@ -58,6 +50,92 @@ OptionBrowser::OptionBrowser (const juce::String& t, std::vector<Option> list, i
         }
     setSize (width, height);
     refreshKeys();
+    if (countPending() > 0)
+        startTimerHz (60);
+}
+
+void OptionBrowser::noteKinds()
+{
+    // (a pending option will be measured and drawn: the keys and the picture there from the start, nothing jumps)
+    for (const auto& o : options)
+    {
+        measured = measured || o.pending || o.measure.feel != pr7s::OptionFeel::unknown;
+        drawn = drawn || o.pending || ! o.idea.notes.empty();
+    }
+    for (auto& k : feelKeys)
+        k->setVisible (measured);
+    for (auto& k : energyKeys)
+        k->setVisible (measured);
+}
+
+int OptionBrowser::countPending() const
+{
+    return (int) std::count_if (options.begin(), options.end(), [] (const Option& o) { return o.pending; });
+}
+
+bool OptionBrowser::fillOne (Option& o)
+{
+    if (! o.pending)
+        return false;
+    o.pending = false;
+    return onFill != nullptr && onFill (o);
+}
+
+void OptionBrowser::fillAllNow()
+{
+    for (auto& o : options)
+        fillOne (o);
+    stopTimer();
+    repaint();
+}
+
+void OptionBrowser::timerCallback()
+{
+    if (onFill == nullptr)
+        return;
+    // The chosen one, then the rows in view, then the rest; about 12 ms of work a frame.
+    std::vector<int> order { chosen };
+    const auto shown = getShown();
+    const auto first = juce::jlimit (0, (int) shown.size(), (int) (scroll / rowHeight));
+    const auto rows = juce::jmax (1, listArea.getHeight() / rowHeight + 1);
+    for (int i = first; i < juce::jmin ((int) shown.size(), first + rows); ++i)
+        order.push_back (shown[(size_t) i]);
+    const auto start = juce::Time::getMillisecondCounterHiRes();
+    auto filled = false, any = false;
+    const auto take = [&] (Option& o)
+    {
+        if (! o.pending)
+            return true;
+        filled = fillOne (o) || filled;
+        return juce::Time::getMillisecondCounterHiRes() - start < 12.0;
+    };
+    auto going = true;
+    for (size_t i = 0; going && i < order.size(); ++i)
+        for (auto& o : options)
+            if (o.id == order[i] && ! take (o))
+                going = false;
+    for (size_t i = 0; going && i < options.size(); ++i)
+        going = take (options[i]);
+    for (const auto& o : options)
+        any = any || o.pending;
+    if (! any)
+        stopTimer();
+    if (filled || ! any)
+        repaint();
+}
+
+void OptionBrowser::setOptions (std::vector<Option> list)
+{
+    options = std::move (list);
+    if (find (chosen) == nullptr && ! options.empty())
+        chosen = options.front().id;
+    noteKinds();
+    if (countPending() > 0)
+        startTimerHz (60);
+    if (! getGroups().contains (group))
+        group = everythingGroup;
+    refreshKeys();
+    repaint();
 }
 
 OptionBrowser::~OptionBrowser()
@@ -341,7 +419,10 @@ void OptionBrowser::paint (juce::Graphics& g)
     g.drawText (title.toUpperCase(), top, juce::Justification::centredLeft);
     g.setColour (ParagonColours::textDim);
     g.setFont (words (14.0f, juce::Font::plain));
-    g.drawText (juce::String ((int) getShown().size()) + " OF " + juce::String ((int) options.size()) + " SHOWN", top, juce::Justification::centredRight);
+    const auto pending = countPending();
+    g.drawText ((pending > 0 ? "MEASURING: " + juce::String (pending) + " TO GO   " : juce::String())
+                    + juce::String ((int) getShown().size()) + " OF " + juce::String ((int) options.size()) + " SHOWN",
+                top, juce::Justification::centredRight);
 
     for (const auto& area : { groupsArea, listArea.withTop (listArea.getY()), detailArea })
     {
@@ -460,6 +541,13 @@ void OptionBrowser::paintPicture (juce::Graphics& g, const Option& o, juce::Rect
     g.setColour (juce::Colour (0xff080609));
     g.fillRect (area);
     const auto notes = o.idea.notes;
+    if (o.pending)
+    {
+        g.setColour (ParagonColours::textDim);
+        g.setFont (words (12.0f, juce::Font::plain));
+        g.drawText ("DRAWING...", area, juce::Justification::centred);
+        return;
+    }
     if (notes.empty())
     {
         g.setColour (ParagonColours::textDim);
@@ -568,7 +656,13 @@ void OptionBrowser::mouseDown (const juce::MouseEvent& e)
         for (int i = 0; i < (int) shown.size(); ++i)
             if (listRow (i).contains (p))
             {
-                if (p.x < listArea.getX() + 30)
+                if (e.mods.isPopupMenu())
+                {
+                    choose (shown[(size_t) i]);
+                    if (onRightClick)
+                        onRightClick (shown[(size_t) i], e.getScreenPosition());
+                }
+                else if (p.x < listArea.getX() + 30)
                     toggleFavourite (shown[(size_t) i]);
                 else
                 {

@@ -102,10 +102,11 @@ namespace pr7s
         // (0.137.0, the owner: "When I press roll it scrolls through all 100 ... in random order and I shouldn't see
         // the same riff pop up until I've seen all of the riffs") The groove ROLL last picked from the section's 100
         // (its file's path; empty: the take's place in the list), the grooves heard since the list went round
-        // (each path's hash, hex, by commas), and whether the kick is moved a little to fit the guitar (on).
+        // (each path's hash, hex, by commas), and whether the kick is moved a little to fit the guitar (0.177.0, the
+        // owner: off by default, the grooves as the drummer played them).
         juce::String libraryPick;
         juce::String groovesHeard;
-        bool fitKicks = true;
+        bool fitKicks = false;
         // (0.114.0, the owner: "imported without being changed at all and I need to select what composer lane it
         // goes to") The lane your riff (+ MY RIFF, ComposerContext::myRiff) plays on, exactly as you played it
         // (repeated to the length): no humanize, transition, playable-note or keyswitch changes on it.
@@ -167,6 +168,9 @@ namespace pr7s
         double lastBarBeats = 0.0;
         // (0.106.0) The MediaBay's drum grooves for the style and tempo (findLibraryGrooves; fills among them).
         GrooveList libraryGrooves;   // (0.112.1: shared, not copied)
+        // (0.178.0, the owner) The groove folders marked as favourites (full paths; subfolders included): a quarter of
+        // the section's grooves come from them, AUTOMATIC prefers them, fills too.
+        juce::StringArray favouriteFolders;
     };
 
     // (0.86.0) SYNC: the rhythm a lane's idea gives the others. `all`: every hit (notes starting together are one
@@ -202,6 +206,7 @@ namespace pr7s
     bool sectionTypeWritesLane (ComposerLayer, const ComposerState&, const ComposerContext&);
     // Every layer's idea, the lanes switched off too (shown dimmed), humanized as IDEAS' HUMANIZE.
     std::array<LineIdea, composerLayerCount> composeLayers (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+    LineIdea composeLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);   // (0.175.0: one of them)
     // (0.120.0) OCTAVE: every note but keyswitches moved by whole octaves (kept in 0-127; the drums never).
     void moveByOctaves (LineIdea&, ComposerLayer, int octaves);
 
@@ -232,11 +237,14 @@ namespace pr7s
     //     chorus's, a breakdown the verse's);
     //   - scored by how the kick and snare fit the guitar (composerDrumRiff; composerGrooveFit), the style's words and
     //     the tempo a little;
-    //   - `size` (100) of them, at least two thirds from the Toontrack folder (short of those: that folder's other
-    //     grooves nearest in tempo and fit, then other folders'), the rest from the others (short: more Toontrack).
+    //   - (0.178.0, the owner) `size` (200) of them: a quarter from the favourite folders (ComposerContext::
+    //     favouriteFolders), half from the Toontrack folder not marked, a quarter from the other packs. A group
+    //     short passes its places on: favourites to Toontrack then the others; Toontrack (after its own grooves
+    //     not naming the section, nearest in tempo and fit) to the others then the favourites; the others to
+    //     Toontrack then the favourites. Each groove's `favourite` set.
     // The chords are what the guitar is written over (none: the fit isn't counted). Worked out once per library,
     // section and riff (kept).
-    std::vector<LibraryGroove> composerGroovePool (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&, size_t size = 100);
+    std::vector<LibraryGroove> composerGroovePool (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&, size_t size = 200);
     std::optional<LibraryGroove> composerLibraryGroove (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
     // The guitar's rhythm the drums fit to: your riff's lane when you pasted one, else the guitar lane (off: nothing).
     SyncRhythm composerDrumRiff (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);

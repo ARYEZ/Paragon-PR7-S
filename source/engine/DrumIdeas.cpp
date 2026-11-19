@@ -2,6 +2,7 @@
 #include "engine/MidiImport.h"
 
 #include <array>
+#include <numeric>
 #include <map>
 
 #include <cstring>
@@ -427,6 +428,77 @@ namespace pr7s
         return out;
     }
 
+    std::shared_ptr<const PreparedPr7dGrooves> preparePr7dGrooves (const Pr7dLibrary& library)
+    {
+        auto prepared = std::make_shared<PreparedPr7dGrooves>();
+        auto& p = *prepared;
+        const auto& styles = guitarStyles();
+        jassert (styles.size() <= 8);
+        p.grooves.reserve (library.grooves.size());
+        for (const auto& g : library.grooves)
+        {
+            LibraryGroove groove { g.file, g.name, g.folder, g.bpm, 0 };
+            groove.tags = g.tags.joinIntoString ("|");
+            groove.layout = g.layout;
+            groove.bars = g.bars;
+            groove.rhythm = g.rhythm;
+            classifyGroove (groove);
+            const auto text = (g.file.getFullPathName() + " " + groove.tags).toLowerCase();
+            std::array<signed char, 8> words {};
+            const auto metal = text.contains ("metal");
+            for (size_t k = 0; k < styles.size(); ++k)
+            {
+                auto score = 0;
+                for (const auto& w : styleWordsOf (styles[k]))
+                    if (text.contains (w))
+                        score += 4;
+                if (styles[k] != GuitarStyle::rock && metal)
+                    score += 1;
+                words[k] = (signed char) score;
+            }
+            p.words.push_back (words);
+            p.fillWord.push_back (text.contains ("fill"));
+            p.barBeats.push_back (g.barBeats());
+            p.grooves.push_back (std::move (groove));
+        }
+        std::vector<int> order ((size_t) p.grooves.size());
+        std::iota (order.begin(), order.end(), 0);
+        std::stable_sort (order.begin(), order.end(), [&p] (int a, int b) { return p.grooves[(size_t) a].name.compareNatural (p.grooves[(size_t) b].name) < 0; });
+        p.nameRank.assign (order.size(), 0);
+        for (size_t r = 0; r < order.size(); ++r)
+            p.nameRank[(size_t) order[r]] = (int) r;
+        return prepared;
+    }
+
+    std::vector<LibraryGroove> findPr7dGrooves (const PreparedPr7dGrooves& p, GuitarStyle style, double songBpm, double songBarBeats)
+    {
+        const auto& styles = guitarStyles();
+        const auto k = (size_t) std::distance (styles.begin(), std::find (styles.begin(), styles.end(), style));
+        struct Scored { int score, rank; size_t index; };
+        std::vector<Scored> scored;
+        scored.reserve (p.grooves.size());
+        for (size_t i = 0; i < p.grooves.size(); ++i)
+        {
+            if (songBarBeats > 0.0 && std::abs (p.barBeats[i] - songBarBeats) > 1.0e-6)
+                continue;
+            auto score = k < styles.size() ? (int) p.words[i][k] : 0;
+            if (p.fillWord[i])
+                score -= 3;
+            score += grooveScore ({}, p.grooves[i].bpm, style, songBpm);   // (no words: the tempo's part alone)
+            scored.push_back ({ score, p.nameRank[i], i });
+        }
+        // (the old stable sort by score, then compareNatural: the name's rank keeps ties as they were listed)
+        std::sort (scored.begin(), scored.end(), [] (const Scored& a, const Scored& b) { return a.score != b.score ? a.score > b.score : a.rank < b.rank; });
+        std::vector<LibraryGroove> out;
+        out.reserve (scored.size());
+        for (const auto& s : scored)
+        {
+            out.push_back (p.grooves[s.index]);
+            out.back().score = s.score;
+        }
+        return out;
+    }
+
     namespace
     {
         // (0.106.0) A groove file's notes (every track), read once and kept by path and date: the composer asks for
@@ -449,7 +521,7 @@ namespace pr7s
             else
                 return {};
             const juce::ScopedLock sl (lock);
-            if (kept.size() > 256)
+            if (kept.size() > 1024)   // (0.179.0: was 256; 200 a section, so a few sections kept)
                 kept.clear();
             kept[file.getFullPathName()] = { date, notes };
             return notes;
@@ -620,5 +692,22 @@ namespace pr7s
             }
         std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
         return idea;
+    }
+
+    bool isInFavouriteFolder (const juce::File& file, const juce::StringArray& folders)
+    {
+        if (folders.isEmpty())
+            return false;
+        const auto& path = file.getFullPathName();
+        for (const auto& f : folders)
+        {
+            if (f.isEmpty())
+                continue;
+            const auto folder = f.endsWithChar ('/') || f.endsWithChar ('\\') ? f.dropLastCharacters (1) : f;
+            if (path.length() > folder.length() && path.startsWithIgnoreCase (folder)
+                && (path[folder.length()] == '/' || path[folder.length()] == '\\'))
+                return true;
+        }
+        return false;
     }
 }

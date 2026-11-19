@@ -2,6 +2,62 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.179.0
+
+Quicker with a big groove library (you asked: "do all of it so long as it doesn't negatively affect the experience"). Nothing you see or hear is different: the same grooves, the same counts, the same parts, sooner. Timed here with a made-up library of 100,000 grooves (your own disk and folders will give other numbers).
+
+- **The GROOVE FOLDERS tab.** Each folder's count was worked out by going through every groove in it one at a time, every time its row was drawn (a top folder: about 100,000 steps a row, on every scroll). Now both ends of the folder are found by halving (about 17 steps), and each count and each folder's list of subfolders is kept until the library is read again. Your favourites are read once, not once a row. The tab's first drawing went from 113 ms to 12 ms, a redraw with every pack open from 52 ms to 1 ms, a star clicked from 53 ms to 2 ms. A star you mark in ARCHITECT shows on the tab while it's open too. Opening the tab still reads the library's list (about 80 ms here): left as it is, since that's short and doing it in the background would show an empty tree first.
+- **The drums lane's short menu** no longer makes all 200 grooves' parts just to show their names (it only needs the names): 114 ms down to 1 ms the first time.
+- **MORE OPTIONS opens straight away** with the 200 names. Each groove's feel, energy and picture are made a few at a time while the window is open (about a frame's worth of work at once, so it never stops answering): the one chosen first, then the rows you can see, then the rest. The top line says "MEASURING: n TO GO" until it's done. Opening it went from 58 ms to 37 ms here, where the files were already in memory; on your machine the old way also read 200 files from disk before the window appeared, and that wait is what's gone. The FEEL and ENERGY keys are there from the start; a groove not measured yet joins a FEEL filter when it is. What's made is kept, so opening it again is instant.
+- **More groove files kept in memory:** 1,024 (was 256), so going back to a section you've heard doesn't read its 200 files again.
+
+Not done: sorting by feel from PR7-D's own rhythm notes without opening the files. Its notes hold the kick and snare only, so the feel and energy could come out differently from what the groove really plays; making the real ones in the background got the browser open at once without that.
+
+## 0.178.0
+
+Favourite groove folders, and 200 library grooves for each section (you asked: 50 from your favourites, 100 from the rest of Toontrack, 50 from your other packs).
+
+- **Mark folders as favourites, two ways.** The Hub has a new tab, **GROOVE FOLDERS**: your groove library as a folder tree (the folders PR7-D links), each folder with how many grooves ARCHITECT can use in it. Click a folder's star to mark it; everything inside it counts with it (a folder inside a favourite one shows a dim star). Or, in ARCHITECT's drums options, right-click a groove and choose **Mark Its Folder as a Favourite** (or **Unmark**); the list sorts itself again on the spot. Favourites are kept in PR7-S's settings, for every song.
+- **200 grooves a section, split 50 / 100 / 50.** The same rules as before (no fills, no left-out styles, 4 to 16 bars, naming the section, best fit to your riff first), then: the best 50 from your favourite folders, the best 100 from the rest of Toontrack, the best 50 from your other packs. A group short passes its places on: favourites to Toontrack, then your other packs; Toontrack (after its own grooves for other sections, as before) to your other packs, then the favourites; your other packs to Toontrack, then the favourites. With no favourites marked, their 50 go to Toontrack (150 Toontrack, 50 others).
+- **Automatic prefers your favourites.** Before you ROLL, the groove picked is one from your favourite folders whenever the section has any. ROLL still goes through all 200 in a random order, none again until you've heard them all (so about one roll in four is a favourite). Fills come from your favourite folders first too.
+- **The options list shows the three groups:** FAVOURITE FOLDERS, TOONTRACK, YOUR OTHER PACKS, and the drums menu's Library Groove list says how many came from each.
+
+## 0.177.0
+
+The drums lane's options are your library's grooves now (you asked: "if it is selecting 100 riffs from my library why wouldn't I literally hear 100 different options?").
+
+- **The options are the grooves.** While the drums play grooves from your library, the drums lane's style menu and MORE OPTIONS show the section's grooves themselves: up to 100, each with its name, folder, length and tempo, a picture of its first bars, and HEAR / USE IT. Before, the options list showed the section type's drum options, and the library groove played over every one of them, so they all sounded the same. They're grouped TOONTRACK and YOUR OTHER PACKS, with the feel and energy filters and the search as for any options. HEAR plays a groove and puts the one before back if you close without USE IT; USE IT keeps that groove on the section. The menu's short list has Automatic (ROLL goes through them all in a random order, as before) and your favourite and recent grooves, kept apart from the type's options. Turn **Grooves from My Library** off and the type's drum options come back.
+- **Fit the Kick to the Riff is off by default.** You hear each groove's kick as the drummer played it. Turn it on in the drums lane's menu when you want the kicks pulled onto your riff. A song or ARCHITECT setting saved before this version opens with it off too (it was on only because that was the old default); once you turn it on it stays on.
+
+## 0.176.0
+
+ARCHITECT opens and closes without the lag (you said there was still a decent amount).
+
+- **Your groove library is labelled once per read, not every time ARCHITECT needs it.** Every groove in PR7-D's library gets labelled by its section words, fills and left-out styles. With your 100,000 grooves that took over a second on the screen's thread. It ran the first time ARCHITECT opened after a song loaded, and again whenever the tempo, style or bar length changed, or PR7-D rewrote its index after checking its folders. Now it happens once, on the background thread that already reads PR7-D's index. After a change only the scores are added up and sorted. Here, the first opening's first paint went from 1.2 seconds to under 50 ms. The list and its order are exactly the same as before; a test checks it for every style.
+- **The window is kept when you close it.** Before, ARCHITECT's whole window was built from scratch on every opening and taken down on every closing. On Windows that costs more than on our test machine. Now closing hides it and opening shows it again (its timers rest while hidden). It opens on the block you were on; if that block is gone, it opens on the first block not built, as before. Going back to the Hub still closes it with the song's other tools.
+
+## 0.175.0
+
+Speed, round eight. Three reviewers read the audio thread, the screen and the edit path again. I checked every finding in the code before changing anything, and each change is tested to give exactly what it gave before.
+
+**The screen:**
+- **The MIDI editor's playhead** no longer lays out the whole info line and every bar of the ruler on every frame while playing (60 times a second). With many notes selected, that was the biggest cost left in the editor.
+- **The arrangement** only sorts the parts that the playhead's strip touches. Before, every track sorted all of its parts 60 times a second.
+- **ARCHITECT while it plays** only redraws what the playhead passes over. Before, every frame laid out its header, the song strip and all seven lanes' headers.
+
+**ARCHITECT:**
+- **The drums options with library drums on** are worked out once, not 50 to 80 times. While library drums are on, every drums option plays your library's groove, and each one used to generate the riff again to fit it.
+- **The TYPE browser** builds only the drums for each type, not every lane (lead and solo included).
+- **The chord progressions** for a key, genre and mood are found once and kept. The header looked them up again on every redraw.
+- **A block's chords changed:** only the lanes still as built are composed again, and only the tracks whose notes actually move are copied.
+
+**The edit path:**
+- **Frozen tracks** are now checked with one quick look on every change. Before, their parts were compared note by note, even on every step of a fader drag.
+
+**Audio:**
+- **Starting playback, jumping and the cycle coming round:** each controller's value is now found by looking back from the playhead, not by walking every controller event from the song's start. A drawn CC or pitch-bend lane makes tens of thousands of events, and they were all walked again at every cycle wrap, in the same audio block.
+- **The click** stops working through the block once its sound has finished.
+
 ## 0.174.0
 
 Speed, round seven: the two look changes you OK'd and the riskier redraw changes left over from 0.173.0.

@@ -4,6 +4,8 @@
 #include "engine/MediaBay.h"
 #include "engine/Pr7dGrooves.h"
 
+#include <array>
+#include <memory>
 #include <optional>
 
 // IDEAS' DRUMS tab (0.54.0, the owner asked: "completely new and generated drum beats and also
@@ -66,7 +68,12 @@ namespace pr7s
         bool toontrack = false;
         bool excluded = false;
         std::shared_ptr<const GrooveRhythm> rhythm;
+        // (0.178.0) In one of the folders the owner marked as a favourite (worked out by the composer's pool, not
+        // stored in the library's list: the favourites change without the library being read again).
+        bool favourite = false;
     };
+    // (0.178.0) A file inside one of `folders` (full paths, subfolders included; upper or lower case alike).
+    bool isInFavouriteFolder (const juce::File&, const juce::StringArray& folders);
     // (0.137.0) The words that leave a groove out of the composer's drums (in a folder's name or a genre label).
     const juce::StringArray& excludedGrooveWords();
     // (0.112.1) Works out a groove's sectionMask and fill (findLibraryGrooves and findPr7dGrooves do it for theirs).
@@ -93,6 +100,19 @@ namespace pr7s
     // (0.107.0) PR7-D's grooves, scored as findLibraryGrooves scores (its labels counted with the path), best first;
     // only those whose bar is the song's (`songBarBeats` quarters; 0: any).
     std::vector<LibraryGroove> findPr7dGrooves (const Pr7dLibrary&, GuitarStyle, double songBpm, double songBarBeats);
+    // (0.176.0) What findPr7dGrooves works out from each groove's words, done once per library (on the thread that
+    // reads it): each groove labelled (classifyGroove), its style words counted for every style, its name's place in
+    // name order. Then a tempo, style or bar change only adds and sorts numbers: the same list, in the same order.
+    struct PreparedPr7dGrooves
+    {
+        std::vector<LibraryGroove> grooves;            // classified, score 0
+        std::vector<double> barBeats;
+        std::vector<std::array<signed char, 8>> words; // per guitarStyles() index: 4 x its words found (+1 "metal" but rock)
+        std::vector<bool> fillWord;                    // "fill" in its words (-3)
+        std::vector<int> nameRank;                     // its place in compareNatural order (ties: as listed)
+    };
+    std::shared_ptr<const PreparedPr7dGrooves> preparePr7dGrooves (const Pr7dLibrary&);
+    std::vector<LibraryGroove> findPr7dGrooves (const PreparedPr7dGrooves&, GuitarStyle, double songBpm, double songBarBeats);
     // A groove as an idea over the chords (its file read; nothing if it can't be).
     std::optional<LineIdea> grooveIdea (const LibraryGroove&, const std::vector<ChordSpan>&, double beatsPerBar, juce::String& error);
 

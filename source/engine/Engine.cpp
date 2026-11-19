@@ -648,7 +648,7 @@ namespace pr7s
         struct Prepared { int id; std::vector<Event> events; std::vector<Event> controllerEvents; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
                           std::vector<LaneState> automation; bool mixAutomated = false; bool eventsKept = false; bool clipsKept = false;
                           std::array<juce::int16, 128> drumOut {}; std::array<juce::int8, 128> drumChannel {}; std::array<juce::uint8, 128> drumIn {};
-                          size_t midiRoom = 0; };
+                          size_t midiRoom = 0; std::bitset<131> controllerKinds {}; };
         std::vector<Prepared> prepared;
         // (0.164.0) The bytes a track's MIDI buffers need for its busiest block (grown here, under the lock, never on the
         // audio thread): the most events in any stretch of a block's beats at the song's fastest tempo, twice over (a cycle's
@@ -899,7 +899,10 @@ namespace pr7s
             {
                 const auto kind = e.status & 0xf0;
                 if (kind == 0xb0 || kind == 0xe0 || kind == 0xd0 || kind == 0xc0)
+                {
                     p.controllerEvents.push_back (e);
+                    p.controllerKinds.set (kind == 0xb0 ? (size_t) (e.data1 & 0x7f) : kind == 0xe0 ? 128u : kind == 0xd0 ? 129u : 130u);
+                }
             }
             p.midiRoom = midiRoomFor (p.events);
             prepared.push_back (std::move (p));
@@ -957,6 +960,7 @@ namespace pr7s
                 {
                     std::swap (track->events, p.events);   // the old list goes out with `prepared`
                     std::swap (track->controllerEvents, p.controllerEvents);
+                    std::swap (track->controllerKinds, p.controllerKinds);
                     track->checkHeld = true;
                 }
                 if (! p.clipsKept)
@@ -1226,16 +1230,34 @@ namespace pr7s
         cc.fill (-1);
         int bend = -1, pressure = -1, program = -1;
         auto channelBits = 0;
-        for (const auto& e : track.controllerEvents)   // (0.85.2: the controllers only, not every note)
+        // (0.175.0) Walked back from where playing starts, each kind's first met is its last before it (and the
+        // first event met gives the channel, as the last one did walking forward): a drawn lane's ramps made tens
+        // of thousands of events, all walked on every cycle wrap. Done once every kind the track has is found.
+        const auto& events = track.controllerEvents;
+        const auto end = std::partition_point (events.begin(), events.end(), [beat] (const Event& e) { return e.beat < beat; });
+        auto missing = track.controllerKinds;
+        auto first = true;
+        for (auto it = end; it != events.begin() && missing.any();)
         {
-            if (e.beat >= beat)
-                break;
-            switch (e.status & 0xf0)
+            const auto& e = *--it;
+            const auto kind = e.status & 0xf0;
+            const auto which = kind == 0xb0 ? (size_t) (e.data1 & 0x7f) : kind == 0xe0 ? 128u : kind == 0xd0 ? 129u : kind == 0xc0 ? 130u : 131u;
+            if (which > 130)
+                continue;
+            if (first)
             {
-                case 0xb0: cc[(size_t) (e.data1 & 0x7f)] = e.data2; channelBits = e.status & 0x0f; break;
-                case 0xe0: bend = e.data1 | (e.data2 << 7); channelBits = e.status & 0x0f; break;
-                case 0xd0: pressure = e.data1; channelBits = e.status & 0x0f; break;
-                case 0xc0: program = e.data1; channelBits = e.status & 0x0f; break;
+                channelBits = e.status & 0x0f;
+                first = false;
+            }
+            if (! missing.test (which))
+                continue;
+            missing.reset (which);
+            switch (kind)
+            {
+                case 0xb0: cc[which] = e.data2; break;
+                case 0xe0: bend = e.data1 | (e.data2 << 7); break;
+                case 0xd0: pressure = e.data1; break;
+                case 0xc0: program = e.data1; break;
                 default: break;
             }
         }
@@ -1909,7 +1931,7 @@ namespace pr7s
                                             : settings.masterVolumeDb;   // (0.164.0: no lanes, the same value without the walk)
 
         // The click: a short tone at each beat, higher on the bar's first.
-        for (int i = 0, next = 0; (numTicks > 0 || clickRemaining > 0) && i < numSamples; ++i)   // (0.173.0: no tick, nothing sounding: no walk)
+        for (int i = 0, next = 0; (next < numTicks || clickRemaining > 0) && i < numSamples; ++i)   // (0.173.0, 0.175.0: no tick left and nothing sounding: done)
         {
             if (next < numTicks && ticks[(size_t) next].sample == i)
             {

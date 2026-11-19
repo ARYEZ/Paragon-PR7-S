@@ -985,8 +985,16 @@ void ArrangeView::paintContent (juce::Graphics& g)
                                                                                   : juce::Rectangle<float> (0.0f, top, 0.0f, height);
         };
         // Drawn back to front (the clip in front on top).
-        std::vector<int> drawOrder ((size_t) track.parts.size());
-        std::iota (drawOrder.begin(), drawOrder.end(), 0);
+        // (0.175.0) Only the parts across the redrawn strip are sorted: the playhead's strips run the
+        // whole height, so every track sorted every part 60 times a second. (The dragged part is drawn
+        // where it's going, so it always joins.)
+        std::vector<int> drawOrder;
+        drawOrder.reserve (16);
+        const auto clipFrom = timeline.beatForX ((float) clip.getX() - 2.0f), clipTo = timeline.beatForX ((float) clip.getRight() + 2.0f);
+        for (int i = 0; i < (int) track.parts.size(); ++i)
+            if ((track.parts[(size_t) i].end() >= clipFrom && track.parts[(size_t) i].start <= clipTo)
+                || (track.id == dragTrack && i == selection.index))
+                drawOrder.push_back (i);
         std::sort (drawOrder.begin(), drawOrder.end(), [&track] (int a, int b) { return pr7s::isInFront (track, b, a); });
         if (track.showLanes)
         {

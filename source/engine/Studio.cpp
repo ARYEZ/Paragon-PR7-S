@@ -3071,6 +3071,7 @@ namespace pr7s
         if (folder == juce::File())
         {
             keptPr7d = {};
+            keptPr7dPrepared.reset();
             return keptPr7d;
         }
         // Read again when PR7-D has written its index since (or the folder changed).
@@ -3092,12 +3093,14 @@ namespace pr7s
                     reading->thread = std::thread ([reading]
                     {
                         reading->result = readPr7dLibrary (reading->folder);
+                        reading->prepared = preparePr7dGrooves (reading->result);   // (0.176.0: off the screen's thread too)
                         reading->done = true;
                     });
                 }
                 return keptPr7d;
             }
             keptPr7d = readPr7dLibrary (folder);
+            keptPr7dPrepared = preparePr7dGrooves (keptPr7d);
             keptPr7dIndexDate = date;
             keptPr7dRead = true;
             if (keptPr7d.found)
@@ -3112,6 +3115,7 @@ namespace pr7s
             return false;
         pr7dReading->thread.join();
         keptPr7d = std::move (pr7dReading->result);
+        keptPr7dPrepared = std::move (pr7dReading->prepared);
         keptPr7dIndexDate = pr7dReading->date;
         keptPr7dRead = true;
         pr7dReading.reset();
@@ -11259,6 +11263,67 @@ namespace pr7s
             settings->setValue ("composerLooseCopies", on);
     }
 
+    juce::StringArray Studio::getGrooveFavouriteFolders() const
+    {
+        if (settings == nullptr)
+            return grooveFavouritesHere;
+        auto lines = juce::StringArray::fromLines (settings->getValue ("grooveFavouriteFolders"));
+        lines.trim();
+        lines.removeEmptyStrings();
+        return lines;
+    }
+
+    void Studio::setGrooveFavouriteFolders (const juce::StringArray& folders)
+    {
+        juce::StringArray clean;
+        for (auto f : folders)
+        {
+            f = f.trim();
+            while (f.length() > 1 && (f.endsWithChar ('/') || f.endsWithChar ('\\')))
+                f = f.dropLastCharacters (1);
+            if (f.isNotEmpty() && ! clean.contains (f, true))
+                clean.add (f);
+        }
+        if (clean == getGrooveFavouriteFolders())
+            return;
+        grooveFavouritesHere = clean;
+        if (settings != nullptr)
+            settings->setValue ("grooveFavouriteFolders", clean.joinIntoString ("\n"));
+        announce();
+    }
+
+    void Studio::setGrooveFolderFavourite (const juce::File& folder, bool favourite)
+    {
+        auto folders = getGrooveFavouriteFolders();
+        const auto path = folder.getFullPathName();
+        for (int i = folders.size(); --i >= 0;)
+            if (juce::File (folders[i]) == folder)
+                folders.remove (i);
+        if (favourite)
+            folders.add (path);
+        setGrooveFavouriteFolders (folders);
+    }
+
+    bool Studio::isGrooveFolderFavourite (const juce::File& folder) const
+    {
+        for (const auto& f : getGrooveFavouriteFolders())
+            if (juce::File (f) == folder)
+                return true;
+        return false;
+    }
+
+    std::vector<juce::File> Studio::getGrooveFolderRoots() const
+    {
+        const auto& pr7d = getPr7dLibrary();
+        if (! pr7d.grooves.empty())
+            return pr7d.linkedFolders;
+        std::vector<juce::File> roots;
+        if (settings != nullptr || mediaBay != nullptr)
+            for (const auto& l : const_cast<Studio*> (this)->getMediaBay().getLocations())
+                roots.push_back (juce::File (l));
+        return roots;
+    }
+
     juce::String Studio::newIdeaTrackName (LineIdea::Part part) const
     {
         const auto names = getComposerTracks (part).names;
@@ -11357,7 +11422,11 @@ namespace pr7s
             if (keptPr7dGrooves.date != pr7d.indexDate || keptPr7dGrooves.count != pr7d.grooves.size() || keptPr7dGrooves.style != (int) c.style
                 || keptPr7dGrooves.bpm != bpm || keptPr7dGrooves.bar != bar || keptPr7dGrooves.notes != notes)
             {
-                auto found = findPr7dGrooves (pr7d, c.style, c.bpm, c.beatsPerBar);
+                // (0.176.0) From the list labelled when the library was read: only the scores added and sorted here
+                // (each groove's words were read again on the screen's thread: over a second with 100,000).
+                if (keptPr7dPrepared == nullptr)
+                    keptPr7dPrepared = preparePr7dGrooves (pr7d);
+                auto found = findPr7dGrooves (*keptPr7dPrepared, c.style, c.bpm, c.beatsPerBar);
                 for (auto& g : found)
                     g.notes = notes;
                 keptPr7dGrooves = { pr7d.indexDate, (int) c.style, bpm, bar, pr7d.grooves.size(), notes, GrooveList (std::move (found)) };
@@ -11374,6 +11443,7 @@ namespace pr7s
                 keptGrooves = { items.data(), items.size(), (int) c.style, bpm, findLibraryGrooves (items, c.style, c.bpm) };
             c.libraryGrooves = keptGrooves.grooves;
         }
+        c.favouriteFolders = getGrooveFavouriteFolders();   // (0.178.0)
         // (0.104.0) A block of the SECTIONS row starting there: what its transition needs (the chord after it, its
         // last bar's length).
         const auto places = getSongSectionPlaces();
@@ -14805,10 +14875,14 @@ namespace pr7s
         {
             if (track.frozen || ! isPitchedTrack (track) || std::find (rebuilt.begin(), rebuilt.end(), track.id) != rebuilt.end())
                 continue;
-            for (auto& part : track.parts)
-                for (auto& n : part.notes)
+            // (0.175.0) Read first, written only where a pitch moves: a non-const walk copied every pitched
+            // track's parts (shared with the undo history) whether or not it had notes in the block.
+            const auto& parts = std::as_const (track.parts);
+            for (size_t p = 0; p < parts.size(); ++p)
+                for (size_t i = 0; i < parts[p].notes.size(); ++i)
                 {
-                    const auto at = part.start + n.start;
+                    const auto& n = parts[p].notes[i];
+                    const auto at = parts[p].start + n.start;
                     if (at < place.start - 1.0e-9 || at >= place.end - 1.0e-9)
                         continue;
                     const auto* from = chordAt (before, at - place.start);
@@ -14816,7 +14890,9 @@ namespace pr7s
                     if (from == nullptr || to == nullptr || from->chord == to->chord)
                         continue;
                     const auto key = chordTrackKeyAt (at);
-                    n.pitch = juce::jlimit (0, 127, followPitch (n.pitch, FollowMode::chordsAndScales, from->chord, key, to->chord, key));
+                    const auto pitch = juce::jlimit (0, 127, followPitch (n.pitch, FollowMode::chordsAndScales, from->chord, key, to->chord, key));
+                    if (pitch != n.pitch)
+                        track.parts[p].notes[i].pitch = pitch;
                 }
         }
         // The linked copies keep the same recipe and marks (their music is the same once copied).
@@ -14840,7 +14916,16 @@ namespace pr7s
             state.bars = block.bars;
             state.transition = block.transition;   // (0.104.0: the block's own, whenever it was chosen)
             const auto context = getComposerContext (place.start);
-            const auto layers = composeLayers (state, spans, context);
+            // (0.175.0) Each lane made only when one of its tracks is still as built (not every lane, lead and
+            // solo included, before finding out none was).
+            std::map<int, LineIdea> layers;
+            const auto layerOf = [&] (int layer) -> const LineIdea&
+            {
+                auto found = layers.find (layer);
+                if (found == layers.end())
+                    found = layers.emplace (layer, composeLayer ((ComposerLayer) layer, state, spans, context)).first;
+                return found->second;
+            };
             const auto label = sectionLabel (project.songSections.blocks, index);
             std::map<int, int> copies;   // (0.112.0) a lane's second track on (EVERY matching track): its looser copy
             std::map<int, int> laneTracks;   // (0.129.0) how many tracks each layer is on (a twin lead's harmony: the second)
@@ -14853,7 +14938,7 @@ namespace pr7s
                 if (track == nullptr || track->frozen || ! juce::isPositiveAndBelow (lane.layer, composerLayerCount)
                     || trackMark (place, lane.track) != lane.mark)
                     continue;   // (changed by hand since: it follows the chords instead)
-                const auto idea = doubledCopy (layers[(size_t) lane.layer], copy, spans.front().start, laneTracks[lane.layer]);
+                const auto idea = doubledCopy (layerOf (lane.layer), copy, spans.front().start, laneTracks[lane.layer]);
                 track->parts.erase (std::remove_if (track->parts.begin(), track->parts.end(), [&] (const Part& p)
                                     { return p.start >= place.start - 1.0e-9 && p.end() <= place.end + 1.0e-9; }), track->parts.end());
                 if (! idea.notes.empty())

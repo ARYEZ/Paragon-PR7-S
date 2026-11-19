@@ -356,6 +356,9 @@ namespace pr7s
             // (0.85.2) Only the controller events (CC, bend, pressure, program) of `events`, in its
             // order: the chase at play start, a jump and every cycle wrap walks these, not every note.
             std::vector<Event> controllerEvents;
+            // (0.175.0) Which kinds those events hold (CC 0-127, 128 bend, 129 pressure, 130 program): the chase
+            // walks back from where it starts until it has met each (not from the song's start every time).
+            std::bitset<131> controllerKinds;
             float gainLeft = 1.0f, gainRight = 1.0f;
             juce::SmoothedValue<float> left, right;
             std::bitset<128> held;       // notes sounding, to stop them on a jump or stop

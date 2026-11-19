@@ -2612,6 +2612,13 @@ void MainView::openComposer()
 {
     if (composerWindow != nullptr)
     {
+        // (0.176.0) Kept since it was last closed (hidden, its timers idle): shown again, not built again. Building it
+        // and taking it down each time was the lag the owner felt opening and closing it.
+        if (! composerWindow->isVisible())
+        {
+            composerWindow->getPage().aimAtSectionsRow();   // (its block gone: the first not built, as a fresh one)
+            composerWindow->setVisible (true);
+        }
         composerWindow->toFront (true);
         return;
     }
@@ -2627,7 +2634,15 @@ void MainView::openComposer()
         if (auto* w = getMixerWindow())
             w->toFront (true);
     };
-    composerWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->composerWindow.reset(); }); };
+    composerWindow->onClose = [this]
+    {
+        // (0.176.0) Hidden, kept for the next opening (showHubAlone still takes it down with the song's tools).
+        juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)]
+        {
+            if (safe != nullptr && safe->composerWindow != nullptr)
+                safe->composerWindow->setVisible (false);
+        });
+    };
     composerWindow->getPage().aimAtSectionsRow();   // (0.93.0: a song with a SECTIONS row: its first block not built yet)
     composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
     composerWindow->setVisible (true);

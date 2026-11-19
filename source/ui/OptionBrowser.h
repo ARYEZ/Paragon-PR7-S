@@ -18,7 +18,7 @@
 //
 // The feel and energy are measured from the part each option writes (engine/OptionFeel.h): a guide, not a label
 // anyone wrote. The browser keeps no settings of its own: the favourites and recent are the Studio's.
-class OptionBrowser final : public juce::Component
+class OptionBrowser final : public juce::Component, private juce::Timer
 {
 public:
     struct Option
@@ -28,6 +28,9 @@ public:
         pr7s::OptionMeasure measure;
         pr7s::LineIdea idea;         // what it writes (none: not drawn, not measured)
         bool drums = false;
+        // (0.179.0) Its part not made yet: the list shows it at once and `onFill` makes the parts a few at a time
+        // (the chosen first, then the rows in view, then the rest).
+        bool pending = false;
     };
 
     OptionBrowser (const juce::String& title, std::vector<Option>, int chosenId, pr7s::OptionMemory memory, const juce::String& listKey);
@@ -36,6 +39,15 @@ public:
     std::function<void (int id)> onUse;
     std::function<void (const juce::String& name, bool favourite)> onFavourite;
     std::function<void()> onClosed;   // when it goes (its box closed)
+    // (0.178.0) A right-click on an option in the list (its id; the mouse on the screen): the caller's menu.
+    std::function<void (int id, juce::Point<int> screen)> onRightClick;
+    // (0.178.0) The options again (their groups changed): the chosen, the group shown and the search kept.
+    void setOptions (std::vector<Option>);
+    // (0.179.0) Makes a pending option's part (idea, measure, description): true when it did. Set it before the
+    // browser shows; the options still pending are filled on a timer, about a frame's worth of work at a time.
+    std::function<bool (Option&)> onFill;
+    int countPending() const;
+    void fillAllNow();   // (tests)
     ~OptionBrowser() override;
 
     static constexpr int width = 1000, height = 560;
@@ -96,6 +108,9 @@ private:
     juce::Rectangle<int> groupRow (int index) const;
     juce::Rectangle<int> listRow (int index) const;
     void paintPicture (juce::Graphics&, const Option&, juce::Rectangle<int>) const;
+    void timerCallback() override;
+    bool fillOne (Option&);
+    void noteKinds();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (OptionBrowser)
 };

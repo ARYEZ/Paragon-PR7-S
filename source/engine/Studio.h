@@ -409,6 +409,15 @@ namespace pr7s
         void resetComposerTracks();
         bool getLooseCopies() const;
         void setLooseCopies (bool);
+        // (0.178.0, the owner) Groove folders marked as favourites (full paths, subfolders included): a quarter of a
+        // section's library grooves come from them and AUTOMATIC prefers them. Settings "grooveFavouriteFolders" (a
+        // path a line; in memory without a settings file). A change is announced (ARCHITECT composes again).
+        juce::StringArray getGrooveFavouriteFolders() const;
+        void setGrooveFavouriteFolders (const juce::StringArray&);
+        void setGrooveFolderFavourite (const juce::File& folder, bool favourite);   // that folder itself
+        bool isGrooveFolderFavourite (const juce::File& folder) const;              // marked itself (not by a folder over it)
+        // The folders the library grooves come from (PR7-D's linked folders, else the MediaBay's locations).
+        std::vector<juce::File> getGrooveFolderRoots() const;
         juce::String newIdeaTrackName (LineIdea::Part) const;      // the first name (a new track's)
         std::vector<int> findIdeaTracks (LineIdea::Part) const;    // every match when EVERY, else the first (none: empty)
         // The `copy`th copy of an idea (0: itself) for another of its tracks: humanized again when LOOSE COPIES.
@@ -1744,7 +1753,7 @@ namespace pr7s
         std::map<const juce::AudioProcessor*, bool> editorAnswers;   // hasEditor's
         void unloadPlugins (Track&);   // their settings kept first (disable, freeze)
         void loadPlugins (Track&);     // from the kept settings (enable, unfreeze)
-        std::map<int, std::vector<Part>> frozenParts;   // the parts as they were frozen (locked)
+        std::map<int, PartList> frozenParts;   // the parts as they were frozen (locked; 0.175.0: shared with the song, so the check every change is one look)
         void punchOut (size_t pass, double endBeat, bool returnToOld = true);
         void startPass (int busId, const AutomationLane& control);
         static void freezeTrimOf (AutomationLane&);
@@ -1941,6 +1950,7 @@ namespace pr7s
         std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;
         std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)
         bool looseCopiesHere = true;
+        juce::StringArray grooveFavouritesHere;   // (0.178.0; without a settings file)
         std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;
         void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)
         void collectPluginStates (bool reuseUnchanged = false);
@@ -1984,11 +1994,12 @@ namespace pr7s
         void sendPr7d (int trackId, const juce::MidiMessage&);
         void pausePr7dSongs (bool pause);
         mutable Pr7dLibrary keptPr7d;
+        mutable std::shared_ptr<const PreparedPr7dGrooves> keptPr7dPrepared;   // (0.176.0: labelled once per read)
         mutable juce::Time keptPr7dIndexDate;
         mutable bool keptPr7dRead = false;
         // (0.112.1) PR7-D's index read on a thread of its own in the app (the owner's 100,000 grooves held the screen
         // over a second): the library kept until it's read, then swapped in by the timer and announced.
-        struct Pr7dReading { juce::File folder; juce::Time date; Pr7dLibrary result; std::atomic<bool> done { false }; std::thread thread; };
+        struct Pr7dReading { juce::File folder; juce::Time date; Pr7dLibrary result; std::shared_ptr<const PreparedPr7dGrooves> prepared; std::atomic<bool> done { false }; std::thread thread; };
         mutable std::unique_ptr<Pr7dReading> pr7dReading;
         bool takePr7dReading() const;   // true when a finished read was swapped in
         struct KeptPr7dGrooves { juce::Time date; int style = -1; int bpm = 0; int bar = 0; size_t count = 0; DrumNotes notes = DrumNotes::asWritten; GrooveList grooves; };

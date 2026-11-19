@@ -51,6 +51,7 @@ namespace pr7s
     {
         juce::File folder;           // where the two files were
         std::vector<Pr7dGroove> grooves;
+        std::vector<juce::File> linkedFolders;   // (0.178.0) the folders PR7-D links (not left out), in its order
         juce::Time indexDate;        // Groove Index.xml's
         bool found = false;          // Grooves.xml was there
     };
