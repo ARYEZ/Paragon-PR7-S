@@ -133,3 +133,27 @@ TEST_CASE ("0.112.1: the library's best grooves are the same found the quick way
                 CHECK (handMade[i].file == all[i].file);
         }
 }
+
+TEST_CASE ("0.176.0: the Architect window opened and closed, timed", "[.perf-composer-window]")
+{
+    const auto count = juce::jmax (100, juce::SystemStats::getEnvironmentVariable ("PARAGON_PERF_GROOVES", "100000").getIntValue());
+    BigLibrary library (count);
+    Studio studio (false);
+    studio.setPr7dFolderForTests (library.presets);
+    songWithSections (studio);
+    studio.getComposerContext (0.0);   // (the library read once, as after the first opening)
+    for (int round = 0; round < 3; ++round)
+    {
+        std::unique_ptr<ComposerWindow> window;
+        std::cout << "round " << round << "\n";
+        std::cout << "  make the window " << timeMs ([&] { window = std::make_unique<ComposerWindow> (studio); }) << " ms\n";
+        std::cout << "  aim at the sections row " << timeMs ([&] { window->getPage().aimAtSectionsRow(); }) << " ms\n";
+        std::cout << "  show it " << timeMs ([&] { window->setVisible (true); }) << " ms\n";
+        std::cout << "  first paint " << timeMs ([&] { window->getSuite().createComponentSnapshot (window->getSuite().getLocalBounds(), true, 1.0f); }) << " ms\n";
+        std::cout << "  timer tick " << timeMs ([&] { window->getPage().runTimerForTests(); }, 10) << " ms\n";
+        std::cout << "  IDEAS tab " << timeMs ([&] { window->getSuite().showTab (ComposerSuite::Tab::ideas); }) << " ms\n";
+        std::cout << "  IDEAS paint " << timeMs ([&] { window->getSuite().createComponentSnapshot (window->getSuite().getLocalBounds(), true, 1.0f); }) << " ms\n";
+        window->getSuite().showTab (ComposerSuite::Tab::compose);
+        std::cout << "  close (stop + delete) " << timeMs ([&] { window->closeButtonPressed(); window.reset(); }) << " ms\n";
+    }
+}
