@@ -60,6 +60,17 @@ OptionBrowser::OptionBrowser (const juce::String& t, std::vector<Option> list, i
     refreshKeys();
 }
 
+void OptionBrowser::setOptions (std::vector<Option> list)
+{
+    options = std::move (list);
+    if (find (chosen) == nullptr && ! options.empty())
+        chosen = options.front().id;
+    if (! getGroups().contains (group))
+        group = everythingGroup;
+    refreshKeys();
+    repaint();
+}
+
 OptionBrowser::~OptionBrowser()
 {
     if (onClosed)
@@ -568,7 +579,13 @@ void OptionBrowser::mouseDown (const juce::MouseEvent& e)
         for (int i = 0; i < (int) shown.size(); ++i)
             if (listRow (i).contains (p))
             {
-                if (p.x < listArea.getX() + 30)
+                if (e.mods.isPopupMenu())
+                {
+                    choose (shown[(size_t) i]);
+                    if (onRightClick)
+                        onRightClick (shown[(size_t) i], e.getScreenPosition());
+                }
+                else if (p.x < listArea.getX() + 30)
                     toggleFavourite (shown[(size_t) i]);
                 else
                 {

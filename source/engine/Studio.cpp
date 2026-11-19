@@ -11263,6 +11263,67 @@ namespace pr7s
             settings->setValue ("composerLooseCopies", on);
     }
 
+    juce::StringArray Studio::getGrooveFavouriteFolders() const
+    {
+        if (settings == nullptr)
+            return grooveFavouritesHere;
+        auto lines = juce::StringArray::fromLines (settings->getValue ("grooveFavouriteFolders"));
+        lines.trim();
+        lines.removeEmptyStrings();
+        return lines;
+    }
+
+    void Studio::setGrooveFavouriteFolders (const juce::StringArray& folders)
+    {
+        juce::StringArray clean;
+        for (auto f : folders)
+        {
+            f = f.trim();
+            while (f.length() > 1 && (f.endsWithChar ('/') || f.endsWithChar ('\\')))
+                f = f.dropLastCharacters (1);
+            if (f.isNotEmpty() && ! clean.contains (f, true))
+                clean.add (f);
+        }
+        if (clean == getGrooveFavouriteFolders())
+            return;
+        grooveFavouritesHere = clean;
+        if (settings != nullptr)
+            settings->setValue ("grooveFavouriteFolders", clean.joinIntoString ("\n"));
+        announce();
+    }
+
+    void Studio::setGrooveFolderFavourite (const juce::File& folder, bool favourite)
+    {
+        auto folders = getGrooveFavouriteFolders();
+        const auto path = folder.getFullPathName();
+        for (int i = folders.size(); --i >= 0;)
+            if (juce::File (folders[i]) == folder)
+                folders.remove (i);
+        if (favourite)
+            folders.add (path);
+        setGrooveFavouriteFolders (folders);
+    }
+
+    bool Studio::isGrooveFolderFavourite (const juce::File& folder) const
+    {
+        for (const auto& f : getGrooveFavouriteFolders())
+            if (juce::File (f) == folder)
+                return true;
+        return false;
+    }
+
+    std::vector<juce::File> Studio::getGrooveFolderRoots() const
+    {
+        const auto& pr7d = getPr7dLibrary();
+        if (! pr7d.grooves.empty())
+            return pr7d.linkedFolders;
+        std::vector<juce::File> roots;
+        if (settings != nullptr || mediaBay != nullptr)
+            for (const auto& l : const_cast<Studio*> (this)->getMediaBay().getLocations())
+                roots.push_back (juce::File (l));
+        return roots;
+    }
+
     juce::String Studio::newIdeaTrackName (LineIdea::Part part) const
     {
         const auto names = getComposerTracks (part).names;
@@ -11382,6 +11443,7 @@ namespace pr7s
                 keptGrooves = { items.data(), items.size(), (int) c.style, bpm, findLibraryGrooves (items, c.style, c.bpm) };
             c.libraryGrooves = keptGrooves.grooves;
         }
+        c.favouriteFolders = getGrooveFavouriteFolders();   // (0.178.0)
         // (0.104.0) A block of the SECTIONS row starting there: what its transition needs (the chord after it, its
         // last bar's length).
         const auto places = getSongSectionPlaces();

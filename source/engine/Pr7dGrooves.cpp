@@ -81,7 +81,10 @@ namespace pr7s
         std::vector<Linked> folders;
         for (const auto* f : linked->getChildWithTagNameIterator ("Folder"))
             if (! f->getBoolAttribute ("excluded"))
+            {
                 folders.push_back ({ juce::File (f->getStringAttribute ("path")), juce::jlimit (0, 3, f->getIntAttribute ("map", 1)) });
+                library.linkedFolders.push_back (folders.back().folder);
+            }
         library.indexDate = index.getLastModificationTime();
         const auto listed = juce::XmlDocument::parse (index);
         if (listed == nullptr)

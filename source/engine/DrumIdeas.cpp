@@ -693,4 +693,21 @@ namespace pr7s
         std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
         return idea;
     }
+
+    bool isInFavouriteFolder (const juce::File& file, const juce::StringArray& folders)
+    {
+        if (folders.isEmpty())
+            return false;
+        const auto& path = file.getFullPathName();
+        for (const auto& f : folders)
+        {
+            if (f.isEmpty())
+                continue;
+            const auto folder = f.endsWithChar ('/') || f.endsWithChar ('\\') ? f.dropLastCharacters (1) : f;
+            if (path.length() > folder.length() && path.startsWithIgnoreCase (folder)
+                && (path[folder.length()] == '/' || path[folder.length()] == '\\'))
+                return true;
+        }
+        return false;
+    }
 }

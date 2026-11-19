@@ -2,6 +2,7 @@
 #include "engine/SectionTypes.h"
 
 #include <algorithm>
+#include <array>
 #include <map>
 #include <mutex>
 
@@ -430,7 +431,13 @@ namespace pr7s
             const auto length = spans.back().end - spans.front().start;
             const auto bars = (int) std::ceil (length / bpb - 1.0e-6);
             const auto& lane = s.lane (ComposerLayer::drums);
-            const auto fills = libraryGroovesFor (c.libraryGrooves, lane.style, true, 4, true);   // (0.137.0: none from a left-out folder, Toontrack's first)   // (0.112.1: the best four are all it picks among)
+            auto fills = libraryGroovesFor (c.libraryGrooves, lane.style, true, 24, true);
+            // (0.178.0) The favourite folders' fills first.
+            for (auto& f : fills)
+                f.favourite = isInFavouriteFolder (f.file, c.favouriteFolders);
+            std::stable_partition (fills.begin(), fills.end(), [] (const LibraryGroove& f) { return f.favourite; });
+            if (fills.size() > 4)
+                fills.resize (4);   // (0.137.0: none from a left-out folder, Toontrack's first)   // (0.112.1: the best four are all it picks among)
             if (! fills.empty() && bars >= 1)
             {
                 const auto& fill = fills[(size_t) (lane.variation / 3) % juce::jmin ((size_t) 4, fills.size())];
@@ -20987,7 +20994,7 @@ namespace pr7s
             const void* list = nullptr;
             size_t count = 0, size = 0;
             int section = 0, bpm = 0, bar = 0;
-            juce::int64 riff = 0;
+            juce::int64 riff = 0, favourites = 0;
             bool operator== (const PoolKey&) const = default;
         };
         struct KeptPool { PoolKey key; std::vector<LibraryGroove> pool; };
@@ -21096,7 +21103,7 @@ namespace pr7s
         const auto riff = composerDrumRiff (s, spans, c);
         const auto riffLength = spans.empty() ? 0.0 : spans.back().end - spans.front().start;
         const PoolKey key { all.data(), all.size(), size, section, juce::roundToInt (c.bpm * 10.0), juce::roundToInt (c.beatsPerBar * 1000.0),
-                            riffHashOf (riff, riffLength) };
+                            riffHashOf (riff, riffLength), c.favouriteFolders.joinIntoString ("\n").hashCode64() };
         {
             const std::lock_guard<std::mutex> sl (poolLock);
             for (const auto& kept : keptPools)
@@ -21134,8 +21141,14 @@ namespace pr7s
             std::partial_sort (list.begin(), list.begin() + (std::ptrdiff_t) n, list.end(), better);
             list.resize (n);
         };
-        std::vector<Scored> toontrack, others;
-        for (int round = 0; round < 2 && toontrack.empty() && others.empty(); ++round)
+        // (0.178.0) Three groups: the favourite folders, the rest of Toontrack, the other packs.
+        enum { fav, toon, other };
+        std::vector<bool> isFavourite (all.size(), false);
+        std::array<std::vector<Scored>, 3> groups;
+        const auto groupOf = [&] (size_t i) { return isFavourite[i] ? (int) fav : grooveAt (i).toontrack ? (int) toon : (int) other; };
+        for (size_t i = 0; i < all.size(); ++i)
+            isFavourite[i] = isInFavouriteFolder (all[i].file, c.favouriteFolders);
+        for (int round = 0; round < 2 && groups[fav].empty() && groups[toon].empty() && groups[other].empty(); ++round)
         {
             if (round == 1)
                 section = fallbackSection (section);
@@ -21144,31 +21157,48 @@ namespace pr7s
                 const auto& g = grooveAt (i);
                 if (! eligible (g) || (g.sectionMask & (1 << section)) == 0)
                     continue;
-                (g.toontrack ? toontrack : others).push_back ({ scoreOf (i), i });
+                groups[(size_t) groupOf (i)].push_back ({ scoreOf (i), i });
             }
         }
-        const auto toontrackShare = size * 2 / 3;   // (the owner: 66 of 100)
-        best (toontrack, size);
-        best (others, size);
-        auto tTake = juce::jmin (toontrack.size(), toontrackShare);
-        auto oTake = juce::jmin (others.size(), size - toontrackShare);
-        tTake = juce::jmin (toontrack.size(), juce::jmax (tTake, size - oTake));   // (few others: more Toontrack)
-        std::vector<Scored> chosen (toontrack.begin(), toontrack.begin() + (std::ptrdiff_t) tTake);
-        if (tTake < toontrackShare)
+        for (auto& list : groups)
+            best (list, size);
+        const std::array<size_t, 3> share { size / 4, size / 2, size - size / 4 - size / 2 };   // (the owner: 50 / 100 / 50 of 200)
+        std::array<size_t, 3> take {};
+        for (size_t k = 0; k < 3; ++k)
+            take[k] = juce::jmin (groups[k].size(), share[k]);
+        // Toontrack short of its half: its grooves not naming the section first (0.137.0's rule), nearest in tempo and fit.
+        std::vector<Scored> toonExtra;
+        if (take[toon] < share[toon])
         {
-            // Short of the Toontrack folder's grooves naming the section: its others nearest in tempo and fit.
-            std::vector<Scored> extra;
             for (size_t i = 0; i < all.size(); ++i)
             {
                 const auto& g = grooveAt (i);
-                if (eligible (g) && g.toontrack && (g.sectionMask & (1 << section)) == 0)
-                    extra.push_back ({ fitOf (i) * 100.0 + 5.0 * tempoBonus (g.bpm, c.bpm), i });
+                if (eligible (g) && g.toontrack && ! isFavourite[i] && (g.sectionMask & (1 << section)) == 0)
+                    toonExtra.push_back ({ fitOf (i) * 100.0 + 5.0 * tempoBonus (g.bpm, c.bpm), i });
             }
-            best (extra, toontrackShare - tTake);
-            chosen.insert (chosen.end(), extra.begin(), extra.end());
+            best (toonExtra, share[toon] - take[toon]);
         }
-        oTake = juce::jmin (others.size(), size - juce::jmin (size, chosen.size()));
-        chosen.insert (chosen.end(), others.begin(), others.begin() + (std::ptrdiff_t) oTake);
+        // A group short passes its places on.
+        const auto room = [&] (size_t k) { return groups[k].size() - take[k]; };
+        const auto passOn = [&] (size_t missing, std::initializer_list<int> to)
+        {
+            for (const auto k : to)
+            {
+                const auto more = juce::jmin (missing, room ((size_t) k));
+                take[(size_t) k] += more;
+                missing -= more;
+            }
+        };
+        const auto missingFav = share[fav] - take[fav];
+        const auto missingToon = share[toon] - take[toon] - toonExtra.size();
+        const auto missingOther = share[other] - take[other];
+        passOn (missingFav, { toon, other });
+        passOn (missingToon, { other, fav });
+        passOn (missingOther, { toon, fav });
+        std::vector<Scored> chosen;
+        for (size_t k = 0; k < 3; ++k)
+            chosen.insert (chosen.end(), groups[k].begin(), groups[k].begin() + (std::ptrdiff_t) take[k]);
+        chosen.insert (chosen.end(), toonExtra.begin(), toonExtra.end());
         std::stable_sort (chosen.begin(), chosen.end(), better);
         std::vector<LibraryGroove> pool;
         pool.reserve (chosen.size());
@@ -21176,6 +21206,7 @@ namespace pr7s
         {
             pool.push_back (grooveAt (i));
             pool.back().score = juce::roundToInt (score);
+            pool.back().favourite = isFavourite[i];
         }
         const std::lock_guard<std::mutex> sl (poolLock);
         if (keptPools.size() >= 16)   // (0.173.0: 6 missed every time: the drums menu asks for 7 sections in turn)
@@ -21210,7 +21241,15 @@ namespace pr7s
             for (const auto& g : pool)
                 if (g.file.getFullPathName() == s.libraryPick)
                     return g;
-        return pool[(size_t) s.lane (ComposerLayer::drums).variation % pool.size()];
+        // (0.178.0, the owner: AUTOMATIC prefers the favourite folders) The take picks among those when any are there.
+        std::vector<size_t> favourites;
+        for (size_t i = 0; i < pool.size(); ++i)
+            if (pool[i].favourite)
+                favourites.push_back (i);
+        const auto at = (size_t) juce::jmax (0, s.lane (ComposerLayer::drums).variation);
+        if (! favourites.empty())
+            return pool[favourites[at % favourites.size()]];
+        return pool[at % pool.size()];
     }
 
     bool rollLibraryGroove (ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c, juce::Random& random)

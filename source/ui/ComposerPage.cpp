@@ -236,6 +236,7 @@ juce::String ComposerPage::composeFingerprint() const
     f << "|" << c.velocities.toString() << "|" << (int) c.style << "|" << (int) c.solo << "|" << c.riff.toString()
       << "|" << c.drums.toString() << "|" << c.melody.toString() << "|" << c.humanize << "|" << (int) c.feel << "|" << juce::String (c.bpm, 6)
       << "|" << juce::String (c.lastBarBeats, 6) << "|" << (c.nextChord.has_value() ? c.nextChord->toText() : juce::String());
+    f << "|F:" << c.favouriteFolders.joinIntoString (";");   // (0.178.0)
     f << "|G:" << (int) c.libraryGrooves.size();
     for (size_t i = 0; i < c.libraryGrooves.size() && i < 64; ++i)
         f << ";" << c.libraryGrooves[i].file.getFullPathName();
@@ -2015,15 +2016,19 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
         // the section, best fit to the guitar first; ROLL goes through them all in a random order.
         menu.addItem (libraryItems + 91, "Fit the Kick to the Riff (kicks nudged onto its hits)", state.libraryDrums, state.fitKicks);
         const auto grooves = sectionGrooves();   // (0.177.0: the same list as the options)
-        auto fromToontrack = 0;
+        auto fromToontrack = 0, fromFavourites = 0;
         for (const auto& g : grooves)
-            fromToontrack += g.toontrack ? 1 : 0;
+        {
+            fromFavourites += g.favourite ? 1 : 0;
+            fromToontrack += g.toontrack && ! g.favourite ? 1 : 0;
+        }
         juce::PopupMenu list;
         list.addItem (libraryItems + 1, "Automatic (ROLL goes through all " + juce::String ((int) grooves.size()) + " in a random order)", state.libraryDrums,
                       state.libraryGroove.isEmpty());
         if (! grooves.empty())
-            list.addSectionHeader (juce::String ((int) grooves.size()) + " for this section, " + juce::String (fromToontrack)
-                                   + " from Toontrack, best fit to the riff first");
+            list.addSectionHeader (juce::String ((int) grooves.size()) + " for this section: " + juce::String (fromFavourites) + " from your favourite folders, "
+                                   + juce::String (fromToontrack) + " Toontrack, " + juce::String ((int) grooves.size() - fromFavourites - fromToontrack)
+                                   + " other packs (best fit to the riff first)");
         for (int i = 0; i < (int) grooves.size(); ++i)
             list.addItem (libraryItems + 200 + i, grooves[(size_t) i].name + "  (" + grooves[(size_t) i].folder + ", " + juce::String (grooves[(size_t) i].bars)
                                                       + " bars)", state.libraryDrums, state.libraryGroove == grooves[(size_t) i].file.getFullPathName());
@@ -2142,7 +2147,7 @@ std::vector<OptionBrowser::Option> ComposerPage::libraryGrooveOptions() const
     for (const auto& sp : spans)
         key << juce::String (sp.start, 6) << "," << juce::String (sp.end, 6) << "," << sp.chord.toText() << ";";
     for (const auto& g : grooves)
-        key << g.file.getFullPathName().hashCode64() << ",";
+        key << g.file.getFullPathName().hashCode64() << (g.favourite ? "f," : ",");
     if (key == grooveOptionsKey)
         return grooveOptionsKept;
     std::vector<OptionBrowser::Option> out;
@@ -2156,7 +2161,7 @@ std::vector<OptionBrowser::Option> ComposerPage::libraryGrooveOptions() const
         o.description = g.folder + ", " + juce::String (g.bars) + (g.bars == 1 ? " bar" : " bars")
                       + (g.bpm > 0.0 ? ", " + juce::String (juce::roundToInt (g.bpm)) + " BPM" : juce::String())
                       + "  -  " + g.file.getFullPathName();
-        o.group = g.toontrack ? toontrackGroup : otherPacksGroup;
+        o.group = g.favourite ? favouriteFoldersGroup : g.toontrack ? toontrackGroup : otherPacksGroup;
         o.drums = true;
         auto each = s;
         each.libraryGroove = g.file.getFullPathName();
@@ -2243,7 +2248,34 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
     }
     auto browser = std::make_unique<OptionBrowser> (title, laneOptions (l), chosen, studio.getOptionMemory(), optionsKeyFor (l));
     if (grooves)
-        browser->setGroupOrder ({ toontrackGroup, otherPacksGroup });
+    {
+        browser->setGroupOrder ({ favouriteFoldersGroup, toontrackGroup, otherPacksGroup });
+        // (0.178.0) Right-click a groove: its folder marked (or unmarked) as a favourite, the list made again.
+        juce::Component::SafePointer<ComposerPage> page (this);
+        auto* shown = browser.get();
+        browser->onRightClick = [page, shown] (int id, juce::Point<int> at)
+        {
+            if (page == nullptr)
+                return;
+            juce::PopupMenu menu;
+            const auto folder = page->grooveFolderOf (id);
+            const auto marked = page->favouriteFolderHolding (id);
+            if (marked != juce::File())
+                menu.addItem (2, "Unmark the Favourite Folder \"" + marked.getFileName() + "\"");
+            else if (folder != juce::File())
+                menu.addItem (1, "Mark Its Folder as a Favourite (\"" + folder.getFileName() + "\")");
+            if (menu.getNumItems() == 0)
+                return;
+            juce::Component::SafePointer<OptionBrowser> browserAlive (shown);
+            menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea ({ at.x, at.y, 1, 1 }),
+                                [page, browserAlive, id] (int chosen)
+                                {
+                                    if (page == nullptr || chosen == 0)
+                                        return;
+                                    page->markGrooveFolder (id, chosen == 1, browserAlive.getComponent());
+                                });
+        };
+    }
     juce::Component::SafePointer<ComposerPage> safe (this);
     browser->onHear = [safe, l] (int id) { if (safe != nullptr) safe->tryOption (l, id); };
     browser->onUse = [safe, l] (int id)
@@ -2282,6 +2314,51 @@ void ComposerPage::openBrowserWindow (std::unique_ptr<OptionBrowser> browser)
                 safe->browserWindow.reset();
         });
     };
+}
+
+juce::File ComposerPage::grooveFolderOf (int id) const
+{
+    const auto pool = sectionGrooves();
+    const auto i = id - grooveId;
+    return juce::isPositiveAndBelow (i, (int) pool.size()) ? pool[(size_t) i].file.getParentDirectory() : juce::File();
+}
+
+juce::File ComposerPage::favouriteFolderHolding (int id) const
+{
+    const auto pool = sectionGrooves();
+    const auto i = id - grooveId;
+    if (! juce::isPositiveAndBelow (i, (int) pool.size()))
+        return {};
+    for (const auto& f : studio.getGrooveFavouriteFolders())
+        if (pr7s::isInFavouriteFolder (pool[(size_t) i].file, { f }))
+            return juce::File (f);
+    return {};
+}
+
+void ComposerPage::markGrooveFolder (int id, bool favourite, OptionBrowser* browser)
+{
+    const auto pool = sectionGrooves();
+    const auto i = id - grooveId;
+    if (! juce::isPositiveAndBelow (i, (int) pool.size()))
+        return;
+    const auto file = pool[(size_t) i].file;
+    if (favourite)
+        studio.setGrooveFolderFavourite (file.getParentDirectory(), true);
+    else
+        for (const auto& f : studio.getGrooveFavouriteFolders())
+            if (pr7s::isInFavouriteFolder (file, { f }))
+                studio.setGrooveFolderFavourite (juce::File (f), false);
+    refresh();
+    status = favourite ? "Favourite folder: " + file.getParentDirectory().getFileName() : juce::String ("Favourite folder unmarked");
+    if (browser != nullptr)
+    {
+        // The list again (the groups changed), the same groove still chosen.
+        browser->setOptions (laneOptions (ComposerLayer::drums));
+        const auto again = sectionGrooves();
+        for (int k = 0; k < (int) again.size(); ++k)
+            if (again[(size_t) k].file == file)
+                browser->choose (grooveId + k);
+    }
 }
 
 void ComposerPage::useOption (ComposerLayer l, int id)

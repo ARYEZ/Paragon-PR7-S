@@ -6,6 +6,7 @@
 class InstrumentsPage;
 class TrackTypeColoursPage;
 class ComposerTracksPage;
+class GrooveFoldersPage;
 
 // The Hub (0.12.0, the owner asked: a start window like the other DAW's Hub,
 // opening on the folder where the songs are kept), in the PR7 family's look.
@@ -55,6 +56,10 @@ public:
     void showComposerTracksPage();
     bool isShowingComposerTracks() const noexcept { return composerTracksPage; }
     ComposerTracksPage* getComposerTracksPage() noexcept { return composerTracks.get(); }
+    // GROOVE FOLDERS (0.178.0): the sixth tab (ui/GrooveFoldersPage.h): favourite groove folders.
+    void showGrooveFoldersPage();
+    bool isShowingGrooveFolders() const noexcept { return grooveFoldersPage; }
+    GrooveFoldersPage* getGrooveFoldersPage() noexcept { return grooveFolders.get(); }
     void refresh();
 
     void paint (juce::Graphics&) override;
@@ -68,13 +73,14 @@ private:
     std::unique_ptr<SongList> list;
     std::vector<Item> items;
     juce::StringArray folded;
-    bool settingsPage = false, instrumentsPage = false, coloursPage = false, composerTracksPage = false;
+    bool settingsPage = false, instrumentsPage = false, coloursPage = false, composerTracksPage = false, grooveFoldersPage = false;
     std::unique_ptr<InstrumentsPage> instruments;
     std::unique_ptr<TrackTypeColoursPage> colours;
     std::unique_ptr<ComposerTracksPage> composerTracks;
+    std::unique_ptr<GrooveFoldersPage> grooveFolders;
     juce::Image satin;
 
-    juce::TextButton projectsTab { "PROJECTS" }, settingsTab { "HUB SETTINGS" }, instrumentsTab { "INSTRUMENTS" }, coloursTab { "TRACK COLOURS" }, composerTracksTab { "ARCHITECT TRACKS" },
+    juce::TextButton projectsTab { "PROJECTS" }, settingsTab { "HUB SETTINGS" }, instrumentsTab { "INSTRUMENTS" }, coloursTab { "TRACK COLOURS" }, composerTracksTab { "ARCHITECT TRACKS" }, grooveFoldersTab { "GROOVE FOLDERS" },
                      createEmpty { "+  CREATE EMPTY" }, chooseFile { "CHOOSE FILE..." }, open { "OPEN" },
                      driverPanel { "DRIVER PANEL" }, audioSettings { "SETTINGS" },
                      chooseLocation { "CHOOSE..." }, addLocation { "ADD A FOLDER..." }, removeLocation { "REMOVE THE FOLDER" };

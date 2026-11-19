@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.178.0
+
+Favourite groove folders, and 200 library grooves for each section (you asked: 50 from your favourites, 100 from the rest of Toontrack, 50 from your other packs).
+
+- **Mark folders as favourites, two ways.** The Hub has a new tab, **GROOVE FOLDERS**: your groove library as a folder tree (the folders PR7-D links), each folder with how many grooves ARCHITECT can use in it. Click a folder's star to mark it; everything inside it counts with it (a folder inside a favourite one shows a dim star). Or, in ARCHITECT's drums options, right-click a groove and choose **Mark Its Folder as a Favourite** (or **Unmark**); the list sorts itself again on the spot. Favourites are kept in PR7-S's settings, for every song.
+- **200 grooves a section, split 50 / 100 / 50.** The same rules as before (no fills, no left-out styles, 4 to 16 bars, naming the section, best fit to your riff first), then: the best 50 from your favourite folders, the best 100 from the rest of Toontrack, the best 50 from your other packs. A group short passes its places on: favourites to Toontrack, then your other packs; Toontrack (after its own grooves for other sections, as before) to your other packs, then the favourites; your other packs to Toontrack, then the favourites. With no favourites marked, their 50 go to Toontrack (150 Toontrack, 50 others).
+- **Automatic prefers your favourites.** Before you ROLL, the groove picked is one from your favourite folders whenever the section has any. ROLL still goes through all 200 in a random order, none again until you've heard them all (so about one roll in four is a favourite). Fills come from your favourite folders first too.
+- **The options list shows the three groups:** FAVOURITE FOLDERS, TOONTRACK, YOUR OTHER PACKS, and the drums menu's Library Groove list says how many came from each.
+
 ## 0.177.0
 
 The drums lane's options are your library's grooves now (you asked: "if it is selecting 100 riffs from my library why wouldn't I literally hear 100 different options?").

@@ -150,10 +150,16 @@ public:
     // recent kept apart from the type's options (`optionsKeyFor`).
     static constexpr int grooveId = 200000;
     static constexpr int libraryItems = 7000;     // (0.106.0) the drums' style menu: 7000 on/off, 7001 automatic, 7002 + i a groove
-    static inline const juce::String toontrackGroup = "TOONTRACK", otherPacksGroup = "YOUR OTHER PACKS";
+    static inline const juce::String toontrackGroup = "TOONTRACK", otherPacksGroup = "YOUR OTHER PACKS",
+                                     favouriteFoldersGroup = "FAVOURITE FOLDERS";   // (0.178.0)
     bool showsLibraryGrooves (pr7s::ComposerLayer) const;
     std::vector<pr7s::LibraryGroove> sectionGrooves() const;   // the section's list (the one chosen by hand left out of the key)
     std::vector<OptionBrowser::Option> libraryGrooveOptions() const;
+    // (0.178.0) A groove option's folder; the favourite folder holding it (none: not in one); marked or unmarked
+    // (the browser's list made again when given).
+    juce::File grooveFolderOf (int grooveOptionId) const;
+    juce::File favouriteFolderHolding (int grooveOptionId) const;
+    void markGrooveFolder (int grooveOptionId, bool favourite, OptionBrowser* browser = nullptr);
     juce::String optionsKeyFor (pr7s::ComposerLayer l) const { return optionListKey (l) + (showsLibraryGrooves (l) ? ":library" : ""); }
     juce::PopupMenu makeStyleMenu (pr7s::ComposerLayer);
     void styleMenuChosen (pr7s::ComposerLayer, int item);

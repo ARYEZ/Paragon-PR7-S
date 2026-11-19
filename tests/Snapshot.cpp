@@ -1444,6 +1444,7 @@ TEST_CASE ("Snapshot: the progress box, and SAVE lit", "[.][snapshot-progress]")
 }
 
 #include "ui/Hub.h"
+#include "ui/GrooveFoldersPage.h"
 #include "ui/TrackTypeColours.h"
 #include "ui/ComposerTracksPage.h"
 #include "ui/InstrumentsPage.h"
@@ -1499,6 +1500,47 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
             hub.getComposerTracksPage()->setNames (1, "Guitar L, Guitar R");
             hub.getComposerTracksPage()->setEvery (1, true);
             hub.getComposerTracksPage()->setNames (0, "Bass, Bass DI");
+        }
+        std::unique_ptr<juce::TemporaryFile> grooveFolder;
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "groovefolders")
+        {
+            // (0.178.0) A made-up PR7-D library (listed only), one folder a favourite, the tree opened.
+            grooveFolder = std::make_unique<juce::TemporaryFile>();
+            const auto top = grooveFolder->getFile();
+            const auto presets = top.getChildFile ("Rigs"), packs = top.getChildFile ("Drum Grooves");
+            presets.createDirectory();
+            juce::XmlElement index ("GrooveIndex");
+            auto n = 0;
+            for (const auto& [folder, count] : std::initializer_list<std::pair<const char*, int>> {
+                     { "Toontrack/Metal Machine/Verse", 40 }, { "Toontrack/Metal Machine/Chorus", 36 }, { "Toontrack/Progressive Foundry/Verse", 52 },
+                     { "Toontrack/Progressive Foundry/Chorus", 48 }, { "Toontrack/Death & Darkness/Verse", 30 }, { "Other Packs/Rock Grooves/Verse", 24 },
+                     { "Other Packs/Rock Grooves/Chorus", 20 }, { "Other Packs/Djent Pack/Verse", 18 } })
+                for (int i = 0; i < count; ++i)
+                {
+                    auto* g = index.createNewChildElement ("G");
+                    g->setAttribute ("path", packs.getChildFile (juce::String (folder) + "/Groove " + juce::String (++n) + ".mid").getFullPathName());
+                    g->setAttribute ("stamp", "1|2|1");
+                    g->setAttribute ("bpm", 120.0);
+                    g->setAttribute ("bpmKnown", 1);
+                    g->setAttribute ("num", 4);
+                    g->setAttribute ("den", 4);
+                    g->setAttribute ("bars", 4);
+                }
+            juce::XmlElement settings ("Grooves");
+            auto* f = settings.createNewChildElement ("Folder");
+            f->setAttribute ("path", packs.getFullPathName());
+            f->setAttribute ("map", 1);
+            settings.writeTo (presets.getChildFile ("Grooves.xml"));
+            index.writeTo (presets.getChildFile ("Groove Index.xml"));
+            studio.setPr7dFolderForTests (presets);
+            studio.setGrooveFolderFavourite (packs.getChildFile ("Toontrack/Progressive Foundry"), true);
+            hub.showGrooveFoldersPage();
+            auto& tree = hub.getGrooveFoldersPage()->getTree();
+            auto* linked = tree.getRootItem()->getSubItem (0);
+            linked->setOpen (true);
+            for (int i = 0; i < linked->getNumSubItems(); ++i)
+                linked->getSubItem (i)->setOpen (true);
+            juce::MessageManager::getInstance()->runDispatchLoopUntil (60);
         }
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "instruments")
         {

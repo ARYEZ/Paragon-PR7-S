@@ -2,6 +2,7 @@
 #include "ui/InstrumentsPage.h"
 #include "ui/TrackTypeColours.h"
 #include "ui/ComposerTracksPage.h"
+#include "ui/GrooveFoldersPage.h"
 #include "engine/DrumMaps.h"
 
 #include "ui/Finish.h"
@@ -158,7 +159,7 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
 {
     list = std::make_unique<SongList> (*this);
     addAndMakeVisible (*list);
-    for (auto* b : { &projectsTab, &settingsTab, &instrumentsTab, &coloursTab, &composerTracksTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
+    for (auto* b : { &projectsTab, &settingsTab, &instrumentsTab, &coloursTab, &composerTracksTab, &grooveFoldersTab, &createEmpty, &chooseFile, &open, &driverPanel, &audioSettings, &chooseLocation, &addLocation, &removeLocation })
     {
         styleKey (*b);
         addAndMakeVisible (*b);
@@ -313,6 +314,9 @@ Hub::Hub (pr7s::Studio& s) : studio (s)
     composerTracksTab.setClickingTogglesState (false);
     composerTracksTab.setTooltip ("The tracks each Architect lane plays on: their names, and a lane on every matching track (guitar left and right)");
     composerTracksTab.onClick = [this] { showComposerTracksPage(); };
+    grooveFoldersTab.setClickingTogglesState (false);
+    grooveFoldersTab.setTooltip ("Mark groove folders as favourites: a quarter of each section's library grooves come from them, and Automatic picks them first");
+    grooveFoldersTab.onClick = [this] { showGrooveFoldersPage(); };
     createEmpty.setTooltip ("Create Empty: a new song, in a folder of its own at the project location");
     createEmpty.onClick = [this]
     {
@@ -566,6 +570,7 @@ void Hub::showSettingsPage (bool on)
     instrumentsPage = false;
     coloursPage = false;
     composerTracksPage = false;
+    grooveFoldersPage = false;
     resized();
     repaint();
 }
@@ -581,6 +586,7 @@ void Hub::showColoursPage()
     settingsPage = false;
     instrumentsPage = false;
     composerTracksPage = false;
+    grooveFoldersPage = false;
     coloursPage = true;
     resized();
     repaint();
@@ -598,6 +604,25 @@ void Hub::showComposerTracksPage()
     instrumentsPage = false;
     coloursPage = false;
     composerTracksPage = true;
+    grooveFoldersPage = false;
+    resized();
+    repaint();
+}
+
+void Hub::showGrooveFoldersPage()
+{
+    if (grooveFolders == nullptr)
+    {
+        grooveFolders = std::make_unique<GrooveFoldersPage> (studio);
+        addChildComponent (*grooveFolders);
+    }
+    else
+        grooveFolders->refresh();
+    settingsPage = false;
+    instrumentsPage = false;
+    coloursPage = false;
+    composerTracksPage = false;
+    grooveFoldersPage = true;
     resized();
     repaint();
 }
@@ -612,6 +637,7 @@ void Hub::showInstrumentsPage()
     settingsPage = false;
     coloursPage = false;
     composerTracksPage = false;
+    grooveFoldersPage = false;
     instrumentsPage = true;
     resized();
     repaint();
@@ -737,7 +763,7 @@ void Hub::paint (juce::Graphics& g)
 
     g.setColour (ParagonColours::textDim);
     g.setFont (font (12.0f));
-    if (instrumentsPage || coloursPage || composerTracksPage)
+    if (instrumentsPage || coloursPage || composerTracksPage || grooveFoldersPage)
         return;
     if (! settingsPage && studio.getLibrary().showsLocation())
     {
@@ -788,7 +814,10 @@ void Hub::resized()
         n.removeFromTop (8);
         composerTracksTab.setBounds (n.removeFromTop (34));
         composerTracksTab.setToggleState (composerTracksPage, juce::dontSendNotification);
-        projectsTab.setToggleState (! settingsPage && ! instrumentsPage && ! coloursPage && ! composerTracksPage, juce::dontSendNotification);
+        n.removeFromTop (8);
+        grooveFoldersTab.setBounds (n.removeFromTop (34));
+        grooveFoldersTab.setToggleState (grooveFoldersPage, juce::dontSendNotification);
+        projectsTab.setToggleState (! settingsPage && ! instrumentsPage && ! coloursPage && ! composerTracksPage && ! grooveFoldersPage, juce::dontSendNotification);
         coloursTab.setToggleState (coloursPage, juce::dontSendNotification);
         settingsTab.setToggleState (settingsPage, juce::dontSendNotification);
         instrumentsTab.setToggleState (instrumentsPage, juce::dontSendNotification);
@@ -810,7 +839,12 @@ void Hub::resized()
         composerTracks->setVisible (composerTracksPage);
         composerTracks->setBounds (page.reduced (24, 18));
     }
-    if (instrumentsPage || coloursPage || composerTracksPage)
+    if (grooveFolders != nullptr)
+    {
+        grooveFolders->setVisible (grooveFoldersPage);
+        grooveFolders->setBounds (page.reduced (24, 18));
+    }
+    if (instrumentsPage || coloursPage || composerTracksPage || grooveFoldersPage)
     {
         for (auto* c : std::initializer_list<juce::Component*> { list.get(), &search, &createEmpty, &chooseFile, &open, &showPaths, &showLocation, &atStart,
                                                                          &addLocation, &removeLocation, &locationsBox, &dropLabel, &dropStrength,

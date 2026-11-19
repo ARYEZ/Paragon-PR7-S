@@ -10,6 +10,7 @@
 #include "engine/Composer.h"
 #include "engine/DrumIdeas.h"
 
+#include <array>
 #include <set>
 
 using namespace pr7s;
@@ -74,7 +75,7 @@ TEST_CASE ("0.137.0: the drums lane's pool: 100, two thirds Toontrack, the secti
     ComposerContext c;
     c.libraryGrooves = all;
     const auto pool = composerGroovePool (verseState(), eightBars(), c);
-    REQUIRE (pool.size() == 100);
+    REQUIRE (pool.size() == 200);   // (0.178.0: 200, 50 / 100 / 50; no favourite folders: their 50 to Toontrack)
     auto toontrack = 0;
     for (const auto& g : pool)
     {
@@ -87,26 +88,26 @@ TEST_CASE ("0.137.0: the drums lane's pool: 100, two thirds Toontrack, the secti
         for (const auto* word : { "Jazz", "Brush", "Electronic", "Big Band", "R&B", "Reggae", "Chorus" })
             CHECK_FALSE (g.file.getFullPathName().containsIgnoreCase (word));
     }
-    CHECK (toontrack == 66);
+    CHECK (toontrack == 150);
 
-    // Few others: Toontrack makes up the rest (still at least two thirds).
+    // Few others: Toontrack takes the favourites' places, the others' missing ones go unfilled (Toontrack has no more).
     std::vector<LibraryGroove> fewOthers (all.begin(), all.begin() + 150);
     for (int i = 0; i < 10; ++i)
         fewOthers.push_back (all[150 + (size_t) i]);
     c.libraryGrooves = fewOthers;
     const auto mostly = composerGroovePool (verseState(), eightBars(), c);
-    REQUIRE (mostly.size() == 100);
+    REQUIRE (mostly.size() == 160);
     auto t2 = 0;
     for (const auto& g : mostly)
         t2 += g.toontrack ? 1 : 0;
-    CHECK (t2 == 90);
+    CHECK (t2 == 150);
 
     // Few Toontrack verses: all of them, then the folder's others, then other folders' verses.
     std::vector<LibraryGroove> fewToontrack (all.begin(), all.begin() + 20);
     fewToontrack.insert (fewToontrack.end(), all.begin() + 150, all.begin() + 350);
     c.libraryGrooves = fewToontrack;
     const auto filled = composerGroovePool (verseState(), eightBars(), c);
-    REQUIRE (filled.size() == 100);
+    REQUIRE (filled.size() == 200);
     auto tVerse = 0, tOther = 0, oVerse = 0;
     for (const auto& g : filled)
     {
@@ -118,8 +119,8 @@ TEST_CASE ("0.137.0: the drums lane's pool: 100, two thirds Toontrack, the secti
             ++oVerse;
     }
     CHECK (tVerse == 20);
-    CHECK (tOther == 46);
-    CHECK (oVerse == 34);
+    CHECK (tOther == 50);    // (all the folder's others)
+    CHECK (oVerse == 130);   // (their 50, the favourites' 50 and Toontrack's missing 30)
 }
 
 TEST_CASE ("0.137.0: a section with no groove of its own takes the nearest kind's", "[composer][library][groovepool]")
@@ -200,9 +201,9 @@ TEST_CASE ("0.137.0: the kick and snare's fit to the guitar ranks the pool", "[c
 TEST_CASE ("0.137.0: ROLL goes through all 100 in a random order, none again until all have been", "[composer][library][groovepool]")
 {
     std::vector<LibraryGroove> all;
-    for (int i = 0; i < 120; ++i)
+    for (int i = 0; i < 70; ++i)   // (0.178.0: 70 + 30, all of them: a pool of 100)
         all.push_back (groove ("Toontrack/Pack/Verse/Verse " + juce::String (i) + ".mid", 8));
-    for (int i = 0; i < 60; ++i)
+    for (int i = 0; i < 30; ++i)
         all.push_back (groove ("Others/Verse/Verse " + juce::String (i) + ".mid", 8));
     ComposerContext c;
     c.libraryGrooves = all;
@@ -294,4 +295,85 @@ TEST_CASE ("0.137.0: PR7-D's index rhythm read as kicks and snares (ghosts left 
     REQUIRE (r.snares.size() == 2);   // (the 40 under 55% of 127 left out)
     CHECK (r.snares[0] == Catch::Approx (1.0f));
     CHECK (r.snares[1] == Catch::Approx (5.0f));
+}
+
+TEST_CASE ("0.178.0: favourite folders: 50 of the 200, the rest of Toontrack 100, the other packs 50", "[composer][library][groovepool][favourites]")
+{
+    std::vector<LibraryGroove> all;
+    for (int i = 0; i < 150; ++i)
+        all.push_back (groove ("Toontrack/Metal Pack/Verse/Verse " + juce::String (i) + ".mid", 8));
+    for (int i = 0; i < 60; ++i)
+        all.push_back (groove ("Toontrack/Favourite Pack/Verse/Fav Verse " + juce::String (i) + ".mid", 8));
+    for (int i = 0; i < 120; ++i)
+        all.push_back (groove ("Other Packs/Rock/Verse/Rock Verse " + juce::String (i) + ".mid", 8));
+    const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("grooves");
+    ComposerContext c;
+    c.libraryGrooves = all;
+    c.favouriteFolders = { root.getChildFile ("Toontrack/Favourite Pack").getFullPathName() };
+    const auto counts = [] (const std::vector<LibraryGroove>& pool)
+    {
+        std::array<int, 3> n {};
+        for (const auto& g : pool)
+            ++n[g.favourite ? 0 : g.toontrack ? 1 : 2];
+        return n;
+    };
+    auto s = verseState();
+    const auto spans = eightBars();
+    const auto pool = composerGroovePool (s, spans, c);
+    REQUIRE (pool.size() == 200);
+    CHECK (counts (pool) == std::array<int, 3> { 50, 100, 50 });
+    for (const auto& g : pool)
+        CHECK (g.favourite == g.file.getFullPathName().contains ("Favourite Pack"));
+
+    // AUTOMATIC prefers the favourites: every take picks one.
+    for (int v = 0; v < 12; ++v)
+    {
+        s.lane (ComposerLayer::drums).variation = v;
+        const auto picked = composerLibraryGroove (s, spans, c);
+        REQUIRE (picked.has_value());
+        CHECK (picked->favourite);
+    }
+    // ROLL still goes through all 200 (favourites a quarter of them).
+    juce::Random random (3);
+    std::set<juce::String> rolled;
+    auto favouriteRolls = 0;
+    for (int i = 0; i < 199; ++i)   // (every one but the one playing first, a favourite, before any comes back)
+    {
+        REQUIRE (rollLibraryGroove (s, spans, c, random));
+        const auto now = composerLibraryGroove (s, spans, c);
+        rolled.insert (now->file.getFullPathName());
+        favouriteRolls += now->favourite ? 1 : 0;
+    }
+    CHECK (rolled.size() == 199);
+    CHECK (favouriteRolls == 49);
+
+    // Favourites short: their places to Toontrack first.
+    std::vector<LibraryGroove> fewFavourites (all.begin(), all.begin() + 170);   // (150 Toontrack, 20 favourites)
+    fewFavourites.insert (fewFavourites.end(), all.begin() + 210, all.end());
+    c.libraryGrooves = fewFavourites;
+    CHECK (counts (composerGroovePool (verseState(), spans, c)) == std::array<int, 3> { 20, 130, 50 });
+
+    // Other packs short: their places to Toontrack, then the favourites.
+    std::vector<LibraryGroove> fewOthers (all.begin(), all.begin() + 210);
+    for (int i = 0; i < 10; ++i)
+        fewOthers.push_back (all[210 + (size_t) i]);
+    c.libraryGrooves = fewOthers;
+    CHECK (counts (composerGroovePool (verseState(), spans, c)) == std::array<int, 3> { 50, 140, 10 });
+
+    // No favourite folders: as before them, Toontrack 150 and the others 50.
+    c.libraryGrooves = all;
+    c.favouriteFolders = {};
+    CHECK (counts (composerGroovePool (verseState(), spans, c)) == std::array<int, 3> { 0, 150, 50 });
+}
+
+TEST_CASE ("0.178.0: a file in a favourite folder: subfolders count, a name only starting the same doesn't", "[groovepool][favourites]")
+{
+    const auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("grooves");
+    const juce::StringArray folders { root.getChildFile ("Packs/Fav").getFullPathName() };
+    CHECK (isInFavouriteFolder (root.getChildFile ("Packs/Fav/Verse/One.mid"), folders));
+    CHECK (isInFavouriteFolder (root.getChildFile ("Packs/Fav/One.mid"), folders));
+    CHECK (isInFavouriteFolder (root.getChildFile ("Packs/FAV/One.mid"), folders));   // (upper or lower case alike)
+    CHECK_FALSE (isInFavouriteFolder (root.getChildFile ("Packs/Favourite/One.mid"), folders));
+    CHECK_FALSE (isInFavouriteFolder (root.getChildFile ("Packs/One.mid"), folders));
+    CHECK_FALSE (isInFavouriteFolder (root.getChildFile ("Packs/Fav/One.mid"), {}));
 }

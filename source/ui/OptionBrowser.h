@@ -36,6 +36,10 @@ public:
     std::function<void (int id)> onUse;
     std::function<void (const juce::String& name, bool favourite)> onFavourite;
     std::function<void()> onClosed;   // when it goes (its box closed)
+    // (0.178.0) A right-click on an option in the list (its id; the mouse on the screen): the caller's menu.
+    std::function<void (int id, juce::Point<int> screen)> onRightClick;
+    // (0.178.0) The options again (their groups changed): the chosen, the group shown and the search kept.
+    void setOptions (std::vector<Option>);
     ~OptionBrowser() override;
 
     static constexpr int width = 1000, height = 560;

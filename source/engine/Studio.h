@@ -409,6 +409,15 @@ namespace pr7s
         void resetComposerTracks();
         bool getLooseCopies() const;
         void setLooseCopies (bool);
+        // (0.178.0, the owner) Groove folders marked as favourites (full paths, subfolders included): a quarter of a
+        // section's library grooves come from them and AUTOMATIC prefers them. Settings "grooveFavouriteFolders" (a
+        // path a line; in memory without a settings file). A change is announced (ARCHITECT composes again).
+        juce::StringArray getGrooveFavouriteFolders() const;
+        void setGrooveFavouriteFolders (const juce::StringArray&);
+        void setGrooveFolderFavourite (const juce::File& folder, bool favourite);   // that folder itself
+        bool isGrooveFolderFavourite (const juce::File& folder) const;              // marked itself (not by a folder over it)
+        // The folders the library grooves come from (PR7-D's linked folders, else the MediaBay's locations).
+        std::vector<juce::File> getGrooveFolderRoots() const;
         juce::String newIdeaTrackName (LineIdea::Part) const;      // the first name (a new track's)
         std::vector<int> findIdeaTracks (LineIdea::Part) const;    // every match when EVERY, else the first (none: empty)
         // The `copy`th copy of an idea (0: itself) for another of its tracks: humanized again when LOOSE COPIES.
@@ -1941,6 +1950,7 @@ namespace pr7s
         std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;
         std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)
         bool looseCopiesHere = true;
+        juce::StringArray grooveFavouritesHere;   // (0.178.0; without a settings file)
         std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;
         void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)
         void collectPluginStates (bool reuseUnchanged = false);

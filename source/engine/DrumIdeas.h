@@ -68,7 +68,12 @@ namespace pr7s
         bool toontrack = false;
         bool excluded = false;
         std::shared_ptr<const GrooveRhythm> rhythm;
+        // (0.178.0) In one of the folders the owner marked as a favourite (worked out by the composer's pool, not
+        // stored in the library's list: the favourites change without the library being read again).
+        bool favourite = false;
     };
+    // (0.178.0) A file inside one of `folders` (full paths, subfolders included; upper or lower case alike).
+    bool isInFavouriteFolder (const juce::File&, const juce::StringArray& folders);
     // (0.137.0) The words that leave a groove out of the composer's drums (in a folder's name or a genre label).
     const juce::StringArray& excludedGrooveWords();
     // (0.112.1) Works out a groove's sectionMask and fill (findLibraryGrooves and findPr7dGrooves do it for theirs).
