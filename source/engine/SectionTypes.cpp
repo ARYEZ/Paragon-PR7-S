@@ -365,6 +365,15 @@ namespace pr7s
                          { "FLAT-SEVEN OCTAVES, SUS TO MAJOR TOP", "Octave dyads round the flat seven, the top note turning from suspended to major", r, {}, b },
                          { "FLAT-TWO DRIVE TO THE SEVEN", "Eighths on the chord a half step over the root, landing on the flat seven", r, {}, b },
                          { "GUITAR ALONE: A BAR OF LINE, A BAR RUNG", "One guitar alone: a bar of single-note line, then a held figure and a rung chord", r, {}, b },
+                         // (0.184.0) Round six (the owner's 25 songs; shapes only, our names).
+                         { "BASS ARPEGGIO IN THREES, THE KIT CREEPS IN", "The bass alone on a root, fifth and octave in threes, the kit coming in by stages, a sixteenth guitar line late", r, {}, b },
+                         { "ONE HIT, PICKED SINGLE LINE, HATS ONLY", "One hit together, then one guitar picking a line on a pedal over only hats and ride; the band back halfway", r, {}, b },
+                         { "STICKS IN CLUSTERS, KICK QUARTERS, NO SNARE", "Side-stick clusters on every beat over a four-on-the-floor kick, a single-note riff, a stab bar every fourth", r, {}, b },
+                         { "KICK AND SIDESTICK ON ONE AND THREE, GUITARS OUT", "The guitars out: the kick and a side stick on 1 and 3, root half notes, the keys carrying a line", r, {}, b },
+                         { "BASS A STEP UNDER, CLUSTER TREMOLO JOINS", "The bass alone a whole step under the key, then a three-note cluster tremolo over it, stopping on beat 3", r, {}, b },
+                         { "HELD CHORDS OVER A SIXTEENTH BASS PEDAL, NO SNARE", "A chord rung each bar over a sixteenth bass pedal, root stabs under it, no snare: the kick, ride and crash pushes", r, {}, b },
+                         { "OCTAVES IN 2+1 CELLS OVER SIXTEENTH ROOTS", "Octaves in cells of two and one over the bass's sixteenth roots, crash eighths", r, {}, b },
+                         { "RIDE AND BASS SIXTEENTHS UNDER A CLEAN ARPEGGIO", "No kick or snare: the ride and the bass in sixteenths under a clean arpeggio and a high held note, the groove back later", r, {}, b },
                          creep, open, droning };
             }
             case 4:
@@ -398,6 +407,10 @@ namespace pr7s
                          { "PAIR STABS, THEN THE THREES", "Pair stabs on 1 and 3, then tremolo chords with the snare and kick in threes against each other", r, {}, d },
                          { "QUIET FALLING CELL OVER A LAMENT BASS", "The drums out: a quiet three-note cell falling a step a bar over a lament bass", r, {}, d },
                          { "HIGH NOTE TREMOLO OVER A HALF-TIME CHUG", "A low unison chug over half time, a high ninth tremolo-picked over it", r, {}, d },
+                         // (0.184.0) Round six (the owner's 25 songs; shapes only, our names).
+                         { "EIGHTH CHORDS WALKING THE HALF STEPS", "Power chords on the eighths with the bass, walking the root, its minor third, the half step over it and the flat fifth", r, {}, d },
+                         { "FIVE-SIXTEENTH BURSTS UNDER A PICKED ARPEGGIO", "Bursts of five sixteenths with the bass and the kick under a picked high arpeggio, the snare on every beat", r, {}, d },
+                         { "HALF-STEP FALL OVER THE OPEN ROOT", "Sixteenths a beat at a time: a chord, the same a half step down, the open root twice; a second guitar doubling", r, {}, d },
                          heavy, staccato };
             }
             case 5:
@@ -1124,6 +1137,29 @@ namespace pr7s
                   { "THE CELL IN EIGHTHS", "SILENT" }, { "OUT", "SOFT KICK ON ONE" }, {} },
                 { "HIGH NOTE TREMOLO OVER A HALF-TIME CHUG", { "HALF-TIME CHUG, HIGH TREMOLO", "HALF-TIME CHUG ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "HALF TIME WITH THE CHUG, TOM PICKUPS", "HALF TIME WITH THE CHUG" }, {} },
+                // (0.184.0) Round six's bridges and breakdowns.
+                { "BASS ARPEGGIO IN THREES, THE KIT CREEPS IN", { "OUT, THEN A SIXTEENTH LINE", "SIXTEENTH LINE ALL THROUGH" }, { "ARPEGGIO IN THREES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CRASH, THEN RIDE CREEPS IN", "RIDE EIGHTHS, KICK IN THREES" }, {} },
+                { "ONE HIT, PICKED SINGLE LINE, HATS ONLY", { "PICKED PEDAL LINE, THE SECOND JOINS", "PICKED PEDAL LINE ALONE" }, { "ONE HIT, THEN EIGHTHS HALFWAY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HATS AND RIDE ONLY, THEN TOMS CLIMB", "HATS AND RIDE EIGHTHS ONLY" }, {} },
+                { "STICKS IN CLUSTERS, KICK QUARTERS, NO SNARE", { "SINGLE-NOTE RIFF, STAB BAR EVERY FOURTH", "THE SINGLE-NOTE LINE ALONE" }, { "ROOT QUARTERS UNDER THE RIFF", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "STICK CLUSTERS, KICK QUARTERS", "KICK QUARTERS, HATS, NO SNARE" }, {} },
+                { "KICK AND SIDESTICK ON ONE AND THREE, GUITARS OUT", { "OUT", "ONE CHORD A BAR, SOFT" }, { "ROOT HALF NOTES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "THE LINE IN OCTAVES", "HELD PADS" }, { "KICK AND SIDESTICK ON ONE AND THREE", "KICK AND SIDESTICK, HATS EIGHTHS" }, {} },
+                { "BASS A STEP UNDER, CLUSTER TREMOLO JOINS", { "OUT, THEN A CLUSTER TREMOLO", "CLUSTER TREMOLO ALL THROUGH" }, { "A STEP UNDER THE KEY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BROKEN KICK, SNARE ON TWO AND FOUR, STOP", "BACKBEAT, CLOSED HATS" }, {} },
+                { "HELD CHORDS OVER A SIXTEENTH BASS PEDAL, NO SNARE", { "CHORD RUNG, ROOT STABS UNDER IT", "CHORD RUNG EACH BAR" }, { "SIXTEENTH PEDAL, FOURTH BAR MOVES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ON ONE, RIDE AND CRASH PUSHES, NO SNARE", "KICK ON ONE, RIDE QUARTERS, NO SNARE" }, {} },
+                { "OCTAVES IN 2+1 CELLS OVER SIXTEENTH ROOTS", { "TONIC OCTAVES IN 2+1 CELLS", "OCTAVES IN 2+1 CELLS ON EACH ROOT" }, { "ROOT SIXTEENTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK FIGURE, CRASH EIGHTHS, SNARE TWO AND FOUR", "BACKBEAT, CLOSED HATS" }, {} },
+                { "RIDE AND BASS SIXTEENTHS UNDER A CLEAN ARPEGGIO", { "CLEAN ARPEGGIO, A HIGH NOTE HELD", "CLEAN SIXTEENTH ARPEGGIO" }, { "ROOT SIXTEENTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE SIXTEENTHS, THEN THE GROOVE", "RIDE SIXTEENTHS, CRASH ON ONE" }, {} },
+                { "EIGHTH CHORDS WALKING THE HALF STEPS", { "EIGHTH POWER CHORDS WALKING HALF STEPS", "THE WALK AS MUTED SINGLES" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND CRASH WITH THE WALK", "BACKBEAT, CLOSED HATS" }, {} },
+                { "FIVE-SIXTEENTH BURSTS UNDER A PICKED ARPEGGIO", { "BURSTS OF FIVE, PICKED ARPEGGIO OVER", "FIVE-SIXTEENTH BURSTS ALONE" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK BURSTS, SNARE ON EVERY BEAT, CRASH EIGHTHS", "KICK BURSTS, BACKBEAT" }, {} },
+                { "HALF-STEP FALL OVER THE OPEN ROOT", { "HALF-STEP FALL, THE SECOND GUITAR DOUBLES", "HALF-STEP FALL, ONE GUITAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, KICK ON THE OPEN ROOTS", "BACKBEAT, CLOSED HATS" }, {} },
                 // (0.183.0) Round six's pre-choruses.
                 { "PIANO EIGHTHS, CLAPS ON THE BEATS, GUITARS RING", { "CHORD RUNG, SIXTEENTH PICKUP PAIR", "MUTED EIGHTHS UNDER THE CLAPS" }, { "ROOTS HELD", "ROOT HELD, PICKUP PAIR", "LOCKED WITH THE KICK" },
                   { "PIANO CHORD EIGHTHS", "HELD PADS" }, { "CLAPS ON EVERY BEAT, CRASH ON ONE", "CLAPS ON THE BEATS, SPARSE KICK" }, {} },

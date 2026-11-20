@@ -2,6 +2,29 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.184.0
+
+Eight new bridge types and three new breakdown types from the 25 song files you uploaded, the fourth of the releases for them (then intros and outros, and the transitions and smaller options). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a bridge or breakdown block.
+
+Bridges:
+
+- **BASS ARPEGGIO IN THREES, THE KIT CREEPS IN:** the bass alone on the root, fifth and octave in threes (or the roots held), the kit coming in by stages (a crash, then the ride in sixteenths, then a ride groove; or the ride groove all through), the guitar out until a sixteenth single-note line halfway (or the line all through).
+- **ONE HIT, PICKED SINGLE LINE, HATS ONLY:** one hit together on the first 1, then one guitar picking an eighth line between the low root and the chord over only hats and ride; from halfway a second guitar's muted eighths, the bass's eighths, kick and snare on 1 and 3 and a tom climb to end (or the line and the hats alone).
+- **STICKS IN CLUSTERS, KICK QUARTERS, NO SNARE:** a single-note riff round the root with a stab bar every fourth (or the riff alone), side-stick clusters on every beat over the kick on the quarters (or the kick with closed hats), the bass's root quarters.
+- **KICK AND SIDESTICK ON ONE AND THREE, GUITARS OUT:** the guitars out (or one soft chord a bar), only the kick and a side stick on 1 and 3 (or with hats), the bass's root half notes, the keys carrying a line in octaves.
+- **BASS A STEP UNDER, CLUSTER TREMOLO JOINS:** the bass alone on the note a whole step under the key's, a three-note cluster tremolo over it from halfway (or all through), a broken kick under the snare on 2 and 4, everything stopping on beat 3 of the last bar.
+- **HELD CHORDS OVER A SIXTEENTH BASS PEDAL, NO SNARE:** a chord rung each bar with a second guitar's root stabs under it (or the chord alone), the bass on every sixteenth (the fourth bar moving to the key's fourth and the half step over its note), no snare: the kick on 1, a syncopated ride and crashes on the pushes (or ride quarters).
+- **OCTAVES IN 2+1 CELLS OVER SIXTEENTH ROOTS:** octaves in cells of two and one sixteenths on the key's note whatever the chord (or on each root), the bass's root sixteenths, a kick figure under crash eighths.
+- **RIDE AND BASS SIXTEENTHS UNDER A CLEAN ARPEGGIO:** no kick or snare: the ride and the bass in sixteenths under a clean arpeggio with a high note held over it (or the arpeggio alone), the kick and snare back halfway (or the ride alone all through).
+
+Breakdowns:
+
+- **EIGHTH CHORDS WALKING THE HALF STEPS:** power chords on the eighths walking the root, its minor third, the half step over it and the flat fifth (or the walk as muted singles), the bass doubling it, the kick and crashes with the walk.
+- **FIVE-SIXTEENTH BURSTS UNDER A PICKED ARPEGGIO:** muted bursts of five sixteenths, the gaps filled in the last bar, a second guitar picking a high arpeggio over them (or the bursts alone), the kick in bursts of four, the snare on every beat and crash eighths (or a backbeat).
+- **HALF-STEP FALL OVER THE OPEN ROOT:** each beat a chord a half step over the root, the root's, then the open root twice; every second bar the chord and the one a half step under in threes over the open root and a climb from the flat fifth; a second guitar an octave up from the second bar (or one guitar), the kick on the open roots under half time.
+
+Each has two guitar, three bass (LOCKED WITH THE KICK last), two keys and two drums options. Sixteenth tremolo stands for anything faster (your shortest note). Our choices where the files didn't say: the single-note lines' notes, the bridges' other options, the stages' lengths (halves and quarters of the section). Not checked here: how they sound (listening is yours).
+
 ## 0.183.0
 
 Six new pre-chorus types from the 25 song files you uploaded, the third of the releases for them (then bridges and breakdowns, intros and outros, and the transitions and smaller options). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a pre-chorus block.
