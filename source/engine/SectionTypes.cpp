@@ -72,7 +72,14 @@ namespace pr7s
                      { "DRUMS OUT, KEYS PULSE AND PUSHES", "Piano chords in halves, guitar pushes in each bar's second half, the drums back halfway", RiffFlavour::openChords, {}, pre },
                      { "SIXTEENTH ROOTS STEPPING DOWN", "A root stream one root a bar falling, then bursts of six and five, then high clashing stabs", RiffFlavour::openChords, {}, pre },
                      { "SIDESTICK DROP", "Only a kick on the 3+3+2 anchors and a side stick, root octaves on the anchors, a stop after the and of 2", RiffFlavour::openChords, {}, pre },
-                     { "HIGH PEDAL IN 3+3+2 OVER A MOVING BASS", "High picked eighths on 3+3+2 over bass sixteenths on each new root", RiffFlavour::openChords, {}, pre } };
+                     { "HIGH PEDAL IN 3+3+2 OVER A MOVING BASS", "High picked eighths on 3+3+2 over bass sixteenths on each new root", RiffFlavour::openChords, {}, pre },
+                     // (0.183.0) Round six (the owner's 25 songs; shapes only, our names).
+                     { "PIANO EIGHTHS, CLAPS ON THE BEATS, GUITARS RING", "No kick or snare: claps on every beat, piano chords in eighths, a guitar chord rung each bar with a pickup pair at its end", RiffFlavour::openChords, {}, pre },
+                     { "QUARTER CHORDS OVER KICK EIGHTHS", "A full chord on every quarter, the last pushed, over the kick on every eighth and soft quarter claps that grow louder", RiffFlavour::openChords, {}, pre },
+                     { "KICK EIGHTHS, THEN SNARE EIGHTHS", "The kick on the front half's eighths and the snare on the back half's, over a held chord and root eighths", RiffFlavour::openChords, {}, pre },
+                     { "TRITONE CHORDS BETWEEN ROOT SINGLES, SNARE CLIMB", "Power chords a tritone and a fifth over the root between low root singles, the snare climbing in eighths", RiffFlavour::openChords, {}, pre },
+                     { "DOTTED KICK, SNARE PAIRS, MUTED ROOT STABS", "The kick on a dotted 3+3+2 twice, snare pairs on 2 and 4, muted root stabs off the beat", RiffFlavour::openChords, {}, pre },
+                     { "SIXTEENTHS UP A HALF STEP AFTER SIX", "Sixteenths with the bass: six on the root, ten a half step up, every bar, over ride sixteenths and snare eighths", RiffFlavour::openChords, {}, pre } };
             for (auto& t : sectionTypesFor ("Verse"))   // (0.118.0: the whole verse list, its new types too)
                 types.push_back (std::move (t));
             return types;
@@ -1117,6 +1124,19 @@ namespace pr7s
                   { "THE CELL IN EIGHTHS", "SILENT" }, { "OUT", "SOFT KICK ON ONE" }, {} },
                 { "HIGH NOTE TREMOLO OVER A HALF-TIME CHUG", { "HALF-TIME CHUG, HIGH TREMOLO", "HALF-TIME CHUG ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "HALF TIME WITH THE CHUG, TOM PICKUPS", "HALF TIME WITH THE CHUG" }, {} },
+                // (0.183.0) Round six's pre-choruses.
+                { "PIANO EIGHTHS, CLAPS ON THE BEATS, GUITARS RING", { "CHORD RUNG, SIXTEENTH PICKUP PAIR", "MUTED EIGHTHS UNDER THE CLAPS" }, { "ROOTS HELD", "ROOT HELD, PICKUP PAIR", "LOCKED WITH THE KICK" },
+                  { "PIANO CHORD EIGHTHS", "HELD PADS" }, { "CLAPS ON EVERY BEAT, CRASH ON ONE", "CLAPS ON THE BEATS, SPARSE KICK" }, {} },
+                { "QUARTER CHORDS OVER KICK EIGHTHS", { "FULL CHORD QUARTERS, LAST PUSHED", "POWER CHORD QUARTERS, LAST PUSHED" }, { "EIGHTHS WALKING THE CHORD", "ROOT EIGHTHS", "LOCKED WITH THE KICK" },
+                  { "PIANO CHORD EIGHTHS", "HELD PADS" }, { "KICK EIGHTHS, SOFT QUARTER CLAPS", "KICK EIGHTHS, BACKBEAT" }, {} },
+                { "KICK EIGHTHS, THEN SNARE EIGHTHS", { "CHORD HELD A BAR", "HELD CHORD, EIGHTHS IN THE BACK HALF" }, { "ROOT EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK EIGHTHS FRONT, SNARE EIGHTHS BACK", "HALVES, SNARE ROLL TO END" }, {} },
+                { "TRITONE CHORDS BETWEEN ROOT SINGLES, SNARE CLIMB", { "TRITONE AND HALF-STEP CHORDS BETWEEN ROOTS", "TRITONE CHORDS ALONE" }, { "WITH THE TRITONE CHORDS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE CLIMB, CRASH ON ONE AND TWO-AND", "BACKBEAT, CLOSED HATS" }, {} },
+                { "DOTTED KICK, SNARE PAIRS, MUTED ROOT STABS", { "MUTED ROOT STABS", "STABS AS POWER CHORDS" }, { "ROOTS HELD", "ON THE MUTED STABS", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "DOTTED KICK, SNARE PAIRS", "BACKBEAT, CLOSED HATS" }, {} },
+                { "SIXTEENTHS UP A HALF STEP AFTER SIX", { "SIX ON THE ROOT, TEN A HALF STEP UP", "SIX AND TEN, MUTED SINGLES" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE SIXTEENTHS, SNARE EIGHTHS, STOP", "BACKBEAT, CLOSED HATS" }, {} },
                 // (0.149.0) Round four's pre-choruses and post-choruses.
                 { "STOP BARS IN TURN WITH THE RIFF", { "STOP BARS AND THE RIFF", "STOP BARS ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "STOPS, RIFF, BUILD", "STOPS AND A BACKBEAT" }, {} },

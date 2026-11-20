@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.183.0
+
+Six new pre-chorus types from the 25 song files you uploaded, the third of the releases for them (then bridges and breakdowns, intros and outros, and the transitions and smaller options). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a pre-chorus block.
+
+- **PIANO EIGHTHS, CLAPS ON THE BEATS, GUITARS RING:** no kick and no snare, a clap on every beat and a crash on the first bar (or a sparse kick under the claps), piano chords on every eighth, the guitar ringing one chord a bar with a sixteenth pickup pair at its end (or muted eighths), the bass's roots held (or held with the pickup pair).
+- **QUARTER CHORDS OVER KICK EIGHTHS:** a full chord (or a power chord) on every quarter, the next bar's chord pushed in on the last sixteenth, the bass's own eighth line through the chord (or root eighths), piano eighths, the kick on every eighth under soft quarter claps that get louder from halfway (or a plain backbeat).
+- **KICK EIGHTHS, THEN SNARE EIGHTHS:** the kick on the front half's eighths and the snare on the back half's (every second bar only on 3), hats on 1 and its and and an open hat on 2, over a chord held a bar (or held, then eighths in the back half) and root eighths; the other drums option rolls the snare through the last bar.
+- **TRITONE CHORDS BETWEEN ROOT SINGLES, SNARE CLIMB:** power chords a tritone over the root and a half step above that, low root singles between them (or the chords alone), the bass on the same chords, the kick syncopated, the snare climbing in eighths through 2 and 3, crashes on 1 and the and of 2, the last bar thinned out for the drop.
+- **DOTTED KICK, SNARE PAIRS, MUTED ROOT STABS:** the kick on a dotted 3+3+2 twice, snare pairs on 2 and 4 with their ands, hats on the a of 1 and of 3, muted root stabs off the beat (or the same stabs as power chords), the bass one long root a bar (or on the stabs).
+- **SIXTEENTHS UP A HALF STEP AFTER SIX:** sixteenths every bar, six on the root and ten a half step up (power chords, or muted singles), the bass doubling them, the ride on every sixteenth, the snare on every eighth, then the last bar's snare sixteenths and a two-beat stop.
+
+Our choices where the files didn't say: the bass's eighth line in QUARTER CHORDS, the pickup pair's chord, the last bar of the tritone type, the other drums options (a plain backbeat). Not checked here: how they sound (listening is yours).
+
 ## 0.182.0
 
 Ten new chorus types from the 25 song files you uploaded, the second of the releases for them (then pre-choruses, bridges and breakdowns, intros and outros, and the transitions and smaller options). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a chorus block (they're also under the post-chorus's list, which takes every chorus type).
