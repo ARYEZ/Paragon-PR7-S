@@ -17302,8 +17302,8 @@ namespace pr7s
                     "CRASH ON THE KICKS, RIDE BETWEEN", "HAND ON THE BEATS, FOOT ON THE ANDS", "SNARE ON THE DOTTED CHAIN, KICKS BETWEEN",
                     "SNARE DOUBLES THE UNISON CELL", "BACKBEAT, HAT RUFF EVERY SECOND BAR", "CRASH AND CHINA EIGHTHS, SNARE THICKENS",
                     "RIDE ON THE DOTTED LINE", "HIGH COLOUR TONE", "HIGH TONIC PEDAL",
-                    // (0.186.0) Round six: two other types' own drum options, shared as their writers play them.
-                    "FOUR ON THE FLOOR, CRASH ON BEAT FOUR", "KICK BURSTS, BACKBEAT" };
+                    // (0.186.0) Round six: three other types' own options (two drums, one bass), shared as their writers play them.
+                    "FOUR ON THE FLOOR, CRASH ON BEAT FOUR", "KICK BURSTS, BACKBEAT", "STABS AT EACH GROUP'S START" };
                 if (round3Written.contains (n))
                 {
                     Round3 forced (s, spans, c);
@@ -17320,6 +17320,8 @@ namespace pr7s
                         written = forced.drums();
                     else if (l == ComposerLayer::chords)
                         written = forced.keys();
+                    else if (l == ComposerLayer::bass)   // (0.186.0: a type's own bass option shared)
+                        written = forced.bass();
                     if (written.has_value())
                     {
                         sortNotes (*written);
@@ -17978,11 +17980,6 @@ namespace pr7s
                         r.add (out, o + 8 * s16, 2 * s16 * 0.9, fold (root + 7), 0.74f);
                         r.add (out, o + 10 * s16, 6 * s16 * 0.95, root, 0.78f);
                     });
-                }
-                else if (n == "THREE-SIXTEENTH STABS ON THE GROUPS")
-                {
-                    out.description = "A three-sixteenth stab of the root at the start of each group (1, the and of 2), then a two-sixteenth one on 4";
-                    each ([&] (int b) { r.each16 ("xxx---xxx---xx--", b * bpb, [&] (double t, int k) { r.add (out, t, s16 * 0.85, r.bassRoot (t), k % 6 == 0 ? 0.86f : 0.7f); }); });
                 }
                 else
                     return std::nullopt;

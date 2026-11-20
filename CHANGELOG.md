@@ -26,7 +26,7 @@ Lane options, offered under every named section type after its own:
 
 - **Drums:** KICK AND TOM QUARTERS, EIGHTHS ON THREE; SHAKER THREE-EIGHTH PAIRS; BACKBEAT DOUBLED ON THE E; SNARE ON TWO, THREE-E, FOUR, FOUR-A; HALF-TIME HATS WITH A FOUR-BAR KICK CYCLE. Two were already other types' own options and are now shared as they are rather than as near copies: FOUR ON THE FLOOR, CRASH ON BEAT FOUR (the files' "crash on four every two") and KICK BURSTS, BACKBEAT (the files' "kick bursts on one and three").
 - **Keys:** SIXTEENTH PIANO PULSE; STEPPING EIGHTHS INTO A HELD NOTE, OCTAVES; DOTTED CALL, PUSHED ANSWER; STACCATO ONE-NOTE EIGHTHS OVER OCTAVE ROOTS; PUMP BETWEEN TWO CHORDS; OCTAVE ROOT AND TOP, CHORDS ON THE ANDS.
-- **Bass** (in front of LOCKED WITH THE KICK, which stays last): DOTTED HALF AND TWO EIGHTHS; THREE-SIXTEENTH STABS ON THE GROUPS.
+- **Bass** (in front of LOCKED WITH THE KICK, which stays last): DOTTED HALF AND TWO EIGHTHS, and STABS AT EACH GROUP'S START (the files' "three-sixteenth stabs on the groups": the same stabs a chorus type already had as its own, now shared as they are).
 - **Guitar:** ROOT TREMOLO EVERY OTHER BAR; TRADED SINGLES BETWEEN TWO GUITARS; HIGH DYAD TREMOLO OVER STAGGERED PAIRS (the second guitar's notes go on the lane's second track when it has two).
 
 Our choices where the files didn't say: the pitches of the traded singles and the stepping line, the half-time kick cycle (no file showed one whole), which chord the pump answers with (the next bar's). A note on a bass saved on LOCKED WITH THE KICK under a named type: it now reads as the first new bass option (the list grew in front of it), as in 0.160.0; choose it again.

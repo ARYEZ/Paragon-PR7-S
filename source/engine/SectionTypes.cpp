@@ -1659,7 +1659,7 @@ namespace pr7s
                      "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
                      "DOTTED FIGURE WITH THE KICK",
                      // (0.186.0) Round six.
-                     "DOTTED HALF AND TWO EIGHTHS", "THREE-SIXTEENTH STABS ON THE GROUPS" };
+                     "DOTTED HALF AND TWO EIGHTHS", "STABS AT EACH GROUP'S START" };
         if (layer == ComposerLayer::guitar)   // (0.158.0) round four's riff kinds
             return { "CHUGS, THEN THREE CHORDS", "HIT, THEN BURSTS ON TWO AND FOUR", "PUSHED POWER CHORDS WITH A FLAT-TWO STAB",
                      "ROOT TWICE, TRITONE PUSHED IN", "SUS2 SPLIT BETWEEN TWO GUITARS", "TONIC WALL UNDER MOVING CHORDS",

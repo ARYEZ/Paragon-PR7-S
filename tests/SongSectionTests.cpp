@@ -7544,7 +7544,7 @@ TEST_CASE ("0.186.0: round six's shared options", "[sections][types][shared186]"
                                   "HALF-TIME HATS WITH A FOUR-BAR KICK CYCLE" } },
         { ComposerLayer::chords, { "SIXTEENTH PIANO PULSE", "STEPPING EIGHTHS INTO A HELD NOTE, OCTAVES", "DOTTED CALL, PUSHED ANSWER",
                                    "STACCATO ONE-NOTE EIGHTHS OVER OCTAVE ROOTS", "PUMP BETWEEN TWO CHORDS", "OCTAVE ROOT AND TOP, CHORDS ON THE ANDS" } },
-        { ComposerLayer::bass, { "DOTTED HALF AND TWO EIGHTHS", "THREE-SIXTEENTH STABS ON THE GROUPS" } },
+        { ComposerLayer::bass, { "DOTTED HALF AND TWO EIGHTHS", "STABS AT EACH GROUP'S START" } },
         { ComposerLayer::guitar, { "ROOT TREMOLO EVERY OTHER BAR", "TRADED SINGLES BETWEEN TWO GUITARS", "HIGH DYAD TREMOLO OVER STAGGERED PAIRS" } } };
     for (const auto& [section, type] : std::vector<std::pair<juce::String, juce::String>> { { "Chorus", "DRIVING" }, { "Verse", "CLEAN VERSE" } })
     {
@@ -7620,7 +7620,7 @@ TEST_CASE ("0.186.0: round six's shared options", "[sections][types][shared186]"
     }
     // THREE-SIXTEENTH STABS: the root (A) on 0, 0.25, 0.5, then 1.5.
     {
-        const auto b = play (ComposerLayer::bass, "THREE-SIXTEENTH STABS ON THE GROUPS");
+        const auto b = play (ComposerLayer::bass, "STABS AT EACH GROUP'S START");
         std::vector<double> starts;
         for (const auto& n : b.notes)
             if (n.beat < 4.0 - 1.0e-6)
