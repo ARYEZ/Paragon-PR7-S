@@ -2274,6 +2274,7 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
         title = "DRUMS: " + juce::String ((int) pool.size()) + " LIBRARY GROOVES FOR THIS SECTION";
     }
     auto browser = std::make_unique<OptionBrowser> (title, laneOptions (l, false), chosen, studio.getOptionMemory(), optionsKeyFor (l));
+    browser->setAutoHear (true);   // (0.180.0, the owner: a highlighted option plays at once, in time with the song)
     if (grooves)
     {
         browser->setGroupOrder ({ favouriteFoldersGroup, toontrackGroup, otherPacksGroup });
@@ -2676,6 +2677,7 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeTypeBrowser()
 std::unique_ptr<OptionBrowser> ComposerPage::makeSoloBrowser()
 {
     auto browser = std::make_unique<OptionBrowser> ("SOLO STYLE", soloOptions(), (int) studio.getSoloStyle(), studio.getOptionMemory(), soloListKey);
+    browser->setAutoHear (true);   // (0.180.0)
     {
         juce::StringArray order { "BY STYLE" };
         order.addArray (pr7s::soloGroupOrder());

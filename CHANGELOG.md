@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.180.0
+
+The options window plays what you highlight, and the arrow keys move through it (you asked).
+
+- **A highlighted option plays at once.** In ARCHITECT's options window (MORE OPTIONS on a lane, and the solo styles), clicking a row now plays it straight away, in time with the song, as HEAR did: in the drums' library grooves the groove swaps as you go down the list. If ARCHITECT wasn't playing, it starts. Closing the window without USE IT still puts back what was there; double-click or USE IT keeps it.
+- **Up / Down move through the list** (whatever the group, search or FEEL / ENERGY filter shows), each one heard as you land on it. **Enter** is USE IT. The arrows work straight away when the window opens, and in the search box too.
+- The section TYPE window moves with the arrows but doesn't play each type as you pass it (a type rebuilds every lane): HEAR is still there for that.
+
 ## 0.179.0
 
 Quicker with a big groove library (you asked: "do all of it so long as it doesn't negatively affect the experience"). Nothing you see or hear is different: the same grooves, the same counts, the same parts, sooner. Timed here with a made-up library of 100,000 grooves (your own disk and folders will give other numbers).

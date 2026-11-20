@@ -20,6 +20,9 @@ OptionBrowser::OptionBrowser (const juce::String& t, std::vector<Option> list, i
     search.setFont (words (15.0f, juce::Font::plain));
     search.onTextChange = [this] { scroll = 0.0f; repaint(); };
     search.onEscapeKey = [this] { search.clear(); scroll = 0.0f; repaint(); };
+    search.onListKey = [this] (const juce::KeyPress& k) { return keyPressed (k); };
+    search.onReturnKey = [this] { use(); };
+    setWantsKeyboardFocus (true);
     addAndMakeVisible (search);
     for (const auto f : feels)
     {
@@ -275,6 +278,42 @@ void OptionBrowser::choose (int id)
     showChosen();
     refreshKeys();
     repaint();
+}
+
+void OptionBrowser::pick (int id)
+{
+    if (find (id) == nullptr)
+        return;
+    const auto changed = id != chosen;
+    choose (id);
+    if (autoHear && hearable && changed)
+        hear();
+}
+
+void OptionBrowser::step (int by)
+{
+    const auto shown = getShown();
+    if (shown.empty())
+        return;
+    const auto at = std::find (shown.begin(), shown.end(), chosen);
+    const auto index = at == shown.end() ? (by > 0 ? 0 : (int) shown.size() - 1)
+                                         : juce::jlimit (0, (int) shown.size() - 1, (int) std::distance (shown.begin(), at) + by);
+    pick (shown[(size_t) index]);
+}
+
+bool OptionBrowser::keyPressed (const juce::KeyPress& k)
+{
+    if (k.isKeyCode (juce::KeyPress::upKey) || k.isKeyCode (juce::KeyPress::downKey))
+    {
+        step (k.isKeyCode (juce::KeyPress::upKey) ? -1 : 1);
+        return true;
+    }
+    if (k.isKeyCode (juce::KeyPress::returnKey))
+    {
+        use();
+        return true;
+    }
+    return false;
 }
 
 void OptionBrowser::showChosen()
@@ -642,6 +681,8 @@ void OptionBrowser::paintPicture (juce::Graphics& g, const Option& o, juce::Rect
 void OptionBrowser::mouseDown (const juce::MouseEvent& e)
 {
     const auto p = e.getPosition();
+    if (isShowing())
+        grabKeyboardFocus();   // (0.180.0: the arrow keys come here, not to the search box)
     if (groupsArea.contains (p))
     {
         const auto groups = getGroups();
@@ -666,9 +707,10 @@ void OptionBrowser::mouseDown (const juce::MouseEvent& e)
                     toggleFavourite (shown[(size_t) i]);
                 else
                 {
-                    choose (shown[(size_t) i]);
                     if (e.getNumberOfClicks() > 1)
                         use();
+                    else
+                        pick (shown[(size_t) i]);
                 }
                 return;
             }
@@ -709,6 +751,8 @@ OptionBrowserWindow::OptionBrowserWindow (std::unique_ptr<OptionBrowser> b, juce
     setVisible (true);
     setFullScreen (true);
     toFront (true);
+    if (browser->isShowing())
+        browser->grabKeyboardFocus();   // (0.180.0: Up / Down work at once)
 }
 
 void OptionBrowserWindow::closeButtonPressed()

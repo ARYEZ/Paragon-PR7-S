@@ -48,6 +48,13 @@ public:
     std::function<bool (Option&)> onFill;
     int countPending() const;
     void fillAllNow();   // (tests)
+    // (0.180.0, the owner: "the groove automatically play when we highlight it" and the arrow keys) Choosing an
+    // option (a click on its row, Up / Down) hears it at once, as HEAR does; Enter is USE IT.
+    void setAutoHear (bool on) { autoHear = on; }
+    bool isAutoHear() const { return autoHear; }
+    void pick (int id);          // as a click on its row: chosen, and heard when auto-hear is on
+    void step (int by);          // the next / previous option shown (Up / Down)
+    bool keyPressed (const juce::KeyPress&) override;
     ~OptionBrowser() override;
 
     static constexpr int width = 1000, height = 560;
@@ -93,7 +100,19 @@ private:
     bool measured = false, drawn = false, hearable = true;
     juce::StringArray groupOrder;
 
-    juce::TextEditor search;
+    // (0.180.0) Up / Down in the search box move through the list too (a text box keeps them for its caret).
+    struct SearchBox final : public juce::TextEditor
+    {
+        std::function<bool (const juce::KeyPress&)> onListKey;
+        bool keyPressed (const juce::KeyPress& k) override
+        {
+            if ((k.isKeyCode (juce::KeyPress::upKey) || k.isKeyCode (juce::KeyPress::downKey)) && onListKey && onListKey (k))
+                return true;
+            return juce::TextEditor::keyPressed (k);
+        }
+    };
+    SearchBox search;
+    bool autoHear = false;
     std::vector<std::unique_ptr<juce::TextButton>> feelKeys, energyKeys;
     juce::TextButton hearKey { "HEAR" }, useKey { "USE IT" }, favouriteKey { "FAVOURITE" };
 
