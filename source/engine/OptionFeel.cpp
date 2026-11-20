@@ -257,13 +257,14 @@ namespace pr7s
     {
         if (hasWord (n, { "SHORT BAR" }))
             return "SHORT BARS";
-        if (hasWord (n, { "STOP", "SILEN", "BREATH", "CUT" }))
+        if (hasWord (n, { "STOP", "SILEN", "BREATH", "CUT", "BAND IN" }))
             return "STOPS & SILENCES";
-        if (hasWord (n, { "ROLL", "BUILD", "FILL", "PICKUP", "SWELL", "RISER", "CLIMB", "RUMBLE", "RAMP", "CASCADE", "GROWING" }))
+        if (hasWord (n, { "ROLL", "BUILD", "FILL", "PICKUP", "SWELL", "RISER", "CLIMB", "RUMBLE", "RAMP", "CASCADE", "GROWING",
+                             "SNARE EIGHTHS", "SNARE SIXTEENTHS", "TOM SIXTEENTHS" }))
             return "ROLLS & BUILDS";
         if (hasWord (n, { "WALK", "SLIDE", "LINK", "BASS FIGURE", "PINCH", "RUN UP", "SCALE" }))
             return "WALKS & SLIDES";
-        if (hasWord (n, { "DROP", "ALONE", "BREAK", "OUT" }))
+        if (hasWord (n, { "DROP", "ALONE", "BREAK", "OUT", "ONE GUITAR" }))
             return "DROP-OUTS";
         if (hasWord (n, { "RING", "RUNG", "HELD", "HOLD", "CHORD ON", "SUSTAIN" }))
             return "HELD CHORDS";

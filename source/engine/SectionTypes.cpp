@@ -1649,11 +1649,17 @@ namespace pr7s
                      // (0.172.0) Round five (the owner's 12 songs).
                      "CRASH ON THE KICKS, RIDE BETWEEN", "HAND ON THE BEATS, FOOT ON THE ANDS", "SNARE ON THE DOTTED CHAIN, KICKS BETWEEN",
                      "SNARE DOUBLES THE UNISON CELL", "BACKBEAT, HAT RUFF EVERY SECOND BAR", "CRASH AND CHINA EIGHTHS, SNARE THICKENS",
-                     "RIDE ON THE DOTTED LINE" };
+                     "RIDE ON THE DOTTED LINE",
+                     // (0.186.0) Round six (the owner's 25 songs); two are other types' own options, shared as they are.
+                     "FOUR ON THE FLOOR, CRASH ON BEAT FOUR", "KICK AND TOM QUARTERS, EIGHTHS ON THREE", "SHAKER THREE-EIGHTH PAIRS",
+                     "BACKBEAT DOUBLED ON THE E", "KICK BURSTS, BACKBEAT", "SNARE ON TWO, THREE-E, FOUR, FOUR-A",
+                     "HALF-TIME HATS WITH A FOUR-BAR KICK CYCLE" };
         if (layer == ComposerLayer::bass)   // (0.160.0) round four's bass versions: put in front of LOCKED WITH THE KICK
             return { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                      "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
-                     "DOTTED FIGURE WITH THE KICK" };
+                     "DOTTED FIGURE WITH THE KICK",
+                     // (0.186.0) Round six.
+                     "DOTTED HALF AND TWO EIGHTHS", "THREE-SIXTEENTH STABS ON THE GROUPS" };
         if (layer == ComposerLayer::guitar)   // (0.158.0) round four's riff kinds
             return { "CHUGS, THEN THREE CHORDS", "HIT, THEN BURSTS ON TWO AND FOUR", "PUSHED POWER CHORDS WITH A FLAT-TWO STAB",
                      "ROOT TWICE, TRITONE PUSHED IN", "SUS2 SPLIT BETWEEN TWO GUITARS", "TONIC WALL UNDER MOVING CHORDS",
@@ -1669,7 +1675,9 @@ namespace pr7s
                      "HALF-STEP DROP IN THREES", "SIXTEENTH NEIGHBOURS, CLASH AT THE END", "PEDAL RIFF WITH A CHROMATIC PICKUP",
                      "FLAT-FIVE CHORD HAMMERED", "CHROMATIC QUARTET INTO THE TONIC", "OCTAVE POWER CHORDS IN 3+3+2",
                      "CLEAN HELD CHORD, PUSHED INTO FOUR", "FLAT-THREE OCTAVE BURST EVERY FOURTH BAR", "RING THE FLAT TWO",
-                     "HIGH NOTE SEESAW, TWO BARS EACH", "FOUR-NOTE CHROMATIC CELL, OCTAVE DYADS", "OUT, THEN THE BASS'S ROCKING LINE" };
+                     "HIGH NOTE SEESAW, TWO BARS EACH", "FOUR-NOTE CHROMATIC CELL, OCTAVE DYADS", "OUT, THEN THE BASS'S ROCKING LINE",
+                     // (0.186.0) Round six's versions of riffs we have.
+                     "ROOT TREMOLO EVERY OTHER BAR", "TRADED SINGLES BETWEEN TWO GUITARS", "HIGH DYAD TREMOLO OVER STAGGERED PAIRS" };
         if (layer == ComposerLayer::chords)
             return { "SYNTH BASS SIXTEENTHS", "STRINGS ON THE QUARTERS", "PIANO ARPEGGIO IN 3+3+2", "PIZZICATO ARPEGGIO", "TIMPANI ROLL RISER",
                      // (0.155.0) Round four.
@@ -1683,7 +1691,10 @@ namespace pr7s
                      "FIVE-NOTE CHORDS ON ONE AND THREE", "HIGH STRINGS MOTIF", "TONIC AND STEP SIXTEENTH LOOP",
                      "PIANO TRIADS ON THE QUARTERS", "TONIC EIGHTH PULSE", "PAD CHORDS IN HALF NOTES",
                      // (0.172.0) Round five.
-                     "HIGH COLOUR TONE", "HIGH TONIC PEDAL" };
+                     "HIGH COLOUR TONE", "HIGH TONIC PEDAL",
+                     // (0.186.0) Round six.
+                     "SIXTEENTH PIANO PULSE", "STEPPING EIGHTHS INTO A HELD NOTE, OCTAVES", "DOTTED CALL, PUSHED ANSWER",
+                     "STACCATO ONE-NOTE EIGHTHS OVER OCTAVE ROOTS", "PUMP BETWEEN TWO CHORDS", "OCTAVE ROOT AND TOP, CHORDS ON THE ANDS" };
         return {};
     }
 
@@ -1827,6 +1838,22 @@ namespace pr7s
             { "HALF-BAR TOM FILL", "The band stops halfway through the last bar, the drums filling the first half on the snare and toms" },
             { "MUTED BREATH BAR", "The last bar only a palm-muted root in eighths, a snare on 1 and a hat on 3" },
             { "HIGH SOFT NOTES, BAND OUT", "The last bar the band out, four soft high notes held a beat each" },
+            // (0.186.0) Round six (the owner's 25 songs; shapes only, our names).
+            { "BAND HITS ON THE SNARE BUILD", "The last bar silent for half a bar, then everyone hits together on the snare's sixteenths" },
+            { "MARCHING SNARE STOP, 2 BARS", "The band stops after one hit, the snare alone on a marching figure for the last two bars, claps on the beats" },
+            { "STOP FOR ONE BEAT", "The last bar thinned to one hit rung three beats, a kick and an open hat, then a beat of silence" },
+            { "ONE GUITAR'S SIXTEENTHS, TWO BARS", "The last two bars one guitar alone on the root in sixteenths" },
+            { "STUTTERED STOP ON FOUR", "The last bar everyone hits 1, 2 and 3, a snare on the a before 2 and 3, beat 4 silent" },
+            { "BAND IN ON BEAT THREE", "The last bar empty until beat 3, then the band and the kit in on eighths" },
+            { "SNARE PICKUP ON THE AND OF THREE", "The band holds the last bar's one, the snare picks up from the and of 3 into the next" },
+            { "SNARE EIGHTHS TO THE BAR'S END", "The last bar the band holds its chord, the snare on 1 then on every eighth from beat 3" },
+            { "TOM SIXTEENTHS ON BEAT FOUR", "The kick, the toms and the snare together on the last beat's sixteenths" },
+            { "ONE BAR OF THE RIFF ALONE, HATS HELD", "The last bar the guitar's riff alone with closed hats keeping the eighths" },
+            { "KICK HELD A BAR, THEN THE RIFF ALONE", "The bar before last only the kick on the quarters, then the guitar's riff alone" },
+            { "CHORD RUNG A BAR, LAST-16TH KICK PICKUP", "The last bar one chord rung, a lone kick on its last sixteenth" },
+            { "UNISON HITS, THEN HELD SILENCE", "The bar before last everyone on the same hits (1, the and of 1, the and of 2, the and of 3 and 4), then a silent bar" },
+            { "BAND HIT HELD TWO AND A HALF BEATS, RIDE PICKUP", "A hit on the last bar's one held two and a half beats, then the ride picks up on the eighths" },
+            { "SNARE SIXTEENTHS ON THREE INTO THE CHANGE", "The last bar's second half a snare fill in sixteenths, the band holding the chord" },
         };
         return list;
     }
