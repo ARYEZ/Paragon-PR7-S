@@ -2,6 +2,23 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.182.0
+
+Ten new chorus types from the 25 song files you uploaded, the second of the releases for them (then pre-choruses, bridges and breakdowns, intros and outros, and the transitions and smaller options). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a chorus block (they're also under the post-chorus's list, which takes every chorus type).
+
+- **KICK AND TOMS 3+3+2 UP FRONT, BELL QUARTERS:** the kick and a low tom together on 1, the a of 1, the and of 2 and 3, the back half of the bar empty, the snare on 2 and 4 and the ride's bell on the quarters. The guitar a stream of sixteenth power chords on the root (or the chords on the 3+3+2 front alone), the bass's roots held, a sixteenth figure in the keys.
+- **BAND IN QUARTERS:** everyone on every beat: full chords (or power chords), one chord a bar, crashes on the quarters and a snare pickup into every fourth bar.
+- **KICK ON ONE AND TWO, SNARE ON THREE:** open chords on every eighth (a second guitar can double the root in octaves), the bass's root eighths, octaves in the keys, the kick on 1 and 2, the snare and a clap on 3 rung through 4, a shaker on the eighths.
+- **POWER CHORDS IN THE THIRD-EIGHTH CYCLE:** power chords on every eighth, the root's chord every third one so the cycle runs across the bar line, the others a whole step, a major third and a fourth under it in turn, every second bar's end held. The kick on 1, the snare on 3, crashes on 1 and 3.
+- **CHORDS ON ONE AND THE AND OF TWO, HIP-HOP KICK:** two chords a bar, the bar's root on 1 and a whole step under it on the and of 2, held (or short), over a hip-hop kick with splashes on the quarters.
+- **HELD CHORDS IN 6+6+4 OVER A CLEAN ARPEGGIO:** pushed power chords (1, 2, the and of 2, the and of 3, 4, the and of 4) with a second guitar ringing the octave on the 6+6+4, the clean sixteenth arpeggio in the keys, the bass on the pushes, the snare only on 4.
+- **KICK ON THE BEATS, SNARE ON THE ANDS UNDER 3+3+3+3+2+2:** sixteenth power chords grouped 3+3+3+3+2+2, rocking between the root and a whole step under it (or all on the key's root), the bass stabbing each group's start.
+- **POWER CHORD AND MAJOR CHORD IN FOURS:** sixteenths in fours, the power chord and then the same chord with its major third on top; the bass five sixteenths and a rest; kick runs of four with the snare on 2 and 4 rolled softly through the beat.
+- **UNISON HITS ON ONE, TWO AND THE LAST TRIPLET, HALF TIME:** the guitar and the bass together on the beat, the next beat and its last sixteenth, each rung to the next, the second half of each bar a whole step up, over a half-time kit with a snare roll into every fourth bar. The song plays these in a triplet feel; here they're straight sixteenths in 4/4 (the hits on 1, 2 and the a of 2, then 3, 4 and the a of 4), as your grid is sixteenths.
+- **KICK TRIPLE-SIXTEENTHS, SNARE AND CHINA ON THE ANDS:** power chord pairs every six sixteenths, the kick on every sixteenth but the ands, the snare and the china on every and.
+
+Where a second guitar plays, its notes go on the lane's second track when it has two. Our choices where the files didn't say: the second chord of CHORDS ON ONE AND THE AND OF TWO (a whole step under), the cycle's other chords, the keys' figures. Not checked here: how they sound (listening is yours).
+
 ## 0.181.1
 
 A fix for your report: renders cut into pieces at the section lines.
