@@ -162,6 +162,13 @@ namespace pr7s
                          { "ONE CHORD STRUMMED 3+3+3+3+4, RIFF JOINS", "The key's chord strummed on 3+3+3+3+4 alone, then the low riff and the bass under it", r, {}, b },
                          { "RIFF ALONE, SIXTEENTH ROOT PEDAL JOINS", "The riff alone, then the bass's root in sixteenths, then the hats, then the kick", r, {}, b },
                          { "SWELLS, THEN A FIXED HIGH FIGURE, THE KIT LAST", "Clean chords swelling, then a fixed high three-note figure with bass eighths, the hats, the kit last", r, {}, b },
+                         // (0.185.0) Round six (the owner's 25 songs; shapes only, our names).
+                         { "THE SAME CELL IN CANON", "One guitar on a short single-note cell round the root, a second (and third) guitar playing it three and six sixteenths later: a rolling sixteenth mesh", r, {}, b },
+                         { "TOM BURSTS UNDER THE HALF-STEP RIFF", "A sixteenth cell rocking between the root and the half step over it, the floor tom and bursts of rack tom under it, no kick or snare", r, {}, b },
+                         { "OSTINATO WITH GUITAR-AND-KICK HITS", "A three-note chromatic keys ostinato in eighths, the guitars, kick and splash together on a few scattered beats", r, {}, b },
+                         { "CLAP CLAVE OVER SIXTEENTH HATS", "The drums alone: hats on every sixteenth, a clap clave, the kick on 1 and late in the bar; the band out or in later", r, {}, b },
+                         { "HORN LINE ALONE, CRASH ON ONE", "A keys line in octaves alone, stepping up in eighths into a held note, one crash on the first 1; the band in on beat 3 of the last bar", r, {}, b },
+                         { "TWO ROOTS AND A RUNG CHORD", "Two low roots and a ringing add-nine chord on every beat, the shape fixed over the pedal, a pickup on the and of 4 every fourth bar", r, {}, b },
                          droning, open };
             }
             case 1:
@@ -445,6 +452,9 @@ namespace pr7s
                          { "BASS RIFF ALONE TO THE END", "The bass alone on its riff to the end, everyone else out", r, {}, b },
                          { "CALL BAR, ANSWER BAR, CUT", "A bar of doubled hits answered by a bar of eighths, the last bar cut after beat 2", r, {}, b },
                          { "OSTINATO AND BEAT TO THE END", "A two-note keys figure and a plain beat to the end, the band out", r, {}, b },
+                         // (0.185.0) Round six (the owner's 25 songs; shapes only, our names; also intro types).
+                         { "HORN LINE ALONE, CRASH ON ONE", "A keys line in octaves alone, stepping up in eighths into a held note, one crash on the first 1; the band in on beat 3 of the last bar", r, {}, b },
+                         { "TWO ROOTS AND A RUNG CHORD", "Two low roots and a ringing add-nine chord on every beat, the shape fixed over the pedal, a pickup on the and of 4 every fourth bar", r, {}, b },
                          droning, stabs };
             }
             case 6: return { driving, droning };
@@ -1137,6 +1147,19 @@ namespace pr7s
                   { "THE CELL IN EIGHTHS", "SILENT" }, { "OUT", "SOFT KICK ON ONE" }, {} },
                 { "HIGH NOTE TREMOLO OVER A HALF-TIME CHUG", { "HALF-TIME CHUG, HIGH TREMOLO", "HALF-TIME CHUG ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "HALF TIME WITH THE CHUG, TOM PICKUPS", "HALF TIME WITH THE CHUG" }, {} },
+                // (0.185.0) Round six's intros and outros.
+                { "THE SAME CELL IN CANON", { "THE CELL IN CANON, THREE VOICES", "THE CELL IN CANON, TWO VOICES" }, { "OUT TWO BARS, THEN ROOT STABS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HAT SIXTEENTHS, KICK EVERY OTHER BAR", "HAT SIXTEENTHS, BACKBEAT FROM HALFWAY" }, {} },
+                { "TOM BURSTS UNDER THE HALF-STEP RIFF", { "ROCKING HALF-STEP CELL", "ROCKING CELL, POWER CHORDS FROM HALFWAY" }, { "OUT, THEN WITH THE RIFF", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "TOM BURSTS, NO KICK OR SNARE", "TOM BURSTS, THEN THE FULL KIT" }, {} },
+                { "OSTINATO WITH GUITAR-AND-KICK HITS", { "HITS WITH THE KICK, THEN ONE CHORD HELD", "SCATTERED HITS WITH THE KICK" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "THREE-NOTE CHROMATIC OSTINATO", "CHROMATIC OSTINATO IN OCTAVES" }, { "KICK AND SPLASH ON THE HITS, THEN HALF TIME", "KICK AND SPLASH ON THE HITS" }, {} },
+                { "CLAP CLAVE OVER SIXTEENTH HATS", { "OUT", "CHORDS FROM HALFWAY" }, { "OUT", "BASS PICKUP INTO THE NEXT", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CLAP CLAVE, SIXTEENTH HATS", "CLAP CLAVE, THE KIT FROM HALFWAY" }, {} },
+                { "HORN LINE ALONE, CRASH ON ONE", { "OUT", "OUT, THE BAND IN AT THE END" }, { "OUT", "IN ON THREE OF THE LAST BAR", "LOCKED WITH THE KICK" },
+                  { "HORN LINE IN OCTAVES", "HORN LINE, ONE OCTAVE" }, { "CRASH ON THE FIRST ONE ONLY", "CRASH ON ONE, THE KIT IN AT THE END" }, {} },
+                { "TWO ROOTS AND A RUNG CHORD", { "TWO ROOTS AND A FIXED ADD9", "TWO ROOTS AND A CHORD THAT FOLLOWS" }, { "BASS OUT, THEN ROOTS HALFWAY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT", "CLOSED HATS ONLY" }, {} },
                 // (0.184.0) Round six's bridges and breakdowns.
                 { "BASS ARPEGGIO IN THREES, THE KIT CREEPS IN", { "OUT, THEN A SIXTEENTH LINE", "SIXTEENTH LINE ALL THROUGH" }, { "ARPEGGIO IN THREES", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "CRASH, THEN RIDE CREEPS IN", "RIDE EIGHTHS, KICK IN THREES" }, {} },

@@ -2,6 +2,23 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.185.0
+
+Six new intro types from the 25 song files you uploaded, two of them also outro types, the fifth of the releases for them (then the transitions and smaller options). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on an intro (or outro) block.
+
+- **THE SAME CELL IN CANON:** one guitar on a short single-note cell round the root (a half step under it, the fifth over), a second guitar playing it three sixteenths later and a third six later, a rolling sixteenth mesh (or two voices only). The later voices go on the lane's second track when the guitar lane is on two or three tracks (COMPOSER TRACKS). The bass out for two bars, then root stabs (or roots held); only hats in sixteenths with the pedal hat, a kick every other bar (or a backbeat from halfway).
+- **TOM BURSTS UNDER THE HALF-STEP RIFF:** a sixteenth cell rocking between the root and the half step over it, every second bar on the fourth and the flat fifth (or as power chords from halfway); no kick or snare: the floor tom and a splash on 1 and 3, the rack tom in bursts of four (or the full kit from halfway: kick eighths, china quarters, the snare on the ands of 2 and 4); the bass out, then doubling the riff from halfway.
+- **OSTINATO WITH GUITAR-AND-KICK HITS:** a three-note chromatic keys ostinato in eighths across two bars (low, or in octaves), the guitar's power chords, the kick and a splash together on a few scattered beats (then one chord held a bar and half time from halfway, or the hits all through).
+- **CLAP CLAVE OVER SIXTEENTH HATS:** the drums alone: hats on every sixteenth, a clap clave, the kick on 1 and late in the bar, a low tom (or the kit's backbeat joining from halfway); the guitar out (or chords from halfway), the bass out (or a pickup alone into the next section).
+- **HORN LINE ALONE, CRASH ON ONE** (intro and outro): the keys lane alone on a line in octaves (or one octave), stepping up in eighths into a held note, back down in the next bar; one crash on the first 1, the band in on beat 3 of the last bar (or kept out).
+- **TWO ROOTS AND A RUNG CHORD** (intro and outro): on every beat two muted low roots and a ringing add-nine chord, the same shape over the key's low note whatever the chord (or following each bar's root), every fourth bar ending on a pickup on the and of 4; the bass out, then roots halfway; the drums out or closed hats only.
+
+Each has two guitar, three bass (LOCKED WITH THE KICK last), two keys and two drums options. Our choices where the files didn't say: the cell's notes, the scattered hits' places, the stages' lengths (halves of the section), the other lanes' options.
+
+Fixed: ARCHITECT's groove list could, rarely, show another section's grooves: its kept lists were known by where they sat in memory, and a new list could land where a freed one had been. Each kept list now holds the grooves it was made from.
+
+Not checked here: how they sound (listening is yours).
+
 ## 0.184.0
 
 Eight new bridge types and three new breakdown types from the 25 song files you uploaded, the fourth of the releases for them (then intros and outros, and the transitions and smaller options). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a bridge or breakdown block.
