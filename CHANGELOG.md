@@ -2,6 +2,16 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.181.1
+
+A fix for your report: renders cut into pieces at the section lines.
+
+- **What was wrong:** the SECTIONS row copies an edit in one linked section (your repeated choruses) into its links. After Render in Place made its new track, the next change anywhere made the link check see a track that wasn't there before, take that as an edit to the first linked chorus, and copy that chorus's slice of the render over every other linked chorus. That cut the render at those choruses' edges (the white dots), and the later choruses played the first chorus's audio.
+- **Now:** the link check goes track by track. A track's music is copied into the links only when it changed in exactly one of the linked sections (you edited that section). A track that's new (a render, an import) or that changed in several sections at once (a whole-song edit) is left as it is. Editing inside one chorus still changes its links, as before.
+- **CLIPS "as one event":** parts chosen one by one on a track now render as one clip from the first one's start to the last one's end ("as block events": parts that meet join, a gap still splits). Before, each chosen part was its own render.
+
+Renders already cut stay as they are: render those tracks again (undo back past the cut if you still can).
+
 ## 0.181.0
 
 Fourteen new verse types from the 25 song files you uploaded, the first of the releases for them (then choruses, pre-choruses, bridges and breakdowns, intros and outros, and the transitions and smaller options). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a verse block (they're also under the pre-chorus's list, which takes every verse type).
