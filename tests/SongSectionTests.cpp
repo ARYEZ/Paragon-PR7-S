@@ -2328,7 +2328,7 @@ namespace
 TEST_CASE ("0.104.0: transitions: the last bar written for each, the melody untouched", "[sections][transitions]")
 {
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 14 + 21 + 27 + 6);   // (0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
+    REQUIRE (list.size() == 14 + 21 + 27 + 6 + 15);   // (0.186.0: fifteen more; 0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
     CHECK (list.front().name == noTransition);
     CHECK_FALSE (sectionTransitionNamed ("NONE").has_value());
     CHECK_FALSE (sectionTransitionNamed ("").has_value());
@@ -5017,7 +5017,7 @@ TEST_CASE ("0.154.0: round four's 27 transitions", "[sections][transitions][tran
                                             "TOM RUMBLE BARS", "HALF-STEP BURST BAR", "RIFF ALONE, TWO BARS", "UNISON SIXTEENTHS BAR",
                                             "SIXTEENTH SWELL, CUT SHORT", "SIX-SIXTEENTH TURNAROUND", "DROP TO KEYS AND LEAD", "CUT AT THE HALF BAR" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 35 + names.size() + 6);   // (0.172.0: six more)
+    REQUIRE (list.size() == 35 + names.size() + 6 + 15);   // (0.172.0: six more; 0.186.0: fifteen more)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (list[35 + i].name == names[i]);
     const auto plain = withTransition (noTransition);
@@ -5132,10 +5132,10 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const auto drums = extraApproaches (ComposerLayer::drums);
     const auto keys = extraApproaches (ComposerLayer::chords);
-    CHECK (drums.size() == 9 + 11 + 12 + 7);   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
-    CHECK (keys.size() == 5 + 15 + 12 + 2);
-    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12);   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
-    CHECK (extraApproaches (ComposerLayer::bass).size() == 8);   // (0.160.0: in front of LOCKED WITH THE KICK)
+    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7);   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
+    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6);   // (0.186.0: six more)
+    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3);   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2);   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
 
     // Under STANDARD (no named type) nothing is added.
     {
@@ -6262,7 +6262,7 @@ TEST_CASE ("0.160.0: round four's bass versions, in front of LOCKED WITH THE KIC
     const char* names[] = { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                             "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
                             "DOTTED FIGURE WITH THE KICK" };
-    CHECK (extraApproaches (ComposerLayer::bass).size() == 8);
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2);   // (0.186.0: two more)
     // Under every named type whose bass ends with LOCKED WITH THE KICK: there, just in front of it; else not at all.
     auto typed = 0;
     for (const auto* section : { "Verse", "Chorus", "Bridge", "Breakdown", "Intro", "Outro", "Pre-Chorus" })
@@ -7443,5 +7443,199 @@ TEST_CASE ("0.184.0: round six's bridge and breakdown types, every lane's option
                 groove = true;
         }
         CHECK (groove);
+    }
+}
+
+TEST_CASE ("0.186.0: round six's transitions", "[sections][trans186]")
+{
+    const char* names[] = { "BAND HITS ON THE SNARE BUILD", "MARCHING SNARE STOP, 2 BARS", "STOP FOR ONE BEAT", "ONE GUITAR'S SIXTEENTHS, TWO BARS",
+                            "STUTTERED STOP ON FOUR", "BAND IN ON BEAT THREE", "SNARE PICKUP ON THE AND OF THREE", "SNARE EIGHTHS TO THE BAR'S END",
+                            "TOM SIXTEENTHS ON BEAT FOUR", "ONE BAR OF THE RIFF ALONE, HATS HELD", "KICK HELD A BAR, THEN THE RIFF ALONE",
+                            "CHORD RUNG A BAR, LAST-16TH KICK PICKUP", "UNISON HITS, THEN HELD SILENCE", "BAND HIT HELD TWO AND A HALF BEATS, RIDE PICKUP",
+                            "SNARE SIXTEENTHS ON THREE INTO THE CHANGE" };
+    const auto& list = sectionTransitions();
+    REQUIRE (list.size() == 68 + std::size (names));
+    for (size_t i = 0; i < std::size (names); ++i)
+        CHECK (list[68 + i].name == names[i]);
+    const auto none = withTransition ({});
+    std::set<juce::String> seen;
+    for (const auto* name : names)
+    {
+        INFO (name);
+        REQUIRE (sectionTransitionNamed (name).has_value());
+        const auto all = withTransition (name);
+        auto changed = false;
+        juce::String k;
+        for (const auto l : bandLanes)
+        {
+            changed = changed || ! sameNotes (all[(size_t) l], none[(size_t) l]);
+            for (const auto& n : all[(size_t) l].notes)
+            {
+                k << (int) l << ":" << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << ";";
+                if (n.beat < 24.0 - 1.0e-6)   // (only the last two bars written: before them, only notes that were there)
+                    CHECK (std::find_if (none[(size_t) l].notes.begin(), none[(size_t) l].notes.end(),
+                                         [&n] (const LineNote& o) { return o.beat == n.beat && o.pitch == n.pitch; })
+                           != none[(size_t) l].notes.end());
+            }
+        }
+        CHECK (changed);
+        CHECK (seen.insert (k).second);
+        CHECK (sameNotes (all[(size_t) ComposerLayer::melody], none[(size_t) ComposerLayer::melody]));
+    }
+    // STOP FOR ONE BEAT: the last beat silent in every lane.
+    {
+        const auto all = withTransition ("STOP FOR ONE BEAT");
+        for (const auto l : bandLanes)
+            checkQuietFrom (all[(size_t) l], 29.0, 28.0, 31.0);
+    }
+    // BAND IN ON BEAT THREE: nothing in the last bar before beat 3.
+    {
+        const auto all = withTransition ("BAND IN ON BEAT THREE");
+        for (const auto l : bandLanes)
+            for (const auto& n : all[(size_t) l].notes)
+                if (! n.keyswitch)
+                    CHECK ((n.beat < 28.0 - 1.0e-6 || n.beat >= 30.0 - 1.0e-6));
+    }
+    // ONE GUITAR'S SIXTEENTHS: the guitar on every sixteenth of the last two bars, the others silent there.
+    {
+        const auto all = withTransition ("ONE GUITAR'S SIXTEENTHS, TWO BARS");
+        auto count = 0;
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+            if (n.beat >= 24.0 - 1.0e-6)
+                ++count;
+        CHECK (count == 32);
+        for (const auto l : { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::drums })
+            checkQuietFrom (all[(size_t) l], 24.0, -1.0, 24.0);
+    }
+    // TOM SIXTEENTHS ON BEAT FOUR: only the drums changed, toms on 31, 31.25, 31.5, 31.75.
+    {
+        const auto all = withTransition ("TOM SIXTEENTHS ON BEAT FOUR");
+        for (const auto l : { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar })
+            CHECK (sameNotes (all[(size_t) l], none[(size_t) l]));
+        auto toms = 0;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 31.0 - 1.0e-6 && (n.pitch == 48 || n.pitch == 45 || n.pitch == 43 || n.pitch == 41))
+                ++toms;
+        CHECK (toms == 4);
+    }
+    // ONE BAR OF THE RIFF ALONE: the guitar as it was, the drums only hats in the last bar.
+    {
+        const auto all = withTransition ("ONE BAR OF THE RIFF ALONE, HATS HELD");
+        CHECK (sameNotes (all[(size_t) ComposerLayer::guitar], none[(size_t) ComposerLayer::guitar]));
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+                CHECK (n.pitch == 42);
+    }
+    // UNISON HITS, THEN HELD SILENCE: the last bar silent.
+    {
+        const auto all = withTransition ("UNISON HITS, THEN HELD SILENCE");
+        for (const auto l : bandLanes)
+            checkQuietFrom (all[(size_t) l], 28.0, -1.0, 28.0);
+    }
+}
+
+TEST_CASE ("0.186.0: round six's shared options", "[sections][types][shared186]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<std::pair<ComposerLayer, juce::StringArray>> added {
+        { ComposerLayer::drums, { "FOUR ON THE FLOOR, CRASH ON BEAT FOUR", "KICK AND TOM QUARTERS, EIGHTHS ON THREE", "SHAKER THREE-EIGHTH PAIRS",
+                                  "BACKBEAT DOUBLED ON THE E", "KICK BURSTS, BACKBEAT", "SNARE ON TWO, THREE-E, FOUR, FOUR-A",
+                                  "HALF-TIME HATS WITH A FOUR-BAR KICK CYCLE" } },
+        { ComposerLayer::chords, { "SIXTEENTH PIANO PULSE", "STEPPING EIGHTHS INTO A HELD NOTE, OCTAVES", "DOTTED CALL, PUSHED ANSWER",
+                                   "STACCATO ONE-NOTE EIGHTHS OVER OCTAVE ROOTS", "PUMP BETWEEN TWO CHORDS", "OCTAVE ROOT AND TOP, CHORDS ON THE ANDS" } },
+        { ComposerLayer::bass, { "DOTTED HALF AND TWO EIGHTHS", "THREE-SIXTEENTH STABS ON THE GROUPS" } },
+        { ComposerLayer::guitar, { "ROOT TREMOLO EVERY OTHER BAR", "TRADED SINGLES BETWEEN TWO GUITARS", "HIGH DYAD TREMOLO OVER STAGGERED PAIRS" } } };
+    for (const auto& [section, type] : std::vector<std::pair<juce::String, juce::String>> { { "Chorus", "DRIVING" }, { "Verse", "CLEAN VERSE" } })
+    {
+        ComposerState s;
+        applySectionType (s, section, type);
+        for (const auto& [l, names] : added)
+        {
+            const auto extras = extraApproaches (l);
+            const auto all = sectionApproaches (s, l);
+            if (l == ComposerLayer::bass)
+                CHECK (all[all.size() - 1] == "LOCKED WITH THE KICK");
+            std::set<juce::String> seen;
+            for (int i = 0; i < all.size(); ++i)
+            {
+                auto t = s;
+                t.lane (l).approach = i;
+                const auto idea = composeLayers (t, spans, c)[(size_t) l];
+                juce::String k;
+                for (const auto& n : idea.notes)
+                    k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << (n.harmony ? "h" : "") << ";";
+                if (names.contains (all[i]))
+                {
+                    INFO (type << " " << all[i]);
+                    CHECK (extras.contains (all[i]));
+                    CHECK (! idea.notes.empty());
+                    CHECK (idea.description.isNotEmpty());
+                    for (const auto& n : idea.notes)
+                        CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+                    CHECK (seen.count (k) == 0);   // (different from every option before it)
+                }
+                seen.insert (k);
+            }
+            for (const auto& name : names)
+                CHECK (all.contains (name));
+        }
+    }
+    ComposerState s;
+    applySectionType (s, "Chorus", "DRIVING");
+    const auto play = [&] (ComposerLayer l, const juce::String& name)
+    {
+        auto t = s;
+        const auto all = sectionApproaches (t, l);
+        t.lane (l).approach = all.indexOf (name);
+        const auto layers = composeLayers (t, spans, c);
+        return layers[(size_t) l];
+    };
+    const auto at = [] (const LineIdea& idea, double beat, int pitch)
+    {
+        return std::any_of (idea.notes.begin(), idea.notes.end(), [&] (const LineNote& n) { return std::abs (n.beat - beat) < 1.0e-6 && n.pitch == pitch; });
+    };
+    // BACKBEAT DOUBLED ON THE E: the snare on 2 and its e, not on 3.
+    {
+        const auto d = play (ComposerLayer::drums, "BACKBEAT DOUBLED ON THE E");
+        CHECK (at (d, 1.0, GmDrum::snare));
+        CHECK (at (d, 1.25, GmDrum::snare));
+        CHECK_FALSE (at (d, 2.0, GmDrum::snare));
+    }
+    // SHAKER THREE-EIGHTH PAIRS: the shaker on 1, 1-and and 2, not on 2-and.
+    {
+        const auto d = play (ComposerLayer::drums, "SHAKER THREE-EIGHTH PAIRS");
+        CHECK (at (d, 0.5, 82));
+        CHECK (at (d, 1.0, 82));
+        CHECK_FALSE (at (d, 1.5, 82));
+    }
+    // HALF-TIME HATS WITH A FOUR-BAR KICK CYCLE: one kick in the first bar, more in the fourth.
+    {
+        const auto d = play (ComposerLayer::drums, "HALF-TIME HATS WITH A FOUR-BAR KICK CYCLE");
+        const auto kicks = [&] (double from) { return std::count_if (d.notes.begin(), d.notes.end(), [&] (const LineNote& n) { return n.pitch == GmDrum::kick && n.beat >= from - 1.0e-6 && n.beat < from + 4.0 - 1.0e-6; }); };
+        CHECK (kicks (0.0) == 1);
+        CHECK (kicks (12.0) == 5);
+        CHECK (at (d, 2.0, GmDrum::snare));
+        CHECK_FALSE (at (d, 1.0, GmDrum::snare));
+    }
+    // THREE-SIXTEENTH STABS: the root (A) on 0, 0.25, 0.5, then 1.5.
+    {
+        const auto b = play (ComposerLayer::bass, "THREE-SIXTEENTH STABS ON THE GROUPS");
+        std::vector<double> starts;
+        for (const auto& n : b.notes)
+            if (n.beat < 4.0 - 1.0e-6)
+            {
+                starts.push_back (n.beat);
+                CHECK (n.pitch % 12 == 9);
+            }
+        CHECK (starts == std::vector<double> { 0.0, 0.25, 0.5, 1.5, 1.75, 2.0, 3.0, 3.25 });
+    }
+    // TRADED SINGLES and the HIGH DYAD TREMOLO: a second guitar's notes for the lane's second track.
+    for (const auto* name : { "TRADED SINGLES BETWEEN TWO GUITARS", "HIGH DYAD TREMOLO OVER STAGGERED PAIRS" })
+    {
+        INFO (name);
+        const auto g = play (ComposerLayer::guitar, name);
+        CHECK (std::any_of (g.notes.begin(), g.notes.end(), [] (const LineNote& n) { return n.harmony; }));
+        CHECK (std::any_of (g.notes.begin(), g.notes.end(), [] (const LineNote& n) { return ! n.harmony && ! n.keyswitch; }));
     }
 }

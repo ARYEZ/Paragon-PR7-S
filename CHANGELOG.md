@@ -2,6 +2,37 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.186.0
+
+The last of the releases for the 25 song files you uploaded: fifteen new transitions and eighteen new options for the lanes under every section type. That finishes round six. As always they're read for their shapes only: no song is copied, and the names are ours.
+
+Transitions (INTO THE NEXT on a block; each keeps to the block's last two bars):
+
+- **BAND HITS ON THE SNARE BUILD:** the last bar silent for half a bar, then everyone hits together on the snare's rising sixteenths.
+- **MARCHING SNARE STOP, 2 BARS:** one hit, then the snare alone on a marching figure for two bars with claps on the beats.
+- **STOP FOR ONE BEAT:** the last bar one hit rung three beats with a kick and an open hat, then a beat of silence (a three-beat bar in the files, written in 4/4: no meter change).
+- **ONE GUITAR'S SIXTEENTHS, TWO BARS:** the last two bars one guitar alone on the root in sixteenths.
+- **STUTTERED STOP ON FOUR:** everyone on 1, 2 and 3, a snare on the a before 2 and 3, beat 4 silent.
+- **BAND IN ON BEAT THREE:** the last bar empty until beat 3, then the band and kit on eighths.
+- **SNARE PICKUP ON THE AND OF THREE**, **SNARE EIGHTHS TO THE BAR'S END**, **SNARE SIXTEENTHS ON THREE INTO THE CHANGE:** the band holds the chord while the snare picks up (sixteenths from the and of 3; 1 then every eighth from 3; sixteenths over the second half).
+- **TOM SIXTEENTHS ON BEAT FOUR:** the kick, toms and snare together on the last beat's sixteenths; the band plays on.
+- **ONE BAR OF THE RIFF ALONE, HATS HELD:** the guitar's riff alone with closed hats on the eighths.
+- **KICK HELD A BAR, THEN THE RIFF ALONE:** the bar before last only the kick on the quarters, then the riff alone.
+- **CHORD RUNG A BAR, LAST-16TH KICK PICKUP:** one chord rung, a lone kick on the last sixteenth.
+- **UNISON HITS, THEN HELD SILENCE:** everyone on the same hits through the bar before last, then a silent bar.
+- **BAND HIT HELD TWO AND A HALF BEATS, RIDE PICKUP:** a hit held, then the ride picks up on the eighths.
+
+Lane options, offered under every named section type after its own:
+
+- **Drums:** KICK AND TOM QUARTERS, EIGHTHS ON THREE; SHAKER THREE-EIGHTH PAIRS; BACKBEAT DOUBLED ON THE E; SNARE ON TWO, THREE-E, FOUR, FOUR-A; HALF-TIME HATS WITH A FOUR-BAR KICK CYCLE. Two were already other types' own options and are now shared as they are rather than as near copies: FOUR ON THE FLOOR, CRASH ON BEAT FOUR (the files' "crash on four every two") and KICK BURSTS, BACKBEAT (the files' "kick bursts on one and three").
+- **Keys:** SIXTEENTH PIANO PULSE; STEPPING EIGHTHS INTO A HELD NOTE, OCTAVES; DOTTED CALL, PUSHED ANSWER; STACCATO ONE-NOTE EIGHTHS OVER OCTAVE ROOTS; PUMP BETWEEN TWO CHORDS; OCTAVE ROOT AND TOP, CHORDS ON THE ANDS.
+- **Bass** (in front of LOCKED WITH THE KICK, which stays last): DOTTED HALF AND TWO EIGHTHS; THREE-SIXTEENTH STABS ON THE GROUPS.
+- **Guitar:** ROOT TREMOLO EVERY OTHER BAR; TRADED SINGLES BETWEEN TWO GUITARS; HIGH DYAD TREMOLO OVER STAGGERED PAIRS (the second guitar's notes go on the lane's second track when it has two).
+
+Our choices where the files didn't say: the pitches of the traded singles and the stepping line, the half-time kick cycle (no file showed one whole), which chord the pump answers with (the next bar's). A note on a bass saved on LOCKED WITH THE KICK under a named type: it now reads as the first new bass option (the list grew in front of it), as in 0.160.0; choose it again.
+
+Not checked here: how they sound (listening is yours).
+
 ## 0.185.0
 
 Six new intro types from the 25 song files you uploaded, two of them also outro types, the fifth of the releases for them (then the transitions and smaller options). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on an intro (or outro) block.
