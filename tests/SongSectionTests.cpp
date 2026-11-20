@@ -392,6 +392,45 @@ TEST_CASE ("0.91.0: linked copies: an edit to one changes the others, in the sam
     CHECK (song.pitchAt (80.0) == kept);
 }
 
+TEST_CASE ("0.181.1: a part across several linked blocks isn't cut at their edges or copied over them", "[sections][links]")
+{
+    // The owner's report: a Render in Place clip over the whole song came out cut at the linked choruses'
+    // edges, the later chorus holding the first's slice. A change in more than one linked block (or on a
+    // track new since the last look) is a whole-song edit: nothing is copied.
+    Song song;
+    auto& studio = song.studio;
+    REQUIRE (studio.duplicateSongSection (2));   // the chorus at 48, its linked copy at 80 (to 112)
+    const auto render = studio.addTrack ({});
+    Part whole;
+    whole.start = 0.0;
+    whole.length = 112.0;
+    whole.notes = { { 50.0, 1.0, 70, 0.8f }, { 85.0, 1.0, 72, 0.8f } };   // (different in each chorus)
+    studio.addPart (render, whole);
+    const auto& parts = studio.getProject().findTrack (render)->parts;
+    REQUIRE (parts.size() == 1);
+    CHECK (parts[0].start == 0.0);
+    CHECK (parts[0].length == 112.0);
+    REQUIRE (parts[0].notes.size() == 2);
+    CHECK (parts[0].notes[1].pitch == 72);
+
+    // A track added with its music in one step (as a render is) likewise.
+    Song other;
+    REQUIRE (other.studio.duplicateSongSection (2));
+    other.studio.addPart (other.track, whole);   // (on the old track: changed in both choruses at once)
+    auto count = 0;
+    for (const auto& p : other.studio.getProject().findTrack (other.track)->parts)
+        if (p.length == 112.0)
+            ++count;
+    CHECK (count == 1);
+
+    // An edit inside one chorus still goes to its link.
+    auto index = partIndexAt (studio, song.track, 48.0);
+    REQUIRE (index >= 0);
+    studio.setNotes (song.track, index, { { 0.0, 1.0, 67, 0.8f } });
+    CHECK (song.pitchAt (80.0) == 67);
+    CHECK (studio.getProject().findTrack (render)->parts.size() == 1);   // (the long part left whole)
+}
+
 TEST_CASE ("0.91.0: a name already in the song adds a linked copy; linked blocks share length and name; saved and opened", "[sections][links]")
 {
     Song song;

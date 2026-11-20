@@ -9857,8 +9857,56 @@ namespace pr7s
         return rendered;
     }
 
-    std::vector<int> Studio::renderInPlace (const std::vector<RenderSource>& sources, const RenderOptions& options, juce::String& error)
+    std::vector<int> Studio::renderInPlace (const std::vector<RenderSource>& askedSources, const RenderOptions& options, juce::String& error)
     {
+        // (0.181.1, the owner's report) Parts chosen one by one came in as a source each, so "as one event" and
+        // "as block events" only joined within each part: a clip per part, butted end to end. Now a track's chosen
+        // stretches are joined first: one event = one stretch from the first start to the last end; block events =
+        // stretches that meet or overlap joined (a gap still splits). Whole tracks stay as they are.
+        std::vector<RenderSource> sources;
+        if (options.mode == RenderOptions::Mode::separate)
+            sources = askedSources;
+        else
+        {
+            for (const auto& s : askedSources)
+            {
+                if (s.wholeTrack)
+                {
+                    sources.push_back (s);
+                    continue;
+                }
+                auto joined = false;
+                for (auto& t : sources)
+                    if (! t.wholeTrack && t.trackId == s.trackId
+                        && (options.mode == RenderOptions::Mode::one || (s.start <= t.end + 1.0e-9 && s.end >= t.start - 1.0e-9)))
+                    {
+                        t.start = juce::jmin (t.start, s.start);
+                        t.end = juce::jmax (t.end, s.end);
+                        joined = true;
+                        break;
+                    }
+                if (! joined)
+                    sources.push_back (s);
+            }
+            // Block events: joining two can make one meet a third, so join again until nothing changes.
+            for (auto again = true; again;)
+            {
+                again = false;
+                for (size_t i = 0; i < sources.size() && ! again; ++i)
+                    for (size_t j = i + 1; j < sources.size() && ! again; ++j)
+                    {
+                        auto& a = sources[i];
+                        const auto& b = sources[j];
+                        if (a.wholeTrack || b.wholeTrack || a.trackId != b.trackId
+                            || ! (options.mode == RenderOptions::Mode::one || (b.start <= a.end + 1.0e-9 && b.end >= a.start - 1.0e-9)))
+                            continue;
+                        a.start = juce::jmin (a.start, b.start);
+                        a.end = juce::jmax (a.end, b.end);
+                        sources.erase (sources.begin() + (std::ptrdiff_t) j);
+                        again = true;
+                    }
+            }
+        }
         using P = RenderOptions::Processing;
         beginBatch();   // (the plugins offline once for all the stretches)
         auto batchEnded = false;
@@ -14726,28 +14774,105 @@ namespace pr7s
             {
                 if (members.size() < 2)
                     continue;
-                // The block whose music changed since the last look (the first in the song if several did).
-                std::optional<SectionContent> edited;
-                int editedIndex = -1;
+                // (0.181.1, the owner's report: renders split at the section lines, later choruses' audio
+                // replaced by the first's) Track by track: a track's music is copied into the links only when
+                // it changed in exactly ONE of the linked blocks since the last look (an edit to that block).
+                // A track new since then (a Render in Place, an import), or changed in several blocks at once
+                // (a whole-song edit), is left alone: before, the first block's slice of a new render was
+                // written over every other link, cutting the clip at their edges. The chords likewise.
+                std::vector<SectionContent> now;
+                std::vector<const SectionContent*> before;
                 for (const auto i : members)
                 {
+                    now.push_back (sectionContent (places[(size_t) i]));
                     const auto seen = linkSnapshots.find (blocks[(size_t) i].id);
-                    if (seen == linkSnapshots.end())
-                        continue;
-                    auto now = sectionContent (places[(size_t) i]);
-                    if (! (now == seen->second))
+                    before.push_back (seen == linkSnapshots.end() ? nullptr : &seen->second);
+                }
+                const auto partsOf = [] (const SectionContent& c, int trackId) -> const std::vector<Part>*
+                {
+                    for (const auto& [id, parts] : c.tracks)
+                        if (id == trackId)
+                            return &parts;
+                    return nullptr;
+                };
+                // For each member: the content to write (its own, with the tracks edited elsewhere replaced).
+                std::vector<SectionContent> toWrite = now;
+                std::vector<bool> writes (members.size(), false);
+                const auto copyFrom = [&] (size_t from, auto&& copyOne)
+                {
+                    for (size_t m = 0; m < members.size(); ++m)
+                        if (m != from && blocks[(size_t) members[m]].bars == blocks[(size_t) members[from]].bars && copyOne (m))
+                            writes[m] = true;
+                };
+                for (const auto& [trackId, ignored] : now.front().tracks)
+                {
+                    int changedIn = -1, changes = 0;
+                    auto known = true;
+                    for (size_t m = 0; m < members.size(); ++m)
                     {
-                        edited = std::move (now);
-                        editedIndex = i;
-                        break;
+                        if (before[m] == nullptr)
+                            continue;   // (a block linked since the last look: written to, never read from)
+                        const auto* old = partsOf (*before[m], trackId);
+                        if (old == nullptr)
+                        {
+                            known = false;
+                            break;
+                        }
+                        if (*old != *partsOf (now[m], trackId))
+                        {
+                            changedIn = (int) m;
+                            ++changes;
+                        }
+                    }
+                    if (! known || changes != 1)
+                        continue;
+                    const auto& edited = *partsOf (now[(size_t) changedIn], trackId);
+                    copyFrom ((size_t) changedIn, [&] (size_t m)
+                    {
+                        for (auto& [id, parts] : toWrite[m].tracks)
+                            if (id == trackId && parts != edited)
+                            {
+                                parts = edited;
+                                return true;
+                            }
+                        return false;
+                    });
+                }
+                {
+                    int changedIn = -1, changes = 0;
+                    for (size_t m = 0; m < members.size(); ++m)
+                    {
+                        if (before[m] == nullptr)
+                            continue;
+                        if (before[m]->chords != now[m].chords)
+                        {
+                            changedIn = (int) m;
+                            ++changes;
+                        }
+                    }
+                    if (changes == 1)
+                    {
+                        const auto& edited = now[(size_t) changedIn].chords;
+                        copyFrom ((size_t) changedIn, [&] (size_t m)
+                        {
+                            if (toWrite[m].chords == edited)
+                                return false;
+                            toWrite[m].chords = edited;
+                            return true;
+                        });
                     }
                 }
-                if (! edited.has_value())
-                    continue;
-                for (const auto i : members)
-                    if (i != editedIndex && blocks[(size_t) i].bars == blocks[(size_t) editedIndex].bars
-                        && ! (sectionContent (places[(size_t) i]) == *edited))
-                        writeSectionContent (places[(size_t) i], *edited);
+                for (size_t m = 0; m < members.size(); ++m)
+                    if (writes[m])
+                    {
+                        // Only the tracks that change are written (a track left as it is isn't cut at the edges).
+                        SectionContent changedOnly;
+                        changedOnly.chords = toWrite[m].chords;
+                        for (size_t t = 0; t < toWrite[m].tracks.size(); ++t)
+                            if (toWrite[m].tracks[t].second != now[m].tracks[t].second)
+                                changedOnly.tracks.push_back (toWrite[m].tracks[t]);
+                        writeSectionContent (places[(size_t) members[m]], changedOnly);
+                    }
             }
         linksReset = false;
         // What every linked block holds now, for the next look.
