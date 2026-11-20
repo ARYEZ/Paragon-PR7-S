@@ -22,7 +22,10 @@ ArrangeView::ArrangeView (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     setWantsKeyboardFocus (false);
     setOpaque (true);   // (0.57.1: paint fills it all: what's behind isn't drawn under every playhead frame)
     if (auto* settings = studio.getSettings())
+    {
         pointBoxShown = settings->getBoolValue ("automationEditBox", false);
+        selectSizing = (pr7s::Sizing) juce::jlimit (0, 2, settings->getIntValue ("selectSizing", 0));
+    }
     studio.addChangeListener (this);
     startTimerHz (30);
 }
@@ -1016,7 +1019,8 @@ void ArrangeView::paintContent (juce::Graphics& g)
         }
         for (const auto i : drawOrder)
         {
-            const auto isClipDrag = drag == Drag::trimStart || drag == Drag::fadeIn || drag == Drag::fadeOut;
+            const auto isClipDrag = drag == Drag::trimStart || drag == Drag::fadeIn || drag == Drag::fadeOut
+                                    || drag == Drag::sizeStart || drag == Drag::sizeEnd;
             const auto isDragged = (drag == Drag::move || drag == Drag::resize || isClipDrag) && dragMoved && track.id == dragTrack && i == selection.index;
             if (isDragged && isClipDrag)
             {
@@ -1708,9 +1712,26 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
                                 juce::Justification::centredRight, false);
                 }
             }
+            // (0.187.0) The stamp names how it's stretched, after a little waveform (the manual's icon for a
+            // stretched part), in the title strip's right end.
+            const juce::String stamp = part.stretchMode == 0 ? juce::String ("WARP") : "WARP: " + juce::String (pr7s::StretchModes::name (part.stretchMode));
+            const auto stampArea = area.withTrimmedTop (1.0f).withHeight (13.0f).reduced (5.0f, 0.0f);
             g.setColour (ParagonColours::accent.withAlpha (0.8f));
             g.setFont (font (10.0f));
-            g.drawText ("WARP", area.withTrimmedTop (1.0f).withHeight (13.0f).reduced (5.0f, 0.0f), juce::Justification::centredRight, false);
+            g.drawText (stamp, stampArea, juce::Justification::centredRight, false);
+            const auto textWidth = juce::GlyphArrangement::getStringWidth (juce::Font (font (10.0f)), stamp);
+            const auto markBox = juce::Rectangle<float> (stampArea.getRight() - textWidth - 15.0f, stampArea.getY() + 1.0f, 12.0f, 11.0f);
+            if (markBox.getX() > area.getX() + 40.0f)
+            {
+                juce::Path markWave;
+                const float ys[] = { 0.5f, 0.15f, 0.9f, 0.05f, 0.8f, 0.35f, 0.5f };
+                for (int k = 0; k < 7; ++k)
+                {
+                    const juce::Point<float> at (markBox.getX() + markBox.getWidth() * (float) k / 6.0f, markBox.getY() + markBox.getHeight() * ys[k]);
+                    k == 0 ? markWave.startNewSubPath (at) : markWave.lineTo (at);
+                }
+                g.strokePath (markWave, juce::PathStrokeType (1.3f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+            }
         }
     }
 
@@ -1899,12 +1920,27 @@ void ArrangeView::updateCursor (const juce::MouseEvent& event)
         const auto onHandle = part.isAudio() && (fadeHandle (bounds, part, true).expanded (3.0f).contains (event.position)
                                                  || fadeHandle (bounds, part, false).expanded (3.0f).contains (event.position));
         const auto onEdge = event.position.x > bounds.getRight() - edgeGrab || event.position.x < bounds.getX() + edgeGrab;
+        if (selectSizing != pr7s::Sizing::normal && ! onHandle)
+        {
+            setMouseCursor (sizingCursorFor (onEdge));
+            return;
+        }
         setMouseCursor (onHandle ? juce::MouseCursor::PointingHandCursor
                         : onEdge ? juce::MouseCursor::LeftRightResizeCursor
                                  : juce::MouseCursor::NormalCursor);
         return;
     }
-    setMouseCursor (juce::MouseCursor::NormalCursor);
+    setMouseCursor (selectSizing != pr7s::Sizing::normal && event.position.y >= (float) Timeline::rulerHeight
+                        ? sizingCursorFor (false) : juce::MouseCursor (juce::MouseCursor::NormalCursor));
+}
+
+juce::MouseCursor ArrangeView::sizingCursorFor (bool onEdge)
+{
+    const auto key = 1000 + (int) selectSizing * 2 + (onEdge ? 1 : 0);
+    auto found = toolCursors.find (key);
+    if (found == toolCursors.end())
+        found = toolCursors.emplace (key, ToolIcons::sizingCursor (selectSizing, onEdge)).first;
+    return found->second;
 }
 
 void ArrangeView::mouseDown (const juce::MouseEvent& event)
@@ -2118,6 +2154,12 @@ void ArrangeView::mouseDown (const juce::MouseEvent& event)
     // start moves, its notes stay where they are in the song.
     else if (drag == Drag::move && event.position.x < bounds.getX() + edgeGrab)
         drag = Drag::trimStart;
+    // (0.187.0) The other sizings: Moves Contents at the left edge, Time Stretch at either.
+    dragSizing = selectSizing;
+    if (selectSizing == pr7s::Sizing::timeStretch && (drag == Drag::resize || drag == Drag::trimStart))
+        drag = drag == Drag::resize ? Drag::sizeEnd : Drag::sizeStart;
+    else if (selectSizing == pr7s::Sizing::movesContents && drag == Drag::trimStart)
+        drag = Drag::sizeStart;
     dragPart = part;
     dragCopies = drag == Drag::move && event.mods.isAltDown();   // Alt copies (Ctrl locks the direction)
     dragTrack = dragTargetTrack = hit->first;
@@ -2340,6 +2382,10 @@ void ArrangeView::mouseDrag (const juce::MouseEvent& event)
                     dragNewLength = juce::jmin (dragNewLength, project.tempoMap().beatAfter (dragPart.start, data->seconds() - dragPart.audioOffset) - dragPart.start);
             repaint();
             break;
+        case Drag::sizeStart:
+        case Drag::sizeEnd:
+            sizeDrag (event, beat, grid);
+            break;
         case Drag::trimStart:
         {
             // The start moves; the audio stays where it is in the song (so the offset into it moves too).
@@ -2433,6 +2479,43 @@ void ArrangeView::setPartTarget (PartDropTarget* target)
     partTarget = component;
     if (target != nullptr)
         target->partDragHover (true);
+}
+
+void ArrangeView::sizeDrag (const juce::MouseEvent&, double beat, double grid)
+{
+    // (0.187.0) The part dragged is drawn as it'll be (`dragPart`); every selected part follows on release.
+    const auto* dragged = studio.getProject().findTrack (dragTrack);
+    if (dragged == nullptr || ! juce::isPositiveAndBelow (selection.index, (int) dragged->parts.size()))
+    {
+        drag = Drag::none;   // (the part went mid-drag)
+        return;
+    }
+    dragMoved = true;
+    const auto& original = dragged->parts[(size_t) selection.index];
+    const auto tempo = studio.getProject().tempoMap();
+    const auto shortest = grid > 0.0 ? juce::jmin (grid, original.length) : 1.0 / 16.0;
+    const auto end = dragOriginalStart + dragOriginalLength;
+    dragPart = original;
+    if (drag == Drag::sizeEnd)
+    {
+        const auto length = juce::jmax (shortest, pr7s::snap (end + beat - dragStartBeat, grid) - dragOriginalStart);
+        pr7s::stretchPartTo (dragPart, dragOriginalStart, length, tempo);
+    }
+    else
+    {
+        auto start = juce::jlimit (0.0, end - shortest, pr7s::snap (dragOriginalStart + beat - dragStartBeat, grid));
+        if (dragSizing == pr7s::Sizing::timeStretch)
+            pr7s::stretchPartTo (dragPart, start, end - start, tempo);
+        else
+        {
+            // The content carried: an audio clip no longer than its recording goes from its offset.
+            if (original.isAudio() && ! original.isWarped())
+                if (const auto data = studio.getAudio (original.audioFile))
+                    start = juce::jmax (start, tempo.beatAt (tempo.secondsAt (end) - (data->seconds() - original.audioOffset)));
+            pr7s::moveStartWithContents (dragPart, start, tempo);
+        }
+    }
+    repaint();
 }
 
 void ArrangeView::mouseUp (const juce::MouseEvent& event)
@@ -2603,6 +2686,12 @@ void ArrangeView::mouseUp (const juce::MouseEvent& event)
         case Drag::fadeIn:
         case Drag::fadeOut:
             studio.updatePart (dragTrack, selection.index, dragPart);
+            break;
+        case Drag::sizeStart:
+        case Drag::sizeEnd:
+            // (0.187.0) Every selected part sized the same way, one undo step.
+            if (const auto lead = partIdAt (selection); lead != 0)
+                studio.sizeParts (getSelectedParts(), lead, dragPart.start, dragPart.length, dragSizing);
             break;
         case Drag::position:
         case Drag::points:
@@ -2883,6 +2972,49 @@ void ArrangeView::setTool (Tool newTool)
     repaint();
     if (onToolChange)
         onToolChange();
+}
+
+void ArrangeView::pressToolKey (Tool t)
+{
+    // (0.187.0, the owner: "press 1 multiple times and cycle between normal selection and time stretch")
+    if (t == Tool::select && tool == Tool::select)
+        setSelectSizing (pr7s::nextSizing (selectSizing));
+    else
+        setTool (t);
+}
+
+void ArrangeView::setSelectSizing (pr7s::Sizing sizing)
+{
+    selectSizing = sizing;
+    if (auto* settings = studio.getSettings())
+        settings->setValue ("selectSizing", (int) sizing);
+    if (tool != Tool::select)
+        setTool (Tool::select);
+    else
+    {
+        setMouseCursor (juce::MouseCursor::NormalCursor);
+        if (onToolChange)
+            onToolChange();   // (the row's SELECT key shows the mark)
+    }
+}
+
+void ArrangeView::showSizingMenu (juce::Component* target)
+{
+    juce::PopupMenu menu;
+    for (const auto sizing : { pr7s::Sizing::normal, pr7s::Sizing::movesContents, pr7s::Sizing::timeStretch })
+        menu.addItem (sizing == pr7s::Sizing::normal ? "Normal Sizing (an edge trims)"
+                      : sizing == pr7s::Sizing::movesContents ? "Sizing Moves Contents (the left edge carries what's in it)"
+                                                              : "Sizing Applies Time Stretch (what's in it stretched to fit)",
+                      true, sizing == selectSizing,
+                      [safe = juce::Component::SafePointer<ArrangeView> (this), sizing]
+                      {
+                          if (safe != nullptr)
+                              safe->setSelectSizing (sizing);
+                      });
+    auto options = juce::PopupMenu::Options();
+    if (target != nullptr)
+        options = options.withTargetComponent (target);
+    menu.showMenuAsync (options);
 }
 
 void ArrangeView::nextTool (bool forward)
@@ -3271,6 +3403,16 @@ void ArrangeView::showPartMenu (int trackId, int index)
             warp.addSeparator();
             warp.addItem (21, "Hitpoint Settings...");
             menu.addSubMenu ("Hitpoints and Warp", warp);
+            // (0.187.0) How the clip (or the selected clips) is stretched, and the choice for clips stretched from now on.
+            juce::PopupMenu stretch, newOnes;
+            for (int m = 0; m < pr7s::StretchModes::count; ++m)
+            {
+                stretch.addItem (150 + m, pr7s::StretchModes::description (m), true, part.stretchMode == m);
+                newOnes.addItem (160 + m, pr7s::StretchModes::description (m), true, studio.getDefaultStretchMode() == m);
+            }
+            stretch.addSeparator();
+            stretch.addSubMenu ("For Clips Stretched From Now On", newOnes);
+            menu.addSubMenu ("Time Stretch Algorithm", stretch);
             menu.addItem (23, "Audio Alignment...");   // (0.33.0)
             menu.addItem (24, "VariAudio... (pitch: double-click the clip)");   // (0.34.0)
             menu.addItem (25, "Generate Harmony Voices...");                     // (0.35.0)
@@ -3332,6 +3474,16 @@ void ArrangeView::showPartMenu (int trackId, int index)
         {
             if (onOpenAudioAlignment)
                 onOpenAudioAlignment();
+            return;
+        }
+        if (chosen >= 150 && chosen < 150 + pr7s::StretchModes::count)
+        {
+            studio.setStretchMode (ids.empty() ? std::vector<int> { partId } : ids, chosen - 150);
+            return;
+        }
+        if (chosen >= 160 && chosen < 160 + pr7s::StretchModes::count)
+        {
+            studio.setDefaultStretchMode (chosen - 160);
             return;
         }
         if (chosen >= 18 && chosen <= 22)
@@ -4308,6 +4460,8 @@ ArrangeTools::ArrangeTools (ArrangeView& arrangeToUse) : arrange (arrangeToUse)
         {
             if (t == ArrangeView::Tool::line && arrange.getTool() == t)
                 arrange.showLineShapeMenu (&button);   // (LINE again: its shapes, as the manual's)
+            else if (t == ArrangeView::Tool::select && arrange.getTool() == t)
+                arrange.showSizingMenu (&button);      // (0.187.0: SELECT again: its three sizings, as the manual's)
             else
                 arrange.setTool (t);
         };
@@ -4320,6 +4474,17 @@ void ArrangeTools::refresh()
 {
     for (size_t i = 0; i < buttons.size(); ++i)
         buttons[i].setToggleState (ArrangeView::tools[i] == arrange.getTool(), juce::dontSendNotification);
+    auto& select = static_cast<ToolKey&> (getButton (ArrangeView::Tool::select));
+    if (const auto sizing = arrange.getSelectSizing(); select.sizing != sizing)
+    {
+        select.sizing = sizing;
+        select.setTooltip (juce::String ("SELECT (1): ") + pr7s::sizingName (sizing)
+                           + (sizing == pr7s::Sizing::movesContents ? ": drag a part's left edge and what's in it goes with it"
+                              : sizing == pr7s::Sizing::timeStretch ? ": drag a part's edge and what's in it is stretched or squeezed to fit (several selected: all of them)"
+                                                                    : ": select, move (Alt: copy) and resize parts; Alt-click splits a part there")
+                           + ". Press 1 again, or click SELECT again, for the other sizings");
+        select.repaint();
+    }
 }
 
 juce::TextButton& ArrangeTools::getButton (ArrangeView::Tool t)
@@ -4339,10 +4504,10 @@ void ToolKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
     auto area = getLocalBounds().toFloat().reduced (5.0f, 3.0f).translated (0.0f, down ? 0.5f : -0.5f);
     if (iconOnly)
     {
-        ToolIcons::draw (g, tool, area.reduced (3.0f, 4.0f), colour);
+        ToolIcons::draw (g, tool, area.reduced (3.0f, 4.0f), colour, sizing);
         return;
     }
-    ToolIcons::draw (g, tool, area.removeFromLeft (area.getHeight()).reduced (3.0f), colour);
+    ToolIcons::draw (g, tool, area.removeFromLeft (area.getHeight()).reduced (3.0f), colour, sizing);
     area.removeFromLeft (2.0f);
     g.setColour (colour);
     g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (12.0f, area.getHeight() * 0.7f)));

@@ -835,6 +835,8 @@ namespace pr7s
                     w->setAttribute ("beat", m.beat);
                     w->setAttribute ("seconds", m.seconds);
                 }
+                if (part.stretchMode != 0)
+                    p->setAttribute ("stretch", part.stretchMode);
                 if (part.lane != 0)
                     p->setAttribute ("lane", part.lane);
                 if (part.order != 0)
@@ -1160,6 +1162,7 @@ namespace pr7s
                 if (part.warp.size() < 2 || p->getStringAttribute ("audioFile").isEmpty())
                     part.warp.clear();
                 part.order = p->getIntAttribute ("order");
+                part.stretchMode = juce::jlimit (0, 3, p->getIntAttribute ("stretch"));
                 part.linkCopy = p->getBoolAttribute ("linkCopy");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));

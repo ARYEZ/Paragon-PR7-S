@@ -3435,6 +3435,117 @@ namespace pr7s
     }
 
     //==========================================================================
+    bool Studio::sizeParts (const std::vector<int>& partIds, int leadId, double newStart, double newLength, Sizing sizing)
+    {
+        if (sizing == Sizing::normal)
+            return false;
+        const auto [leadTrack, leadIndex] = findPartById (leadId);
+        if (leadTrack == nullptr)
+            return false;
+        const auto lead = leadTrack->parts[(size_t) leadIndex];
+        newStart = juce::jmax (0.0, newStart);
+        newLength = juce::jmax (1.0 / 64.0, newLength);
+        const auto leftEdge = std::abs (newStart - lead.start) > 1.0e-9;
+        const auto factor = lead.length > 1.0e-9 ? newLength / lead.length : 1.0;
+        const auto startDelta = newStart - lead.start, lengthDelta = newLength - lead.length;
+        auto ids = partIds;
+        if (std::find (ids.begin(), ids.end(), leadId) == ids.end())
+            ids.push_back (leadId);
+        const auto tempo = project.tempoMap();
+        const auto defaultMode = getDefaultStretchMode();
+        auto any = false;
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen || std::none_of (std::as_const (track).parts.begin(), std::as_const (track).parts.end(),
+                                              [&] (const Part& p) { return std::find (ids.begin(), ids.end(), p.id) != ids.end(); }))
+                continue;
+            for (auto& part : track.parts)
+            {
+                if (std::find (ids.begin(), ids.end(), part.id) == ids.end())
+                    continue;
+                const auto old = part;
+                if (sizing == Sizing::timeStretch)
+                {
+                    const auto length = juce::jmax (1.0 / 64.0, part.length * factor);
+                    const auto start = leftEdge ? juce::jmax (0.0, part.end() - length) : part.start;
+                    const auto wasWarped = part.isWarped();
+                    stretchPartTo (part, start, leftEdge ? part.end() - start : length, tempo);
+                    if (part.isAudio())
+                    {
+                        if (! wasWarped && part.isWarped())
+                            part.stretchMode = defaultMode;
+                        tidyWarp (part);
+                    }
+                }
+                else if (leftEdge)
+                {
+                    auto start = part.start + startDelta;
+                    if (part.isAudio() && ! part.isWarped())
+                        if (const auto data = getAudio (part.audioFile))   // (no earlier than the recording lasts from its offset)
+                            start = juce::jmax (start, tempo.beatAt (tempo.secondsAt (part.end()) - (data->seconds() - part.audioOffset)));
+                    moveStartWithContents (part, start, tempo);
+                    if (part.isWarped())
+                        tidyWarp (part);
+                }
+                else
+                {
+                    // The right edge: Normal Sizing (the content stays with the start).
+                    part.length = juce::jmax (1.0 / 64.0, part.length + lengthDelta);
+                    if (part.isAudio() && ! part.isWarped())
+                        if (const auto data = getAudio (part.audioFile))
+                            part.length = juce::jmin (part.length, tempo.beatAfter (part.start, data->seconds() - part.audioOffset) - part.start);
+                    rebaseWarp (old, part, tempo);
+                }
+                any = any || ! (part == old);
+            }
+        }
+        if (! any)
+            return false;
+        partsOnlyAsked = true;
+        changed();
+        return true;
+    }
+
+    bool Studio::setStretchMode (const std::vector<int>& partIds, int mode)
+    {
+        mode = juce::jlimit (0, StretchModes::count - 1, mode);
+        auto any = false;
+        for (auto& track : project.tracks)
+        {
+            if (track.frozen)
+                continue;
+            const auto& seen = std::as_const (track).parts;
+            if (std::none_of (seen.begin(), seen.end(), [&] (const Part& p)
+                              { return p.isAudio() && p.stretchMode != mode && std::find (partIds.begin(), partIds.end(), p.id) != partIds.end(); }))
+                continue;
+            for (auto& part : track.parts)
+                if (part.isAudio() && part.stretchMode != mode && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                {
+                    part.stretchMode = mode;
+                    any = true;
+                }
+        }
+        if (any)
+        {
+            partsOnlyAsked = true;
+            changed();
+        }
+        return any;
+    }
+
+    int Studio::getDefaultStretchMode() const
+    {
+        return juce::jlimit (0, StretchModes::count - 1, settings != nullptr ? settings->getIntValue ("stretchModeDefault", 0) : defaultStretchModeHere);
+    }
+
+    void Studio::setDefaultStretchMode (int mode)
+    {
+        defaultStretchModeHere = juce::jlimit (0, StretchModes::count - 1, mode);
+        if (settings != nullptr)
+            settings->setValue ("stretchModeDefault", defaultStretchModeHere);
+    }
+
+    //==========================================================================
     bool Studio::isAudioFile (const juce::File& file)
     {
         return file.hasFileExtension ("wav;wave;aif;aiff;flac;ogg;mp3");
@@ -7724,6 +7835,7 @@ namespace pr7s
                 part.audioFile = flattened.getFileName();
                 part.audioOffset = 0.0;
                 part.warp.clear();
+                part.stretchMode = 0;
                 ++count;
             }
         }

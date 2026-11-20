@@ -1254,7 +1254,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
         for (const auto t : ArrangeView::tools)
             if (ArrangeView::toolKey (t) > 0 && key.getTextCharacter() == (juce::juce_wchar) ('0' + ArrangeView::toolKey (t)))
             {
-                arrange.setTool (t);
+                arrange.pressToolKey (t);   // (0.187.0: 1 again cycles SELECT's sizings)
                 return true;
             }
     if (key.getKeyCode() == juce::KeyPress::F9Key || key.getKeyCode() == juce::KeyPress::F10Key)

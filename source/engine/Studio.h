@@ -11,6 +11,7 @@
 #include "Project.h"
 #include "EditHistory.h"
 #include "Warp.h"
+#include "Sizing.h"
 #include "Align.h"
 #include "VariAudio.h"
 #include "Lines.h"
@@ -681,6 +682,18 @@ namespace pr7s
         // A part replaced as a whole (an audio clip trimmed or faded: start,
         // length, offset and fades together). One undo step.
         void updatePart (int trackId, int index, const Part&);
+        // (0.187.0) The Object Selection tool's other two sizings (Sizing.h), for the parts with these ids
+        // (frozen tracks left alone), led by `leadId`, which goes to [newStart, newStart + newLength): its start
+        // moved = its left edge dragged (each part's end stays), else its right edge (each start stays).
+        // movesContents: a left edge carries the content (each by the same beats); a right edge is Normal Sizing
+        // (each by the same beats). timeStretch: each part stretched by the lead's new / old length about the
+        // edge that stays; an audio clip not warped before is given `getDefaultStretchMode()`. One undo step;
+        // false if nothing changed (or `normal`: the arrangement trims as it always did).
+        bool sizeParts (const std::vector<int>& partIds, int leadId, double newStart, double newLength, Sizing);
+        // How the selected clips' audio is stretched (StretchModes); one undo step (none for clips already so).
+        bool setStretchMode (const std::vector<int>& partIds, int mode);
+        int getDefaultStretchMode() const;   // for clips stretched from now on (settings "stretchModeDefault")
+        void setDefaultStretchMode (int);
         // Where the part with this id is now: its track and index (none if it's gone).
         std::optional<std::pair<int, int>> findPart (int partId) const;
 
@@ -1814,6 +1827,7 @@ namespace pr7s
         void placeTakes (Track&, std::vector<Part> takes, double from, double to, bool replace, int lane = -1);
         void buildRecordingControllers (std::vector<Controller>&, double partStart) const;   // (0.25.0: each kind's last pass in a cycle)
         bool newControllersRamp = true;   // (without a settings file)
+        int defaultStretchModeHere = 0;   // (0.187.0; without a settings file)
         juce::File drumMapFolderOverride;
         juce::String defaultDrumMapHere;   // (0.77.3: without a settings file)
         int editorSoloTrack = 0;           // (0.78.0) setEditorSolo

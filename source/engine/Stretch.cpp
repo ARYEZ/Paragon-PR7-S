@@ -6,8 +6,38 @@
 
 namespace pr7s
 {
-    juce::AudioBuffer<float> stretchAudio (const juce::AudioBuffer<float>& input, double sampleRate, int outputLength, double semitones)
+    juce::AudioBuffer<float> resampleAudio (const juce::AudioBuffer<float>& input, int outputLength)
     {
+        const auto channels = juce::jmax (1, input.getNumChannels());
+        juce::AudioBuffer<float> output (channels, juce::jmax (0, outputLength));
+        output.clear();
+        const auto length = input.getNumSamples();
+        if (outputLength <= 0 || length <= 0 || input.getNumChannels() == 0)
+            return output;
+        const auto step = (double) length / (double) outputLength;
+        for (int c = 0; c < channels; ++c)
+        {
+            const auto* in = input.getReadPointer (juce::jmin (c, input.getNumChannels() - 1));
+            auto* out = output.getWritePointer (c);
+            const auto at = [in, length] (int i) { return in[juce::jlimit (0, length - 1, i)]; };
+            for (int i = 0; i < outputLength; ++i)
+            {
+                const auto x = i * step;
+                const auto k = (int) std::floor (x);
+                const auto t = (float) (x - k);
+                const auto y0 = at (k - 1), y1 = at (k), y2 = at (k + 1), y3 = at (k + 2);
+                // (Catmull-Rom: through every sample, smooth between them.)
+                out[i] = y1 + 0.5f * t * (y2 - y0 + t * (2.0f * y0 - 5.0f * y1 + 4.0f * y2 - y3 + t * (3.0f * (y1 - y2) + y3 - y0)));
+            }
+        }
+        return output;
+    }
+
+    juce::AudioBuffer<float> stretchAudio (const juce::AudioBuffer<float>& input, double sampleRate, int outputLength, double semitones,
+                                           int mode)
+    {
+        if (mode == 3)
+            return resampleAudio (input, outputLength);
         const auto channels = juce::jmax (1, input.getNumChannels());
         juce::AudioBuffer<float> output (channels, juce::jmax (0, outputLength));
         output.clear();
@@ -15,7 +45,12 @@ namespace pr7s
             return output;
         const juce::ScopedNoDenormals noDenormals;   // (0.34.1)
         signalsmith::stretch::SignalsmithStretch<float> stretch;
-        stretch.presetDefault (channels, (float) sampleRate);
+        if (mode == 2)
+            stretch.presetCheaper (channels, (float) sampleRate);
+        else
+            stretch.presetDefault (channels, (float) sampleRate);
+        if (mode == 1)
+            stretch.setFormantFactor (1.0f, true);
         stretch.setTransposeSemitones ((float) semitones);
         std::vector<const float*> in ((size_t) channels);
         std::vector<float*> out ((size_t) channels);

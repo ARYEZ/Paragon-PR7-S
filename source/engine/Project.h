@@ -89,6 +89,10 @@ namespace pr7s
         // (0.32.0) Warp markers, sorted by beat (none: the recording plays at its own speed).
         std::vector<WarpMarker> warp;
         bool isWarped() const noexcept { return warp.size() >= 2; }
+        // (0.187.0) How a warped clip is stretched: 0 CLEAN (pitch kept), 1 VOICE (pitch and the voice's
+        // character kept), 2 LIGHT (quicker, a little rougher), 3 TAPE (speed and pitch together, as a tape
+        // played faster or slower). `StretchModes` (Sizing.h) names them. Saved as "stretch" when not 0.
+        int stretchMode = 0;
         // (0.47.0, the info line) An audio event's own volume (dB, its gain before the track's
         // fader; `leastVolumeDb` and under: silent), and a MIDI part's Transpose (semitones) and
         // Velocity (added to each note's, 1-127): both for playback only, its notes stay as written.

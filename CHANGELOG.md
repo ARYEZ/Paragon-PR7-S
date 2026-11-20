@@ -2,6 +2,39 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.187.0
+
+You asked for the SELECT tool's three sizing modes, so you can press 1 again and switch from normal resizing to time stretching. They work as the manual describes, and you can switch between them two ways:
+
+- Press **1** again while SELECT is already the tool: Normal Sizing, then Sizing Moves Contents, then Sizing Applies Time Stretch, then back to Normal.
+- Click the **SELECT** key again: a menu of the three, with the one in use ticked.
+
+The key and the mouse pointer show which mode is on. Moves Contents adds two little chevrons to the arrow, and Time Stretch adds a small waveform. The key's tooltip names the mode. The studio remembers your choice.
+
+- **NORMAL SIZING:** how resizing has always worked. Drag a part's edge and you see more or less of what's in it. The notes and the audio stay where they are in the song.
+- **SIZING MOVES CONTENTS:** drag a part's left edge and what's in it goes with the edge. A MIDI part's notes and controllers keep their places from the part's start, so they move with it. An audio clip keeps its offset, so its sound starts where the clip now starts. The end stays where it was. The manual says only that "the content follows". At the right edge the content already stays with the start, so dragging the right edge works as it does in Normal Sizing.
+- **SIZING APPLIES TIME STRETCH:** drag either edge, and what's in the part is stretched or squeezed to fit. The other edge stays put.
+  - **MIDI parts:** every note's start and length, and every controller, are scaled by the new length over the old.
+  - **Audio clips:** the recording isn't changed. The clip gets warp markers that map its old length onto the new one, and it plays faster or slower through the warp system you already have. Use Flatten (Hitpoints and Warp) when you want it written as a new file.
+  - A stretched clip shows a small waveform before WARP in its title strip.
+  - With several parts selected, they're all stretched by the same amount.
+  - The drag snaps to the grid, as other edge drags do, and the whole drag is one undo step.
+
+**The stretch engine is not the other DAW's.** That program uses a licensed commercial engine we can't ship. Ours is Signalsmith Stretch, an open one, so a stretch will sound somewhat different, especially on big changes. The part menu's **Time Stretch Algorithm** menu sets how the selected clips are stretched (one undo step). Its **For Clips Stretched From Now On** submenu sets the default for new stretches. The four choices have our own names:
+
+- **CLEAN:** keeps the pitch. The best for most things, and the default.
+- **VOICE:** keeps the pitch, and also asks the engine to keep a voice's character, for vocals. With no pitch change this makes only a small difference.
+- **LIGHT:** keeps the pitch, and is quicker to work out but a little rougher.
+- **TAPE:** doesn't stretch at all. It plays the audio faster or slower, as a tape machine would, so a faster clip sounds higher and a slower one lower.
+
+When the algorithm isn't CLEAN, a clip's stamp names it, for example WARP: TAPE. It's saved with the song.
+
+Not done yet:
+
+- Normal Sizing still resizes only the part you grab (Moves Contents and Time Stretch resize all the selected parts).
+- Ctrl+Alt to adapt fades while sizing isn't done.
+- Only the dragged part shows its new shape while you drag. The other selected parts change when you let go.
+
 ## 0.186.0
 
 The last of the releases for the 25 song files you uploaded: fifteen new transitions and eighteen new options for the lanes under every section type. That finishes round six. As always they're read for their shapes only: no song is copied, and the names are ours.

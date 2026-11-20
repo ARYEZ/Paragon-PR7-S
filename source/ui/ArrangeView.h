@@ -225,6 +225,14 @@ public:
     void setTool (Tool);
     Tool getTool() const noexcept { return tool; }
     void nextTool (bool forward);   // F10 / F9
+    // (0.187.0, the manual's Object Selection tool modes) How SELECT sizes a part: Normal Sizing (an edge
+    // trims), Sizing Moves Contents (a left edge carries the content), Sizing Applies Time Stretch (the
+    // content stretched or squeezed to fit). Settings "selectSizing". `pressToolKey`: a tool's number key
+    // (or its key in the row) pressed: 1 again while SELECT is the tool goes to the next sizing.
+    void pressToolKey (Tool);
+    pr7s::Sizing getSelectSizing() const noexcept { return selectSizing; }
+    void setSelectSizing (pr7s::Sizing);
+    void showSizingMenu (juce::Component* target);   // SELECT clicked again: the three, the one in use ticked
     std::function<void()> onToolChange;
     void splitAtCursor();           // Alt+X
     // P (Locators to Selection): the range, else the selected part (none: false).
@@ -586,7 +594,12 @@ private:
                       tempoPoints, tempoBand, tempoDraw, chordMove, chordStart, chordEnd, comp, takeEdge, slip, audition, warpMarker,
                       markerMove, markerStart, markerEnd, markerNewCycle,   // (0.49.0)
                       folderMove,   // (0.50.0)
-                      sectionMove };   // (0.90.0) a block of the SECTIONS row dragged to another place in the order
+                      sectionMove,   // (0.90.0) a block of the SECTIONS row dragged to another place in the order
+                      sizeStart, sizeEnd };   // (0.187.0) an edge dragged with Sizing Moves Contents / Applies Time Stretch
+    pr7s::Sizing selectSizing = pr7s::Sizing::normal;
+    pr7s::Sizing dragSizing = pr7s::Sizing::normal;
+    void sizeDrag (const juce::MouseEvent&, double beat, double grid);
+    juce::MouseCursor sizingCursorFor (bool onEdge);   // SELECT's pointer with its sizing's mark (kept in toolCursors)
     // WARP (0.32.0, the manual's Free Warp in the event display): the marker being dragged.
     int warpPartId = 0, warpIndex = -1;
     double warpTo = 0.0;
@@ -790,6 +803,7 @@ class ToolKey final : public juce::TextButton
 {
 public:
     ArrangeView::Tool tool = ArrangeView::Tool::select;
+    pr7s::Sizing sizing = pr7s::Sizing::normal;   // (0.187.0: SELECT's mark)
     bool iconOnly = false;
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 };

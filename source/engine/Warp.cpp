@@ -294,6 +294,7 @@ namespace pr7s
         add (sampleRate);
         add (part.start);
         add (part.length);
+        add ((double) part.stretchMode);   // (0.187.0: how it's stretched)
         for (const auto& m : part.warp)
         {
             add (m.beat);
@@ -330,7 +331,7 @@ namespace pr7s
             const auto lead = k > 0 ? crossfade : 0;
             const auto wanted = count + lead;
             juce::String pieceKey;
-            pieceKey << part.audioFile << "|" << sampleRate << "|" << srcStart << "|" << srcEnd << "|" << count << "|" << lead;
+            pieceKey << part.audioFile << "|" << sampleRate << "|" << srcStart << "|" << srcEnd << "|" << count << "|" << lead << "|" << part.stretchMode;
             auto piece = pieces[pieceKey];
             if (piece == nullptr)
             {
@@ -358,7 +359,7 @@ namespace pr7s
                         for (int c = 0; c < channels; ++c)
                             input.copyFrom (c, 0, recording, c, inStart, inEnd - inStart);
                         const auto stretchedLength = juce::jmax (1, (int) std::llround ((inEnd - inStart) * ratio));
-                        const auto stretched = stretchAudio (input, sampleRate, stretchedLength, 0.0);
+                        const auto stretched = stretchAudio (input, sampleRate, stretchedLength, 0.0, part.stretchMode);
                         const auto from = (int) std::llround ((srcStart - inStart) * ratio) - lead;
                         for (int c = 0; c < juce::jmin (channels, stretched.getNumChannels()); ++c)
                             for (int i = 0; i < wanted; ++i)

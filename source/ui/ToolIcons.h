@@ -166,6 +166,35 @@ namespace ToolIcons
                                                          juce::PathStrokeType::rounded), transform);
     }
 
+    // (0.187.0) SELECT's sizing as a mark in the corner of its 24 x 24 square: two chevrons (the content
+    // goes with the edge) for Sizing Moves Contents, a little waveform (the manual's icon for a stretched
+    // part) for Sizing Applies Time Stretch; nothing for Normal Sizing.
+    inline juce::Path sizingMark (pr7s::Sizing sizing)
+    {
+        juce::Path s;
+        if (sizing == pr7s::Sizing::movesContents)
+            for (const auto x : { 14.5f, 18.5f })
+            {
+                s.startNewSubPath (x, 14.5f);
+                s.lineTo (x + 4.0f, 18.5f);
+                s.lineTo (x, 22.5f);
+            }
+        else if (sizing == pr7s::Sizing::timeStretch)
+        {
+            s.startNewSubPath (13.5f, 19.0f);
+            s.lineTo (15.3f, 15.5f);
+            s.lineTo (17.1f, 22.5f);
+            s.lineTo (18.9f, 14.5f);
+            s.lineTo (20.7f, 21.5f);
+            s.lineTo (22.5f, 17.5f);
+            s.lineTo (23.5f, 19.0f);
+        }
+        return s;
+    }
+
+    // SELECT's icon with its sizing's mark (the pointer drawn smaller, up in the corner, to make room).
+    inline void draw (juce::Graphics& g, ArrangeView::Tool tool, juce::Rectangle<float> area, juce::Colour colour, pr7s::Sizing sizing);
+
     // The tool as the mouse pointer: white with a dark edge, 24 pixels, its
     // hot spot where it acts (the pointer's tip, the pencil's, the lens'
     // middle, the razor's edge...). SELECT: the usual pointer.
@@ -187,5 +216,60 @@ namespace ToolIcons
                            : tool == T::range ? juce::Point<int> (4, 12)
                                               : juce::Point<int> (12, 12);
         return juce::MouseCursor (image, hotSpot.x, hotSpot.y);   // (the arrangement keeps the ones it makes)
+    }
+
+    inline void draw (juce::Graphics& g, ArrangeView::Tool tool, juce::Rectangle<float> area, juce::Colour colour, pr7s::Sizing sizing)
+    {
+        if (tool != ArrangeView::Tool::select || sizing == pr7s::Sizing::normal)
+        {
+            draw (g, tool, area, colour);
+            return;
+        }
+        const auto size = juce::jmin (area.getWidth(), area.getHeight());
+        const auto box = area.withSizeKeepingCentre (size, size);
+        const auto transform = juce::AffineTransform::scale (size / 24.0f).translated (box.getX(), box.getY());
+        const auto icon = make (tool);
+        g.setColour (colour);
+        g.fillPath (icon.fill, juce::AffineTransform::scale (0.78f).followedBy (transform));
+        g.strokePath (sizingMark (sizing), juce::PathStrokeType (juce::jmax (1.2f, size / 13.0f), juce::PathStrokeType::curved,
+                                                                 juce::PathStrokeType::rounded), transform);
+    }
+
+    // (0.187.0) SELECT's pointer while it sizes another way: the arrow (or, over a part's edge, a left-right
+    // arrow) with the sizing's mark, white with a dark edge as the other tools' pointers.
+    inline juce::MouseCursor sizingCursor (pr7s::Sizing sizing, bool onEdge)
+    {
+        if (sizing == pr7s::Sizing::normal)
+            return onEdge ? juce::MouseCursor::LeftRightResizeCursor : juce::MouseCursor::NormalCursor;
+        juce::Image image (juce::Image::ARGB, 24, 24, true);
+        {
+            juce::Graphics g (image);
+            const auto paint = [&] (juce::Point<float> offset, juce::Colour colour)
+            {
+                const auto shift = juce::AffineTransform::translation (offset.x, offset.y);
+                g.setColour (colour);
+                if (onEdge)
+                {
+                    juce::Path arrow;
+                    arrow.startNewSubPath (2.0f, 7.0f);
+                    arrow.lineTo (16.0f, 7.0f);
+                    arrow.startNewSubPath (5.5f, 3.5f);
+                    arrow.lineTo (2.0f, 7.0f);
+                    arrow.lineTo (5.5f, 10.5f);
+                    arrow.startNewSubPath (12.5f, 3.5f);
+                    arrow.lineTo (16.0f, 7.0f);
+                    arrow.lineTo (12.5f, 10.5f);
+                    g.strokePath (arrow, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded), shift);
+                }
+                else
+                    g.fillPath (make (ArrangeView::Tool::select).fill, juce::AffineTransform::translation (-4.0f, -1.5f)
+                                                                        .scaled (0.78f).followedBy (shift));
+                g.strokePath (sizingMark (sizing), juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded), shift);
+            };
+            for (const auto& offset : { juce::Point<float> (-1.0f, 0.0f), { 1.0f, 0.0f }, { 0.0f, -1.0f }, { 0.0f, 1.0f } })
+                paint (offset, juce::Colour (0xff120c10));
+            paint ({}, juce::Colours::white);
+        }
+        return onEdge ? juce::MouseCursor (image, 9, 7) : juce::MouseCursor (image, 0, 0);
     }
 }
