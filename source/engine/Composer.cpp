@@ -22556,7 +22556,9 @@ namespace pr7s
             juce::int64 riff = 0, favourites = 0;
             bool operator== (const PoolKey&) const = default;
         };
-        struct KeptPool { PoolKey key; std::vector<LibraryGroove> pool; };
+        // (0.185.0) `list` holds the groove list alive: the key is its address, and a freed list's address was
+        // reused by the next list of the same size (an earlier test's pool came back in a later test).
+        struct KeptPool { PoolKey key; std::vector<LibraryGroove> pool; std::shared_ptr<const void> list; };
         std::mutex poolLock;
         std::vector<KeptPool> keptPools;   // (the last few: the menu, the compose and ROLL ask for the same)
 
@@ -22770,7 +22772,7 @@ namespace pr7s
         const std::lock_guard<std::mutex> sl (poolLock);
         if (keptPools.size() >= 16)   // (0.173.0: 6 missed every time: the drums menu asks for 7 sections in turn)
             keptPools.erase (keptPools.begin());
-        keptPools.push_back ({ key, pool });
+        keptPools.push_back ({ key, pool, c.libraryGrooves.keepAlive() });
         return pool;
     }
 

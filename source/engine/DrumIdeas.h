@@ -92,6 +92,8 @@ namespace pr7s
         const LibraryGroove& operator[] (size_t i) const noexcept { return get()[i]; }
         auto begin() const noexcept { return get().begin(); }
         auto end() const noexcept { return get().end(); }
+        // (0.185.0) Held by a cache keyed on the list's address, so the address can't be reused while it's kept.
+        std::shared_ptr<const void> keepAlive() const noexcept { return list; }
     private:
         std::shared_ptr<const std::vector<LibraryGroove>> list;
     };
