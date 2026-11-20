@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include "Controllers.h"
+#include "Sizing.h"
 
 #include <functional>
 #include <set>
@@ -1162,7 +1163,11 @@ namespace pr7s
                 if (part.warp.size() < 2 || p->getStringAttribute ("audioFile").isEmpty())
                     part.warp.clear();
                 part.order = p->getIntAttribute ("order");
-                part.stretchMode = juce::jlimit (0, 3, p->getIntAttribute ("stretch"));
+                {
+                    // (0.188.0) A mode this version doesn't know (from a later one): CLEAN.
+                    const auto mode = p->getIntAttribute ("stretch");
+                    part.stretchMode = mode >= 0 && mode < StretchModes::count ? mode : StretchModes::clean;
+                }
                 part.linkCopy = p->getBoolAttribute ("linkCopy");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));

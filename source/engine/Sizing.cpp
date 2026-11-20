@@ -29,6 +29,7 @@ namespace pr7s
                 case voice: return "VOICE";
                 case light: return "LIGHT";
                 case tape:  return "TAPE";
+                case rubberBand: return "RUBBER BAND";
                 default:    return "CLEAN";
             }
         }
@@ -40,6 +41,7 @@ namespace pr7s
                 case voice: return "VOICE (pitch kept, and a voice's character: for vocals)";
                 case light: return "LIGHT (pitch kept, quicker to work out, a little rougher)";
                 case tape:  return "TAPE (no stretching: faster plays higher, slower plays lower)";
+                case rubberBand: return "RUBBER BAND (pitch kept: the Rubber Band Library's finer engine, open source)";
                 default:    return "CLEAN (pitch kept: the best for most things)";
             }
         }

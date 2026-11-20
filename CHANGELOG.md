@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.188.0
+
+A fifth way to stretch audio clips: **RUBBER BAND**. It lets you compare a second open-source stretch engine with our CLEAN on the same clip, and keep whichever sounds better to you.
+
+- **Where it is:** the part menu's **Time Stretch Algorithm** list on an audio clip, after TAPE. It's also in **For Clips Stretched From Now On**, if you want every new stretch to use it.
+- **What it is:** the Rubber Band Library's newer "finer" engine (its R3 engine), an open-source stretcher by Particular Programs. It keeps the pitch, like CLEAN.
+- **How it works:** it reads the whole clip through once before it stretches, so it can plan the stretch with the entire sound in view. Like the other algorithms, it works ahead of time, not while playing, so nothing extra runs on the audio thread.
+- **How long it takes:** in a timing test here, 10 seconds of stereo stretched to 14 seconds took about 1.5 seconds with RUBBER BAND against about 0.25 seconds with CLEAN: roughly six times as long. A long clip may take a moment longer to be ready after you change its stretch.
+- **Saved with the song:** the stamp reads WARP: RUBBER BAND. An older version of the studio opening a song saved with it reads those clips as CLEAN. A song from a later version, with an algorithm this one doesn't know, opens those clips as CLEAN too.
+
+Why the other engine: CLEAN, VOICE and LIGHT all come from one engine, Signalsmith Stretch. Rubber Band is built a different way, so on drums, guitars and big stretches the two can sound noticeably different. Which one sounds better is a matter of ear and material.
+
+The licence: Rubber Band is under the GPL (version 2 or later), and the studio is AGPLv3, so the two fit together. The README now credits it, along with Signalsmith Stretch and Catch2 (the tests' framework).
+
+What I couldn't check here:
+
+- **I haven't listened to it.** The tests check that a 440 Hz tone stretched 1.5 times stays at 440 Hz, stays about as loud, comes out exactly the length asked for, and has no broken samples. They don't tell you how it sounds on a real recording.
+- **The Windows build isn't checked here.** Rubber Band is compiled from its single-file version, which uses its own FFT and resampler and needs no other libraries. CI's Windows job is the first real Windows build.
+
 ## 0.187.0
 
 You asked for the SELECT tool's three sizing modes, so you can press 1 again and switch from normal resizing to time stretching. They work as the manual describes, and you can switch between them two ways:

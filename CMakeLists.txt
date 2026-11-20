@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.187.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.188.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -159,6 +159,10 @@ add_library(PR7SCore STATIC
 
 target_include_directories(PR7SCore PUBLIC source)
 
+# (0.188.0) Rubber Band Library's single-file build (GPL v2 or later): cmake/Dependencies.cmake.
+target_sources(PR7SCore PRIVATE "${rubberband_SOURCE_DIR}/single/RubberBandSingle.cpp")
+target_include_directories(PR7SCore PRIVATE "${rubberband_SOURCE_DIR}")
+
 target_compile_definitions(PR7SCore
     PUBLIC
         JUCE_WEB_BROWSER=0
@@ -204,9 +208,11 @@ endif()
 
 # The stretcher's own code is theirs: our strict warnings stay off for its one file.
 if(MSVC)
-    set_source_files_properties(source/engine/Stretch.cpp PROPERTIES COMPILE_OPTIONS "/W0")
+    set_source_files_properties(source/engine/Stretch.cpp "${rubberband_SOURCE_DIR}/single/RubberBandSingle.cpp"
+                                PROPERTIES COMPILE_OPTIONS "/W0")
 else()
-    set_source_files_properties(source/engine/Stretch.cpp PROPERTIES COMPILE_OPTIONS "-w")
+    set_source_files_properties(source/engine/Stretch.cpp "${rubberband_SOURCE_DIR}/single/RubberBandSingle.cpp"
+                                PROPERTIES COMPILE_OPTIONS "-w")
 endif()
 
 # Whoever links PR7SCore sees the JUCE modules' headers and settings too.

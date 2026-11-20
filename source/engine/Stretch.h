@@ -13,8 +13,12 @@ namespace pr7s
     // (0.187.0) `mode`: 0 CLEAN (Signalsmith's default), 1 VOICE (its formants kept as well), 2 LIGHT (its
     // cheaper preset), 3 TAPE (no stretcher: the sound resampled, so its pitch follows the speed; `semitones`
     // is ignored then).
+    // (0.188.0) 4 RUBBER BAND: Rubber Band Library's R3 ("finer") engine, offline (the whole sound studied
+    // first), its pitch kept; `semitones` moves it with its formants kept.
     juce::AudioBuffer<float> stretchAudio (const juce::AudioBuffer<float>& input, double sampleRate, int outputLength, double semitones,
                                            int mode = 0);
+    // RUBBER BAND alone (mode 4 of stretchAudio).
+    juce::AudioBuffer<float> rubberBandStretch (const juce::AudioBuffer<float>& input, double sampleRate, int outputLength, double semitones);
     // TAPE: the input read faster or slower to fill `outputLength` (cubic interpolation).
     juce::AudioBuffer<float> resampleAudio (const juce::AudioBuffer<float>& input, int outputLength);
     // (0.34.0, VariAudio) The sound at its own length, its pitch moved moment by moment by

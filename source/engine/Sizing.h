@@ -13,12 +13,13 @@ namespace pr7s
     const char* sizingName (Sizing);   // "NORMAL SIZING", "SIZING MOVES CONTENTS", "SIZING APPLIES TIME STRETCH"
     Sizing nextSizing (Sizing);         // normal -> moves contents -> time stretch -> normal (1 pressed again)
 
-    // How a warped clip's audio is stretched (`Part::stretchMode`; our own names and engine: Signalsmith
-    // Stretch, an open one, so not the sound of any other program's).
+    // How a warped clip's audio is stretched (`Part::stretchMode`; our own names; engines: Signalsmith
+    // Stretch and (0.188.0) Rubber Band Library, both open ones, so not the sound of any other program's).
+    // Saved by number: only append.
     namespace StretchModes
     {
-        constexpr int clean = 0, voice = 1, light = 2, tape = 3, count = 4;
-        const char* name (int mode);          // "CLEAN", "VOICE", "LIGHT", "TAPE"
+        constexpr int clean = 0, voice = 1, light = 2, tape = 3, rubberBand = 4, count = 5;
+        const char* name (int mode);          // "CLEAN", "VOICE", "LIGHT", "TAPE", "RUBBER BAND"
         const char* description (int mode);   // a line for the menu
     }
 

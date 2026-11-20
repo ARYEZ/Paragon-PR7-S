@@ -58,6 +58,7 @@ add_executable(ParagonPR7STests
     RenderKeyTests.cpp
     WarpTests.cpp
     SizingTests.cpp
+    RubberBandTests.cpp
     AlignTests.cpp
     VariAudioTests.cpp
     VariAudio2Tests.cpp

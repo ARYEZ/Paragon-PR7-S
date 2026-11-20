@@ -11,3 +11,9 @@ It's built in stages, a release at a time. The first stage was MIDI recording wi
 GNU AGPLv3 (see [LICENSE.md](LICENSE.md)), as required by JUCE's open-source license.
 
 On Windows the studio supports ASIO, built with Steinberg's ASIO SDK under its GPLv3 licence (the build downloads the SDK; it isn't in this repository). ASIO is a trademark and software of Steinberg Media Technologies GmbH.
+
+### Code from others, fetched by the build
+
+- [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) (MIT licence), with signalsmith-linear (MIT): time-stretching and pitch-shifting (the MediaBay's previews, clip stretching, VariAudio).
+- [Rubber Band Library](https://github.com/breakfastquay/rubberband) by Particular Programs Ltd. (GPL v2 or later, used here under GPL v3 with the studio's AGPLv3): the RUBBER BAND time-stretch algorithm for audio clips.
+- [Catch2](https://github.com/catchorg/Catch2) (Boost Software Licence): the tests only.

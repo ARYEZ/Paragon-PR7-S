@@ -1,8 +1,11 @@
 #include "Stretch.h"
 
 #include "signalsmith-stretch/signalsmith-stretch.h"
+#include "rubberband/RubberBandStretcher.h"
 
+#include <cmath>
 #include <functional>
+#include <vector>
 
 namespace pr7s
 {
@@ -33,9 +36,85 @@ namespace pr7s
         return output;
     }
 
+    juce::AudioBuffer<float> rubberBandStretch (const juce::AudioBuffer<float>& input, double sampleRate, int outputLength, double semitones)
+    {
+        const auto channels = juce::jmax (1, input.getNumChannels());
+        juce::AudioBuffer<float> output (channels, juce::jmax (0, outputLength));
+        output.clear();
+        const auto length = input.getNumSamples();
+        if (outputLength <= 0 || length <= 0 || input.getNumChannels() == 0)
+            return output;
+        const juce::ScopedNoDenormals noDenormals;
+        using RB = RubberBand::RubberBandStretcher;
+        auto options = RB::OptionProcessOffline | RB::OptionEngineFiner;
+        if (std::abs (semitones) > 1.0e-6)
+            options |= RB::OptionFormantPreserved;
+        RB stretcher ((size_t) juce::jmax (1.0, sampleRate), (size_t) channels, options);
+        stretcher.setTimeRatio ((double) outputLength / (double) length);
+        stretcher.setPitchScale (std::pow (2.0, semitones / 12.0));
+        stretcher.setExpectedInputDuration ((size_t) length);
+        constexpr int block = 4096;
+        stretcher.setMaxProcessSize ((size_t) block);
+
+        // Every channel read from the input (a channel it lacks: its last one).
+        std::vector<const float*> in ((size_t) channels);
+        const auto feed = [&] (int from) {
+            for (int c = 0; c < channels; ++c)
+                in[(size_t) c] = input.getReadPointer (juce::jmin (c, input.getNumChannels() - 1), from);
+        };
+        // Offline: the whole sound studied, then processed; what it gives back is gathered as it comes.
+        for (int done = 0; done < length; done += block)
+        {
+            const auto n = juce::jmin (block, length - done);
+            feed (done);
+            stretcher.study (in.data(), (size_t) n, done + n >= length);
+        }
+        std::vector<float> scratch ((size_t) channels * (size_t) block);
+        std::vector<float*> out ((size_t) channels);
+        int written = 0;
+        const auto take = [&] {
+            for (;;)
+            {
+                const auto ready = stretcher.available();
+                if (ready <= 0)
+                    return;
+                const auto n = juce::jmin (ready, block);
+                for (int c = 0; c < channels; ++c)
+                    out[(size_t) c] = scratch.data() + (size_t) c * (size_t) block;
+                const auto got = (int) stretcher.retrieve (out.data(), (size_t) n);
+                if (got <= 0)
+                    return;
+                const auto kept = juce::jmin (got, outputLength - written);
+                for (int c = 0; c < channels && kept > 0; ++c)
+                    output.copyFrom (c, written, out[(size_t) c], kept);
+                written += juce::jmax (0, kept);
+            }
+        };
+        for (int done = 0; done < length; done += block)
+        {
+            const auto n = juce::jmin (block, length - done);
+            feed (done);
+            stretcher.process (in.data(), (size_t) n, done + n >= length);
+            take();
+        }
+        take();
+        // (Offline, it gives back the input's length times the ratio, give or take a sample: anything short
+        // stays silent, anything over is left out, so the length is exactly the one asked for.)
+        for (int c = 0; c < channels; ++c)
+        {
+            auto* d = output.getWritePointer (c);
+            for (int i = 0; i < outputLength; ++i)
+                if (! std::isfinite (d[i]))
+                    d[i] = 0.0f;
+        }
+        return output;
+    }
+
     juce::AudioBuffer<float> stretchAudio (const juce::AudioBuffer<float>& input, double sampleRate, int outputLength, double semitones,
                                            int mode)
     {
+        if (mode == 4)
+            return rubberBandStretch (input, sampleRate, outputLength, semitones);
         if (mode == 3)
             return resampleAudio (input, outputLength);
         const auto channels = juce::jmax (1, input.getNumChannels());
