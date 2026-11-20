@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.181.0
+
+Fourteen new verse types from the 25 song files you uploaded, the first of the releases for them (then choruses, pre-choruses, bridges and breakdowns, intros and outros, and the transitions and smaller options). As always they're read for their shapes only: no song is copied, and the names are ours. Pick them under TYPE on a verse block (they're also under the pre-chorus's list, which takes every verse type).
+
+- **POWER CHORD PAIRS, MUTED OCTAVES IN THE GAPS:** low power chords struck in pairs (a half step over the root, then the root), muted high octave notes in the gaps, every second bar ending on a chromatic octave run. Drums: a kick on 1, the and of 1, the a of 2 and 3 with a crash on every kick and snare answers off the sixteenths, or the same kick under a plain backbeat.
+- **OCTAVE LINE THROUGH DEAD STRUMS:** an unbroken sixteenth stream, an octave note of a line round the root and then a dead strum of the whole chord, in turn (or the octave line alone in eighths). The bass walks its own line down to the fifth in eighths.
+- **BASS HOLDS, LEAD EIGHTHS, SNARE ON THE ONE:** the guitars out (or one chord let ring); the bass holds the root and its fifth two and a half beats, then drops a half step. A high line in the keys, quarters from the and of 2 in the first half, eighths in the second. The backbeat turned round: the snare only on 1, then from halfway snare sixteenths on 1 and the hat pedal on the eighths.
+- **ONE-STAB CALL OVER A SINGLE-NOTE RIFF:** bars in pairs, a single-note riff then root-and-fifth dyads on the quarters, a second guitar calling with one chord on 1 and a push on the last sixteenth every two bars. Four on the floor, a crash on beat 4 of every second bar.
+- **HIGH STACCATO CHORD EIGHTHS, KICK ON ONE AND THREE:** short high triads opened out over the octave on every eighth (or only the off-beats), the bass out, a stepwise line in the keys, the kick on 1 and 3 and no snare.
+- **LOW ROOT EVERY THIRD EIGHTH, HALF TIME:** single-note eighths, the low root every third one so the cycle runs across the bar line (3+3+3+3+3+1 over two bars), the bass doubling it, a half-time kit with the kick on the dotted quarters and the hat pedal.
+- **CLEAN RIFF, HELD BASS, GHOSTED HIP-HOP BEAT:** a soft two-bar sixteenth figure of the chord's notes, the bass on 1 and the and of 2, a hip-hop beat with ghost snares (or on the ride without them).
+- **TWO CHORDS, TWO OPEN PEDALS:** sixteenths in cells of four, the chord twice and the key's open low root twice; the chords move, the pedal stays. The bass on the chords' roots in eighths, or the key's root held.
+- **DOTTED CHORDS, SNARE ON TWO, THREE-E AND FOUR-A:** power chords on the dotted eighths (the root, a whole step up, a minor third up, the root), root sixteenths to end the bar, a second guitar's flat-six dyad answering every second bar. The kick with the chords, the snare on 2, the e of 3 and the a of 4.
+- **CLEAN TWO-NOTE SIXTEENTHS OVER A BASS RIFF:** a clean guitar rocking the chord's third and its root an octave up, while the bass holds the root and then plays five short notes. Closed hats on every sixteenth with an open one on the a of 2.
+- **HIGH OPEN-PEDAL RIFF OVER A SIXTEENTH ROOT:** the low root three sixteenths, then high chord notes on the eighths, a second guitar's low root on every sixteenth under it. The kick on 1 and its e only, the snare on every and.
+- **KICK AND HAT EIGHTHS, BASS ALONE:** the guitars out (or in from halfway on eighths), the bass's sixteenth riff stepping down to the flat seven and the sixth, the kick and hats on every eighth and no snare.
+- **CLIPPED EIGHTH CHORDS UNDER A SINGLE-NOTE LINE:** power chords an eighth on and an eighth off, a whole step up every second bar, a second guitar's single-note line over them. Kick runs of four sixteenths on 1 and 3.
+- **FIVE PICKS AND A GAP:** five sixteenths picked and one left out, the cell of six running across the bar line (the song had it in a triplet feel; written here in straight sixteenths, in 4/4). The bass on the first of each five, the kick on the cell, the snare on 2 and 3.
+
+Where a second guitar plays, its notes go on the lane's second track when it has two. Not checked here: how they sound (listening is yours).
+
 ## 0.180.0
 
 The options window plays what you highlight, and the arrow keys move through it (you asked).
