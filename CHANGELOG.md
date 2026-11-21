@@ -6,12 +6,12 @@ Each version's notes appear on its GitHub Release page.
 
 **ARCHITECT finds a lane's tracks by the words in their names** (the owner: the guitar lane, set to "Rhythm", played only on RHYTHM GUITAR LEFT, never RHYTHM GUITAR RIGHT).
 
-- **What was wrong:** a lane's track names (HUB > COMPOSER TRACKS) had to match a track's whole name exactly. "Rhythm" didn't match "Rhythm Guitar Left" or "Rhythm Guitar Right". With nothing found, the lane fell back to the track you had selected, which happened to be RHYTHM GUITAR LEFT.
+- **What was wrong:** a lane's track names (HUB > ARCHITECT TRACKS) had to match a track's whole name exactly. "Rhythm" didn't match "Rhythm Guitar Left" or "Rhythm Guitar Right". With nothing found, the lane fell back to the track you had selected, which happened to be RHYTHM GUITAR LEFT.
 - **Now:** a name also finds every track whose name contains all of its words, in any case. "Rhythm" finds RHYTHM GUITAR LEFT and RHYTHM GUITAR RIGHT; the usual "Guitar" finds them too.
 - **Whole words only:** "Rhythm" doesn't find "Rhythmic Pad". A name of two words needs both.
 - **Ties are left alone:** a track another lane's names fit as well stays that lane's. LEAD GUITAR stays the lead's and CLEAN GUITAR the clean guitar's, even though both have "Guitar" in them.
 - **An exact name still comes first.**
-- **To send one lane to both tracks, tick EVERY MATCHING TRACK** for it on the Hub's COMPOSER TRACKS page. Untick it and the lane plays on the first one only (the higher one in the track list).
+- **To send one lane to both tracks, tick EVERY MATCHING TRACK** for it on the Hub's ARCHITECT TRACKS page. Untick it and the lane plays on the first one only (the higher one in the track list).
 
 ## 0.191.0
 
