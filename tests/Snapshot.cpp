@@ -744,6 +744,23 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
                 if (! t.isChannel() && &t != &studio.getProject().tracks.back())
                     page.setChannelChosen (t.id, true);
         }
+        // (0.200.0) PARAGON_SNAPSHOT_EXPORT=flac: FLAC's options; =mp3: MP3's, the ID3 tag filled in.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EXPORT", {}) == "flac")
+            page.setFileType (Windows::ExportPage::FileType::flac);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EXPORT", {}) == "mp3")
+        {
+            page.setFileType (Windows::ExportPage::FileType::mp3);
+            pr7s::Mp3Settings m;
+            m.id3 = true;
+            m.title = "Demo Song";
+            m.artist = "Paragon";
+            m.album = "Demos";
+            m.year = "2026";
+            m.genre = "Metal";
+            m.track = "1";
+            m.comment = "Mixed in Paragon PR7-S";
+            page.setMp3Settings (m);
+        }
         const auto pageImage = page.createComponentSnapshot (page.getLocalBounds(), true, scale);
         juce::Graphics g (image);
         g.fillAll (juce::Colours::black.withAlpha (0.45f));

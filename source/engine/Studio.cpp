@@ -9759,12 +9759,24 @@ namespace pr7s
         const auto rate = options.sampleRate > 0.0 ? options.sampleRate : job->previousRate;
         if (stream != nullptr)
         {
-            const auto bits = options.bitsPerSample == 16 ? 16 : options.bitsPerSample == 32 ? 32 : 24;
-            job->writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
-                                                                                                        .withNumChannels (options.mono ? 1 : 2)
-                                                                                                        .withBitsPerSample (bits)
-                                                                                                        .withSampleFormat (bits == 32 ? juce::AudioFormatWriterOptions::SampleFormat::floatingPoint
-                                                                                                                                      : juce::AudioFormatWriterOptions::SampleFormat::integral));
+            using Type = ExportOptions::FileType;
+            const auto channels = options.mono ? 1 : 2;
+            if (options.fileType == Type::mp3)   // (0.200.0) LAME: floats in, the bit rate and tags as chosen
+                job->writer = makeMp3Writer (stream, rate, channels, options.mp3);
+            else if (options.fileType == Type::flac)   // (0.200.0) FLAC is whole numbers: 16 or 24-bit (32-bit float asked: 24)
+                job->writer = juce::FlacAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
+                                                                                                             .withNumChannels (channels)
+                                                                                                             .withBitsPerSample (options.bitsPerSample == 16 ? 16 : 24)
+                                                                                                             .withQualityOptionIndex (juce::jlimit (0, 8, options.flacCompression)));
+            else
+            {
+                const auto bits = options.bitsPerSample == 16 ? 16 : options.bitsPerSample == 32 ? 32 : 24;
+                job->writer = juce::WavAudioFormat().createWriterFor (stream, juce::AudioFormatWriterOptions{}.withSampleRate (rate)
+                                                                                                            .withNumChannels (channels)
+                                                                                                            .withBitsPerSample (bits)
+                                                                                                            .withSampleFormat (bits == 32 ? juce::AudioFormatWriterOptions::SampleFormat::floatingPoint
+                                                                                                                                          : juce::AudioFormatWriterOptions::SampleFormat::integral));
+            }
         }
         job->mono = options.mono;
         if (job->writer == nullptr)
@@ -10027,9 +10039,10 @@ namespace pr7s
                 if (range.label.isNotEmpty())
                     parts.add (range.label);
                 const auto name = juce::File::createLegalFileName (parts.joinIntoString (" - "));
-                auto file = folder.getChildFile (name + ".wav");
+                const auto extension = batch.options.extension();   // (0.200.0: WAV, FLAC or MP3)
+                auto file = folder.getChildFile (name + extension);
                 for (int number = 2; file.exists(); ++number)
-                    file = folder.getChildFile (name + " " + juce::String (number) + ".wav");   // (the manual's Create Unique File Name)
+                    file = folder.getChildFile (name + " " + juce::String (number) + extension);   // (the manual's Create Unique File Name)
                 auto options = batch.options;
                 options.start = range.start;
                 options.end = range.end;

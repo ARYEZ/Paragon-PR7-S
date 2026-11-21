@@ -110,6 +110,7 @@ add_executable(ParagonPR7STests
     Pr7dLinkTests.cpp
     FolderTests.cpp
     StemExportTests.cpp
+    ExportFormatTests.cpp
     PerformanceTests.cpp
     UiTests.cpp
     Tweaks071Tests.cpp

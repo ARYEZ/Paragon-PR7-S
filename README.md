@@ -16,4 +16,5 @@ On Windows the studio supports ASIO, built with Steinberg's ASIO SDK under its G
 
 - [Signalsmith Stretch](https://github.com/Signalsmith-Audio/signalsmith-stretch) (MIT licence), with signalsmith-linear (MIT): time-stretching and pitch-shifting (the MediaBay's previews, clip stretching, VariAudio).
 - [Rubber Band Library](https://github.com/breakfastquay/rubberband) by Particular Programs Ltd. (GPL v2 or later, used here under GPL v3 with the studio's AGPLv3): the RUBBER BAND time-stretch algorithm for audio clips.
+- [LAME](https://lame.sourceforge.io) 3.100 (LGPL v2 or later): the MP3 encoder for EXPORT's MP3 files (built in; the MP3 patents have expired).
 - [Catch2](https://github.com/catchorg/Catch2) (Boost Software Licence): the tests only.

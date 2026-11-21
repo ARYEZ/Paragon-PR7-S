@@ -145,7 +145,16 @@ namespace Windows
         std::function<void (const pr7s::Studio::ExportBatch&)> onExportBatch;
         std::function<void()> onCancel;
 
+        // (0.200.0, the owner asked, after the manual's File Type) WAVE, FLAC or MP3, each with its own options.
+        enum class FileType { wave = 1, flac, mp3 };
+        void setFileType (FileType);
+        FileType getFileType() const { return (FileType) juce::jlimit (1, 3, fileType.getSelectedId()); }
+        void setMp3Settings (const pr7s::Mp3Settings&);   // (tests) every MP3 field as given
         juce::ComboBox range, rate, bits, channelsMode;
+        juce::ComboBox fileType, flacBits, flacLevel, mp3Rate, mp3BitRate, genre;
+        juce::ToggleButton highQuality { "High-quality mode" };
+        juce::ToggleButton id3 { "Insert an ID3 tag" };
+        juce::TextEditor title, artist, album, year, track, comment;
         juce::ToggleButton click { "Include the click" };
         juce::ToggleButton mono { "Mono (left and right as one channel)" };   // (0.82.6, the owner asked)
         juce::ToggleButton includeMaster { "Include the master's effects, EQ and fader" };
@@ -154,8 +163,12 @@ namespace Windows
     private:
         void keep();
         void refreshLists();
+        void refreshType();   // (0.200.0) the chosen file type's rows shown, the page sized to them
         pr7s::Studio& studio;
         juce::Label rangeLabel, rateLabel, bitsLabel, note, channelsLabel;
+        juce::Label typeLabel, levelLabel, bitRateLabel;
+        juce::Label titleLabel, artistLabel, albumLabel, yearLabel, genreLabel, trackLabel, commentLabel;
+        int listHeight = 0;
         juce::Viewport listView;
         juce::Component listContent;
         std::vector<std::unique_ptr<juce::ToggleButton>> channelBoxes, markerBoxes;

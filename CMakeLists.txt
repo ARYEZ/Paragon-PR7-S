@@ -5,7 +5,7 @@ cmake_minimum_required(VERSION 3.24)
 set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum macOS version")
 set(CMAKE_OSX_ARCHITECTURES "arm64;x86_64" CACHE STRING "macOS architectures")
 
-project(ParagonPR7S VERSION 0.199.0 LANGUAGES C CXX)
+project(ParagonPR7S VERSION 0.200.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -89,6 +89,7 @@ add_library(PR7SCore STATIC
     source/engine/KeepLoaded.cpp
     source/engine/ProjectLibrary.cpp
     source/engine/Stretch.cpp
+    source/engine/Mp3Writer.cpp
     source/engine/Warp.cpp
     source/engine/Sizing.cpp
     source/engine/BandRecord.cpp
@@ -222,6 +223,30 @@ if(WIN32)
     set_source_files_properties("${rubberband_SOURCE_DIR}/single/RubberBandSingle.cpp"
                                 PROPERTIES COMPILE_DEFINITIONS "NOMINMAX;_USE_MATH_DEFINES")
 endif()
+
+# (0.200.0) LAME's MP3 encoder (LGPL v2 or later): its libmp3lame C sources as a static library of their
+# own, with our config.h (cmake/lame/config.h: plain C, no assembly, no decoder). Their code is
+# theirs: warnings off. Linked into PR7SCore; only engine/Mp3Writer.cpp calls it.
+set(PR7S_LAME_SOURCES VbrTag.c bitstream.c encoder.c fft.c gain_analysis.c id3tag.c lame.c newmdct.c
+    presets.c psymodel.c quantize.c quantize_pvt.c reservoir.c set_get.c tables.c takehiro.c util.c
+    vbrquantize.c version.c)
+list(TRANSFORM PR7S_LAME_SOURCES PREPEND "${lame_SOURCE_DIR}/libmp3lame/")
+add_library(pr7s_lame STATIC ${PR7S_LAME_SOURCES})
+target_include_directories(pr7s_lame
+    PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/cmake/lame" "${lame_SOURCE_DIR}/libmp3lame"
+    PUBLIC  "${lame_SOURCE_DIR}/include")
+target_compile_definitions(pr7s_lame PRIVATE HAVE_CONFIG_H NDEBUG)
+if(MSVC)
+    target_compile_options(pr7s_lame PRIVATE /W0)
+    target_compile_definitions(pr7s_lame PRIVATE _CRT_SECURE_NO_WARNINGS WIN32_LEAN_AND_MEAN)
+else()
+    target_compile_options(pr7s_lame PRIVATE -w)
+endif()
+set_target_properties(pr7s_lame PROPERTIES POSITION_INDEPENDENT_CODE TRUE C_VISIBILITY_PRESET hidden)
+if(UNIX AND NOT APPLE)
+    target_link_libraries(pr7s_lame PUBLIC m)
+endif()
+target_link_libraries(PR7SCore PRIVATE pr7s_lame)
 
 # Whoever links PR7SCore sees the JUCE modules' headers and settings too.
 target_include_directories(PR7SCore INTERFACE $<TARGET_PROPERTY:PR7SCore,INCLUDE_DIRECTORIES>)

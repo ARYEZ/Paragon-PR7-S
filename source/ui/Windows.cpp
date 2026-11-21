@@ -317,6 +317,76 @@ namespace Windows
         const auto keptBits = settings != nullptr ? settings->getIntValue ("exportBits", 24) : 24;
         bits.setSelectedId (keptBits == 16 || keptBits == 32 ? keptBits : 24, juce::dontSendNotification);
 
+        // (0.200.0, the owner asked, after the manual's File Type) WAVE, FLAC, MP3: each one's own options.
+        for (auto* label : { &typeLabel, &levelLabel, &bitRateLabel, &titleLabel, &artistLabel, &albumLabel, &yearLabel,
+                             &genreLabel, &trackLabel, &commentLabel })
+        {
+            label->setFont (font (13.0f));
+            label->setColour (juce::Label::textColourId, ParagonColours::textDim);
+            addChildComponent (*label);
+        }
+        typeLabel.setText ("FILE TYPE", juce::dontSendNotification);
+        levelLabel.setText ("COMPRESSION", juce::dontSendNotification);
+        bitRateLabel.setText ("BIT RATE", juce::dontSendNotification);
+        titleLabel.setText ("TITLE", juce::dontSendNotification);
+        artistLabel.setText ("ARTIST", juce::dontSendNotification);
+        albumLabel.setText ("ALBUM", juce::dontSendNotification);
+        yearLabel.setText ("YEAR", juce::dontSendNotification);
+        genreLabel.setText ("GENRE", juce::dontSendNotification);
+        trackLabel.setText ("TRACK", juce::dontSendNotification);
+        commentLabel.setText ("COMMENT", juce::dontSendNotification);
+        typeLabel.setVisible (true);
+        fileType.addItem ("WAVE (.wav): as it is, nothing taken away (the biggest)", 1);
+        fileType.addItem ("FLAC (.flac): lossless, about half a WAV's size", 2);
+        fileType.addItem ("MP3 (.mp3): small, for sending and listening", 3);
+        fileType.setSelectedId (settings != nullptr ? juce::jlimit (1, 3, settings->getIntValue ("exportType", 1)) : 1, juce::dontSendNotification);
+        fileType.onChange = [this] { refreshType(); };
+        addAndMakeVisible (fileType);
+        flacBits.addItem ("24-bit (for mastering)", 24);
+        flacBits.addItem ("16-bit (CD quality, smaller)", 16);
+        const auto keptFlacBits = settings != nullptr ? settings->getIntValue ("exportFlacBits", 24) : 24;
+        flacBits.setSelectedId (keptFlacBits == 16 ? 16 : 24, juce::dontSendNotification);
+        for (int level = 0; level <= 8; ++level)
+            flacLevel.addItem (juce::String (level) + (level == 0 ? " (the fastest)" : level == 5 ? " (the usual)" : level == 8 ? " (the smallest: a little smaller, slower)" : ""),
+                               level + 1);
+        flacLevel.setSelectedId ((settings != nullptr ? juce::jlimit (0, 8, settings->getIntValue ("exportFlacLevel", 5)) : 5) + 1, juce::dontSendNotification);
+        mp3Rate.addItem ("As the export (" + kHz (interfaceRate) + ", if MP3 can hold it)", 1);
+        for (int i = 0; i < (int) pr7s::mp3SampleRates().size(); ++i)
+            mp3Rate.addItem (kHz (pr7s::mp3SampleRates()[(size_t) i]), i + 2);
+        for (const auto kbps : pr7s::mp3BitRates())
+            mp3BitRate.addItem (juce::String (kbps) + " kbps" + (kbps == 320 ? "  (the best: for sending a mix)" : kbps == 256 ? "  (very good)"
+                                                             : kbps == 192 ? "  (good, smaller)" : kbps == 128 ? "  (good enough for stereo)"
+                                                             : kbps <= 64 ? "  (speech, demos)" : ""),
+                                kbps);
+        genre.setEditableText (true);
+        genre.addItem ("(none)", 1);
+        for (const auto& name : pr7s::mp3Genres())
+            genre.addItem (name, genre.getNumItems() + 1);
+        for (auto* editor : { &title, &artist, &album, &year, &track, &comment })
+        {
+            editor->setFont (font (15.0f, juce::Font::plain));
+            addChildComponent (*editor);
+        }
+        year.setInputRestrictions (4, "0123456789");
+        track.setInputRestrictions (7, "0123456789/");
+        for (auto* toggle : { &highQuality, &id3 })
+        {
+            toggle->setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+            toggle->setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+            addChildComponent (*toggle);
+        }
+        highQuality.setTooltip ("The encoder's slower, more careful pass; it picks the sample rate itself for the bit rate.");
+        id3.setTooltip ("The song's name, artist, album... written into the file, for players and phones to show.");
+        highQuality.onClick = [this] { mp3Rate.setEnabled (! highQuality.getToggleState()); };
+        id3.onClick = [this] { refreshType(); };
+        for (auto* box : { &flacBits, &flacLevel, &mp3Rate, &mp3BitRate, &genre })
+            addChildComponent (*box);
+        auto kept = settings != nullptr ? pr7s::Mp3Settings::fromString (settings->getValue ("exportMp3")) : pr7s::Mp3Settings {};
+        // The title is the song's (a new song each time); the rest as last time. The track number isn't kept.
+        kept.title = studio.getFile() != juce::File() ? studio.getFile().getFileNameWithoutExtension() : juce::String();
+        kept.track = {};
+        setMp3Settings (kept);
+
         click.setColour (juce::ToggleButton::textColourId, ParagonColours::text);
         click.setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
         addAndMakeVisible (click);
@@ -328,9 +398,10 @@ namespace Windows
         for (auto* box : { &range, &rate, &bits })
             addAndMakeVisible (*box);
 
-        note.setText ("Everything you hear (every track through its effects, then the master) as a stereo WAV (or mono), written faster "
+        note.setText ("Everything you hear (every track through its effects, then the master) as a stereo file (or mono), written faster "
                       "than it plays. The whole song rings out after its end until reverbs and delays die away; the cycle "
-                      "stops at its end. Channels: each one's own sound (its effects and fader) a file each, into a folder you choose.",
+                      "stops at its end. Channels: each one's own sound (its effects and fader) a file each, into a folder you choose. "
+                      "To send a mix: MP3 at 320 kbps (a 6-minute song about 14 MB) or FLAC (lossless, about half a WAV).",
                       juce::dontSendNotification);
         note.setFont (font (13.0f, juce::Font::plain));
         note.setColour (juce::Label::textColourId, ParagonColours::textDim);
@@ -414,10 +485,69 @@ namespace Windows
             place (*box, markers);
         listContent.setSize (580, y);
         listView.setVisible (y > 0);
-        const auto listHeight = y > 0 ? juce::jmin (240, y + 4) : 0;
-        setSize (620, 318 + (channels ? 34 : 0) + (listHeight > 0 ? listHeight + 10 : 0));
+        listHeight = y > 0 ? juce::jmin (240, y + 4) : 0;
+        refreshType();
+    }
+
+    void ExportPage::refreshType()
+    {
+        // (0.200.0) Only the chosen type's rows: WAVE its rate and bits, FLAC its bits and compression,
+        // MP3 its sample rate, bit rate, the two switches and (the tag on) the tag's fields.
+        const auto type = getFileType();
+        const auto wave = type == FileType::wave, flac = type == FileType::flac, mp3 = type == FileType::mp3;
+        rate.setVisible (! mp3);
+        bits.setVisible (wave);
+        flacBits.setVisible (flac);
+        bitsLabel.setVisible (! mp3);
+        levelLabel.setVisible (flac);
+        flacLevel.setVisible (flac);
+        mp3Rate.setVisible (mp3);
+        mp3Rate.setEnabled (! highQuality.getToggleState());
+        bitRateLabel.setVisible (mp3);
+        mp3BitRate.setVisible (mp3);
+        highQuality.setVisible (mp3);
+        id3.setVisible (mp3);
+        const auto tags = mp3 && id3.getToggleState();
+        for (juce::Component* c : { (juce::Component*) &title, (juce::Component*) &artist, (juce::Component*) &album, (juce::Component*) &year,
+                                    (juce::Component*) &genre, (juce::Component*) &track, (juce::Component*) &comment,
+                                    (juce::Component*) &titleLabel, (juce::Component*) &artistLabel, (juce::Component*) &albumLabel,
+                                    (juce::Component*) &yearLabel, (juce::Component*) &genreLabel, (juce::Component*) &trackLabel,
+                                    (juce::Component*) &commentLabel })
+            c->setVisible (tags);
+        const auto channels = isChannelsMode();
+        const auto rows = (flac ? 1 : 0) + (mp3 ? 1 : 0) + (tags ? 4 : 0);   // over WAVE's
+        setSize (640, 372 + rows * 38 + (channels ? 34 : 0) + (listHeight > 0 ? listHeight + 10 : 0));
         exportButton.setEnabled (canExport());
         resized();
+    }
+
+    void ExportPage::setFileType (FileType type)
+    {
+        fileType.setSelectedId ((int) type, juce::dontSendNotification);
+        refreshType();
+    }
+
+    void ExportPage::setMp3Settings (const pr7s::Mp3Settings& m)
+    {
+        mp3BitRate.setSelectedId (m.bitRate, juce::dontSendNotification);
+        auto rateId = 1;
+        for (int i = 0; i < (int) pr7s::mp3SampleRates().size(); ++i)
+            if (pr7s::mp3SampleRates()[(size_t) i] == m.sampleRate)
+                rateId = i + 2;
+        mp3Rate.setSelectedId (rateId, juce::dontSendNotification);
+        highQuality.setToggleState (m.highQuality, juce::dontSendNotification);
+        id3.setToggleState (m.id3, juce::dontSendNotification);
+        title.setText (m.title, false);
+        artist.setText (m.artist, false);
+        album.setText (m.album, false);
+        year.setText (m.year, false);
+        track.setText (m.track, false);
+        comment.setText (m.comment, false);
+        if (m.genre.isEmpty())
+            genre.setSelectedId (1, juce::dontSendNotification);
+        else
+            genre.setText (m.genre, juce::dontSendNotification);
+        refreshType();
     }
 
     pr7s::Studio::ExportBatch ExportPage::getBatch() const
@@ -459,6 +589,27 @@ namespace Windows
         options.click = click.getToggleState();
         options.mono = mono.getToggleState();
         options.tailSeconds = range.getSelectedId() == 1 ? 30.0 : 0.0;   // the cycle, cycle markers: none (as the manual's locator export)
+        // (0.200.0) The file type and its own options.
+        using Type = pr7s::Studio::ExportOptions::FileType;
+        const auto type = getFileType();
+        options.fileType = type == FileType::flac ? Type::flac : type == FileType::mp3 ? Type::mp3 : Type::wave;
+        if (type == FileType::flac)
+            options.bitsPerSample = flacBits.getSelectedId() == 16 ? 16 : 24;
+        options.flacCompression = juce::jlimit (0, 8, flacLevel.getSelectedId() - 1);
+        if (type == FileType::mp3)
+            options.sampleRate = 0.0;   // rendered at the interface's rate: the encoder resamples to the MP3's
+        auto& m = options.mp3;
+        m.bitRate = mp3BitRate.getSelectedId() > 0 ? mp3BitRate.getSelectedId() : 320;
+        m.sampleRate = mp3Rate.getSelectedId() >= 2 ? pr7s::mp3SampleRates()[(size_t) (mp3Rate.getSelectedId() - 2)] : 0;
+        m.highQuality = highQuality.getToggleState();
+        m.id3 = id3.getToggleState();
+        m.title = title.getText().trim();
+        m.artist = artist.getText().trim();
+        m.album = album.getText().trim();
+        m.year = year.getText().trim();
+        m.genre = genre.getSelectedId() == 1 ? juce::String() : genre.getText().trim();
+        m.track = track.getText().trim();
+        m.comment = comment.getText().trim();
         return options;
     }
 
@@ -487,6 +638,11 @@ namespace Windows
             settings->setValue ("exportRate", rate.getSelectedId());
             settings->setValue ("exportBits", bits.getSelectedId());
             settings->setValue ("exportMono", mono.getToggleState());
+            // (0.200.0)
+            settings->setValue ("exportType", fileType.getSelectedId());
+            settings->setValue ("exportFlacBits", flacBits.getSelectedId());
+            settings->setValue ("exportFlacLevel", flacLevel.getSelectedId() - 1);
+            settings->setValue ("exportMp3", getOptions().mp3.toString());
             settings->saveIfNeeded();
         }
     }
@@ -502,8 +658,41 @@ namespace Windows
         };
         labelled (row (28), channelsLabel, channelsMode);
         labelled (row (28), rangeLabel, range);
-        labelled (row (28), rateLabel, rate);
-        labelled (row (28), bitsLabel, bits);
+        labelled (row (28), typeLabel, fileType);
+        const auto type = getFileType();
+        if (type == FileType::mp3)
+        {
+            labelled (row (28), rateLabel, mp3Rate);
+            labelled (row (28), bitRateLabel, mp3BitRate);
+            {
+                auto r = row (24).withTrimmedLeft (106);
+                highQuality.setBounds (r.removeFromLeft (r.getWidth() / 2));
+                id3.setBounds (r);
+            }
+            if (id3.getToggleState())
+            {
+                // The tag's fields, two to a row: TITLE ARTIST, ALBUM YEAR, GENRE TRACK, then COMMENT across.
+                const auto pair = [&] (juce::Label& la, juce::Component& a, juce::Label& lb, juce::Component& b, int bWidth)
+                {
+                    auto r = row (28);
+                    auto right = r.removeFromRight (bWidth + 70);
+                    labelled (r.withTrimmedRight (12), la, a);
+                    lb.setBounds (right.removeFromLeft (70));
+                    b.setBounds (right);
+                };
+                pair (titleLabel, title, artistLabel, artist, 180);
+                pair (albumLabel, album, yearLabel, year, 180);
+                pair (genreLabel, genre, trackLabel, track, 180);
+                labelled (row (28), commentLabel, comment);
+            }
+        }
+        else
+        {
+            labelled (row (28), rateLabel, rate);
+            labelled (row (28), bitsLabel, type == FileType::flac ? (juce::Component&) flacBits : (juce::Component&) bits);
+            if (type == FileType::flac)
+                labelled (row (28), levelLabel, flacLevel);
+        }
         {
             auto r = row (24).withTrimmedLeft (106);
             click.setBounds (r.removeFromLeft (r.getWidth() / 2));
@@ -519,7 +708,7 @@ namespace Windows
         }
         if (listView.isVisible())
             listView.setBounds (row (juce::jmin (240, listContent.getHeight() + 4)));
-        note.setBounds (row (52));
+        note.setBounds (row (68));
         auto buttons = area.removeFromBottom (32);
         cancelButton.setBounds (buttons.removeFromRight (96));
         buttons.removeFromRight (8);

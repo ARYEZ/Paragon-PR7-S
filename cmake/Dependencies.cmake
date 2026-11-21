@@ -36,3 +36,16 @@ FetchContent_Declare(rubberband
     SOURCE_SUBDIR  no-cmake-here)
 
 FetchContent_MakeAvailable(rubberband)
+
+# LAME (LGPL v2 or later): the MP3 encoder. 0.200.0, the owner asked ("build LAME in"): EXPORT
+# writes MP3 files. Only libmp3lame's C sources are compiled (CMakeLists.txt: the pr7s_lame
+# library, with our own config.h in cmake/lame/: no assembly, no decoder); the tarball has no
+# CMakeLists of its own, so only its files are fetched. (github's mirror isn't reachable from
+# every machine; SourceForge's is LAME's own download.)
+FetchContent_Declare(lame
+    URL            https://downloads.sourceforge.net/project/lame/lame/3.100/lame-3.100.tar.gz
+    URL_HASH       SHA256=ddfe36cab873794038ae2c1210557ad34857a4b6bdc515785d1da9e175b1da1e
+    DOWNLOAD_EXTRACT_TIMESTAMP TRUE
+    SOURCE_SUBDIR  no-cmake-here)
+
+FetchContent_MakeAvailable(lame)

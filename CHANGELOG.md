@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.200.0
+
+EXPORT writes FLAC and MP3 now, not only WAV (you asked: a 6-minute WAV was over a 30 MB upload limit). The export page has a **FILE TYPE** box, and each type shows its own options, laid out after the reference DAW's Export Audio Mixdown file formats.
+
+**WAVE (.wav):** as before: 16-bit, 24-bit or 32-bit float, nothing taken away. The biggest files (a 6-minute stereo mix at 24-bit / 48 kHz is about 100 MB).
+
+**FLAC (.flac):** lossless: the file plays back exactly what a WAV of the same bit depth holds, sample for sample, but usually about half the size (it depends on the music: a dense metal mix shrinks less than a quiet one).
+- **BITS:** 24-bit (for mastering) or 16-bit (CD quality). FLAC holds whole numbers only, so there's no 32-bit float: asked for, it writes 24-bit.
+- **COMPRESSION:** 0 (the fastest) to 8 (the smallest). Since FLAC is lossless the sound is the same at every level; a higher one only takes a little longer and makes the file a few percent smaller. 5 is the usual.
+- **SAMPLE RATE:** as for WAV.
+
+**MP3 (.mp3):** small files for sending and listening, made by the LAME encoder, now built into the studio.
+- **BIT RATE:** 8 to 320 kbps (constant). Higher sounds better and makes a bigger file. **To send a mix, use 320 kbps:** a 6-minute song is about 14 MB. 192 or 256 kbps are good and smaller; 128 kbps is fine for a rough listen; 64 and under are for speech and demos.
+- **SAMPLE RATE:** 8 kHz to 48 kHz, or as the export (if MP3 can hold it). The mix is rendered at the interface's rate and the encoder converts it.
+- **HIGH-QUALITY MODE:** the encoder takes a slower, more careful pass, and picks the sample rate itself for the bit rate (so the sample rate box goes grey, as the reference's does). On by default.
+- **INSERT AN ID3 TAG:** the song's name and more written into the file, so players and phones show them: TITLE (the song's name to start with), ARTIST, ALBUM, YEAR, GENRE (the standard list, or type your own), TRACK and COMMENT. Written both ways players read them (ID3 version 2 at the start, version 1 at the end).
+- Every MP3 also carries the encoder's information frame, so players show the right length and can play it without a gap at the start.
+
+**For all three:** MONO still makes one channel (left and right averaged), and channel exports (stems, a file each) and cycle-marker exports use the chosen type and its extension. Your choices are kept for next time, except the MP3 title (it starts as the song's name) and the track number. The file chooser names the file with the right extension.
+
+**Credit:** MP3 encoding by LAME 3.100 (lame.sourceforge.io, LGPL v2 or later), compiled into the studio from its own source (the MP3 patents have expired). FLAC by the encoder that comes with JUCE.
+
 ## 0.199.0
 
 The last release of round seven, from the owner's 70 song files (read for their shapes only; the names and descriptions are ours): ten new transitions, ten more drum options shared under every section type, a keys part shared the same way, and a new guitar option for DRONING. All in 4/4.

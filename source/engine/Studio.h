@@ -32,6 +32,7 @@
 #include "SoloEngine.h"
 #include "Blueprints.h"
 #include "OptionFeel.h"
+#include "Mp3Writer.h"
 
 #include <optional>
 #include <mutex>
@@ -62,6 +63,8 @@ namespace pr7s
         PluginHost& getPluginHost() noexcept { return *host; }
         juce::AudioDeviceManager& getDeviceManager() noexcept { return devices; }
         juce::PropertiesFile* getSettings() noexcept { return settings.get(); }
+        // (0.200.0, tests) A settings file of the test's own (a Studio made without devices has none).
+        void setSettingsForTests (std::unique_ptr<juce::PropertiesFile> file) { settings = std::move (file); }
         // How strongly a file dragged in lights where it will land (0.18.2, the owner asked: a
         // setting in the Hub): 0.1 faint to 1 solid; settings key "dropHighlight", default 0.6.
         float getDropHighlight() const;
@@ -1555,6 +1558,14 @@ namespace pr7s
             std::function<void (Project&)> prepareSong;
             int channel = 0;   // (0.51.0) a channel export: only this track or channel reaches the file (0: the mix)
             bool mono = false; // (0.78.0) a one-channel file: the two sides averaged (Render in Place of a mono track)
+            // (0.200.0, the owner asked: the manual's File Type) WAV as before, FLAC (lossless, about half the size;
+            // 16 or 24-bit: a 32-bit float choice is written 24-bit) or MP3 (LAME, constant bit rate).
+            enum class FileType { wave, flac, mp3 };
+            FileType fileType = FileType::wave;
+            int flacCompression = 5;   // FLAC's compression level 0 (fastest) to 8 (smallest): the size barely changes
+            Mp3Settings mp3;
+            static juce::String extensionOf (FileType type) { return type == FileType::flac ? ".flac" : type == FileType::mp3 ? ".mp3" : ".wav"; }
+            juce::String extension() const { return extensionOf (fileType); }
         };
         // (0.51.0, the manual's Export Audio Mixdown: Channel Selection Multiple, Export Range Cycle
         // Markers) Several files in one go: each channel chosen (none: the main mix) over each cycle

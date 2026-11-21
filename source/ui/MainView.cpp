@@ -1878,7 +1878,7 @@ void MainView::exportMix()
     exportPage = page;
     juce::DialogWindow::LaunchOptions options;
     // (0.52.1, the owner asked) Twice the size, or as big as the screen allows (the page at its tallest: ~600 px).
-    options.content.setOwned (new ScaledPage (std::unique_ptr<juce::Component> (page), ScaledPage::scaleFor (*this, page->getWidth(), 610)));
+    options.content.setOwned (new ScaledPage (std::unique_ptr<juce::Component> (page), ScaledPage::scaleFor (*this, page->getWidth(), 760)));
     options.dialogTitle = "Paragon PR7-S: Export the mix";
     options.dialogBackgroundColour = juce::Colour (0xff0c0a0d);
     options.useNativeTitleBar = true;
@@ -2000,9 +2000,11 @@ void MainView::chooseExportFile (const pr7s::Studio::ExportOptions& chosen)
     {
         // Where: beside the song, named after it.
         const auto song = studio.getFile();
-        const auto start = song != juce::File() ? song.withFileExtension (".wav")
-                         : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Mix.wav");
-        chooser = std::make_unique<juce::FileChooser> ("Export the mix", start, "*.wav");
+        // (0.200.0) The extension the file type's: .wav, .flac or .mp3.
+        const auto extension = chosen.extension();
+        const auto start = song != juce::File() ? song.withFileExtension (extension)
+                         : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Mix" + extension);
+        chooser = std::make_unique<juce::FileChooser> ("Export the mix", start, "*" + extension);
         chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
                               [safe = juce::Component::SafePointer<MainView> (this), chosen] (const juce::FileChooser& fc)
                               {
@@ -2012,7 +2014,7 @@ void MainView::chooseExportFile (const pr7s::Studio::ExportOptions& chosen)
                                       juce::MessageManager::callAsync ([safe, chosen, file]
                                       {
                                           if (safe != nullptr)
-                                              safe->writeExport (file.withFileExtension (".wav"), chosen);
+                                              safe->writeExport (file.withFileExtension (chosen.extension()), chosen);
                                       });
                               });
     }
