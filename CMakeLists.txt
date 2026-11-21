@@ -215,6 +215,13 @@ else()
                                 PROPERTIES COMPILE_OPTIONS "-w")
 endif()
 
+# Rubber Band's own Windows build defines these (its meson.build): without NOMINMAX
+# <windows.h>'s min/max macros break its std::min/std::max calls under MSVC.
+if(WIN32)
+    set_source_files_properties("${rubberband_SOURCE_DIR}/single/RubberBandSingle.cpp"
+                                PROPERTIES COMPILE_DEFINITIONS "NOMINMAX;_USE_MATH_DEFINES")
+endif()
+
 # Whoever links PR7SCore sees the JUCE modules' headers and settings too.
 target_include_directories(PR7SCore INTERFACE $<TARGET_PROPERTY:PR7SCore,INCLUDE_DIRECTORIES>)
 target_compile_definitions(PR7SCore INTERFACE $<TARGET_PROPERTY:PR7SCore,COMPILE_DEFINITIONS>)

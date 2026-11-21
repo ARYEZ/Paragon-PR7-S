@@ -10,7 +10,7 @@ A fifth way to stretch audio clips: **RUBBER BAND**. It lets you compare a secon
 - **What it is:** the Rubber Band Library's newer "finer" engine (its R3 engine), an open-source stretcher by Particular Programs. It keeps the pitch, like CLEAN.
 - **How it works:** it reads the whole clip through once before it stretches, so it can plan the stretch with the entire sound in view. Like the other algorithms, it works ahead of time, not while playing, so nothing extra runs on the audio thread.
 - **How long it takes:** in a timing test here, 10 seconds of stereo stretched to 14 seconds took about 1.5 seconds with RUBBER BAND against about 0.25 seconds with CLEAN: roughly six times as long. A long clip may take a moment longer to be ready after you change its stretch.
-- **Saved with the song:** the stamp reads WARP: RUBBER BAND. An older version of the studio opening a song saved with it reads those clips as CLEAN. A song from a later version, with an algorithm this one doesn't know, opens those clips as CLEAN too.
+- **Saved with the song:** the stamp reads WARP: RUBBER BAND. An older version of the studio (0.187.0) opening a song saved with it plays those clips as TAPE (the pitch follows the speed). A song from a later version, with an algorithm this one doesn't know, opens those clips as CLEAN too.
 
 Why the other engine: CLEAN, VOICE and LIGHT all come from one engine, Signalsmith Stretch. Rubber Band is built a different way, so on drums, guitars and big stretches the two can sound noticeably different. Which one sounds better is a matter of ear and material.
 
