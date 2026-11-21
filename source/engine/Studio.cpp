@@ -11453,13 +11453,8 @@ namespace pr7s
 
     int Studio::findIdeaTrack (LineIdea::Part part) const
     {
-        const auto lane = composerTrackLane (part);
-        const auto names = lane >= 0 ? getComposerTracks (part).names : juce::StringArray (linePartName (part));
-        for (const auto& name : names)
-            for (const auto& t : project.tracks)
-                if (t.name.trim().equalsIgnoreCase (name) && canTakeMidi (t.id))
-                    return t.id;
-        return 0;
+        const auto found = findIdeaTracks (part, false);
+        return found.empty() ? 0 : found.front();
     }
 
     //==========================================================================
@@ -11638,26 +11633,96 @@ namespace pr7s
         return names.isEmpty() ? linePartName (part) : names[0];
     }
 
+    namespace
+    {
+        // (0.192.0) The words of a name, lower case ("Rhythm Guitar-Left" -> rhythm, guitar, left).
+        juce::StringArray wordsOf (const juce::String& text)
+        {
+            juce::StringArray words;
+            juce::String word;
+            for (auto c : text.toLowerCase() + " ")
+                if (juce::CharacterFunctions::isLetterOrDigit (c))
+                    word += juce::String::charToString (c);
+                else if (word.isNotEmpty())
+                {
+                    words.add (word);
+                    word.clear();
+                }
+            return words;
+        }
+    }
+
+    int Studio::trackNameScore (const juce::String& trackName, const juce::StringArray& names)
+    {
+        // (0.192.0) How well a track's name fits a lane's names: the whole name (any case) 1000 and up (an earlier name
+        // higher, so the first name's track still comes first); else every word of a name found among the track's
+        // words: that name's word count ("Rhythm" finds "Rhythm Guitar Left" and "Rhythm Guitar Right"); else 0.
+        const auto whole = trackName.trim();
+        const auto trackWords = wordsOf (whole);
+        int best = 0;
+        for (int i = 0; i < names.size(); ++i)
+        {
+            const auto& name = names[i];
+            if (whole.equalsIgnoreCase (name.trim()))
+                return 1000 + names.size() - i;
+            const auto words = wordsOf (name);
+            if (words.isEmpty())
+                continue;
+            bool all = true;
+            for (const auto& w : words)
+                all = all && trackWords.contains (w);
+            if (all)
+                best = juce::jmax (best, words.size());
+        }
+        return best;
+    }
+
     std::vector<int> Studio::findIdeaTracks (LineIdea::Part part) const
     {
-        const auto tracks = getComposerTracks (part);
-        if (! tracks.every)
-        {
-            if (const auto id = findIdeaTrack (part))
-                return { id };
-            return {};
-        }
-        // Every match, in the track list's order (guitar left above guitar right plays as the first).
-        std::vector<int> found;
+        return findIdeaTracks (part, getComposerTracks (part).every);
+    }
+
+    std::vector<int> Studio::findIdeaTracks (LineIdea::Part part, bool every) const
+    {
+        // A track is the lane's when its whole name is one of the lane's names, or (0.192.0) when the words of one of
+        // them are in its name and no other lane's names fit it as well ("Guitar" finds "Rhythm Guitar Left", but
+        // "Lead Guitar" stays the lead's). Whole names first, then the closest; the track list's order between equals
+        // (guitar left above guitar right plays as the first). EVERY: all of them, else the first.
+        const auto lane = composerTrackLane (part);
+        const auto lanes = readComposerTracks();
+        const auto names = lane >= 0 ? lanes[(size_t) lane].names : juce::StringArray (linePartName (part));
+        std::vector<std::pair<int, int>> found;   // (score, track id)
         for (const auto& t : project.tracks)
-            if (canTakeMidi (t.id))
-                for (const auto& name : tracks.names)
-                    if (t.name.trim().equalsIgnoreCase (name))
-                    {
-                        found.push_back (t.id);
-                        break;
-                    }
-        return found;
+        {
+            if (! canTakeMidi (t.id))
+                continue;
+            const auto score = trackNameScore (t.name, names);
+            if (score == 0)
+                continue;
+            bool theirs = score >= 1000;
+            if (! theirs)
+            {
+                theirs = true;
+                for (int other = 0; other < numComposerTrackLanes && theirs; ++other)
+                    if (other != lane && trackNameScore (t.name, lanes[(size_t) other].names) >= score)
+                        theirs = false;
+            }
+            if (theirs)
+                found.push_back ({ score, t.id });
+        }
+        std::stable_sort (found.begin(), found.end(), [] (const auto& a, const auto& b) { return a.first > b.first; });
+        std::vector<int> ids;
+        if (every)
+        {
+            // Every track: kept in the track list's order (left before right), whole names or words alike.
+            for (const auto& t : project.tracks)
+                for (const auto& f : found)
+                    if (f.second == t.id)
+                        ids.push_back (t.id);
+        }
+        else if (! found.empty())
+            ids.push_back (found.front().second);
+        return ids;
     }
 
     LineIdea Studio::doubledCopy (const LineIdea& source, int copy, double originBeat, int copies) const

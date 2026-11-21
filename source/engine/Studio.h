@@ -427,6 +427,8 @@ namespace pr7s
         std::vector<juce::File> getGrooveFolderRoots() const;
         juce::String newIdeaTrackName (LineIdea::Part) const;      // the first name (a new track's)
         std::vector<int> findIdeaTracks (LineIdea::Part) const;    // every match when EVERY, else the first (none: empty)
+        std::vector<int> findIdeaTracks (LineIdea::Part, bool every) const;
+        static int trackNameScore (const juce::String& trackName, const juce::StringArray& names);   // (0.192.0) 1000 whole name, n words found, 0 none
         // The `copy`th copy of an idea (0: itself) for another of its tracks: humanized again when LOOSE COPIES.
         LineIdea doubledCopy (const LineIdea&, int copy, double originBeat, int copies = 1) const;   // (0.129.0) copies: how many tracks the lane is on (a twin lead's harmony onto the second)
         // THE COMPOSER (0.58.0): what its layers are made with (IDEAS' settings; the tempo and bar at `atBeat`).

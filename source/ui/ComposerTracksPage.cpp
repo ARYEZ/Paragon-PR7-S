@@ -22,7 +22,8 @@ ComposerTracksPage::ComposerTracksPage (Studio& s) : studio (s)
         r->name.setColour (juce::Label::textColourId, ParagonColours::text);
         addAndMakeVisible (r->name);
         r->names.setTooltip ("The names of the tracks the " + laneName (i).toLowerCase()
-                             + " lane plays on, separated by commas (upper or lower case alike). The first is what a new one is called.");
+                             + " lane plays on, separated by commas (upper or lower case alike). A name's words found in a track's name count too: "
+                             "RHYTHM finds RHYTHM GUITAR LEFT and RHYTHM GUITAR RIGHT. The first is what a new one is called.");
         r->names.setFont (ParagonLookAndFeel::textFont (16.0f));
         r->names.onReturnKey = [this, r] { setNames (r->lane, r->names.getText()); };
         r->names.onFocusLost = [this, r] { setNames (r->lane, r->names.getText()); };
