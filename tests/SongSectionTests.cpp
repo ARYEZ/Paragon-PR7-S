@@ -9273,7 +9273,8 @@ TEST_CASE ("0.199.0: round seven's shared options and DRONING's pushed chords", 
             auto t = d;
             t.lane (ComposerLayer::guitar).approach = i;
             juce::String k;
-            for (const auto& n : composeLayers (t, spans, c)[(size_t) ComposerLayer::guitar].notes)
+            const auto made = composeLayers (t, spans, c);   // (kept: [] of a temporary is gone before the loop)
+            for (const auto& n : made[(size_t) ComposerLayer::guitar].notes)
                 k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << ";";
             CHECK (parts.insert (k).second);
         }
