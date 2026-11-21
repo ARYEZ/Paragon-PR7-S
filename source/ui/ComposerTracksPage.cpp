@@ -6,7 +6,7 @@ using namespace pr7s;
 
 juce::String ComposerTracksPage::laneName (int lane)
 {
-    static const char* names[] { "BASS", "GUITAR", "LEAD", "CHORDS", "MELODY", "DRUMS", "CLEAN GUITAR" };
+    static const char* names[] { "BASS", "GUITAR", "LEAD", "CHORDS", "MELODY", "DRUMS", "CLEAN GUITAR", "ACOUSTIC GUITAR" };
     return names[juce::jlimit (0, Studio::numComposerTrackLanes - 1, lane)];
 }
 

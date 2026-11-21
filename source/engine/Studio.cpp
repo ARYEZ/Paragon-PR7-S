@@ -11192,6 +11192,7 @@ namespace pr7s
             case LineIdea::Part::rhythm: return "Guitar";
             case LineIdea::Part::lead: return "Lead Guitar";
             case LineIdea::Part::clean: return "Clean Guitar";
+            case LineIdea::Part::acoustic: return "Acoustic Guitar";
             case LineIdea::Part::pattern: return "Pattern";
             case LineIdea::Part::tune: return "Melody";
             case LineIdea::Part::drums:
@@ -11415,7 +11416,7 @@ namespace pr7s
         part.name = name;
         auto range = 2;
         const auto use = idea.part == LineIdea::Part::lead ? ProfileUse::lead
-                       : idea.part == LineIdea::Part::rhythm || idea.part == LineIdea::Part::clean ? ProfileUse::guitar : ProfileUse::bass;
+                       : idea.part == LineIdea::Part::rhythm || idea.part == LineIdea::Part::clean || idea.part == LineIdea::Part::acoustic ? ProfileUse::guitar : ProfileUse::bass;
         auto profile = profileFor (use);
         if (! profile.has_value() && use == ProfileUse::lead)
             profile = profileFor (ProfileUse::guitar);
@@ -11462,7 +11463,8 @@ namespace pr7s
     LineIdea::Part Studio::composerTrackPart (int lane)
     {
         static const LineIdea::Part parts[] { LineIdea::Part::bass, LineIdea::Part::rhythm, LineIdea::Part::lead,
-                                              LineIdea::Part::chords, LineIdea::Part::tune, LineIdea::Part::drums, LineIdea::Part::clean };
+                                              LineIdea::Part::chords, LineIdea::Part::tune, LineIdea::Part::drums, LineIdea::Part::clean,
+                                              LineIdea::Part::acoustic };
         return parts[juce::jlimit (0, numComposerTrackLanes - 1, lane)];
     }
 
@@ -11479,6 +11481,7 @@ namespace pr7s
             case LineIdea::Part::drums:
             case LineIdea::Part::groove: return 5;
             case LineIdea::Part::clean:  return 6;   // (0.114.0: appended, so saved names keep their lanes)
+            case LineIdea::Part::acoustic: return 7;   // (0.193.0)
             case LineIdea::Part::pattern: break;
         }
         return -1;

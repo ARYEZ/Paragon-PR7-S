@@ -15,7 +15,7 @@ namespace pr7s
     {
         static const std::array<ComposerLayer, composerLayerCount> all { ComposerLayer::chords, ComposerLayer::melody, ComposerLayer::bass,
                                                                           ComposerLayer::guitar, ComposerLayer::lead, ComposerLayer::clean,
-                                                                          ComposerLayer::drums };
+                                                                          ComposerLayer::acoustic, ComposerLayer::drums };
         return all;
     }
 
@@ -29,6 +29,7 @@ namespace pr7s
             case ComposerLayer::guitar: return "GUITAR";
             case ComposerLayer::lead: return "LEAD";
             case ComposerLayer::clean: return "CLEAN GUITAR";
+            case ComposerLayer::acoustic: return "ACOUSTIC GUITAR";
             case ComposerLayer::drums: return "DRUMS";
         }
         return {};
@@ -44,6 +45,7 @@ namespace pr7s
             case ComposerLayer::guitar: return LineIdea::Part::rhythm;
             case ComposerLayer::lead: return LineIdea::Part::lead;
             case ComposerLayer::clean: return LineIdea::Part::clean;
+            case ComposerLayer::acoustic: return LineIdea::Part::acoustic;
             case ComposerLayer::drums: return LineIdea::Part::drums;
         }
         return LineIdea::Part::melody;
@@ -54,6 +56,7 @@ namespace pr7s
     {
         lane (ComposerLayer::lead).on = false;
         lane (ComposerLayer::clean).on = false;   // (0.114.0: off until you turn it on, so songs build as before)
+        lane (ComposerLayer::acoustic).on = false;   // (0.193.0: likewise)
         // The bass on the drums' kick to start with (the two as one: the usual way a band locks up).
         lane (ComposerLayer::bass).style = composerStyleCount (ComposerLayer::bass) - 1;
         // The drums' verse.
@@ -70,7 +73,7 @@ namespace pr7s
             lanesText.add (juce::String (l.on ? 1 : 0) + "," + juce::String (l.locked ? 1 : 0) + "," + juce::String (l.style) + "," + juce::String (l.variation)
                            + "," + juce::String (l.busy, 2) + "," + juce::String (l.lowString ? 1 : 0) + "," + juce::String (l.onlyString)
                            + "," + juce::String (l.doubleSync ? 1 : 0) + "," + juce::String (l.approach) + "," + juce::String (l.octave)
-                           + "," + juce::String (l.ownStyles ? 1 : 0) + "," + juce::String (l.syncTo));
+                           + "," + juce::String (l.ownStyles ? 1 : 0) + "," + juce::String (l.syncTo) + "," + juce::String (l.second));
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
              + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
@@ -117,13 +120,15 @@ namespace pr7s
             if (v.size() >= 8)
                 l.doubleSync = v[7] == "1";
             if (v.size() >= 9)
-                l.approach = juce::jlimit (-1, 15, v[8].getIntValue());   // (0.94.0)
+                l.approach = juce::jlimit (-1, 999, v[8].getIntValue());   // (0.94.0; 0.193.0: was cut at 15, the shared options run past it)
             if (v.size() >= 10)
                 l.octave = juce::jlimit (-2, 2, v[9].getIntValue());   // (0.120.0)
             if (v.size() >= 11)
                 l.ownStyles = v[10] == "1";   // (0.126.0)
             if (v.size() >= 12)
                 l.syncTo = juce::jlimit (-1, composerLayerCount - 1, v[11].getIntValue());   // (0.126.0)
+            if (v.size() >= 13)
+                l.second = juce::jlimit (0, secondAcousticParts().size() - 1, v[12].getIntValue());   // (0.193.0)
         }
         if (parts.size() >= 9)
         {
@@ -237,7 +242,8 @@ namespace pr7s
     {
         // (0.65.0) The lead's seventh is the whole solo; the drums' seventh the solo section.
         return l == ComposerLayer::bass || l == ComposerLayer::lead ? 7 : l == ComposerLayer::drums ? (int) drumSections().size()
-             : l == ComposerLayer::clean ? (int) cleanGuitarStyles().size() : 6;
+             : l == ComposerLayer::clean ? (int) cleanGuitarStyles().size()
+             : l == ComposerLayer::acoustic ? (int) acousticGuitarStyles().size() : 6;
     }
 
     namespace
@@ -589,6 +595,7 @@ namespace pr7s
         }
 
         LineIdea cleanLaneOf (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);   // (0.114.0; below)
+        LineIdea acousticLaneOf (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);   // (0.193.0; below)
 
         LineIdea rawLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);   // (0.190.0: the memo, below)
         LineIdea rawLayerMade (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
@@ -617,6 +624,7 @@ namespace pr7s
                 }
                 case ComposerLayer::guitar: return guitarOf (s, spans, c);
                 case ComposerLayer::clean: return cleanLaneOf (s, spans, c);
+                case ComposerLayer::acoustic: return acousticLaneOf (s, spans, c);
                 case ComposerLayer::lead:
                 {
                     const auto& profile = c.leadProfile.has_value() ? c.leadProfile : c.guitarProfile;
@@ -2111,6 +2119,44 @@ namespace pr7s
         //   RISING BASS (At the End of August): tremolo-picked or held chords while the bass climbs a scale step a bar.
         std::optional<LineIdea> extraOptionLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
         LineIdea syncedLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+
+        // (0.193.0) The guitar lane as it plays here, made with no sync anywhere (so a lane asking for it can never
+        // come back round to itself): what the acoustic's riff styles and the shared options that follow the guitar read.
+        LineIdea unsyncedGuitar (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            auto plain = s;
+            plain.syncLane = -1;
+            for (auto& each : plain.lanes)
+                each.syncTo = -1;
+            return syncedLayer (ComposerLayer::guitar, plain, spans, c);
+        }
+
+        // (0.193.0, the owner's songs) The ACOUSTIC GUITAR lane: engine/Acoustic.h's styles over the lane's chords, its
+        // SECOND ACOUSTIC as harmony notes (onto its second track).
+        LineIdea acousticLaneOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (spans.empty())
+                return {};
+            const auto& lane = s.lane (ComposerLayer::acoustic);
+            AcousticRequest request;
+            request.style = lane.style;
+            request.second = lane.second;
+            request.variation = lane.variation;
+            request.beatsPerBar = c.beatsPerBar;
+            request.bpm = c.bpm;
+            request.nextChord = c.nextChord;
+            const auto& styles = acousticGuitarStyles();
+            const auto style = juce::jlimit (0, styles.size() - 1, lane.style);
+            if (styles[style] == "Strummed tonic on the riff's accents" && s.lane (ComposerLayer::guitar).on)
+            {
+                const auto guitar = unsyncedGuitar (s, spans, c);
+                const auto rhythm = syncRhythmOf (ComposerLayer::guitar, guitar, c.beatsPerBar, 0.0);
+                request.riffHits = rhythm.all;
+                request.riffAccents = rhythm.accents;
+            }
+            return acousticGuitarPart (spans, request);
+        }
+
         // (0.158.0) The guitar's option from the shared list (round four's riff kinds), when that's what's chosen.
         std::optional<LineIdea> extraGuitarOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
@@ -4393,6 +4439,7 @@ namespace pr7s
                 case ComposerLayer::drums: idea = v.drums(); break;
                 case ComposerLayer::lead:
                 case ComposerLayer::clean:
+                case ComposerLayer::acoustic:
                 case ComposerLayer::melody: break;
             }
             if (idea.has_value())
@@ -17923,6 +17970,30 @@ namespace pr7s
                         twin (at, s16 * 0.8, top + 7, soft);
                     }
                 }
+                // (0.193.0) Round seven's (the owner's 70 songs; shapes only): electric parts over an acoustic's strum.
+                else if (n == "POWER-CHORD QUARTERS OVER THE STRUM")
+                {
+                    out.description = "Power chords on every quarter, the first of the bar accented, each ringing to the next; changing on the bar (over an acoustic's strum)";
+                    each ([&] (int b)
+                    {
+                        for (int k = 0; k < 4; ++k)
+                            r.power (out, b * bpb + k * q, q * 0.95, r.barRoot (b), k == 0 ? hard : open);
+                    });
+                }
+                else if (n == "THE VERSE'S STRUM, DISTORTED")
+                {
+                    out.description = "The acoustic's quarters-with-flicks strum (X---X-xuX---X-xu) played as low power chords: the same rhythm, distorted";
+                    const int at[] { 0, 4, 6, 7, 8, 12, 14, 15 };
+                    each ([&] (int b)
+                    {
+                        for (int i = 0; i < 8; ++i)
+                        {
+                            const auto t = b * bpb + at[i] * s16;
+                            const auto next = i + 1 < 8 ? at[i + 1] : 16;
+                            r.power (out, t, (next - at[i]) * s16 * 0.92, r.lowRoot (t), at[i] % 4 == 0 ? hard : open);
+                        }
+                    });
+                }
                 else
                     return std::nullopt;
                 sortNotes (out);
@@ -18053,6 +18124,70 @@ namespace pr7s
                         r.add (out, o, 8 * s16 * 0.96, root, 0.84f);
                         r.add (out, o + 8 * s16, 2 * s16 * 0.9, fold (root + 7), 0.74f);
                         r.add (out, o + 10 * s16, 6 * s16 * 0.95, root, 0.78f);
+                    });
+                }
+                // (0.193.0) Round seven (the owner's 70 songs): bass parts for the acoustic sections.
+                else if (n == "ROOT ON ONE HELD, REPEAT ON FOUR")
+                {
+                    out.description = "The root on 1 held three beats, then struck again softly on 4";
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        const auto root = r.bassRoot (o);
+                        r.add (out, o, 12 * s16 * 0.95, root, 0.82f);
+                        r.add (out, o + 12 * s16, 4 * s16 * 0.9, root, 0.45f);
+                    });
+                }
+                else if (n == "ROOT-FIFTH TRESILLO WITH THE TOM")
+                {
+                    out.description = "x-----x---x-x-x-: the root, the fifth, the octave, the fifth, and a note passing into the next root (with a floor tom's 3+3+2)";
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        const auto root = r.bassRoot (o);
+                        const auto next = r.bassRoot (b + 1 < bars ? (b + 1) * bpb : 0.0);
+                        const auto passing = next == root ? fold (scaleStep (r.key, root, 1)) : next > root ? next - 1 : next + 1;
+                        const int at[] { 0, 6, 10, 12, 14 };
+                        const int notes[] { root, fold (root + 7), fold (root + 12), fold (root + 7), passing };
+                        for (int i = 0; i < 5; ++i)
+                            r.add (out, o + at[i] * s16, ((i + 1 < 5 ? at[i + 1] : 16) - at[i]) * s16 * 0.9, notes[i], i == 0 ? 0.84f : 0.72f);
+                    });
+                }
+                else if (n == "LATE PUSHES UNDER HELD CHORDS")
+                {
+                    out.description = "Silent until beat 4, then the root on 4 and the next chord's root pushed onto the and of 4";
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        r.add (out, o + 12 * s16, 2 * s16 * 0.9, r.bassRoot (o), 0.78f);
+                        r.add (out, o + 14 * s16, 2 * s16 * 0.95, r.bassRoot (b + 1 < bars ? (b + 1) * bpb : o), 0.8f);
+                    });
+                }
+                else if (n == "WALK-UPS EVERY SECOND BAR")
+                {
+                    out.description = "The root on 1, a passing note on the and, the root again on 2& held; every second bar four eighths walking up into the next bar's root";
+                    each ([&] (int b)
+                    {
+                        const auto o = b * bpb;
+                        const auto root = r.bassRoot (o);
+                        r.add (out, o, 2 * s16 * 0.9, root, 0.84f);
+                        r.add (out, o + 2 * s16, 4 * s16 * 0.9, fold (scaleStep (r.key, root, 1)), 0.66f);
+                        if (b % 2 == 0)
+                        {
+                            r.add (out, o + 6 * s16, 10 * s16 * 0.95, root, 0.76f);
+                            return;
+                        }
+                        r.add (out, o + 6 * s16, 2 * s16 * 0.9, root, 0.76f);
+                        auto target = r.bassRoot (b + 1 < bars ? (b + 1) * bpb : 0.0);
+                        if (target <= root)
+                            target += 12;
+                        for (int i = 0; i < 4; ++i)
+                        {
+                            auto p = scaleStep (r.key, target, i - 4);
+                            if (p == target)
+                                p = target - (4 - i);   // (outside the key: chromatic)
+                            r.add (out, o + (8 + 2 * i) * s16, 2 * s16 * 0.9, fold (p), 0.72f);
+                        }
                     });
                 }
                 else
@@ -18341,6 +18476,142 @@ namespace pr7s
                     out.description = "Half time: the snare on 3, closed hats on the eighths, the kick growing over four bars (1; 1 and 2-and; then 3-and; then on the dotted line) and starting again";
                     const char* kicks[] { "x---------------", "x-----x---------", "x-----x---x-----", "x--x--x---x---x-" };
                     each ([&] (int b) { r.kit (out, b, kicks[b % 4], "--------x-------", GmDrum::closedHat, Round3::eighths); });
+                }
+                // (0.193.0) Round seven (the owner's 70 songs): kits and hand percussion under acoustic guitars.
+                else if (n == "TAMBOURINE ON TWO AND FOUR ONLY"
+                         || n == "SHAKER AND HATS, KICK EVERY FOURTH BAR" || n == "HALF TIME WITH TAMBOURINE AND SHAKER"
+                         || n == "SHAKER SIXTEENTHS, CABASA, BACKBEAT" || n == "RIDE EIGHTHS, PEDAL HAT, SHAKER"
+                         || n == "FLOOR TOM IN 3+3+2, NO KICK" || n == "PEDAL HAT, DOTTED KICK, LATE SNARE"
+                         || n == "MARACAS AND CONGAS IN THREES" || n == "SIDESTICK AND SHAKER"
+                         || n == "BONGOS ON THE GUITAR'S RHYTHM" || n == "TAMBOURINE EIGHTHS OVER THE BACKBEAT")
+                {
+                    constexpr int tambourine = 54, shaker = 82, cabasa = 69, maracas = 70, muteConga = 62, openConga = 63, lowConga = 64,
+                                  highBongo = 60, lowBongo = 61;
+                    const auto everyHit = [&] (int b, const char* p, int note, float accent, float other)
+                    { r.each16 (p, b * bpb, [&] (double t, int k) { r.hit (out, t, note, k % 4 == 0 ? accent : other); }); };
+                    if (n == "TAMBOURINE ON TWO AND FOUR ONLY")
+                    {
+                        out.description = "No kit: a tambourine on 2 and 4 only, a crash on the section's first beat";
+                        r.hit (out, 0.0, GmDrum::crash, 0.8f);
+                        each ([&] (int b) { everyHit (b, Round3::backbeat, tambourine, 0.72f, 0.72f); });
+                    }
+                    else if (n == "SHAKER AND HATS, KICK EVERY FOURTH BAR")
+                    {
+                        out.description = "A shaker and closed hats on the eighths, the kick only on the first beat of every fourth bar, a soft snare on 3 in the second half";
+                        each ([&] (int b)
+                        {
+                            everyHit (b, Round3::eighths, shaker, 0.48f, 0.4f);
+                            everyHit (b, Round3::eighths, GmDrum::closedHat, 0.42f, 0.34f);
+                            if (b % 4 == 0)
+                                r.hit (out, b * bpb, GmDrum::kick, 0.8f);
+                            if (b >= bars / 2)
+                                r.hit (out, b * bpb + 8 * s16, GmDrum::snare, 0.4f);
+                        });
+                    }
+                    else if (n == "HALF TIME WITH TAMBOURINE AND SHAKER")
+                    {
+                        out.description = "Half time: the kick on 1 and the a of 4, the snare on 3, closed hats, a tambourine and a shaker on the eighths";
+                        each ([&] (int b)
+                        {
+                            r.kit (out, b, "x--------------x", "--------x-------", GmDrum::closedHat, Round3::eighths);
+                            everyHit (b, Round3::eighths, tambourine, 0.5f, 0.42f);
+                            everyHit (b, Round3::eighths, shaker, 0.44f, 0.38f);
+                        });
+                    }
+                    else if (n == "SHAKER SIXTEENTHS, CABASA, BACKBEAT")
+                    {
+                        out.description = "A shaker on every sixteenth, a cabasa on the beats, closed hats on the eighths; the kick on 1, 3 and 3&, the snare on 2 and 4";
+                        each ([&] (int b)
+                        {
+                            r.kit (out, b, "x-------x-x-----", Round3::backbeat, GmDrum::closedHat, Round3::eighths);
+                            everyHit (b, "xxxxxxxxxxxxxxxx", shaker, 0.45f, 0.34f);
+                            everyHit (b, Round3::quarters, cabasa, 0.42f, 0.42f);
+                        });
+                    }
+                    else if (n == "RIDE EIGHTHS, PEDAL HAT, SHAKER")
+                    {
+                        out.description = "The ride on the eighths, the pedal hat on the beats, a shaker on the eighths; the kick on 1, 1&, 3, 3&, the snare on 2 and 4";
+                        each ([&] (int b)
+                        {
+                            r.kit (out, b, "x-x-----x-x-----", Round3::backbeat, GmDrum::ride, Round3::eighths);
+                            everyHit (b, Round3::quarters, GmDrum::pedalHat, 0.5f, 0.5f);
+                            everyHit (b, Round3::eighths, shaker, 0.42f, 0.36f);
+                        });
+                    }
+                    else if (n == "FLOOR TOM IN 3+3+2, NO KICK")
+                    {
+                        out.description = "No kick: the floor tom on the 3+3+2 eighths (1, the and of 2, 4), the snare on 2 and 4, the hats on the beats, two soft snare sixteenths before each chord change";
+                        each ([&] (int b)
+                        {
+                            everyHit (b, "x-----x-----x---", GmDrum::tomFloor, 0.82f, 0.72f);
+                            everyHit (b, Round3::backbeat, GmDrum::snare, 0.86f, 0.86f);
+                            everyHit (b, Round3::quarters, GmDrum::closedHat, 0.45f, 0.45f);
+                            if (b + 1 < bars && ! (r.chordOfBar (b + 1) == r.chordOfBar (b)))
+                                for (const auto k : { 14, 15 })
+                                    r.hit (out, b * bpb + k * s16, GmDrum::snare, 0.3f);
+                        });
+                    }
+                    else if (n == "PEDAL HAT, DOTTED KICK, LATE SNARE")
+                    {
+                        out.description = "The pedal hat on the eighths, the kick on the dotted quarters (1, 2&, 4), the snare once a bar, late, on 4";
+                        each ([&] (int b)
+                        {
+                            everyHit (b, Round3::eighths, GmDrum::pedalHat, 0.48f, 0.4f);
+                            everyHit (b, "x-----x-----x---", GmDrum::kick, 0.82f, 0.74f);
+                            r.hit (out, b * bpb + 12 * s16, GmDrum::snare, 0.84f);
+                        });
+                    }
+                    else if (n == "MARACAS AND CONGAS IN THREES")
+                    {
+                        out.description = "The bar in threes (3+3+3+3+4 sixteenths): congas on each group's start, maracas between, a soft snare on the second group";
+                        const int congas[] { lowConga, muteConga, openConga, muteConga, lowConga };
+                        each ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            auto g = 0;
+                            for (int k = 0; k < 16; ++k)
+                            {
+                                if (k == 0 || k == 3 || k == 6 || k == 9 || k == 12)
+                                    r.hit (out, o + k * s16, congas[g++], k == 0 ? 0.7f : 0.58f);
+                                else
+                                    r.hit (out, o + k * s16, maracas, 0.36f);
+                            }
+                            r.hit (out, o + 3 * s16, GmDrum::snare, 0.32f);
+                        });
+                    }
+                    else if (n == "SIDESTICK AND SHAKER")
+                    {
+                        out.description = "The sidestick on 2 and 4, a shaker on the eighths, the kick on 1";
+                        each ([&] (int b)
+                        {
+                            everyHit (b, Round3::backbeat, GmDrum::sideStick, 0.7f, 0.7f);
+                            everyHit (b, Round3::eighths, shaker, 0.45f, 0.38f);
+                            r.hit (out, b * bpb, GmDrum::kick, 0.8f);
+                        });
+                    }
+                    else if (n == "BONGOS ON THE GUITAR'S RHYTHM")
+                    {
+                        const auto guitar = unsyncedGuitar (s, spans, c);
+                        const auto rhythm = syncRhythmOf (ComposerLayer::guitar, guitar, c.beatsPerBar, 0.0);
+                        out.description = rhythm.all.empty() ? juce::String ("Bongos alone on the riff's usual hits (x---x-x---x---x-; the guitar lane is empty)")
+                                                             : juce::String ("Bongos alone on the guitar's hits, the high one on its accents");
+                        if (rhythm.all.empty())
+                            each ([&] (int b) { everyHit (b, "x---x-x---x---x-", highBongo, 0.68f, 0.5f); });
+                        for (const auto t : rhythm.all)
+                        {
+                            const auto accent = std::any_of (rhythm.accents.begin(), rhythm.accents.end(), [t] (double a) { return std::abs (a - t) < 1.0e-4; });
+                            r.hit (out, t, accent ? highBongo : lowBongo, accent ? 0.7f : 0.5f);
+                        }
+                    }
+                    else
+                    {
+                        out.description = "The kick on 1 and 3, the snare on 2 and 4, open hats on the beats and a tambourine on every eighth over them";
+                        each ([&] (int b)
+                        {
+                            r.kit (out, b, "x-------x-------", Round3::backbeat, GmDrum::openHat, Round3::quarters);
+                            everyHit (b, Round3::eighths, tambourine, 0.52f, 0.44f);
+                        });
+                    }
                 }
                 else
                     return std::nullopt;
@@ -18914,6 +19185,102 @@ namespace pr7s
                                     r.add (out, at, e * 0.8, p, 0.4f);
                         }
                     });
+                }
+                // (0.193.0) Round seven (the owner's 70 songs): strings, cello and bells beside the acoustics.
+                else if (n == "STRINGS HALF NOTES WITH THE STRUM")
+                {
+                    out.description = "Strings holding each chord in half notes, moving to the nearest shape";
+                    std::vector<int> previous;
+                    for (auto t = 0.0; t < r.length - 1.0e-6; t += 2 * q)
+                    {
+                        const auto voicings = voicingsFor (r.chordAt (t), 55);
+                        if (voicings.empty())
+                            continue;
+                        const auto& shape = voicings[(size_t) juce::jlimit (0, (int) voicings.size() - 1, closestVoicing (voicings, previous, previous))];
+                        previous = shape;
+                        for (const auto p : shape)
+                            r.add (out, t, 2 * q * 0.95, p, 0.42f);
+                    }
+                }
+                else if (n == "OCTAVE COUNTERLINE")
+                {
+                    out.description = "A held counterline in octaves: the chord's third, then its fifth, two bars each";
+                    for (int b = 0; b < bars; b += 2)
+                    {
+                        const auto& chord = r.chordOfBar (b);
+                        const auto iv = chord.intervals();
+                        auto fifth = 7;
+                        for (const auto i : iv)
+                            if (i >= 6 && i <= 8)
+                                fifth = i;
+                        const auto pc = pc12 (chord.root + ((b / 2) % 2 == 0 ? (iv.size() > 1 ? iv[1] : 4) : fifth));
+                        const auto p = pitchOfClassIn (pc, 60, 71);
+                        const auto len = juce::jmin (2 * bpb, r.length - b * bpb) * 0.98;
+                        r.add (out, b * bpb, len, p, 0.4f);
+                        r.add (out, b * bpb, len, p + 12, 0.36f);
+                    }
+                }
+                else if (n == "CELLO DOUBLES THE RIFF")
+                {
+                    const auto guitar = unsyncedGuitar (s, spans, c);
+                    std::vector<std::pair<double, int>> hits;   // (each hit's lowest note)
+                    for (const auto& g : guitar.notes)
+                    {
+                        if (g.keyswitch)
+                            continue;
+                        if (! hits.empty() && std::abs (hits.back().first - g.beat) < HumanizeLimits::together)
+                            hits.back().second = juce::jmin (hits.back().second, g.pitch);
+                        else
+                            hits.push_back ({ g.beat, g.pitch });
+                    }
+                    if (hits.empty())
+                    {
+                        out.description = "A cello on each bar's root held (the guitar lane is empty)";
+                        each ([&] (int b) { r.add (out, b * bpb, bpb * 0.98, rootNear (r.chordOfBar (b), 36, 47, false), 0.5f); });
+                    }
+                    else
+                    {
+                        out.description = "A cello doubling the guitar's riff an octave down (36-55), legato";
+                        for (size_t i = 0; i < hits.size(); ++i)
+                        {
+                            auto p = hits[i].second;
+                            while (p > 55) p -= 12;
+                            while (p < 36) p += 12;
+                            const auto next = i + 1 < hits.size() ? hits[i + 1].first : r.length;
+                            r.add (out, hits[i].first, juce::jmax (0.05, next - hits[i].first), p, 0.5f);
+                        }
+                    }
+                }
+                else if (n == "STRINGS PULSE ON THE ROOT")
+                {
+                    out.description = "Strings on the chord's root in staccato sixteenths, the beats a little stronger";
+                    each ([&] (int b)
+                    {
+                        for (int k = 0; k < 16; ++k)
+                        {
+                            const auto t = b * bpb + k * s16;
+                            r.add (out, t, s16 * 0.5, rootNear (r.chordAt (t), 48, 59, false), k % 4 == 0 ? 0.5f : 0.38f);
+                        }
+                    });
+                }
+                else if (n == "BELL DOUBLES THE GUITAR")
+                {
+                    const auto guitar = unsyncedGuitar (s, spans, c);
+                    const auto rhythm = syncRhythmOf (ComposerLayer::guitar, guitar, c.beatsPerBar, 0.0);
+                    auto hits = rhythm.all;
+                    if (hits.empty())
+                        for (auto t = 0.0; t < r.length - 1.0e-6; t += q)
+                            hits.push_back (t);
+                    out.description = rhythm.all.empty() ? juce::String ("A bell on the quarters: the key's tonic and fifth high (the guitar lane is empty)")
+                                                         : juce::String ("A bell on the guitar's hits: the key's tonic high on its accents, the fifth on the others");
+                    const auto tonic = r.tonicIn (72, 83), fifth = pitchOfClassIn (pc12 (r.key.pitchClass() + 7), 72, 83);
+                    for (size_t i = 0; i < hits.size(); ++i)
+                    {
+                        const auto t = hits[i];
+                        const auto accent = rhythm.all.empty() || std::any_of (rhythm.accents.begin(), rhythm.accents.end(), [t] (double a) { return std::abs (a - t) < 1.0e-4; });
+                        const auto next = i + 1 < hits.size() ? hits[i + 1] : r.length;
+                        r.add (out, t, juce::jmin (q, next - t) * 0.9, accent ? tonic : fifth, 0.45f);
+                    }
                 }
                 else
                     return std::nullopt;
@@ -21818,6 +22185,7 @@ namespace pr7s
                 case ComposerLayer::melody:
                 case ComposerLayer::lead:
                 case ComposerLayer::clean:
+                case ComposerLayer::acoustic:
                 {
                     auto idea = rawLayer (l, s, spans, c);
                     leanOnto (idea, rhythm.accents);
@@ -21911,7 +22279,8 @@ namespace pr7s
         {
             case SectionType::Band::staccato:
             case SectionType::Band::split: return l == ComposerLayer::bass || l == ComposerLayer::drums;
-            case SectionType::Band::clean: return l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean;
+            case SectionType::Band::clean: return l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean
+                                                  && l != ComposerLayer::acoustic;
             case SectionType::Band::preChorus: return l != ComposerLayer::melody && ! sectionApproaches (s, l).isEmpty();
             case SectionType::Band::bridge: return l != ComposerLayer::melody && ! sectionApproaches (s, l).isEmpty();
             case SectionType::Band::breakdown: return l != ComposerLayer::melody && ! sectionApproaches (s, l).isEmpty();

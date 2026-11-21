@@ -11,6 +11,7 @@
 #include "engine/Instruments.h"
 #include "engine/SoloEngine.h"
 #include "engine/DrumIdeas.h"
+#include "engine/Acoustic.h"
 
 #include <array>
 #include <optional>
@@ -38,8 +39,9 @@ namespace pr7s
 {
     // (0.114.0, the owner: "a composer lane after lead guitar called clean guitar") CLEAN appended (saved settings
     // keep the others' numbers); composerLayers() lists it after LEAD.
-    enum class ComposerLayer { chords, melody, bass, guitar, lead, drums, clean };
-    constexpr int composerLayerCount = 7;
+    // (0.193.0) ACOUSTIC appended after it (composerLayers() lists it after CLEAN GUITAR).
+    enum class ComposerLayer { chords, melody, bass, guitar, lead, drums, clean, acoustic };
+    constexpr int composerLayerCount = 8;
     const std::array<ComposerLayer, composerLayerCount>& composerLayers();
     juce::String composerLayerName (ComposerLayer);
     const juce::StringArray& cleanGuitarStyles();      // (0.114.0) the CLEAN GUITAR lane's styles    // "CHORDS", "MELODY"...
@@ -68,6 +70,9 @@ namespace pr7s
         // (0.126.0, the owner: "sync the bass and drums together ... but not the entire section") SYNC TO: this lane
         // follows that lane's rhythm (a layer number; -1 not synced), whatever the global SYNC says.
         int syncTo = -1;
+        // (0.193.0) SECOND ACOUSTIC (the ACOUSTIC GUITAR lane): what its second track plays (secondAcousticParts(); 0
+        // LOOSER COPY). Saved as the lane's 13th field.
+        int second = 0;
         bool operator== (const ComposerLane&) const = default;
     };
 

@@ -2,6 +2,32 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.193.0
+
+**An ACOUSTIC GUITAR lane in ARCHITECT**, from the owner's 70 song files (their acoustic and unplugged parts, read for their shapes only), and acoustic-friendly options for the drums, bass, keys and guitar.
+
+**How to use it:**
+- **The lane is off to start with**, so your songs build as before. In ARCHITECT, press its ON (the lane after CLEAN GUITAR) and pick a style from its menu. It follows the chords of whatever section you build, under any section type (the types don't write it yet: that comes with the next releases' acoustic types).
+- **Give it a track** on the Hub's ARCHITECT TRACKS page (the new ACOUSTIC GUITAR row). Without one, building makes a new track called "Acoustic Guitar". Put an acoustic guitar instrument on it.
+- **SECOND ACOUSTIC** (the new key on the lane's second row): what the lane's second track plays when you give the lane two tracks (two names on ARCHITECT TRACKS, or EVERY MATCHING TRACK). LOOSER COPY (the usual: a second take of the same part), HIGH PEDAL SEESAW, HIGH ANSWERS OVER A RINGING STRING, HIGH THIRDS, AS THE BASS, FILLS ONLY, TWIN ARPEGGIO. On one track both parts play there.
+
+**The 35 styles:**
+- **Strums:** BIG STRUMS ON ONE AND THREE, LIGHT TOPS BETWEEN; GROWING FIFTHS STRUM; SPLIT STRUM, FIXED HIGH TRIAD; BASS-STRING STRUM, TIED EVERY OTHER BAR; BASS NOTE AND STRUM; STRUM, CHANGE PUSHED AN EIGHTH; SIXTEENTH STRUM, CHANGE PUSHED; STRUM OFF THE ONE; CHORD TO OPEN PEDAL; THREE-BAR STRUM CYCLE, HIGH SHAPES; EMBELLISHED STRUM; STRUM WITH FLICKS: QUARTERS / EIGHTHS / LIGHT UPS; SKIPPING STRUM; ACOUSTIC POWER EIGHTHS; LILTING STRUM IN THREES; STRUMMED TRIADS IN SIXES; HIGH ROLLED TRIADS, STRUM, BREATHE, PICK; OFFBEAT HIGH STRUMS.
+- **Picking:** FINGERPICKED EIGHTHS OVER A HELD BASS; FALLING CASCADE OVER THE BASS; BASS HAMMER-ON, DRONE PAIR ABOVE; ADD9 ARPEGGIO; NYLON TWO-BAR PICKING; NYLON ARPEGGIO UNDER A FIXED TOP; ARCH ARPEGGIO OVER THE FIFTH; FIXED-TOP FINGERPICKING; HELD BASS, ARCH ON TOP; ONE-BAR FINGERPICK, ONE BAR OF AIR; FIXED HIGH FIGURE, WALK ON THE FOURTH BAR; STAB CELL, A BAR ON, A BAR OFF; ROOT CHORD AND HIGH CLUSTER IN TURN.
+- **Following the guitar lane:** STRUMMED TONIC ON THE RIFF'S ACCENTS (the key's tonic as a major chord struck where the guitar's riff hits hardest); STRUM UNDER THE RIFF (the chord-to-pedal strum kept low under the riff, every fourth bar left to the riff alone).
+
+**The strum details are our rules:** the files had no strum direction or dynamics (every note of a chord on the same tick, flat velocities). So: open chords from the root's string (root, fifth, octave, third, fifth, octave) with an open string's ninth, major seventh or sixth on top where it fits; strums spread 5-15 ms, down strokes low to high, up strokes high to low; on-beat downs about 100, off-beat ups about 80, sixteenth ups about 65, soft top-string strums 30-50; each strum rings until the next one, picked notes until the note comes again or the chord changes. Everything is between E2 and E5, in 4/4.
+
+**Shared options (under every section type, after its own):**
+- **Drums:** TAMBOURINE ON TWO AND FOUR ONLY; SHAKER AND HATS, KICK EVERY FOURTH BAR; HALF TIME WITH TAMBOURINE AND SHAKER; SHAKER SIXTEENTHS, CABASA, BACKBEAT; RIDE EIGHTHS, PEDAL HAT, SHAKER; FLOOR TOM IN 3+3+2, NO KICK; PEDAL HAT, DOTTED KICK, LATE SNARE; MARACAS AND CONGAS IN THREES; SIDESTICK AND SHAKER; BONGOS ON THE GUITAR'S RHYTHM; TAMBOURINE EIGHTHS OVER THE BACKBEAT. (General MIDI's hand percussion notes: tambourine 54, shaker 82, cabasa 69, maracas 70, congas 62-64, bongos 60-61; check your drum instrument has them.)
+- **Bass** (before LOCKED WITH THE KICK, which stays last): ROOT ON ONE HELD, REPEAT ON FOUR; ROOT-FIFTH TRESILLO WITH THE TOM; LATE PUSHES UNDER HELD CHORDS; WALK-UPS EVERY SECOND BAR.
+- **Keys:** STRINGS HALF NOTES WITH THE STRUM; OCTAVE COUNTERLINE; CELLO DOUBLES THE RIFF; STRINGS PULSE ON THE ROOT; BELL DOUBLES THE GUITAR.
+- **Guitar:** POWER-CHORD QUARTERS OVER THE STRUM; THE VERSE'S STRUM, DISTORTED.
+
+**Also fixed:** a lane's chosen option past the 16th in its list was read back as the 16th when a song or built section was opened again (the shared options run well past 16). It now reads back as chosen.
+
+**Not done yet:** a General MIDI program for the new track (the studio doesn't set programs anywhere: pick the instrument yourself). Listening to all of this is for you: the tests check the shapes (where the strums fall, the voicings, the directions, the rings), not how it sounds.
+
 ## 0.192.0
 
 **ARCHITECT finds a lane's tracks by the words in their names** (the owner: the guitar lane, set to "Rhythm", played only on RHYTHM GUITAR LEFT, never RHYTHM GUITAR RIGHT).

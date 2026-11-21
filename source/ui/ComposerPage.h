@@ -93,6 +93,10 @@ public:
     juce::TextButton& getOctaveKey (pr7s::ComposerLayer l) { return lanes[(size_t) l].octave; }
     juce::Rectangle<int> getLaneHeader (pr7s::ComposerLayer l) const { return lanes[(size_t) l].header; }
     void setLowString (pr7s::ComposerLayer, bool);       // (0.61.0) bass and guitar
+    // (0.193.0) SECOND ACOUSTIC: what the ACOUSTIC GUITAR lane's second track plays (secondAcousticParts()).
+    void setSecondAcoustic (int part);
+    int getSecondAcoustic() const { return state.lane (pr7s::ComposerLayer::acoustic).second; }
+    juce::TextButton& getSecondAcousticKey() { return lanes[(size_t) pr7s::ComposerLayer::acoustic].second; }
     void setOnlyString (pr7s::ComposerLayer, int);       // (0.62.0) 1.. the string (1 the lowest); 0 off
     juce::String stringText (pr7s::ComposerLayer) const; // the key's text: ANY STRING, LOW STRING, STRING 2 ONLY
     void setTuning (pr7s::ComposerLayer, const juce::String& name);   // the bass's or the guitar's
@@ -270,7 +274,8 @@ private:
     int targetBlock = 0;   // (0.90.0) the SECTIONS row's block composed (its id; 0: none)
     struct Lane
     {
-        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "ANY STRING" }, octave { "OCTAVE 0" };
+        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "ANY STRING" }, octave { "OCTAVE 0" },
+                         second { "2ND: LOOSER COPY" };   // (0.193.0: the acoustic lane only)
         juce::Slider volume { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };   // (0.76.0) the track it's heard on
         juce::Rectangle<int> header, notes;
         juce::Rectangle<int> note;   // (0.120.0) under the keys: where it's heard (empty: no room)
@@ -303,6 +308,7 @@ private:
     void showBusyMenu (pr7s::ComposerLayer);
     void showOctaveMenu (pr7s::ComposerLayer);
     void showLowMenu (pr7s::ComposerLayer);
+    void showSecondMenu();
     std::vector<pr7s::ChordSpan> placedSpans() const;   // at the hearing start, else buildStart()
     void refreshSong();                                  // the SONG strip's NEXT keys
     std::vector<std::pair<juce::Rectangle<int>, int>> songChips() const;   // (0.93.0) the blocks' chips and their indices

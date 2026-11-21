@@ -14,7 +14,7 @@ namespace
     // As IDEAS' cards: bass and guitar orange, melody and lead pink, chords and drums red.
     juce::Colour colourOf (ComposerLayer l)
     {
-        return l == ComposerLayer::bass || l == ComposerLayer::guitar || l == ComposerLayer::clean ? pr7s::FamilyColours::orange
+        return l == ComposerLayer::bass || l == ComposerLayer::guitar || l == ComposerLayer::clean || l == ComposerLayer::acoustic ? pr7s::FamilyColours::orange
              : l == ComposerLayer::chords || l == ComposerLayer::drums ? pr7s::FamilyColours::red : pr7s::FamilyColours::pink;
     }
 
@@ -164,6 +164,14 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
             pedal (*key, key == &lane.style || key == &lane.track || key == &lane.busy || key == &lane.low || key == &lane.octave);
             if ((key != &lane.low || pr7s::hasLowString (l)) && (key != &lane.octave || l != ComposerLayer::drums))
                 addAndMakeVisible (*key);
+        }
+        if (l == ComposerLayer::acoustic)
+        {
+            pedal (lane.second, true);
+            lane.second.setTooltip ("SECOND ACOUSTIC: what the second track plays when this lane is on two tracks (ARCHITECT TRACKS): a looser copy, "
+                                    "or a part of its own (on one track both play there)");
+            lane.second.onClick = [this] { showSecondMenu(); };
+            addAndMakeVisible (lane.second);
         }
         lane.octave.setTooltip ("Moves this lane's notes up or down by whole octaves (its keyswitches stay where they are). Built sections keep it");
         lane.octave.onClick = [this, l] { showOctaveMenu (l); };
@@ -399,6 +407,11 @@ void ComposerPage::refresh (bool rehear)
         lane.octave.setToggleState (s.octave != 0, juce::dontSendNotification);
         lane.low.setToggleState (s.lowString || s.onlyString > 0, juce::dontSendNotification);
         lane.low.setButtonText (stringText (l));
+        if (l == ComposerLayer::acoustic)
+        {
+            lane.second.setButtonText ("2ND: " + pr7s::secondAcousticParts()[juce::jlimit (0, pr7s::secondAcousticParts().size() - 1, s.second)]);
+            lane.second.setToggleState (s.second > 0, juce::dontSendNotification);
+        }
     }
     seenChange = studio.getChangeVersion();
     seenContent = studio.getContentVersion();
@@ -743,6 +756,28 @@ void ComposerPage::showOctaveMenu (ComposerLayer l)
                             if (safe == nullptr || chosen <= 0)
                                 return;
                             safe->setOctave (l, chosen == 100 ? current + 1 : chosen == 101 ? current - 1 : chosen - 10);
+                        });
+}
+
+void ComposerPage::setSecondAcoustic (int part)
+{
+    state.lane (ComposerLayer::acoustic).second = juce::jlimit (0, pr7s::secondAcousticParts().size() - 1, part);
+    refresh();
+}
+
+void ComposerPage::showSecondMenu()
+{
+    const auto current = state.lane (ComposerLayer::acoustic).second;
+    juce::PopupMenu menu;
+    menu.addSectionHeader ("THE SECOND ACOUSTIC (THE LANE'S SECOND TRACK)");
+    const auto& parts = pr7s::secondAcousticParts();
+    for (int i = 0; i < parts.size(); ++i)
+        menu.addItem (i + 1, parts[i], true, i == current);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) ComposerLayer::acoustic].second),
+                        [safe = juce::Component::SafePointer<ComposerPage> (this)] (int chosen)
+                        {
+                            if (safe != nullptr && chosen > 0)
+                                safe->setSecondAcoustic (chosen - 1);
                         });
 }
 
@@ -1786,6 +1821,7 @@ std::optional<ComposerLayer> ComposerPage::layerOf (pr7s::LineIdea::Part part)
         case P::rhythm: return ComposerLayer::guitar;
         case P::lead: return ComposerLayer::lead;
         case P::clean: return ComposerLayer::clean;
+        case P::acoustic: return ComposerLayer::acoustic;
         case P::drums: case P::groove: return ComposerLayer::drums;
         default: return std::nullopt;
     }
@@ -3393,6 +3429,11 @@ void ComposerPage::resized()
         if (pr7s::hasLowString (l))
         {
             lane.low.setBounds (second.removeFromRight (118));
+            second.removeFromRight (6);
+        }
+        if (l == ComposerLayer::acoustic)
+        {
+            lane.second.setBounds (second.removeFromRight (170));
             second.removeFromRight (6);
         }
         lane.busy.setBounds (second.removeFromRight (88));

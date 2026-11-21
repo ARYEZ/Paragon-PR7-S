@@ -5132,10 +5132,10 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const auto drums = extraApproaches (ComposerLayer::drums);
     const auto keys = extraApproaches (ComposerLayer::chords);
-    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7);   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
-    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6);   // (0.186.0: six more)
-    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3);   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
-    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2);   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
+    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7 + 11);   // (0.193.0: eleven more)   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
+    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6 + 5);   // (0.193.0: five more)   // (0.186.0: six more)
+    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3 + 2);   // (0.193.0: two more)   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4);   // (0.193.0: four more)   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
 
     // Under STANDARD (no named type) nothing is added.
     {
@@ -5295,7 +5295,7 @@ TEST_CASE ("0.146.0: the guitar ideas as verse types, every lane's options a dif
         for (const auto l : composerLayers())
         {
             const auto options = baseSectionApproaches (s, l);
-            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean));
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean && l != ComposerLayer::acoustic));
             if (options.isEmpty())
                 continue;
             if (l == ComposerLayer::bass)
@@ -5442,7 +5442,7 @@ TEST_CASE ("0.147.0: round four's verse types, every lane's options a different 
         for (const auto l : composerLayers())
         {
             const auto options = baseSectionApproaches (s, l);
-            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean));
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean && l != ComposerLayer::acoustic));
             if (options.isEmpty())
                 continue;
             if (l == ComposerLayer::bass)
@@ -5552,7 +5552,7 @@ TEST_CASE ("0.148.0: round four's chorus types, every lane's options a different
         for (const auto l : composerLayers())
         {
             const auto options = baseSectionApproaches (s, l);
-            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean));
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean && l != ComposerLayer::acoustic));
             if (options.isEmpty())
                 continue;
             if (l == ComposerLayer::bass)
@@ -6262,7 +6262,7 @@ TEST_CASE ("0.160.0: round four's bass versions, in front of LOCKED WITH THE KIC
     const char* names[] = { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                             "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
                             "DOTTED FIGURE WITH THE KICK" };
-    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2);   // (0.186.0: two more)
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4);   // (0.186.0: two more; 0.193.0: four more)
     // Under every named type whose bass ends with LOCKED WITH THE KICK: there, just in front of it; else not at all.
     auto typed = 0;
     for (const auto* section : { "Verse", "Chorus", "Bridge", "Breakdown", "Intro", "Outro", "Pre-Chorus" })
@@ -6471,7 +6471,7 @@ TEST_CASE ("0.168.0: round five's verse types, every lane's options a different 
         for (const auto l : composerLayers())
         {
             const auto options = baseSectionApproaches (s, l);
-            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean));
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean && l != ComposerLayer::acoustic));
             if (options.isEmpty())
                 continue;
             if (l == ComposerLayer::bass)
@@ -6954,7 +6954,7 @@ TEST_CASE ("0.181.0: round six's verse types, every lane's options a different p
         for (const auto l : composerLayers())
         {
             const auto options = baseSectionApproaches (s, l);
-            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean));
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::lead && l != ComposerLayer::clean && l != ComposerLayer::acoustic));
             if (options.isEmpty())
                 continue;
             if (l == ComposerLayer::bass)

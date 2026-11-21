@@ -1653,13 +1653,21 @@ namespace pr7s
                      // (0.186.0) Round six (the owner's 25 songs); two are other types' own options, shared as they are.
                      "FOUR ON THE FLOOR, CRASH ON BEAT FOUR", "KICK AND TOM QUARTERS, EIGHTHS ON THREE", "SHAKER THREE-EIGHTH PAIRS",
                      "BACKBEAT DOUBLED ON THE E", "KICK BURSTS, BACKBEAT", "SNARE ON TWO, THREE-E, FOUR, FOUR-A",
-                     "HALF-TIME HATS WITH A FOUR-BAR KICK CYCLE" };
+                     "HALF-TIME HATS WITH A FOUR-BAR KICK CYCLE",
+                     // (0.193.0) Round seven (the owner's 70 songs): under acoustic guitars.
+                     "TAMBOURINE ON TWO AND FOUR ONLY", "SHAKER AND HATS, KICK EVERY FOURTH BAR", "HALF TIME WITH TAMBOURINE AND SHAKER",
+                     "SHAKER SIXTEENTHS, CABASA, BACKBEAT", "RIDE EIGHTHS, PEDAL HAT, SHAKER", "FLOOR TOM IN 3+3+2, NO KICK",
+                     "PEDAL HAT, DOTTED KICK, LATE SNARE", "MARACAS AND CONGAS IN THREES", "SIDESTICK AND SHAKER",
+                     "BONGOS ON THE GUITAR'S RHYTHM", "TAMBOURINE EIGHTHS OVER THE BACKBEAT" };
         if (layer == ComposerLayer::bass)   // (0.160.0) round four's bass versions: put in front of LOCKED WITH THE KICK
             return { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                      "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
                      "DOTTED FIGURE WITH THE KICK",
                      // (0.186.0) Round six.
-                     "DOTTED HALF AND TWO EIGHTHS", "STABS AT EACH GROUP'S START" };
+                     "DOTTED HALF AND TWO EIGHTHS", "STABS AT EACH GROUP'S START",
+                     // (0.193.0) Round seven.
+                     "ROOT ON ONE HELD, REPEAT ON FOUR", "ROOT-FIFTH TRESILLO WITH THE TOM", "LATE PUSHES UNDER HELD CHORDS",
+                     "WALK-UPS EVERY SECOND BAR" };
         if (layer == ComposerLayer::guitar)   // (0.158.0) round four's riff kinds
             return { "CHUGS, THEN THREE CHORDS", "HIT, THEN BURSTS ON TWO AND FOUR", "PUSHED POWER CHORDS WITH A FLAT-TWO STAB",
                      "ROOT TWICE, TRITONE PUSHED IN", "SUS2 SPLIT BETWEEN TWO GUITARS", "TONIC WALL UNDER MOVING CHORDS",
@@ -1677,7 +1685,9 @@ namespace pr7s
                      "CLEAN HELD CHORD, PUSHED INTO FOUR", "FLAT-THREE OCTAVE BURST EVERY FOURTH BAR", "RING THE FLAT TWO",
                      "HIGH NOTE SEESAW, TWO BARS EACH", "FOUR-NOTE CHROMATIC CELL, OCTAVE DYADS", "OUT, THEN THE BASS'S ROCKING LINE",
                      // (0.186.0) Round six's versions of riffs we have.
-                     "ROOT TREMOLO EVERY OTHER BAR", "TRADED SINGLES BETWEEN TWO GUITARS", "HIGH DYAD TREMOLO OVER STAGGERED PAIRS" };
+                     "ROOT TREMOLO EVERY OTHER BAR", "TRADED SINGLES BETWEEN TWO GUITARS", "HIGH DYAD TREMOLO OVER STAGGERED PAIRS",
+                     // (0.193.0) Round seven: an electric guitar over an acoustic's strum.
+                     "POWER-CHORD QUARTERS OVER THE STRUM", "THE VERSE'S STRUM, DISTORTED" };
         if (layer == ComposerLayer::chords)
             return { "SYNTH BASS SIXTEENTHS", "STRINGS ON THE QUARTERS", "PIANO ARPEGGIO IN 3+3+2", "PIZZICATO ARPEGGIO", "TIMPANI ROLL RISER",
                      // (0.155.0) Round four.
@@ -1694,7 +1704,10 @@ namespace pr7s
                      "HIGH COLOUR TONE", "HIGH TONIC PEDAL",
                      // (0.186.0) Round six.
                      "SIXTEENTH PIANO PULSE", "STEPPING EIGHTHS INTO A HELD NOTE, OCTAVES", "DOTTED CALL, PUSHED ANSWER",
-                     "STACCATO ONE-NOTE EIGHTHS OVER OCTAVE ROOTS", "PUMP BETWEEN TWO CHORDS", "OCTAVE ROOT AND TOP, CHORDS ON THE ANDS" };
+                     "STACCATO ONE-NOTE EIGHTHS OVER OCTAVE ROOTS", "PUMP BETWEEN TWO CHORDS", "OCTAVE ROOT AND TOP, CHORDS ON THE ANDS",
+                     // (0.193.0) Round seven.
+                     "STRINGS HALF NOTES WITH THE STRUM", "OCTAVE COUNTERLINE", "CELLO DOUBLES THE RIFF", "STRINGS PULSE ON THE ROOT",
+                     "BELL DOUBLES THE GUITAR" };
         return {};
     }
 
