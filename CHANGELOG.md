@@ -2,6 +2,38 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.197.0
+
+**Nine more bridge types and five more breakdown types**, from the owner's 70 song files (round seven, read for their shapes only; the names and descriptions are ours). Four are led by the ACOUSTIC GUITAR lane, ten are electric. All in 4/4. The bridges are in a bridge, middle 8 or break block's TYPE menu after RIDE AND BASS SIXTEENTHS UNDER A CLEAN ARPEGGIO (before CREEP, OPEN CHORDS and DRONING), and in an interlude's after the interlude's own; the breakdowns in a breakdown block's after HALF-STEP FALL OVER THE OPEN ROOT (before HEAVY CHUG and STACCATO CHUG).
+
+**Bridges, acoustic-led** (choosing one switches the ACOUSTIC GUITAR lane on and writes it):
+- **DOWN TO THE ACOUSTIC:** the band out and an acoustic alone (fingerpicking, or a soft strum with flicks); from halfway closed hats and a shaker on the eighths with a kick every fourth bar; the last bar one chord rung. The GUITAR lane is OUT first.
+- **HIGH ARPEGGIO OVER A HELD STRUM:** the key's chord strummed once every four bars under a second acoustic's high picked figure (the key's note on 1 and 4-and, its fifth and ninth rocking between), then the tied bass-string strum alone; no kit but a crash on each strum (or a shaker later). The GUITAR lane can play the high figure on an electric.
+- **PICKED UNISON ARPEGGIO, DRUMS OUT:** each chord's bass note held on 1, then five eighths of its tones from the and of 2, two acoustics in unison (or one); strings holding the chord; only a crash swell into the next block, or a ride bell on 1. The GUITAR lane is OUT first.
+
+**Bridges, electric:**
+- **KIT-LED BRIDGE, TWO-NOTE STABS:** the kit carries it: four on the floor and open hats with no snare, toms on 2-and and 3 from halfway, a backbeat near the end and a sixteenth snare roll growing into the next; the guitar and bass come in after a few bars with a two-note stab on 1 and a pickup, every other bar.
+- **FIXED HIGH NOTE OVER A WALKING LOW NOTE:** the key's note high on every eighth, never moving, over the guitar's own low note walking the chords a bar each (or a second guitar holding it); the drums build in thirds: nothing, the ride on 1, then the snare and a floor tom on every eighth.
+- **DISPLACED HALF-TIME BACKBEAT, CHROMATIC CLIMB:** a chord held a bar over the snare on 2-and and 4-and, the kick pushed off the beat; the last bars the whole band on one figure climbing a half step a bar; a tom flurry every fourth bar.
+- **TOM CARPET, SNARE ON THE OFF-BEATS:** no kick or backbeat: floor toms in groups of three, the snare and a crash off the beat; high three-note chords tremolo-picked over it, root sixteenths in the bass.
+- **REPEATED-NOTE LINE IN 3+3+2:** a line of repeated notes in groups of three, three and two eighths, a chord tone each, then an answering bar falling through them, over power-chord eighths; on the lead lane, a second guitar or the keys.
+- **CHORDS UNDER A HELD HIGH THIRD:** high power chords on 1, 3 and the a of 4, then on 2, 3 and 4, with the chord's third held high a bar over them (the keys, the lead or a second guitar); half time on the ride.
+
+**Breakdowns, acoustic-led:**
+- **ONE ACOUSTIC ALONE:** everyone out but one acoustic's tied bass-string strum (or with a second acoustic playing the bass), the kit down to a kick and floor tom on 1 (then on 2) with a snare and clap on 3. The GUITAR lane is OUT first.
+
+**Breakdowns, electric:**
+- **HELD HIT, UNISON SIXTEENTH PICKUP:** every lane on one hit held three beats, then four sixteenths together on 4, the snare in sixteenths under the hold; then a stream of sixteenths from halfway and one last hit.
+- **THE BAND ANSWERS ON THE LAST EIGHTH:** a low single-note riff alone; every other bar the bass, a second guitar, the kick and a crash answer together on the last eighth (or the last two).
+- **TOMS, SIDESTICK AND CLAPS:** the guitars and bass out: the kick, snare grace notes, toms in sixteenths, a side stick and claps; muted chugs come back halfway.
+- **WIDE CHORD RUNG OVER THE CHUG:** the chug on 3+3+3+3+2+2 goes on while a second guitar rings a wide open chord (root, sixth, ninth, fifth and ninth above) on the first bar of every four, then rejoins the chug.
+
+Each type has its own guitar, bass, keys and drums options (the bass's last is still LOCKED WITH THE KICK), with the shared options after them; REPEATED-NOTE LINE IN 3+3+2 and CHORDS UNDER A HELD HIGH THIRD have lead options too. A second guitar's or second acoustic's part goes onto the lane's second track when it has two, as before.
+
+**Our guesses:** the songs' sections were longer than our usual eight bars, so where a part comes in (a quarter, a third, halfway, the last three bars of eight) is scaled to the block; the bridge in threes and the drop in sixes were in other meters and are written as groupings in 4/4; CHORDS UNDER A HELD HIGH THIRD holds the chord's own third (the reader called it the major third); the claps' places in TOMS, SIDESTICK AND CLAPS are ours.
+
+**Not checked here:** how it sounds. The tests check the shapes (which lanes play, where the hits fall, the acoustic lane switched on and written).
+
 ## 0.196.0
 
 **Five more pre-chorus types and seven more post-chorus / interlude types**, from the owner's 70 song files (round seven, read for their shapes only; the names and descriptions are ours). Six are led by the ACOUSTIC GUITAR lane, six are electric. All in 4/4. The pre-choruses are in a pre-chorus block's TYPE menu after SIXTEENTHS UP A HALF STEP AFTER SIX (before the verse's types); the others in a post-chorus, interlude or instrumental block's TYPE menu after HELD SECOND CLUSTER, SIXTEENTH PICKUP.

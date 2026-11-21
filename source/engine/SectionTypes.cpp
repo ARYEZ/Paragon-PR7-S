@@ -437,6 +437,17 @@ namespace pr7s
                          { "HELD CHORDS OVER A SIXTEENTH BASS PEDAL, NO SNARE", "A chord rung each bar over a sixteenth bass pedal, root stabs under it, no snare: the kick, ride and crash pushes", r, {}, b },
                          { "OCTAVES IN 2+1 CELLS OVER SIXTEENTH ROOTS", "Octaves in cells of two and one over the bass's sixteenth roots, crash eighths", r, {}, b },
                          { "RIDE AND BASS SIXTEENTHS UNDER A CLEAN ARPEGGIO", "No kick or snare: the ride and the bass in sixteenths under a clean arpeggio and a high held note, the groove back later", r, {}, b },
+                         // (0.197.0) Round seven (the owner's 70 songs; shapes only, our names): three led by the ACOUSTIC lane
+                         // (applying one switches it on), then six electric.
+                         { "DOWN TO THE ACOUSTIC", "The band out: an acoustic alone, then hats and a shaker join, the last bar one chord rung", r, {}, b },
+                         { "HIGH ARPEGGIO OVER A HELD STRUM", "The tonic strummed once every four bars under a high picked figure, then the acoustic's tied strum alone; no drums", r, {}, b },
+                         { "PICKED UNISON ARPEGGIO, DRUMS OUT", "Two acoustics in unison: the bass note held on 1, then five eighths of chord tones over it; the drums out", r, {}, b },
+                         { "KIT-LED BRIDGE, TWO-NOTE STABS", "The kit carries it: four on the floor and open hats, no snare, toms from halfway, then a backbeat and a roll; two-note stabs every other bar", r, {}, b },
+                         { "FIXED HIGH NOTE OVER A WALKING LOW NOTE", "The key's note high on every eighth over the guitar's own low note walking the chords; the drums build in thirds", r, {}, b },
+                         { "DISPLACED HALF-TIME BACKBEAT, CHROMATIC CLIMB", "A chord held a bar over the snare on 2-and and 4-and, then a unison figure climbing a half step a bar", r, {}, b },
+                         { "TOM CARPET, SNARE ON THE OFF-BEATS", "No kick or backbeat: floor toms in groups of three, the snare and a crash off the beat, high tremolo triads over them", r, {}, b },
+                         { "REPEATED-NOTE LINE IN 3+3+2", "A line of repeated notes in groups of 3, 3 and 2 eighths stepping through the chords, answered, over power-chord eighths", r, {}, b },
+                         { "CHORDS UNDER A HELD HIGH THIRD", "High power chords on 1, 3 and the a of 4, then 2, 3 and 4, the chord's third held high a bar over them; half time on the ride", r, {}, b },
                          creep, open, droning };
             }
             case 4:
@@ -474,6 +485,13 @@ namespace pr7s
                          { "EIGHTH CHORDS WALKING THE HALF STEPS", "Power chords on the eighths with the bass, walking the root, its minor third, the half step over it and the flat fifth", r, {}, d },
                          { "FIVE-SIXTEENTH BURSTS UNDER A PICKED ARPEGGIO", "Bursts of five sixteenths with the bass and the kick under a picked high arpeggio, the snare on every beat", r, {}, d },
                          { "HALF-STEP FALL OVER THE OPEN ROOT", "Sixteenths a beat at a time: a chord, the same a half step down, the open root twice; a second guitar doubling", r, {}, d },
+                         // (0.197.0) Round seven (the owner's 70 songs; shapes only, our names): one led by the ACOUSTIC lane
+                         // (applying it switches it on), then four electric.
+                         { "ONE ACOUSTIC ALONE", "Everyone out but one acoustic's tied strum, the kit down to a kick and tom with a snare and clap on 3", r, {}, d },
+                         { "HELD HIT, UNISON SIXTEENTH PICKUP", "Every lane on one hit held three beats, then four sixteenths together on 4; then a stream of sixteenths and one last hit", r, {}, d },
+                         { "THE BAND ANSWERS ON THE LAST EIGHTH", "The guitar's riff alone, the band answering together on the last eighths of every other bar", r, {}, d },
+                         { "TOMS, SIDESTICK AND CLAPS", "The guitars and bass out: kick, snare flams, tom sixteenths, a side stick and claps, then muted chugs come back halfway", r, {}, d },
+                         { "WIDE CHORD RUNG OVER THE CHUG", "The chug goes on while a second guitar rings a wide open chord on the first bar of every four", r, {}, d },
                          heavy, staccato };
             }
             case 5:
@@ -1239,6 +1257,41 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "KICK BURSTS, SNARE ON EVERY BEAT, CRASH EIGHTHS", "KICK BURSTS, BACKBEAT" }, {} },
                 { "HALF-STEP FALL OVER THE OPEN ROOT", { "HALF-STEP FALL, THE SECOND GUITAR DOUBLES", "HALF-STEP FALL, ONE GUITAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "HALF TIME, KICK ON THE OPEN ROOTS", "BACKBEAT, CLOSED HATS" }, {} },
+                // (0.197.0) Round seven's bridges and breakdowns: the acoustic-led ones list the ACOUSTIC lane's options last.
+                { "DOWN TO THE ACOUSTIC", { "OUT", "ONE CHORD RUNG IN THE LAST BAR" }, { "OUT, THEN THE ROOT ON ONE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "STRINGS SWELL OVER THE LAST TWO BARS", "SILENT" }, { "HATS AND SHAKER JOIN, KICK EVERY FOURTH BAR", "SHAKER ALONE FROM HALFWAY" }, {},
+                  { "FINGERPICKING, THE LAST BAR RUNG", "SOFT FLICK STRUM, THE LAST BAR RUNG" } },
+                { "HIGH ARPEGGIO OVER A HELD STRUM", { "THE HIGH PICKING ON THE ELECTRIC", "OUT" }, { "OUT, ROOTS IN THE SECOND HALF", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CRASH ON EACH TONIC STRUM ONLY", "SHAKER EIGHTHS IN THE SECOND HALF" }, {},
+                  { "TONIC STRUM, HIGH PICKING, THEN THE TIED STRUM", "TONIC STRUM, HIGH PICKING ALL THROUGH" } },
+                { "PICKED UNISON ARPEGGIO, DRUMS OUT", { "OUT", "SOFT CHORD ON EACH ONE" }, { "OUT", "THE BASS NOTE WITH IT", "LOCKED WITH THE KICK" },
+                  { "STRINGS HOLD THE CHORD", "SILENT" }, { "SOFT SWELL INTO THE NEXT", "RIDE BELL ON ONE" }, {},
+                  { "THE ARPEGGIO, TWO IN UNISON", "THE ARPEGGIO ALONE" } },
+                { "KIT-LED BRIDGE, TWO-NOTE STABS", { "TWO-NOTE STABS EVERY OTHER BAR", "TWO-NOTE STABS EVERY BAR" }, { "ROOT ON THE STABS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "FOUR ON THE FLOOR, TOMS, THEN A BACKBEAT AND A ROLL", "FOUR ON THE FLOOR, OPEN HATS, NO SNARE" }, {} },
+                { "FIXED HIGH NOTE OVER A WALKING LOW NOTE", { "HIGH TONIC EIGHTHS OVER THE LOW ROOT", "HIGH TONIC EIGHTHS, A SECOND HOLDS THE ROOT" }, { "THE LOW NOTE WITH IT", "OUT", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT, RIDE ON ONE, THEN SNARE AND TOM EIGHTHS", "RIDE ON ONE, THEN SNARE AND TOM EIGHTHS" }, {} },
+                { "DISPLACED HALF-TIME BACKBEAT, CHROMATIC CLIMB", { "HELD CHORDS, THEN THE CLIMB IN UNISON", "THE FIGURE ALL THROUGH, CLIMBING AT THE END" }, { "THE FIGURE, CLIMBING WITH THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE ON TWO-AND AND FOUR-AND, A TOM FLURRY EVERY FOUR", "THE DISPLACED BACKBEAT, NO FLURRIES" }, {} },
+                { "TOM CARPET, SNARE ON THE OFF-BEATS", { "HIGH TREMOLO TRIADS", "HIGH TREMOLO TRIADS, A SECOND ON THE ROOT" }, { "ROOT SIXTEENTHS UNDER THE TOMS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "FLOOR TOM CARPET, SNARE AND CRASH OFF THE BEAT", "TOM CARPET, KICK UNDER THE TOMS" }, {} },
+                { "REPEATED-NOTE LINE IN 3+3+2", { "POWER EIGHTHS, A SECOND PLAYS THE LINE", "POWER EIGHTHS UNDER THE LINE" }, { "ROOT EIGHTHS UNDER THE LINE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "THE REPEATED LINE ON THE KEYS" }, { "KICK EIGHTHS UNDER THE LINE, SNARE ON THREE", "RIDE EIGHTHS, SNARE ON TWO AND FOUR" },
+                  { "REPEATED NOTES IN 3+3+2, THEN THE ANSWER", "REPEATED NOTES, AN OCTAVE UP" } },
+                { "CHORDS UNDER A HELD HIGH THIRD", { "HIGH CHORDS ON 1-3-4A, THEN 2-3-4", "HIGH CHORDS, A SECOND HOLDS THE THIRD" }, { "DOUBLES THE HIGH CHORDS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "THE HIGH THIRD HELD ON THE KEYS", "HELD PADS" }, { "HALF TIME ON THE RIDE, KICK ON ONE OR TWO AND FOUR-A", "RIDE QUARTERS, KICK WITH THE CHORDS" },
+                  { "THE HIGH THIRD HELD A BAR", "THE HIGH THIRD, AN OCTAVE UP" } },
+                { "ONE ACOUSTIC ALONE", { "OUT", "LOW CHORD EVERY FOURTH BAR" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND TOM, SNARE AND CLAP ON THREE", "CLAP ON THREE ONLY" }, {},
+                  { "THE TIED STRUM ALONE", "THE TIED STRUM, A SECOND AS THE BASS" } },
+                { "HELD HIT, UNISON SIXTEENTH PICKUP", { "HELD HIT, FOUR SIXTEENTHS, THEN THE STREAM", "HELD HIT AND PICKUP EVERY BAR" }, { "WITH THE HITS AND THE STREAM", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE SIXTEENTHS UNDER THE HOLD, KICK ON THE PICKUP", "CRASH ON THE HIT, KICK WITH THE STREAM" }, {} },
+                { "THE BAND ANSWERS ON THE LAST EIGHTH", { "THE RIFF ALONE, A SECOND ON THE ANSWERS", "THE RIFF, THE ANSWERS IN IT TOO" }, { "ONLY THE ANSWERS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND CRASH ON THE ANSWERS ONLY", "HATS UNDER THE RIFF, KICK AND CRASH ON THE ANSWERS" }, {} },
+                { "TOMS, SIDESTICK AND CLAPS", { "OUT, THEN MUTED CHUGS HALFWAY", "MUTED CHUGS ALL THROUGH" }, { "OUT, THEN ROOT EIGHTHS HALFWAY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "TOMS, SIDESTICK AND CLAP GROOVE", "TOMS AND CLAPS, KICK ON THE BEATS" }, {} },
+                { "WIDE CHORD RUNG OVER THE CHUG", { "THE CHUG, A SECOND RINGS A WIDE CHORD EVERY FOURTH BAR", "THE CHUG, THE WIDE CHORD ON ITS OWN BARS" }, { "DOUBLES THE CHUG", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK WITH THE CHUG, SNARE ON THREE", "KICK WITH THE CHUG, BACKBEAT" }, {} },
                 // (0.183.0) Round six's pre-choruses.
                 { "PIANO EIGHTHS, CLAPS ON THE BEATS, GUITARS RING", { "CHORD RUNG, SIXTEENTH PICKUP PAIR", "MUTED EIGHTHS UNDER THE CLAPS" }, { "ROOTS HELD", "ROOT HELD, PICKUP PAIR", "LOCKED WITH THE KICK" },
                   { "PIANO CHORD EIGHTHS", "HELD PADS" }, { "CLAPS ON EVERY BEAT, CRASH ON ONE", "CLAPS ON THE BEATS, SPARSE KICK" }, {} },
