@@ -2,6 +2,40 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.194.0
+
+**Eighteen more verse types**, from the owner's 70 song files (round seven, read for their shapes only; the names and descriptions are ours). Ten are led by the new ACOUSTIC GUITAR lane, eight are electric. All in 4/4. You'll find them in a verse block's TYPE menu, after FIVE PICKS AND A GAP.
+
+**How the acoustic ones work:** choosing one of the ten switches ARCHITECT's ACOUSTIC GUITAR lane on, and the type writes it: the lane's menu lists the type's acoustic options (most are the 0.193.0 styles, some with a SECOND ACOUSTIC part of their own). Where the song had no electric guitar, the GUITAR lane's first option is OUT; the other option adds an electric part over the acoustic. Choosing another type later leaves the acoustic lane on (switch it off if you don't want it): it then plays its own styles again.
+
+**Acoustic-led:**
+- **CHORD TO OPEN PEDAL, TAMBOURINE ONLY:** the acoustic strums the chord, then its bass string falls to the open tonic under the top strings; no kit, a tambourine on 2 and 4; the bass's root, a passing note, the tonic on 2-and.
+- **OFFBEAT STRUMS OVER A TOM TRESILLO:** high acoustic shapes off the beat; the bass and the floor tom together on x-----x---x-x-x-, no kick.
+- **LOW CHORD AND HIGH CLUSTER, BAR BY BAR:** a low chord one bar, a high cluster over the same root the next, on a 3+3+2 lilt; the pedal hat, a dotted kick, the snare late on 4.
+- **ACOUSTIC JOINS HALFWAY ON THE RIFF:** the guitars out, the bass's sixteenth riff over sixteenth hats; halfway the acoustic strums the riff's rhythm on root-fifth-octave shapes; a snare and kick build in the last bar.
+- **TWIN ACOUSTIC ARPEGGIOS:** two acoustics picking one rhythm (x-x-x-x---x-x-x-) on different chord tones, the second from the second chord (or one strum rung under every four bars); whole-note bass from the second chord.
+- **FINGERPICKING, SHAKER AND HATS:** eighths over a held bass note with a fixed top; a shaker and hats, the kick rare.
+- **HIGH ROLLED TRIADS OVER A UNISON LINE:** high triads rolled, a breath, then picked, over the bass and a clean guitar on one slow line walking into each change; half-time drums.
+- **STAB CELL ON THE WEAK SIXTEENTHS:** dyad stabs on the weak sixteenths one bar, silent the next, the bass's sixteenth riff owning the downbeats.
+- **DRONE PAIR AND HAMMER-ONS:** a low root held under two notes a whole step apart, a hammer-on into each bass note; sixteenth hats and a shaker.
+- **CLEAN STRUM WITH FLICKS:** a soft strum with a down-up flick before the backbeat (quarters, eighths, or light ups), a light backbeat.
+
+**Electric:**
+- **HIGH OSTINATO, LOW RIFF EVERY OTHER BAR:** a plucked high ostinato in octaves that never stops (keys, or a second guitar), a short low riff only every other bar with the bass.
+- **RIFF AFTER THE ONE, FOUR ON THE FLOOR:** the guitar and bass in unison eighths from the and of 1, the downbeat always empty, the second half a tritone (or a fourth) under; the snare only from halfway.
+- **STRINGS PULSE, GUITARS OUT:** the guitars and bass out, strings on the root in staccato sixteenths over a dotted kick; a muted guitar cell from halfway, three dotted hits to end.
+- **SIX CHUGS, TWO HITS, A BAR OF RING:** six muted chugs, two hits and a chord rung through a bar where nothing is struck; the kick bursting on 1, crash quarters, a china on 4.
+- **PEDAL EIGHTHS, SUS4-TO-3 DYAD:** a muted root pedal, a high fourth-and-fifth dyad resolving to the third; a snare pickup into 2 and 4.
+- **GAPPED CHUGS, TREMOLO IN THE GAPS:** a chug bar with gaps, then three bars of two hits and a pickup while a second guitar tremolo-picks root and fifth in the gaps.
+- **GALLOP THEN TREMOLO NOTE:** a galloping chord cell, six sixteenths on the chord's third high, then a bar of three held chords; the kick on the gallop, crash eighths.
+- **CALL BAR, BASS ANSWER BAR:** a chord rung on 1 and three stabs late in the bar, then a bar left empty for the bass's answer.
+
+Each type has its own guitar, bass, keys and drums options (the bass's last is still LOCKED WITH THE KICK), with the shared options after them. A second guitar's part (the ostinato, the tremolo, the high notes) goes onto the lane's second track when it has two, as before.
+
+**Renamed from the plan:** two types share their names with acoustic lane styles, so they have their own: LOW CHORD AND HIGH CLUSTER, BAR BY BAR (the plan's ROOT CHORD AND HIGH CLUSTER IN TURN) and STAB CELL ON THE WEAK SIXTEENTHS (STAB CELL, A BAR ON, A BAR OFF). The styles keep theirs.
+
+**Not checked here:** how it sounds. The tests check the shapes (which lanes play, where the hits fall, the acoustic lane switched on).
+
 ## 0.193.0
 
 **An ACOUSTIC GUITAR lane in ARCHITECT**, from the owner's 70 song files (their acoustic and unplugged parts, read for their shapes only), and acoustic-friendly options for the drums, bass, keys and guitar.

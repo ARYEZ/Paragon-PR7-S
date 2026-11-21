@@ -241,6 +241,26 @@ namespace pr7s
                          { "KICK AND HAT EIGHTHS, BASS ALONE", "The guitars out, the bass's sixteenth riff alone over the kick and hats on every eighth", r, {}, v },
                          { "CLIPPED EIGHTH CHORDS UNDER A SINGLE-NOTE LINE", "Chords clipped to an eighth on, an eighth off, a second guitar's single-note line over them, kick runs on 1 and 3", r, {}, v },
                          { "FIVE PICKS AND A GAP", "Five sixteenths picked and one left out, the cell of six running across the bar line", r, {}, v },
+                         // (0.194.0) Round seven (the owner's 70 songs; shapes only, our names): ten led by the ACOUSTIC
+                         // lane (applying one switches it on), then eight electric.
+                         { "CHORD TO OPEN PEDAL, TAMBOURINE ONLY", "An acoustic strums the chord, then lets its bass string fall to the open tonic under the top strings; no kit, a tambourine on 2 and 4", r, {}, v },
+                         { "OFFBEAT STRUMS OVER A TOM TRESILLO", "High acoustic shapes struck off the beat, the bass and the floor tom on one 3+3+2 figure, no kick", r, {}, v },
+                         { "LOW CHORD AND HIGH CLUSTER, BAR BY BAR", "An acoustic's low chord one bar and a high cluster over the same root the next, on a 3+3+2 lilt; the pedal hat and a dotted kick", r, {}, v },
+                         { "ACOUSTIC JOINS HALFWAY ON THE RIFF", "The guitars out, the bass's sixteenth riff over sixteenth hats; halfway an acoustic strums the riff's rhythm, a build in the last bar", r, {}, v },
+                         { "TWIN ACOUSTIC ARPEGGIOS", "Two acoustics picking one rhythm on different chord tones, one strum ringing under the start, whole-note bass from the second chord", r, {}, v },
+                         { "FINGERPICKING, SHAKER AND HATS", "An acoustic picking eighths over a held bass note, its top fixed from the key; a shaker and hats, the kick rare", r, {}, v },
+                         { "HIGH ROLLED TRIADS OVER A UNISON LINE", "An acoustic's high triads rolled, a breath, then picked, over the bass and a clean guitar on one slow line; half-time drums", r, {}, v },
+                         { "STAB CELL ON THE WEAK SIXTEENTHS", "An acoustic's dyad stabs on the weak sixteenths one bar, silent the next, the bass's sixteenth riff owning the downbeats", r, {}, v },
+                         { "DRONE PAIR AND HAMMER-ONS", "An acoustic's low root held under two notes a whole step apart, a hammer-on into each bass note; sixteenth hats and a shaker", r, {}, v },
+                         { "CLEAN STRUM WITH FLICKS", "A soft strum with a down-up flick before the backbeat, on an acoustic (the clean electric with it if you like), a light backbeat", r, {}, v },
+                         { "HIGH OSTINATO, LOW RIFF EVERY OTHER BAR", "A plucked high ostinato in octaves that never stops, a short low riff only every other bar, the bass with it", r, {}, v },
+                         { "RIFF AFTER THE ONE, FOUR ON THE FLOOR", "The guitars and the bass in unison eighths from the and of 1, the downbeat always empty, the second half dropping to the tritone; four on the floor", r, {}, v },
+                         { "STRINGS PULSE, GUITARS OUT", "The guitars and the bass out, strings on the root in staccato sixteenths over a dotted kick; a muted guitar cell from halfway", r, {}, v },
+                         { "SIX CHUGS, TWO HITS, A BAR OF RING", "Six muted chugs, two hits and a chord rung through a bar where nothing is struck; the kick bursting on 1", r, {}, v },
+                         { "PEDAL EIGHTHS, SUS4-TO-3 DYAD", "A muted root pedal with a high fourth-and-fifth dyad resolving to the third, the bass with the pedal, a snare pickup into the backbeat", r, {}, v },
+                         { "GAPPED CHUGS, TREMOLO IN THE GAPS", "A chug bar with gaps, then three bars of two hits and a pickup while a second guitar tremolo-picks root and fifth in the gaps", r, {}, v },
+                         { "GALLOP THEN TREMOLO NOTE", "A galloping chord cell, six sixteenths on one high note, then held chords; the kick on the gallop, crash eighths", r, {}, v },
+                         { "CALL BAR, BASS ANSWER BAR", "A chord rung on 1 and three stabs late in the bar, then a bar left empty for the bass to answer", r, {}, v },
                          droning, sparse };
             }
             case 2:
@@ -985,7 +1005,7 @@ namespace pr7s
     // lane plays its own styles).
     namespace
     {
-        struct Round3Lists { const char* name; juce::StringArray guitar, bass, keys, drums, lead; };
+        struct Round3Lists { const char* name; juce::StringArray guitar, bass, keys, drums, lead, acoustic; };   // (0.194.0: acoustic)
         const std::vector<Round3Lists>& round3Lists()
         {
             static const std::vector<Round3Lists> lists {
@@ -1307,6 +1327,53 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "HALF-TIME HAT QUARTERS, KICK CYCLE", "BACKBEAT, CLOSED HATS" }, {} },
                 { "PEDAL CELL WITH A HIGH ANSWER", { "PEDAL CELL, HIGH ANSWER", "PEDAL CELL ONLY" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "HALF TIME, SPARSE HATS", "HALF TIME, OPEN HAT QUARTERS" }, {} },
+                // (0.194.0) Round seven's verses: the acoustic-led ones list the ACOUSTIC lane's options last.
+                { "CHORD TO OPEN PEDAL, TAMBOURINE ONLY", { "OUT", "CLEAN HIGH DYADS OVER THE PEDAL" }, { "ROOT, PASSING NOTE, TONIC ON TWO-AND", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "TAMBOURINE BACKBEAT, CRASH EVERY FOUR BARS", "TAMBOURINE BACKBEAT, THE KIT FROM HALFWAY" }, {},
+                  { "THE CHORD, THEN THE OPEN PEDAL", "PEDAL STRUM, A SECOND AS THE BASS", "PEDAL STRUM, FILLS OVER IT" } },
+                { "OFFBEAT STRUMS OVER A TOM TRESILLO", { "OUT", "PICKED ROOTS ON THE TRESILLO" }, { "TRESILLO ROOT AND OCTAVE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "FLOOR TOM ON THE TRESILLO, SNARE ON TWO AND FOUR", "FLOOR TOM TRESILLO, KICK ON ONE" }, {},
+                  { "HIGH SHAPES OFF THE BEAT", "HIGH SHAPES, HIGH THIRDS OVER THEM" } },
+                { "LOW CHORD AND HIGH CLUSTER, BAR BY BAR", { "OUT", "LOW POWER CHORD ON THE LILT" }, { "ROOT PICKUPS ONLY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "PEDAL HAT, DOTTED KICK, CHINA AT THE PHRASE END", "DOTTED KICK, LATE SNARE, NO HATS" }, {},
+                  { "LOW CHORD, HIGH CLUSTER", "LOW CHORD, HIGH CLUSTER, A SECOND ANSWERS" } },
+                { "ACOUSTIC JOINS HALFWAY ON THE RIFF", { "OUT", "MUTED ROOTS ON THE RIFF FROM HALFWAY" }, { "THE BASS'S SIXTEENTH RIFF", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SIXTEENTH HATS, KICK ON ONE-E AND THREE-E, A BUILD TO END", "SIXTEENTH HATS, PLAIN BACKBEAT" }, {},
+                  { "OUT, THEN THE RIFF'S RHYTHM STRUMMED", "THE RIFF'S RHYTHM STRUMMED THROUGHOUT" } },
+                { "TWIN ACOUSTIC ARPEGGIOS", { "OUT", "CLEAN STRUM ONCE EVERY FOUR BARS" }, { "WHOLE NOTES FROM THE SECOND CHORD", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT", "SHAKER EIGHTHS, SIDESTICK ON FOUR" }, {},
+                  { "TWO ARPEGGIOS, ONE RHYTHM", "ONE ARPEGGIO, A STRUM RINGING UNDER" } },
+                { "FINGERPICKING, SHAKER AND HATS", { "OUT", "QUIET ELECTRIC DOUBLE OF THE PICKING" }, { "HELD ROOT, A REPEAT ON FOUR EVERY OTHER BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SHAKER AND HATS, KICK EVERY OTHER BAR", "SHAKER ALONE, THEN THE HATS" }, {},
+                  { "PICKING OVER THE HELD ROOT", "PICKING, A SECOND ON A HIGH SEESAW" } },
+                { "HIGH ROLLED TRIADS OVER A UNISON LINE", { "SLOW LINE WITH THE BASS", "OUT" }, { "SLOW UNISON LINE, WALKS INTO THE CHANGES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, KICK ONE, TWO-AND, FOUR, RIDE ON THE BEATS", "HALF TIME, SNARE ON THREE, CLOSED HATS" }, {},
+                  { "ROLLED TRIADS, A BREATH, THEN PICKED", "ROLLED TRIADS, A SECOND'S FILLS" } },
+                { "STAB CELL ON THE WEAK SIXTEENTHS", { "ON-BEAT STABS UNDER THE CELL", "OUT" }, { "SIXTEENTH RIFF ON THE DOWNBEATS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SOFT RIDE SIXTEENTHS, THEN THE GROOVE", "KICK ON ONE, ONE-AND, TWO-A, THREE, THREE-AND, FOUR-AND" }, {},
+                  { "STAB CELL, A BAR OFF", "STAB CELL, A SECOND AS THE BASS" } },
+                { "DRONE PAIR AND HAMMER-ONS", { "OUT", "CLEAN ROOT AND FIFTH ON ONE AND THREE" }, { "ROOT ON ONE, PUSHED INTO THREE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HIGH STRINGS ON ONE AND THREE", "SILENT" }, { "SIXTEENTH HATS AND SHAKER, KICK ONE, THREE, THREE-AND", "PEDAL HAT QUARTERS, RIDE EIGHTHS, BACKBEAT" }, {},
+                  { "HAMMER-ONS UNDER THE DRONE PAIR", "HAMMER-ONS, HIGH THIRDS OVER THEM" } },
+                { "CLEAN STRUM WITH FLICKS", { "OUT", "THE SAME STRUM ON A CLEAN ELECTRIC" }, { "ROOTS ON ONE AND THREE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SOFT BACKBEAT, HAT EIGHTHS", "SIDESTICK BACKBEAT, HAT EIGHTHS" }, {},
+                  { "SOFT QUARTERS, FLICK INTO TWO AND FOUR", "SOFT EIGHTHS, FLICK INTO EACH HALF BAR", "SOFT ACCENTS, LIGHT UPS" } },
+                { "HIGH OSTINATO, LOW RIFF EVERY OTHER BAR", { "LOW RIFF EVERY OTHER BAR, THE OSTINATO OVER IT", "LOW RIFF EVERY OTHER BAR ALONE" }, { "THE LOW RIFF, EVERY OTHER BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "PLUCKED OSTINATO IN OCTAVES", "SILENT" }, { "HATS ON THE BEATS, THE KICK SWAPS EACH BAR", "HATS ON THE BEATS, PLAIN BACKBEAT" }, {} },
+                { "RIFF AFTER THE ONE, FOUR ON THE FLOOR", { "UNISON LINE OFF THE ONE, TRITONE UNDER", "UNISON LINE OFF THE ONE, FOURTH UNDER" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "FOUR ON THE FLOOR, SNARE FROM HALFWAY", "FOUR ON THE FLOOR, OPEN AND PEDAL HATS, BACKBEAT" }, {} },
+                { "STRINGS PULSE, GUITARS OUT", { "OUT, THEN A MUTED CELL FROM HALFWAY", "OUT" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "STRINGS ROOT SIXTEENTHS IN OCTAVES", "STRINGS ROOT SIXTEENTHS, ACCENTS IN THREES" }, { "DOTTED KICK, BACKBEAT, OPEN HAT QUARTERS", "DOTTED KICK, BACKBEAT, A DOTTED HIT TO END" }, {} },
+                { "SIX CHUGS, TWO HITS, A BAR OF RING", { "SIX CHUGS, TWO HITS, RING A BAR", "SIX CHUGS, TWO HITS, HIGH NOTES IN THE GAP" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK BURST, CRASH QUARTERS, CHINA ON FOUR", "BACKBEAT UNDER CRASH QUARTERS" }, {} },
+                { "PEDAL EIGHTHS, SUS4-TO-3 DYAD", { "MUTED PEDAL, SUS4 TO THIRD DYADS", "MUTED PEDAL ALONE" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE PICKUP INTO TWO AND FOUR, PEDAL KICK", "BACKBEAT, QUARTER HATS, PEDAL KICK" }, {} },
+                { "GAPPED CHUGS, TREMOLO IN THE GAPS", { "GAPPED CHUGS, TREMOLO SECOND GUITAR", "GAPPED CHUGS ALONE" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "DOTTED SNARE BAR, THEN OPEN HAT EIGHTHS", "KICK ON THE CHUGS, BACKBEAT, OPEN HATS" }, {} },
+                { "GALLOP THEN TREMOLO NOTE", { "GALLOP CELL, HIGH THIRD IN SIXTEENTHS", "GALLOP CELL, A SECOND GUITAR ON THE FIFTH" }, { "WITH THE GALLOP", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK GALLOP, SNARE ON TWO-AND, CRASH EIGHTHS", "KICK GALLOP, BACKBEAT, RIDE" }, {} },
+                { "CALL BAR, BASS ANSWER BAR", { "CHORD RUNG, THREE STABS, A BAR OFF", "CHORD RUNG, THREE STABS, EVERY BAR" }, { "ANSWERS IN THE EMPTY BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HITS WITH THE CALL, GROOVE IN THE ANSWER", "HALF TIME UNDER THE CALL" }, {} },
                 // (0.181.0) Round six's verses.
                 { "POWER CHORD PAIRS, MUTED OCTAVES IN THE GAPS", { "CHORD PAIRS, MUTED OCTAVES", "CHORD PAIRS ONLY" }, { "PAIRS UNDER THE CHORDS", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK PAIRS, CRASH ON EVERY KICK", "KICK PAIRS, BACKBEAT ONLY" }, {} },
@@ -1397,6 +1464,7 @@ namespace pr7s
                     case L::chords: return list.keys;
                     case L::drums: return list.drums;
                     case L::lead: return list.lead;
+                    case L::acoustic: return list.acoustic;   // (0.194.0: the acoustic-led types)
                     default: return {};
                 }
         return {};
@@ -1775,6 +1843,9 @@ namespace pr7s
             s.sectionType = {};
             s.riffFlavour = indexOf (RiffFlavour::any);
         }
+        // (0.194.0) A type that writes the ACOUSTIC lane (round seven's acoustic-led verses) switches it on.
+        if (! round3Approaches (s.sectionType, ComposerLayer::acoustic).isEmpty())
+            s.lane (ComposerLayer::acoustic).on = true;
     }
 
     const std::vector<SectionTransition>& sectionTransitions()
