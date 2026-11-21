@@ -338,6 +338,7 @@ private:
     double hearingStart = 0.0;
     juce::String status;
     juce::uint64 seenChange = 0;
+    juce::uint64 seenContent = 0;   // (0.190.0)
     int pressedLane = -1;          // the lane the mouse went down on (a click hears, a drag takes it out)
     bool draggedOut = false;
 

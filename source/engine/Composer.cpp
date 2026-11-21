@@ -2,6 +2,7 @@
 #include "engine/SectionTypes.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <map>
 #include <mutex>
@@ -476,8 +477,72 @@ namespace pr7s
             return std::move (list[(size_t) juce::jlimit (0, (int) list.size() - 1, style)]);
         }
 
+        // (0.190.0) One composition's memo: while composeLayer(s) runs, a lane made from the same state, chords and
+        // context is made once (the guitar was made again by the bass, the drums, the keys and the lead writers, and
+        // again for the groove pool's riff). Only calls with the top call's own context object and the same chords
+        // are kept (a context copied or changed inside is made as before), and every key compares the whole state.
+        struct ComposeMemo
+        {
+            enum class Kind { raw, guitar, synced };
+            const ComposerContext* context = nullptr;
+            std::vector<ChordSpan> spans;
+            struct Entry { Kind kind; ComposerLayer layer; ComposerState state; LineIdea idea; };
+            std::vector<Entry> entries;
+            struct Riff { ComposerState state; SyncRhythm riff; };
+            std::vector<Riff> riffs;
+
+            static ComposeMemo*& active() noexcept { static thread_local ComposeMemo* m = nullptr; return m; }
+            static std::atomic<bool>& enabled() noexcept { static std::atomic<bool> on { true }; return on; }
+            static bool sameSpans (const std::vector<ChordSpan>& a, const std::vector<ChordSpan>& b) noexcept
+            {
+                if (a.size() != b.size())
+                    return false;
+                for (size_t i = 0; i < a.size(); ++i)
+                    if (a[i].start != b[i].start || a[i].end != b[i].end || ! (a[i].chord == b[i].chord) || ! (a[i].key == b[i].key))
+                        return false;
+                return true;
+            }
+            static ComposeMemo* forCall (const std::vector<ChordSpan>& spans, const ComposerContext& c) noexcept
+            {
+                auto* m = active();
+                return m != nullptr && m->context == &c && sameSpans (m->spans, spans) ? m : nullptr;
+            }
+            template <typename Make>
+            static LineIdea get (Kind kind, ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans,
+                                 const ComposerContext& c, Make&& make)
+            {
+                auto* m = forCall (spans, c);
+                if (m == nullptr)
+                    return make();
+                for (const auto& e : m->entries)
+                    if (e.kind == kind && e.layer == l && e.state == s)
+                        return e.idea;
+                auto idea = make();
+                m->entries.push_back ({ kind, l, s, idea });
+                return idea;
+            }
+        };
+
+        // Made by the outermost composeLayer(s) only.
+        struct ComposeScope
+        {
+            ComposeScope (const std::vector<ChordSpan>& spans, const ComposerContext& c)
+            {
+                if (ComposeMemo::active() == nullptr && ComposeMemo::enabled().load())
+                {
+                    memo.context = &c;
+                    memo.spans = spans;
+                    ComposeMemo::active() = &memo;
+                    owner = true;
+                }
+            }
+            ~ComposeScope() { if (owner) ComposeMemo::active() = nullptr; }
+            ComposeMemo memo;
+            bool owner = false;
+        };
+
         // The riff the drums may lock to, and the beat the bass's seventh style follows.
-        LineIdea guitarOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        LineIdea guitarOfMade (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             const auto& lane = s.lane (ComposerLayer::guitar);
             auto riff = c.riff;
@@ -518,10 +583,15 @@ namespace pr7s
                 keepInRange (idea, low, high);
             return idea;
         }
+        LineIdea guitarOf (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            return ComposeMemo::get (ComposeMemo::Kind::guitar, ComposerLayer::guitar, s, spans, c, [&] { return guitarOfMade (s, spans, c); });
+        }
 
         LineIdea cleanLaneOf (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);   // (0.114.0; below)
 
-        LineIdea rawLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        LineIdea rawLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);   // (0.190.0: the memo, below)
+        LineIdea rawLayerMade (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             const auto& lane = s.lane (l);
             if (c.myRiff.has_value() && s.riffLayer() == l)
@@ -584,6 +654,10 @@ namespace pr7s
                 }
             }
             return {};
+        }
+        LineIdea rawLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            return ComposeMemo::get (ComposeMemo::Kind::raw, l, s, spans, c, [&] { return rawLayerMade (l, s, spans, c); });
         }
     }
 
@@ -21757,7 +21831,7 @@ namespace pr7s
         // (0.117.0) PUSHED FOUR-CHORD TURNAROUND: whatever the bass, keys and drums play, in the turnaround bars the bass
         // doubles the guitar's pushes, the keys leave room (their chords aren't the turnaround's) and the drums put toms on
         // the pushes and a crash on the last one (the downbeat kept).
-        LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        LineIdea syncedLayerMade (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             auto idea = syncedLayerOwn (l, s, spans, c);
             if (spans.empty() || ! turnaroundChosen (s) || ! s.lane (ComposerLayer::guitar).on || c.myRiff.has_value() || s.lane (l).ownStyles
@@ -21805,6 +21879,10 @@ namespace pr7s
             }
             sortNotes (idea);
             return idea;
+        }
+        LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            return ComposeMemo::get (ComposeMemo::Kind::synced, l, s, spans, c, [&] { return syncedLayerMade (l, s, spans, c); });
         }
     }
 
@@ -23246,6 +23324,22 @@ namespace pr7s
         std::mutex poolLock;
         std::vector<KeptPool> keptPools;   // (the last few: the menu, the compose and ROLL ask for the same)
 
+        // (0.190.0) What a pool needs that doesn't hang on the riff: which grooves are in the favourite folders, and each
+        // group's candidates for the section (and for its fallback), and Toontrack's others. Kept by the list, the section
+        // and the favourites: a changed riff (any guitar edit) re-fits only those candidates instead of the whole library.
+        struct PoolBase
+        {
+            const void* list = nullptr;
+            size_t count = 0;
+            int section = 0;
+            juce::int64 favourites = 0;
+            std::shared_ptr<const void> alive;
+            std::vector<bool> isFavourite;
+            std::array<std::array<std::vector<size_t>, 3>, 2> groups;   // [round][fav / toon / other]
+            std::array<std::vector<size_t>, 2> toonOthers;             // [round]: Toontrack, not favourite, not naming it
+        };
+        std::vector<std::shared_ptr<const PoolBase>> keptBases;   // (under poolLock)
+
         juce::int64 riffHashOf (const SyncRhythm& riff, double length)
         {
             juce::String text (juce::roundToInt (length * 96.0));
@@ -23263,7 +23357,7 @@ namespace pr7s
         }
     }
 
-    SyncRhythm composerDrumRiff (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+    static SyncRhythm composerDrumRiffMade (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
     {
         if (spans.empty())
             return {};
@@ -23282,6 +23376,21 @@ namespace pr7s
         std::sort (riff.accents.begin(), riff.accents.end());
         return riff;
     }
+
+    SyncRhythm composerDrumRiff (const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+    {
+        auto* m = ComposeMemo::forCall (spans, c);
+        if (m == nullptr)
+            return composerDrumRiffMade (s, spans, c);
+        for (const auto& kept : m->riffs)
+            if (kept.state == s)
+                return kept.riff;
+        auto riff = composerDrumRiffMade (s, spans, c);
+        m->riffs.push_back ({ s, riff });
+        return riff;
+    }
+
+    void setComposeMemoForTests (bool on) { ComposeMemo::enabled() = on; }
 
     double composerGrooveFit (const GrooveRhythm& g, const SyncRhythm& riff, double beatsPerBar, double riffLength)
     {
@@ -23388,23 +23497,58 @@ namespace pr7s
         };
         // (0.178.0) Three groups: the favourite folders, the rest of Toontrack, the other packs.
         enum { fav, toon, other };
-        std::vector<bool> isFavourite (all.size(), false);
+        // (0.190.0) The candidates, kept apart from the riff (made once per list, section and favourites).
+        std::shared_ptr<const PoolBase> base;
+        {
+            const std::lock_guard<std::mutex> sl (poolLock);
+            for (const auto& kept : keptBases)
+                if (kept->list == all.data() && kept->count == all.size() && kept->section == section && kept->favourites == key.favourites)
+                    base = kept;
+        }
+        if (base == nullptr)
+        {
+            auto made = std::make_shared<PoolBase>();
+            made->list = all.data();
+            made->count = all.size();
+            made->section = section;
+            made->favourites = key.favourites;
+            made->alive = c.libraryGrooves.keepAlive();
+            made->isFavourite.assign (all.size(), false);
+            for (size_t i = 0; i < all.size(); ++i)
+                made->isFavourite[i] = isInFavouriteFolder (all[i].file, c.favouriteFolders);
+            const auto groupOf = [&] (size_t i) { return made->isFavourite[i] ? (int) fav : grooveAt (i).toontrack ? (int) toon : (int) other; };
+            for (int round = 0; round < 2; ++round)
+            {
+                const auto sec = round == 0 ? section : fallbackSection (section);
+                for (size_t i = 0; i < all.size(); ++i)
+                {
+                    const auto& g = grooveAt (i);
+                    if (! eligible (g))
+                        continue;
+                    if ((g.sectionMask & (1 << sec)) != 0)
+                        made->groups[(size_t) round][(size_t) groupOf (i)].push_back (i);
+                    else if (g.toontrack && ! made->isFavourite[i])
+                        made->toonOthers[(size_t) round].push_back (i);
+                }
+            }
+            base = made;
+            const std::lock_guard<std::mutex> sl (poolLock);
+            if (keptBases.size() >= 16)
+                keptBases.erase (keptBases.begin());
+            keptBases.push_back (base);
+        }
+        const auto& isFavourite = base->isFavourite;
         std::array<std::vector<Scored>, 3> groups;
-        const auto groupOf = [&] (size_t i) { return isFavourite[i] ? (int) fav : grooveAt (i).toontrack ? (int) toon : (int) other; };
-        for (size_t i = 0; i < all.size(); ++i)
-            isFavourite[i] = isInFavouriteFolder (all[i].file, c.favouriteFolders);
-        for (int round = 0; round < 2 && groups[fav].empty() && groups[toon].empty() && groups[other].empty(); ++round)
+        auto round = 0;
+        for (; round < 2 && groups[fav].empty() && groups[toon].empty() && groups[other].empty(); ++round)
         {
             if (round == 1)
                 section = fallbackSection (section);
-            for (size_t i = 0; i < all.size(); ++i)
-            {
-                const auto& g = grooveAt (i);
-                if (! eligible (g) || (g.sectionMask & (1 << section)) == 0)
-                    continue;
-                groups[(size_t) groupOf (i)].push_back ({ scoreOf (i), i });
-            }
+            for (size_t k = 0; k < 3; ++k)
+                for (const auto i : base->groups[(size_t) round][k])
+                    groups[k].push_back ({ scoreOf (i), i });
         }
+        const auto& toonOthers = base->toonOthers[(size_t) juce::jmax (0, round - 1)];
         for (auto& list : groups)
             best (list, size);
         const std::array<size_t, 3> share { size / 4, size / 2, size - size / 4 - size / 2 };   // (the owner: 50 / 100 / 50 of 200)
@@ -23415,12 +23559,8 @@ namespace pr7s
         std::vector<Scored> toonExtra;
         if (take[toon] < share[toon])
         {
-            for (size_t i = 0; i < all.size(); ++i)
-            {
-                const auto& g = grooveAt (i);
-                if (eligible (g) && g.toontrack && ! isFavourite[i] && (g.sectionMask & (1 << section)) == 0)
-                    toonExtra.push_back ({ fitOf (i) * 100.0 + 5.0 * tempoBonus (g.bpm, c.bpm), i });
-            }
+            for (const auto i : toonOthers)
+                toonExtra.push_back ({ fitOf (i) * 100.0 + 5.0 * tempoBonus (grooveAt (i).bpm, c.bpm), i });
             best (toonExtra, share[toon] - take[toon]);
         }
         // A group short passes its places on.
@@ -23627,6 +23767,7 @@ namespace pr7s
     {
         if (spans.empty())
             return {};
+        const ComposeScope memo (spans, c);   // (0.190.0)
         {
             if (c.myRiff.has_value() && s.riffLayer() == l)
             {
@@ -23681,6 +23822,7 @@ namespace pr7s
         std::array<LineIdea, composerLayerCount> out;
         if (spans.empty())
             return out;
+        const ComposeScope memo (spans, c);   // (0.190.0: shared by every lane)
         for (const auto l : composerLayers())
             out[(size_t) l] = composeLayer (l, s, spans, c);
         return out;

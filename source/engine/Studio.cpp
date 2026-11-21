@@ -11,6 +11,8 @@
 #include <thread>
 #include <bit>
 #include <string_view>
+#include <unordered_set>
+#include <utility>
 
 #include "AudioAdvice.h"
 #include "DawProject.h"
@@ -32,6 +34,17 @@ namespace pr7s
             options.folderName = "Paragon PR7-S";
             options.osxLibrarySubFolder = "Application Support";
             return options;
+        }
+
+        // (0.190.0) Whether a track holds any of these parts, looked at without un-sharing its
+        // PartList (0.165.0): a non-const walk copies every track's parts, so edits that touch a
+        // few parts look first and write only the tracks that hold them.
+        bool holdsAnyPart (const Track& track, const std::unordered_set<int>& ids)
+        {
+            for (const auto& part : std::as_const (track.parts))
+                if (ids.count (part.id) > 0)
+                    return true;
+            return false;
         }
     }
 
@@ -101,6 +114,7 @@ namespace pr7s
             return nullptr;
         });
         engine.setWarpSource ([this] (const Part& part, const TempoMap& tempo) { return getWarpedSound (part, tempo); });
+        engine.setSoundStamp ([this] (const juce::String& file) { return soundStampOf (file); });
         if (withDevices)
         {
             settings = std::make_unique<juce::PropertiesFile> (settingsOptions());
@@ -179,11 +193,35 @@ namespace pr7s
         announce();
     }
 
+    int Studio::getAudioHelperChoice() const
+    {
+        return juce::jmax (0, settings != nullptr ? settings->getIntValue ("audioHelpers", 0) : audioHelperChoice);
+    }
+
+    void Studio::setAudioHelperChoice (int choice)
+    {
+        choice = juce::jlimit (0, 15, choice);
+        if (settings != nullptr)
+        {
+            settings->setValue ("audioHelpers", choice);
+            settings->saveIfNeeded();
+        }
+        audioHelperChoice = choice;
+        applyMultiCore();
+        announce();
+    }
+
+    int Studio::helpersForChoice (int choice)
+    {
+        const auto most = AudioWorkers::helpersForThisComputer();
+        return choice <= 0 ? most : juce::jmin (choice, most);
+    }
+
     void Studio::applyMultiCore()
     {
-        // A helper per core but the audio thread's. (PARAGON_HELPERS=<n>: that many, for running the
-        // tests on several cores.)
-        auto helpers = getMultiCoreAudio() ? AudioWorkers::helpersForThisComputer() : 0;
+        // A helper per core but the audio thread's, or as many as chosen (0.190.0). (PARAGON_HELPERS=<n>:
+        // that many, for running the tests on several cores.)
+        auto helpers = getMultiCoreAudio() ? helpersForChoice (getAudioHelperChoice()) : 0;
         if (const auto forced = juce::SystemStats::getEnvironmentVariable ("PARAGON_HELPERS", {}); forced.isNotEmpty())
             helpers = forced.getIntValue();
         engine.setHelperThreads (helpers);
@@ -2017,11 +2055,14 @@ namespace pr7s
     void Studio::deleteParts (const std::vector<int>& partIds)
     {
         auto any = false;
+        const std::unordered_set<int> ids (partIds.begin(), partIds.end());
         for (auto& track : project.tracks)
         {
+            if (! holdsAnyPart (track, ids))
+                continue;
             const auto before = track.parts.size();
             track.parts.erase (std::remove_if (track.parts.begin(), track.parts.end(), [&] (const Part& p)
-                                               { return std::find (partIds.begin(), partIds.end(), p.id) != partIds.end(); }),
+                                               { return ids.count (p.id) > 0; }),
                                track.parts.end());
             any = any || track.parts.size() != before;
         }
@@ -2594,12 +2635,13 @@ namespace pr7s
         if (grid <= 0.0)
             return false;
         auto any = false;
+        const std::unordered_set<int> ids (partIds.begin(), partIds.end());
         for (auto& track : project.tracks)
         {
-            if (track.isAudio() || track.isChannel() || track.frozen)
+            if (track.isAudio() || track.isChannel() || track.frozen || ! holdsAnyPart (track, ids))
                 continue;
             for (auto& part : track.parts)
-                if (! part.notes.empty() && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                if (! part.notes.empty() && ids.count (part.id) > 0)
                 {
                     const auto before = part.notes;
                     quantize (part, grid);
@@ -2618,13 +2660,14 @@ namespace pr7s
         if (amount <= 0.0f)
             return false;   // (nothing would change: no empty undo step)
         auto any = false;
+        const std::unordered_set<int> ids (partIds.begin(), partIds.end());
         for (auto& track : project.tracks)
         {
-            if (track.isAudio() || track.isChannel() || track.frozen)
+            if (track.isAudio() || track.isChannel() || track.frozen || ! holdsAnyPart (track, ids))
                 continue;
             for (auto& part : track.parts)
             {
-                if (std::find (partIds.begin(), partIds.end(), part.id) == partIds.end() || part.notes.empty())
+                if (ids.count (part.id) == 0 || part.notes.empty())
                     continue;
                 // (0.77.1) Muted notes stay as they are (they aren't heard); the others are humanized.
                 std::vector<LineNote> notes;
@@ -3208,6 +3251,11 @@ namespace pr7s
         {
             if (track.frozen || track.disabled || ! playsPr7d (track.id))
                 continue;
+            // (0.190.0) The very parts fingerprinted and sent last time: nothing to look at (every change copied
+            // and fingerprinted every PR7-D track's link copies).
+            if (const auto looked = pr7dLooked.find (track.id); looked != pr7dLooked.end() && track.parts.sharesWith (looked->second)
+                                                                && pr7dSent.count (track.id) > 0)
+                continue;
             std::vector<Part> copies;
             for (const auto& p : std::as_const (track.parts))   // (0.173.0: const: a shared list isn't copied)
                 if (p.linkCopy)
@@ -3216,7 +3264,10 @@ namespace pr7s
                 continue;   // (never linked)
             const auto fingerprint = pr7dCopiesFingerprint (copies);
             if (const auto known = pr7dSent.find (track.id); known != pr7dSent.end() && known->second == fingerprint)
+            {
+                pr7dLooked[track.id] = track.parts;
                 continue;
+            }
             if (track.drumLink.isEmpty())
                 track.drumLink = juce::Uuid().toString();
             const auto file = pr7dLinkFile (track.id);
@@ -3230,6 +3281,7 @@ namespace pr7s
             }
             pr7dWritten[track.id] = file.getLastModificationTime();
             pr7dSent[track.id] = fingerprint;
+            pr7dLooked[track.id] = track.parts;
             sendPr7d (track.id, pr7dLinkMessage (Pr7dCommand::load, file.getFullPathName()));
             ++sent;
         }
@@ -5211,7 +5263,17 @@ namespace pr7s
         bool hasKeptState() const noexcept { return kept; }
         const juce::MemoryBlock& getKeptState() const noexcept { return keptState; }
         void aboutToAsk() noexcept { changedSince = false; }
-        void keepState (const juce::MemoryBlock& state) { keptState = state; kept = true; }
+        void keepState (const juce::MemoryBlock& state)
+        {
+            // (0.190.0) A new generation only when the answer differs: the backup's "changed?" is then
+            // this number, not a hash of every byte of every plug-in's settings each time.
+            if (! kept || state != keptState)
+                ++generation;
+            keptState = state;
+            kept = true;
+        }
+        // What the kept settings are, as a number unique to this watcher and this answer.
+        juce::uint64 stateTag() const noexcept { return (serial * 0x9E3779B97F4A7C15ull) ^ generation; }
         void markChanged() noexcept { changedSince = true; }
         void windowOpen (bool open) noexcept
         {
@@ -5268,6 +5330,9 @@ namespace pr7s
         int windowsOpen = 0;
         juce::MemoryBlock keptState;
         bool kept = false;
+        juce::uint64 generation = 0;
+        const juce::uint64 serial = nextSerial();
+        static juce::uint64 nextSerial() noexcept { static std::atomic<juce::uint64> n { 1 }; return n++; }
     };
 
     void Studio::watchPlugins()
@@ -7444,6 +7509,9 @@ namespace pr7s
     void Studio::setPartLane (int partId, int lane)
     {
         for (auto& t : project.tracks)
+        {
+            if (! holdsAnyPart (t, { partId }))
+                continue;
             for (auto& p : t.parts)
                 if (p.id == partId && ! t.frozen && p.lane != juce::jlimit (0, 255, lane))
                 {
@@ -7451,6 +7519,7 @@ namespace pr7s
                     changed();
                     return;
                 }
+        }
     }
 
     void Studio::cleanUpLanes (int trackId)
@@ -7554,7 +7623,7 @@ namespace pr7s
         const auto signature = variSignature (part.audioFile);
         if (auto& known = warpedVariSignatures[part.audioFile]; known != signature)
         {
-            warpRenderer.clear();
+            warpRenderer.forgetFile (part.audioFile);   // (0.190.0: only this recording's stretches; the others still hold)
             known = signature;
         }
         const auto data = getHeardAudio (part.audioFile);
@@ -7779,10 +7848,11 @@ namespace pr7s
     void Studio::resetWarp (const std::vector<int>& partIds)
     {
         auto any = false;
+        const std::unordered_set<int> ids (partIds.begin(), partIds.end());
         for (auto& track : project.tracks)
-            if (! track.frozen)
+            if (! track.frozen && holdsAnyPart (track, ids))
                 for (auto& part : track.parts)
-                    if (part.isWarped() && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                    if (part.isWarped() && ids.count (part.id) > 0)
                     {
                         part.audioOffset = part.warp.front().seconds;
                         part.warp.clear();
@@ -7796,13 +7866,14 @@ namespace pr7s
     {
         auto count = 0;
         const auto tempo = project.tempoMap();
+        const std::unordered_set<int> ids (partIds.begin(), partIds.end());
         for (auto& track : project.tracks)
         {
-            if (track.frozen)
+            if (track.frozen || ! holdsAnyPart (track, ids))
                 continue;
             for (auto& part : track.parts)
             {
-                if (! part.isWarped() || std::find (partIds.begin(), partIds.end(), part.id) == partIds.end())
+                if (! part.isWarped() || ids.count (part.id) == 0)
                     continue;
                 const auto data = getAudio (part.audioFile);
                 const auto sound = getWarpedSound (part, tempo);
@@ -7856,9 +7927,10 @@ namespace pr7s
             std::vector<std::pair<int, std::vector<double>>> hits;
             for (const auto id : partIds)
                 hits.push_back ({ id, getPartHitpoints (id) });
+            const std::unordered_set<int> ids (partIds.begin(), partIds.end());
             for (auto& track : project.tracks)
             {
-                if (track.frozen || ! track.isAudio())
+                if (track.frozen || ! track.isAudio() || ! holdsAnyPart (track, ids))
                     continue;
                 for (auto& part : track.parts)
                 {
@@ -7879,10 +7951,11 @@ namespace pr7s
         else
         {
             // The clips' starts to the nearest grid line (the manual's Quantizing Audio Event Starts).
+            const std::unordered_set<int> ids (partIds.begin(), partIds.end());
             for (auto& track : project.tracks)
-                if (! track.frozen && track.isAudio())
+                if (! track.frozen && track.isAudio() && holdsAnyPart (track, ids))
                     for (auto& part : track.parts)
-                        if (part.isAudio() && std::find (partIds.begin(), partIds.end(), part.id) != partIds.end())
+                        if (part.isAudio() && ids.count (part.id) > 0)
                         {
                             const auto to = juce::jmax (0.0, snap (part.start, grid));
                             any = any || std::abs (to - part.start) > 1.0e-9;
@@ -8896,6 +8969,7 @@ namespace pr7s
         frozenParts.clear();
         builtSections.clear();
         pr7dSent.clear();   // (0.108.0: another song's links)
+        pr7dLooked.clear();
         pr7dWritten.clear();
         composerRiff.reset();
         editorSoloTrack = 0;   // (0.78.0: another song's track ids)
@@ -9132,16 +9206,25 @@ namespace pr7s
         };
         juce::uint64 hash = mix (14695981039346656037ull, changeVersion);
         hash = mix (hash, (juce::uint64) std::bit_cast<juce::uint32> (project.masterVolumeDb));
+        // (0.190.0) A running plug-in's settings by its watcher's tag (just collected from it: the tag
+        // says which answer they are); only settings with no plug-in behind them are hashed byte by byte.
+        const auto tagOf = [this, &stateHash] (juce::AudioProcessor* plugin, const juce::MemoryBlock& state)
+        {
+            if (plugin != nullptr)
+                if (const auto found = watchers.find (plugin); found != watchers.end() && found->second->hasKeptState())
+                    return found->second->stateTag();
+            return stateHash (state);
+        };
         for (const auto& track : project.tracks)
         {
             hash = mix (hash, (juce::uint64) std::bit_cast<juce::uint32> (track.volumeDb));
             hash = mix (hash, (juce::uint64) std::bit_cast<juce::uint32> (track.pan));
-            hash = mix (hash, stateHash (track.instrument.state));
-            for (const auto& insert : track.inserts)
-                hash = mix (hash, stateHash (insert.state));
+            hash = mix (hash, tagOf (engine.getInstrument (track.id), track.instrument.state));
+            for (int slot = 0; slot < (int) track.inserts.size(); ++slot)
+                hash = mix (hash, tagOf (engine.getEffect (track.id, slot), track.inserts[(size_t) slot].state));
         }
-        for (const auto& insert : project.masterInserts)
-            hash = mix (hash, stateHash (insert.state));
+        for (int slot = 0; slot < (int) project.masterInserts.size(); ++slot)
+            hash = mix (hash, tagOf (engine.getEffect (Engine::masterBus, slot), project.masterInserts[(size_t) slot].state));
         if (hash == 0)
             hash = 1;
         if ((juce::int64) hash == lastBackupHash)
@@ -9447,6 +9530,21 @@ namespace pr7s
         return copyAudioFiles (getAudioFolder(), destination.getSiblingFile (destination.getFileNameWithoutExtension() + " Audio"));
     }
 
+    void Studio::pluginStateInto (juce::AudioProcessor& plugin, bool reuseUnchanged, juce::MemoryBlock& into)
+    {
+        // (0.190.0) A reused answer copied straight into the song's block (no new block made and moved in).
+        const auto found = watchers.find (&plugin);
+        auto* watcher = found != watchers.end() ? found->second.get() : nullptr;
+        if (reuseUnchanged && watcher != nullptr && watcher->hasKeptState() && ! watcher->mayHaveChanged())
+        {
+            ++reusedStates;
+            if (into != watcher->getKeptState())
+                into = watcher->getKeptState();
+            return;
+        }
+        into = pluginState (plugin, false);
+    }
+
     juce::MemoryBlock Studio::pluginState (juce::AudioProcessor& plugin, bool reuseUnchanged)
     {
         // (0.130.0) The watcher notes anything that may change the plug-in's settings (see Studio.h).
@@ -9483,13 +9581,13 @@ namespace pr7s
         // Each instrument's current settings go into the file with it.
         for (auto& track : project.tracks)
             if (auto* instrument = engine.getInstrument (track.id))
-                track.instrument.state = pluginState (*instrument, reuseUnchanged);
+                pluginStateInto (*instrument, reuseUnchanged, track.instrument.state);
         // And each effect's.
         const auto keepEffectStates = [this, reuseUnchanged] (int busId, std::vector<Insert>& inserts)
         {
             for (int slot = 0; slot < (int) inserts.size(); ++slot)
                 if (auto* effect = engine.getEffect (busId, slot))
-                    inserts[(size_t) slot].state = pluginState (*effect, reuseUnchanged);
+                    pluginStateInto (*effect, reuseUnchanged, inserts[(size_t) slot].state);
         };
         for (auto& track : project.tracks)
             keepEffectStates (track.id, track.inserts);
@@ -9567,11 +9665,22 @@ namespace pr7s
                 if (const auto found = renamed.find (name); found != renamed.end())
                     name = found->second;
             };
-            const auto apply = [&rename] (Project& p)
+            // (0.190.0) Only the tracks that use a renamed file are written to: the others'
+            // parts stay shared with the undo history (a write un-shares every PartList).
+            const auto uses = [&renamed] (const Track& track)
+            {
+                for (const auto& part : std::as_const (track.parts))
+                    if (part.isAudio() && renamed.count (part.audioFile) > 0)
+                        return true;
+                return false;
+            };
+            const auto apply = [&rename, &uses] (Project& p)
             {
                 for (auto& track : p.tracks)
                 {
                     rename (track.freezeFile);
+                    if (! uses (track))
+                        continue;
                     for (auto& part : track.parts)
                         if (part.isAudio())
                             rename (part.audioFile);
@@ -9582,9 +9691,15 @@ namespace pr7s
                 apply (state);
             noteUndoParts();   // (a real change to the kept steps: noted again)
             for (auto& [id, parts] : frozenParts)
-                for (auto& part : parts)
-                    if (part.isAudio())
-                        rename (part.audioFile);
+            {
+                auto usesOne = false;
+                for (const auto& part : std::as_const (parts))
+                    usesOne = usesOne || (part.isAudio() && renamed.count (part.audioFile) > 0);
+                if (usesOne)
+                    for (auto& part : parts)
+                        if (part.isAudio())
+                            rename (part.audioFile);
+            }
         }
         return true;
     }
@@ -9643,7 +9758,9 @@ namespace pr7s
         // What's played: the song with the click as asked, no cycle, and
         // nothing starting at or after the end (so the ring-out is only
         // what's already sounding).
-        auto playing = project;
+        // (0.190.0) Without the plug-ins' saved settings: the engine never reads them, and they're
+        // often most of the song's size (several MB each, copied for every render before).
+        auto playing = copyWithoutPluginStates (false);
         if (options.prepareSong)
             options.prepareSong (playing);
         playing.loopOn = false;
@@ -10399,6 +10516,7 @@ namespace pr7s
         builtSections.clear();
         composerRiff.reset();
         pr7dSent.clear();   // (0.108.0: this song's links sent afresh: PR7-D's song made sure of)
+        pr7dLooked.clear();
         pr7dWritten.clear();
         editorSoloTrack = 0;   // (0.78.0: another song's track ids)
         engine.setEditorSolo (0);
@@ -10425,13 +10543,14 @@ namespace pr7s
         // plug-ins are in, before anything plays.
         audioCacheRate = engine.getSampleRate();
         std::vector<juce::String> toRead;
-        for (const auto& track : project.tracks)
+        std::set<juce::String> listed;   // (0.190.0: each name looked up, not searched for along the list)
+        for (const auto& track : std::as_const (project).tracks)
         {
             if (track.isAudio())
                 for (const auto& part : track.parts)
-                    if (part.isAudio() && std::find (toRead.begin(), toRead.end(), part.audioFile) == toRead.end())
+                    if (part.isAudio() && listed.insert (part.audioFile).second)
                         toRead.push_back (part.audioFile);
-            if (track.frozen && track.freezeFile.isNotEmpty() && std::find (toRead.begin(), toRead.end(), track.freezeFile) == toRead.end())
+            if (track.frozen && track.freezeFile.isNotEmpty() && listed.insert (track.freezeFile).second)
                 toRead.push_back (track.freezeFile);
         }
         std::vector<std::shared_ptr<const AudioData>> read (toRead.size());
@@ -11556,9 +11675,20 @@ namespace pr7s
         c.beatsPerBar = project.beatsPerBarAt (atBeat);
         c.tuning = GuitarTuning::named (getGuitarTuning());
         c.bassTuning = bassTuningNamed (getBassTuning());
-        c.bassProfile = profileFor (ProfileUse::bass);
-        c.guitarProfile = profileFor (ProfileUse::guitar);
-        c.leadProfile = profileFor (ProfileUse::lead);
+        {
+            // (0.190.0) The profiles read once (each profileFor read and parsed them all again).
+            const auto profiles = getInstrumentProfiles();
+            const auto first = [&profiles] (auto marked) -> std::optional<InstrumentProfile>
+            {
+                for (const auto& p : profiles)
+                    if (marked (p))
+                        return p;
+                return {};
+            };
+            c.bassProfile = first ([] (const InstrumentProfile& p) { return p.forBass; });
+            c.guitarProfile = first ([] (const InstrumentProfile& p) { return p.forGuitar; });
+            c.leadProfile = first ([] (const InstrumentProfile& p) { return p.forLead; });
+        }
         c.velocities = getGuitarVelocities();
         c.style = getGuitarStyle();
         c.solo = getSoloStyle();
@@ -11579,8 +11709,13 @@ namespace pr7s
             // (0.112.1) Worked out and given their notes once per library, style, tempo, bar and drum notes, then
             // shared: the owner's 100,000 grooves were copied (and their notes set) on every refresh.
             const auto notes = composerDrumNotes();
-            if (keptPr7dGrooves.date != pr7d.indexDate || keptPr7dGrooves.count != pr7d.grooves.size() || keptPr7dGrooves.style != (int) c.style
-                || keptPr7dGrooves.bpm != bpm || keptPr7dGrooves.bar != bar || keptPr7dGrooves.notes != notes)
+            // (0.190.0) The last few kept (a song with tempo changes asked again at each section's tempo).
+            auto kept = std::find_if (keptPr7dGrooves.begin(), keptPr7dGrooves.end(), [&] (const KeptPr7dGrooves& k)
+            {
+                return k.date == pr7d.indexDate && k.count == pr7d.grooves.size() && k.style == (int) c.style
+                       && k.bpm == bpm && k.bar == bar && k.notes == notes;
+            });
+            if (kept == keptPr7dGrooves.end())
             {
                 // (0.176.0) From the list labelled when the library was read: only the scores added and sorted here
                 // (each groove's words were read again on the screen's thread: over a second with 100,000).
@@ -11589,9 +11724,15 @@ namespace pr7s
                 auto found = findPr7dGrooves (*keptPr7dPrepared, c.style, c.bpm, c.beatsPerBar);
                 for (auto& g : found)
                     g.notes = notes;
-                keptPr7dGrooves = { pr7d.indexDate, (int) c.style, bpm, bar, pr7d.grooves.size(), notes, GrooveList (std::move (found)) };
+                keptPr7dGrooves.erase (std::remove_if (keptPr7dGrooves.begin(), keptPr7dGrooves.end(), [&] (const KeptPr7dGrooves& k)
+                                                       { return k.date != pr7d.indexDate || k.count != pr7d.grooves.size(); }),
+                                       keptPr7dGrooves.end());   // (another library's: let go)
+                if (keptPr7dGrooves.size() >= 3)
+                    keptPr7dGrooves.erase (keptPr7dGrooves.begin());
+                keptPr7dGrooves.push_back ({ pr7d.indexDate, (int) c.style, bpm, bar, pr7d.grooves.size(), notes, GrooveList (std::move (found)) });
+                kept = std::prev (keptPr7dGrooves.end());
             }
-            c.libraryGrooves = keptPr7dGrooves.grooves;
+            c.libraryGrooves = kept->grooves;
         }
         // (0.106.0) The groove library's drum MIDI (the MediaBay's), for the composer's drums lane. Without a settings
         // file (tests) the MediaBay isn't opened for this.
@@ -12687,7 +12828,36 @@ namespace pr7s
 
     std::vector<KeyIssue> Studio::checkSongKey (std::optional<Key> chosen) const
     {
-        return checkKey (project, keyCheckKeys (project, chosen));
+        return checkKey (project, getKeyCheckKeys (chosen));
+    }
+
+    std::optional<Key> Studio::getGuessedSongKey() const
+    {
+        auto same = guessedKey.valid && guessedKey.version == contentVersion && guessedKey.parts.size() == project.tracks.size();
+        for (size_t i = 0; same && i < project.tracks.size(); ++i)
+        {
+            const auto& now = project.tracks[i].parts;
+            const auto& then = guessedKey.parts[i];
+            same = now.sharesWith (then) || (now.empty() && then.empty());
+        }
+        if (! same)
+        {
+            guessedKey.parts.clear();
+            for (const auto& track : project.tracks)
+                guessedKey.parts.push_back (track.parts);
+            guessedKey.key = guessSongKey (project);
+            guessedKey.version = contentVersion;
+            guessedKey.valid = true;
+        }
+        return guessedKey.key;
+    }
+
+    KeyAt Studio::getKeyCheckKeys (std::optional<Key> chosen) const
+    {
+        if (chosen.has_value() || ! project.chordTrack.scales.empty())
+            return keyCheckKeys (project, chosen);
+        const auto guessed = getGuessedSongKey().value_or (Key {});
+        return [guessed] (double) { return guessed; };
     }
 
     bool Studio::fixOutOfKeyNotes (const std::vector<KeyIssue>& issues)
@@ -13471,6 +13641,20 @@ namespace pr7s
 
     //==========================================================================
     // VariAudio (0.34.0)
+    juce::uint64 Studio::soundStampOf (const juce::String& file)
+    {
+        // (0.190.0) A new number whenever the recording was forgotten (written again) or its VariAudio
+        // edits changed: the engine's warped clips are kept while it stays.
+        const auto signature = variSignature (file);
+        auto& known = soundStamps[file];
+        if (known.stamp == 0 || known.signature != signature)
+        {
+            known.signature = signature;
+            known.stamp = ++lastSoundStamp;
+        }
+        return known.stamp;
+    }
+
     juce::String Studio::variSignature (const juce::String& file) const
     {
         const auto found = project.variAudio.find (file);
@@ -13993,7 +14177,8 @@ namespace pr7s
         pitchCache.erase (name);
         heardCache.erase (name);
         warpedVariSignatures.erase (name);
-        warpRenderer.clear();
+        soundStamps.erase (name);
+        warpRenderer.forgetFile (name);   // (0.190.0)
     }
 
     void Studio::forgetAllAudio()
@@ -14006,6 +14191,7 @@ namespace pr7s
         heardCache.clear();
         variSignatures.clear();
         warpedVariSignatures.clear();
+        soundStamps.clear();
         warpRenderer.clear();
     }
 
@@ -14881,6 +15067,10 @@ namespace pr7s
         for (int i = 0; i < (int) blocks.size(); ++i)
             if (blocks[(size_t) i].link > 0)
                 groups[blocks[(size_t) i].link].push_back (i);
+        // (0.190.0) What each block holds as sliced here, kept for the snapshot below when nothing was written
+        // (it sliced every linked block twice on every look that copied nothing).
+        std::map<int, SectionContent> sliced;
+        auto anyWritten = false;
         if (! linksReset)
             for (const auto& [link, members] : groups)
             {
@@ -14975,8 +15165,12 @@ namespace pr7s
                     }
                 }
                 for (size_t m = 0; m < members.size(); ++m)
+                    if (! writes[m])
+                        sliced[blocks[(size_t) members[m]].id] = now[m];
+                for (size_t m = 0; m < members.size(); ++m)
                     if (writes[m])
                     {
+                        anyWritten = true;
                         // Only the tracks that change are written (a track left as it is isn't cut at the edges).
                         SectionContent changedOnly;
                         changedOnly.chords = toWrite[m].chords;
@@ -14992,7 +15186,13 @@ namespace pr7s
         for (const auto& [link, members] : groups)
             if (members.size() >= 2)
                 for (const auto i : members)
-                    seen[blocks[(size_t) i].id] = sectionContent (places[(size_t) i]);
+                {
+                    const auto id = blocks[(size_t) i].id;
+                    if (const auto kept = sliced.find (id); ! anyWritten && kept != sliced.end())
+                        seen[id] = std::move (kept->second);
+                    else
+                        seen[id] = sectionContent (places[(size_t) i]);
+                }
         linkSnapshots = std::move (seen);
         // What they were made from: after writing into the links, the song as it is now.
         linkInputs = currentLinkInputs();

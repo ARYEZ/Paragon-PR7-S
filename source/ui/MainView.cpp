@@ -2581,10 +2581,10 @@ void MainView::openKeyCheck()
     keyEditor.setKeyMarks ([this, version = juce::uint64 (-1), chosen = std::optional<pr7s::Key>(), keys = pr7s::KeyAt()] () mutable
     {
         const auto now = keyCheckWindow != nullptr ? keyCheckWindow->getPage().getChosenKey() : std::nullopt;
-        if (keys == nullptr || version != studio.getChangeVersion() || chosen != now)
+        if (keys == nullptr || version != studio.getContentVersion() || chosen != now)
         {
-            keys = pr7s::keyCheckKeys (studio.getProject(), now);
-            version = studio.getChangeVersion();
+            keys = studio.getKeyCheckKeys (now);   // (0.190.0: the guess shared, a track click doesn't redo it)
+            version = studio.getContentVersion();
             chosen = now;
         }
         return keys;

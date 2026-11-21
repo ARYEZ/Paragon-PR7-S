@@ -136,9 +136,15 @@ namespace pr7s
         songs.addArray (folder.findChildFiles (juce::File::findFiles, false, pattern));
         for (const auto& sub : folder.findChildFiles (juce::File::findDirectories, false))
             songs.addArray (sub.findChildFiles (juce::File::findFiles, false, pattern));
-        // Newest first.
-        std::sort (songs.begin(), songs.end(), [] (const juce::File& a, const juce::File& b)
-                   { return a.getLastModificationTime() > b.getLastModificationTime(); });
+        // Newest first. (0.190.0: each file's time read once, not twice in every comparison of the sort.)
+        std::vector<std::pair<juce::Time, juce::File>> dated;
+        dated.reserve ((size_t) songs.size());
+        for (const auto& f : songs)
+            dated.push_back ({ f.getLastModificationTime(), f });
+        std::stable_sort (dated.begin(), dated.end(), [] (const auto& a, const auto& b) { return a.first > b.first; });
+        songs.clearQuick();
+        for (const auto& [time, f] : dated)
+            songs.add (f);
         return songs;
     }
 

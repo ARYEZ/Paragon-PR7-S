@@ -100,6 +100,7 @@ namespace pr7s
         // (playing or not). Message thread; false: no such track.
         bool sendToInstrument (int trackId, const juce::MidiMessage&);
         int getEditorSolo() const noexcept { return editorSolo; }
+        int getLockRetriesWon() const noexcept { return lockRetriesWon.load(); }   // (0.190.0)
         int getEventBuilds() const noexcept { return eventBuilds; }   // (0.34.2, tests) tracks' event lists built so far
         int getClipBuilds() const noexcept { return clipBuilds; }     // (0.57.2, tests) audio tracks' clip lists built
 
@@ -155,6 +156,13 @@ namespace pr7s
         // instead of the recording when a clip has markers.
         using WarpSource = std::function<std::shared_ptr<const juce::AudioBuffer<float>> (const Part&, const TempoMap&)>;
         void setWarpSource (WarpSource source) { warpSource = std::move (source); }
+        // (0.190.0) A number that changes whenever what a recording sounds like changes (it was written again,
+        // its VariAudio edits): a warped clip whose part, tempo, rate and this are the same as its track was built
+        // from plays the same stretched sound, so `update` keeps it without asking the warp source (it made the
+        // key and looked the whole stretch up again for every warped clip on every update, a fader step too).
+        using SoundStamp = std::function<juce::uint64 (const juce::String& file)>;
+        void setSoundStamp (SoundStamp stamp) { soundStamp = std::move (stamp); }
+        int getWarpSourceCalls() const noexcept { return warpSourceCalls; }   // (tests)
         void addAudioTrack (int trackId);
         // An FX channel (what sends give it, through its inserts) or a group
         // channel (the tracks routed to it): no instrument, no parts.
@@ -356,6 +364,7 @@ namespace pr7s
             // (0.85.2) Only the controller events (CC, bend, pressure, program) of `events`, in its
             // order: the chase at play start, a jump and every cycle wrap walks these, not every note.
             std::vector<Event> controllerEvents;
+            std::vector<Event> noteEvents;   // (0.190.0) only the note ons and offs of `events`, in its order
             // (0.175.0) Which kinds those events hold (CC 0-127, 128 bend, 129 pressure, 130 program): the chase
             // walks back from where it starts until it has met each (not from the song's start every time).
             std::bitset<131> controllerKinds;
@@ -427,6 +436,7 @@ namespace pr7s
                 // (0.57.2) An audio track's clips: kept while its parts, solo lane, auto fades, the
                 // tempo, the rate and the very sounds its clips play are the same.
                 std::vector<const void*> sounds;
+                std::vector<juce::uint64> stamps;   // (0.190.0) each warped part's recording's sound stamp (0: not warped)
                 AutoFades fades;
                 std::vector<TempoEvent> tempo;
                 double rate = 0.0;
@@ -522,9 +532,13 @@ namespace pr7s
         std::vector<float> silence;   // for an input that isn't there
         AudioSource audioSource;
         WarpSource warpSource;
+        SoundStamp soundStamp;
+        int warpSourceCalls = 0;
         std::atomic<juce::int64> audioRecordStart { -1 };
 
         juce::CriticalSection lock;
+        static constexpr double lockRetrySeconds = 0.0005;   // (0.190.0)
+        std::atomic<int> lockRetriesWon { 0 };
         std::vector<std::unique_ptr<TrackState>> tracks;
         int eventBuilds = 0;   // (message thread)
         int clipBuilds = 0;    // (message thread)

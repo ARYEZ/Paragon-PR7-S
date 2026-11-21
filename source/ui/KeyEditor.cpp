@@ -2841,12 +2841,12 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     if (track->follow != pr7s::FollowMode::off && ! drumViewOn && ! project.chordTrack.events.empty())
     {
         // (0.83.1) Worked out again only when the notes or the song changed (it ran on every redraw).
-        if (followCache.version != studio.getChangeVersion() || followCache.partId != partId || followCache.notes != list)
+        if (followCache.version != studio.getContentVersion() || followCache.partId != partId || followCache.notes != list)
         {
             followCache.heard = pr7s::followNotes (list, part->start, track->follow, track->followReference, project.chordTrack,
                                                    project.chordTrack.shiftTicks, project.chordPads.key(),
                                                    track->followVoicing ? &*track->followVoicing : nullptr, track->followVoice);
-            followCache.version = studio.getChangeVersion();
+            followCache.version = studio.getContentVersion();   // (0.190.0: a selection changes nothing it reads)
             followCache.partId = partId;
             followCache.notes = list;
         }

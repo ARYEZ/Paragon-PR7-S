@@ -652,8 +652,10 @@ namespace pr7s
             auto found = database.scanAll ([this] { return threadShouldExit(); });
             if (threadShouldExit())
                 return;
+            auto index = prepareScan (found);   // (0.190.0: sorted and indexed here, not on the screen's thread)
             const juce::ScopedLock sl (database.pendingLock);
             database.pending = std::move (found);
+            database.pendingIndex = std::move (index);
         }
 
     private:
@@ -957,19 +959,40 @@ namespace pr7s
         scanner.reset();
         scanning = true;
         auto found = scanAll ([] { return false; });
+        auto index = prepareScan (found);
         {
             const juce::ScopedLock sl (pendingLock);
             pending = std::move (found);
+            pendingIndex = std::move (index);
         }
         takeScanResults();
+    }
+
+    MediaDatabase::PreparedIndex MediaDatabase::prepareScan (std::vector<MediaItem>& found)
+    {
+        // (0.190.0) What takeScanResults did with the whole list on the message thread, done by the scan's own
+        // thread: sorted by name (the same stable order), each file's index by path and its folder's path.
+        std::stable_sort (found.begin(), found.end(), [] (const MediaItem& a, const MediaItem& b) { return a.name.compareNatural (b.name) < 0; });
+        PreparedIndex index;
+        index.count = found.size();
+        index.byPath.reserve (found.size() * 2);
+        index.parents.assign (found.size(), {});
+        for (int i = 0; i < (int) found.size(); ++i)
+        {
+            index.byPath[found[(size_t) i].file.getFullPathName()] = i;
+            index.parents[(size_t) i] = found[(size_t) i].file.getParentDirectory().getFullPathName();
+        }
+        return index;
     }
 
     bool MediaDatabase::takeScanResults()
     {
         std::optional<std::vector<MediaItem>> result;
+        std::optional<PreparedIndex> index;
         {
             const juce::ScopedLock sl (pendingLock);
             std::swap (result, pending);
+            std::swap (index, pendingIndex);
         }
         if (! result)
             return false;
@@ -990,9 +1013,23 @@ namespace pr7s
                 item.rating = getRating (item.file);
                 item.tags = getTags (item.file);
             }
-            std::stable_sort (items.begin(), items.end(), [] (const MediaItem& a, const MediaItem& b)
-                              { return a.name.compareNatural (b.name) < 0; });
-            rebuildIndex();
+            const auto byName = [] (const MediaItem& a, const MediaItem& b) { return a.name.compareNatural (b.name) < 0; };
+            auto sortedAlready = std::is_sorted (items.begin(), items.end(), byName);
+            if (! sortedAlready)
+                std::stable_sort (items.begin(), items.end(), byName);
+            if (sortedAlready && index.has_value() && index->count == items.size())
+            {
+                // (0.190.0) The index the scan made (the order is the one it was made for): rebuildIndex's work without it.
+                ++generation;
+                byPath = std::move (index->byPath);
+                parents = std::move (index->parents);
+                searchTexts.assign (items.size(), {});
+                searchMade.assign (items.size(), 0);
+                nameRank.clear();
+                folderRank.clear();
+            }
+            else
+                rebuildIndex();
             nameRank.resize (items.size());
             for (int i = 0; i < (int) items.size(); ++i)
                 nameRank[(size_t) i] = i;   // (just sorted by name)
@@ -1045,26 +1082,80 @@ namespace pr7s
         if (folderPath.isNotEmpty() && ! inFolder (parents[(size_t) index], folderPath, query.subfolders))
             return false;
         for (const auto& filter : query.attributes)
+            if (! passesFilter (index, filter))
+                return false;
+        return search.isEmpty() || search.matches (searchTextOf (item));
+    }
+
+    bool MediaDatabase::passesBase (int index, const MediaQuery& query, const TextSearch& search, const juce::String& folderPath) const
+    {
+        const auto& item = items[(size_t) index];
+        if (! query.types.empty() && query.types.count (item.type) == 0)
+            return false;
+        if (item.rating < query.minimumRating)
+            return false;
+        if (folderPath.isNotEmpty() && ! inFolder (parents[(size_t) index], folderPath, query.subfolders))
+            return false;
+        return search.isEmpty() || search.matches (searchTextOf (item));
+    }
+
+    const MediaDatabase::AttributeIds& MediaDatabase::attributeIdsOf (const AttributeId& attribute) const
+    {
+        // (0.190.0) Each item's values of an attribute as numbers into one list of the values found, made once
+        // per change of the items, their ratings or tags (every count and filter made a list of strings for
+        // every item for every column, on every keystroke).
+        const auto key = juce::String ((int) attribute.kind) + ":" + (attribute.kind == MediaAttribute::user ? attribute.user.toLowerCase() : juce::String());
+        auto& ids = attributeIds[key];
+        if (ids.made && ids.generation == generation && ids.count == items.size())
+            return ids;
+        ids = {};
+        ids.made = true;
+        ids.generation = generation;
+        ids.count = items.size();
+        ids.offsets.reserve (items.size() + 1);
+        std::unordered_map<juce::String, int> place;
+        for (const auto& item : items)
         {
-            if (filter.values.isEmpty())
-                continue;
-            const auto has = attributeValues (item, filter.attribute);
-            if (filter.attribute.kind == MediaAttribute::character)
+            ids.offsets.push_back ((int) ids.ids.size());
+            for (const auto& v : attributeValues (item, attribute))
             {
-                for (const auto& v : filter.values)
-                    if (! has.contains (v))
-                        return false;
-            }
-            else
-            {
-                bool any = false;
-                for (const auto& v : filter.values)
-                    any = any || has.contains (v);
-                if (! any)
-                    return false;
+                auto found = place.find (v);
+                if (found == place.end())
+                {
+                    found = place.emplace (v, ids.values.size()).first;
+                    ids.values.add (v);
+                }
+                ids.ids.push_back (found->second);
             }
         }
-        return search.isEmpty() || search.matches (searchTextOf (item));
+        ids.offsets.push_back ((int) ids.ids.size());
+        return ids;
+    }
+
+    bool MediaDatabase::passesFilter (int index, const AttributeFilter& filter) const
+    {
+        if (filter.values.isEmpty())
+            return true;
+        const auto& ids = attributeIdsOf (filter.attribute);
+        const auto from = ids.offsets[(size_t) index], to = ids.offsets[(size_t) index + 1];
+        const auto has = [&] (const juce::String& v)
+        {
+            for (auto k = from; k < to; ++k)
+                if (ids.values[ids.ids[(size_t) k]] == v)
+                    return true;
+            return false;
+        };
+        if (filter.attribute.kind == MediaAttribute::character)
+        {
+            for (const auto& v : filter.values)
+                if (! has (v))
+                    return false;
+            return true;
+        }
+        for (const auto& v : filter.values)
+            if (has (v))
+                return true;
+        return false;
     }
 
     const juce::String& MediaDatabase::searchTextOf (const MediaItem& item) const
@@ -1089,26 +1180,63 @@ namespace pr7s
 
     std::vector<std::pair<juce::String, int>> MediaDatabase::valueCounts (const MediaQuery& query, const AttributeId& attribute) const
     {
-        auto others = query;
-        others.attributes.erase (std::remove_if (others.attributes.begin(), others.attributes.end(),
-                                                 [&] (const AttributeFilter& f) { return f.attribute == attribute; }),
-                                 others.attributes.end());
-        const TextSearch search (others.text);
-        const auto folderPath = others.folder == juce::File() ? juce::String() : others.folder.getFullPathName();
-        std::map<juce::String, int> counts;
-        for (int i = 0; i < (int) items.size(); ++i)
-            if (passes (i, others, search, folderPath))
-                for (const auto& v : attributeValues (items[(size_t) i], attribute))
-                    ++counts[v];
-        std::vector<std::pair<juce::String, int>> list (counts.begin(), counts.end());
-        const auto numeric = attribute.kind == MediaAttribute::tempo || attribute.kind == MediaAttribute::rating;
-        std::sort (list.begin(), list.end(), [numeric] (const auto& a, const auto& b)
+        return valueCountsAll (query, { attribute }).front();
+    }
+
+    std::vector<std::vector<std::pair<juce::String, int>>> MediaDatabase::valueCountsAll (const MediaQuery& query,
+                                                                                         const std::vector<AttributeId>& columns) const
+    {
+        // (0.190.0) Every column's counts in one walk over the items: an item that passes every filter counts in
+        // every column; one that fails only filters of a column's own attribute counts in that column alone (as
+        // the query without that column's filters finds it); the rest in none. The same counts as a walk per column.
+        std::vector<std::vector<int>> counts;
+        std::vector<const AttributeIds*> columnIds;
+        for (const auto& attribute : columns)
         {
-            if (numeric)
-                return a.first.getDoubleValue() < b.first.getDoubleValue();
-            return a.first.compareNatural (b.first) < 0;
-        });
-        return list;
+            columnIds.push_back (&attributeIdsOf (attribute));
+            counts.emplace_back (columnIds.back()->values.size(), 0);
+        }
+        const TextSearch search (query.text);
+        const auto folderPath = query.folder == juce::File() ? juce::String() : query.folder.getFullPathName();
+        std::vector<int> failing;
+        for (int i = 0; i < (int) items.size(); ++i)
+        {
+            if (! passesBase (i, query, search, folderPath))
+                continue;
+            failing.clear();
+            for (int f = 0; f < (int) query.attributes.size(); ++f)
+                if (! passesFilter (i, query.attributes[(size_t) f]))
+                    failing.push_back (f);
+            for (size_t col = 0; col < columns.size(); ++col)
+            {
+                auto counted = true;
+                for (const auto f : failing)
+                    counted = counted && query.attributes[(size_t) f].attribute == columns[col];
+                if (! counted)
+                    continue;
+                const auto& ids = *columnIds[col];
+                for (auto k = ids.offsets[(size_t) i]; k < ids.offsets[(size_t) i + 1]; ++k)
+                    ++counts[col][(size_t) ids.ids[(size_t) k]];
+            }
+        }
+        std::vector<std::vector<std::pair<juce::String, int>>> all;
+        for (size_t col = 0; col < columns.size(); ++col)
+        {
+            std::vector<std::pair<juce::String, int>> list;
+            for (size_t v = 0; v < counts[col].size(); ++v)
+                if (counts[col][v] > 0)
+                    list.push_back ({ columnIds[col]->values[(int) v], counts[col][v] });
+            std::sort (list.begin(), list.end(), [] (const auto& a, const auto& b) { return a.first < b.first; });   // (as the map gave them)
+            const auto numeric = columns[col].kind == MediaAttribute::tempo || columns[col].kind == MediaAttribute::rating;
+            std::sort (list.begin(), list.end(), [numeric] (const auto& a, const auto& b)
+            {
+                if (numeric)
+                    return a.first.getDoubleValue() < b.first.getDoubleValue();
+                return a.first.compareNatural (b.first) < 0;
+            });
+            all.push_back (std::move (list));
+        }
+        return all;
     }
 
     void MediaDatabase::sort (std::vector<int>& indices, MediaColumn column, bool ascending) const

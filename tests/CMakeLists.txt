@@ -122,6 +122,7 @@ add_executable(ParagonPR7STests
     FastPickingTests.cpp
     BandSectionTests.cpp
     AutoSaveTests.cpp
+    Speed0190Tests.cpp
     PerfTests.cpp
     Snapshot.cpp)
 

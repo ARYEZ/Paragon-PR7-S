@@ -203,6 +203,8 @@ namespace pr7s
         // the files the query finds without that column's own filter (so a sub category column
         // shows the chosen categories' subs).
         std::vector<std::pair<juce::String, int>> valueCounts (const MediaQuery&, const AttributeId&) const;
+        // (0.190.0) Every column's counts in one walk (the same as valueCounts for each).
+        std::vector<std::vector<std::pair<juce::String, int>>> valueCountsAll (const MediaQuery&, const std::vector<AttributeId>& columns) const;
 
         // A file's attributes, read now (any thread).
         static MediaItem read (const juce::File&, juce::AudioFormatManager&);
@@ -254,6 +256,29 @@ namespace pr7s
         std::vector<AttributeList> userCategories, userStyles;
         std::vector<UserAttribute> userAttributes;
         bool passes (int index, const MediaQuery&, const TextSearch&, const juce::String& folderPath) const;
+        bool passesBase (int index, const MediaQuery&, const TextSearch&, const juce::String& folderPath) const;   // (all but the filters)
+        bool passesFilter (int index, const AttributeFilter&) const;
+        // (0.190.0) Each item's values of one attribute as numbers into a list of its values, made again when the
+        // generation changes (the items, their ratings or tags).
+        struct AttributeIds
+        {
+            bool made = false;
+            juce::uint32 generation = 0;
+            size_t count = 0;
+            juce::StringArray values;
+            std::vector<int> offsets, ids;   // item i's: ids[offsets[i] .. offsets[i + 1])
+        };
+        const AttributeIds& attributeIdsOf (const AttributeId&) const;
+        // (0.190.0) A scan's results sorted and indexed on its own thread (takeScanResults uses them when they fit).
+        struct PreparedIndex
+        {
+            size_t count = 0;
+            std::unordered_map<juce::String, int> byPath;
+            std::vector<juce::String> parents;
+        };
+        static PreparedIndex prepareScan (std::vector<MediaItem>&);
+        std::optional<PreparedIndex> pendingIndex;   // (under pendingLock, with `pending`)
+        mutable std::map<juce::String, AttributeIds> attributeIds;
         void dropUnincluded();
         // (0.163.0) Kept beside `items`, made again whenever they change: each one's index by path, its folder's
         // path, its search text (made when first asked), its place by name and by folder (made when first sorted).

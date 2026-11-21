@@ -248,6 +248,9 @@ namespace pr7s
     std::optional<LibraryGroove> composerLibraryGroove (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
     // The guitar's rhythm the drums fit to: your riff's lane when you pasted one, else the guitar lane (off: nothing).
     SyncRhythm composerDrumRiff (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+    // (0.190.0) composeLayer(s) remember the lanes made while they run (the guitar was made again by every writer that
+    // follows it): off for tests that compare the two ways.
+    void setComposeMemoForTests (bool on);
     // How a groove's kick and snare fit a riff, 0 to 1 (no riff or no rhythm: 0.5): kicks on the riff's hits and the
     // riff's accents met by a kick (weighed as PR7-D's riff match: recall 1.5 times precision), snares on a hit or a
     // backbeat. Over the groove's first bars (32 beats at most), the riff from its start. Our measure.

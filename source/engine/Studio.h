@@ -139,6 +139,12 @@ namespace pr7s
         // plug-in that doesn't like being run beside others. The output is the same either way.
         bool getMultiCoreAudio() const;
         void setMultiCoreAudio (bool);
+        // (0.190.0) How many helper threads beside the audio thread while multi-core audio is on: 0 automatic
+        // (a core each but the audio thread's), else that many (at most `AudioWorkers::helpersForThisComputer`).
+        // Settings key `audioHelpers`. Fewer leaves cores free for a plug-in's own threads (Kontakt's multiprocessing).
+        int getAudioHelperChoice() const;
+        void setAudioHelperChoice (int);
+        static int helpersForChoice (int choice);
         // (0.60.0) Drawing the windows with the processor instead of the graphics card (settings key "softwareDrawing",
         // default off): the owner's NEW froze inside the graphics driver; this tells whether the driver is to blame.
         bool getSoftwareDrawing() const;
@@ -596,6 +602,11 @@ namespace pr7s
         // the part's transpose taken back off), all as one undo step; chords aren't changed (the chord track's own
         // menus swap them). False if nothing was moved (a note since edited or gone is left alone).
         std::vector<KeyIssue> checkSongKey (std::optional<Key> chosen = std::nullopt) const;
+        // (0.190.0) The song's key guessed from its notes (`guessSongKey`), worked out once per content change
+        // (a track click doesn't redo it) and shared by KEY CHECK, the MIDI editor's key marks and checkSongKey;
+        // the tracks' parts are held, so an edit that didn't announce itself is still seen.
+        std::optional<Key> getGuessedSongKey() const;
+        KeyAt getKeyCheckKeys (std::optional<Key> chosen) const;   // (keyCheckKeys with that guess)
         bool fixOutOfKeyNotes (const std::vector<KeyIssue>&);
         int detectChordsToPads (const std::vector<int>& partIds, const DetectSettings&);
         // The settings last used (settings key "chordDetect").
@@ -1766,6 +1777,14 @@ namespace pr7s
         std::map<const juce::AudioProcessor*, bool> editorAnswers;   // hasEditor's
         void unloadPlugins (Track&);   // their settings kept first (disable, freeze)
         void loadPlugins (Track&);     // from the kept settings (enable, unfreeze)
+        struct GuessedKey
+        {
+            bool valid = false;
+            juce::uint64 version = 0;
+            std::vector<PartList> parts;
+            std::optional<Key> key;
+        };
+        mutable GuessedKey guessedKey;   // (0.190.0)
         std::map<int, PartList> frozenParts;   // the parts as they were frozen (locked; 0.175.0: shared with the song, so the check every change is one look)
         void punchOut (size_t pass, double endBeat, bool returnToOld = true);
         void startPass (int busId, const AutomationLane& control);
@@ -1804,6 +1823,10 @@ namespace pr7s
         void forgetAudio (const juce::String& name);   // (0.34.1) a recording and everything made from it
         void forgetAllAudio();
         WarpRenderer warpRenderer;
+        struct SoundStamp { juce::String signature; juce::uint64 stamp = 0; };
+        std::map<juce::String, SoundStamp> soundStamps;   // (0.190.0)
+        juce::uint64 lastSoundStamp = 0;
+        juce::uint64 soundStampOf (const juce::String& file);
         // (0.34.0) VariAudio: each recording's pitch, and its sound as edited (by what was edited).
         void noteSpikes();                  // (0.57.3) the engine's spike report into the session log
         juce::uint32 lastSpikeNote = 0;
@@ -1845,6 +1868,7 @@ namespace pr7s
         juce::AudioDeviceManager devices;
         bool withDevices = false;
         bool multiCoreAudio = false;   // (without a settings file)
+        int audioHelperChoice = 0;     // (0.190.0; likewise)
         bool softwareDrawing = false;  // (without a settings file)
         void applyMultiCore();
         Engine engine;
@@ -1969,6 +1993,7 @@ namespace pr7s
         void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)
         void collectPluginStates (bool reuseUnchanged = false);
         juce::MemoryBlock pluginState (juce::AudioProcessor&, bool reuseUnchanged);
+        void pluginStateInto (juce::AudioProcessor&, bool reuseUnchanged, juce::MemoryBlock& into);   // (0.190.0)
         int reusedStates = 0;
         void backupIfDue();
         juce::String loggedDevice;   // the audio device's last line in the session log
@@ -2000,6 +2025,7 @@ namespace pr7s
         // and the PR7-D tracks paused while the composer is heard.
         juce::File linkFolderOverride;
         std::map<int, juce::String> pr7dSent;
+        std::map<int, PartList> pr7dLooked;   // (0.190.0) each PR7-D track's parts as last fingerprinted
         std::map<int, juce::Time> pr7dWritten;
         std::vector<int> pr7dPaused;
         bool pr7dPlaysDrumsHere = true;
@@ -2017,7 +2043,7 @@ namespace pr7s
         mutable std::unique_ptr<Pr7dReading> pr7dReading;
         bool takePr7dReading() const;   // true when a finished read was swapped in
         struct KeptPr7dGrooves { juce::Time date; int style = -1; int bpm = 0; int bar = 0; size_t count = 0; DrumNotes notes = DrumNotes::asWritten; GrooveList grooves; };
-        mutable KeptPr7dGrooves keptPr7dGrooves;
+        mutable std::vector<KeptPr7dGrooves> keptPr7dGrooves;   // (0.190.0: the last few tempos)
         std::shared_ptr<const AudioData> mediaPreviewSound;
         double mediaPreviewBeats = 0.0;
         bool mediaPreviewMidi = false;

@@ -401,6 +401,7 @@ void ComposerPage::refresh (bool rehear)
         lane.low.setButtonText (stringText (l));
     }
     seenChange = studio.getChangeVersion();
+    seenContent = studio.getContentVersion();
     refreshVolumes();
     refreshSong();
     if (chordsChanged && onChordsChanged)
@@ -1046,6 +1047,7 @@ bool ComposerPage::hear()
     }
     hearing = true;
     seenChange = studio.getChangeVersion();
+    seenContent = studio.getContentVersion();
     hearKey.setButtonText ("STOP");
     hearKey.setToggleState (true, juce::dontSendNotification);
     repaint();
@@ -2951,8 +2953,18 @@ void ComposerPage::timerCallback()
     if (! isShowing())
         return;   // (0.164.0: behind the IDEAS tab or a closed window it rebuilt on every change; it catches up when shown)
     // The song changed (tracks added or renamed, the chord track): the lanes' tracks and chords again.
+    // (0.190.0) A track clicked (a selection alone) changes nothing the lanes are made from: only
+    // the "heard on" lines (painted from the selection) are drawn again, not the whole composition.
     if (! hearing && studio.getChangeVersion() != seenChange)
-        refresh (false);
+    {
+        if (studio.getContentVersion() != seenContent)
+            refresh (false);
+        else
+        {
+            seenChange = studio.getChangeVersion();
+            repaint();
+        }
+    }
     // (0.76.0) The faders moved in the mixer (mix-only changes don't move the change version): the lanes follow.
     if (draggingVolume < 0)
         refreshVolumes();

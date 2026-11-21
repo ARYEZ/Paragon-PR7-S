@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.190.0
+
+A speed round: the places where the studio did the same work over and over, or held the audio up while it worked. Nothing you hear or see should change: the tests compare the old way and the new one and get the same notes, the same samples and the same counts.
+
+**What was slow, and what changed:**
+
+- **A track click redid work that only an edit needs.** Clicking a track (a selection, nothing else) made ARCHITECT compose every lane again, KEY CHECK check the whole song again, and the MIDI editor guess the song's key again. Now a click only redraws what shows the selection; they work again only when the song itself changes. The key guess is made once per change and shared by KEY CHECK and the MIDI editor's key marks.
+- **ARCHITECT made the same lane many times.** Composing a section, the guitar's riff was made again by the bass, the drums, the keys and the lead (each follows it), and again for picking the groove. Now each lane is made once per composition and shared. Composing every lane of a busy chorus type: 0.46 ms to 0.26 ms here. With your groove library, the grooves that fit the section are now sorted out once and kept, so a guitar change only scores those again, not the whole library.
+- **Warped audio clips were looked up again on every change.** Every fader move asked for each warped clip's stretched sound again. Now a warped clip is kept while its markers, the tempo and its recording are the same: an update after a fader move with 20 warped clips takes about a microsecond, and no stretch is asked for. The stretch memory now lets go of the least recently used stretches first, and never one a clip is still playing (before, it emptied itself all at once and every clip was stretched again). A VariAudio edit to one recording now throws away only that recording's stretches, not every recording's.
+- **VariAudio's pitch rendering** found each moment's segment by walking every segment, every 128 samples. It now finds it directly: much quicker on a long, heavily edited take.
+- **The MediaBay's filter columns** counted their values one column at a time, each walking every file. All the columns are now counted in one walk, and kept until the search or the files change. Four columns over 120,000 files: 43 ms to 10 ms (54 ms the way 0.189.0 did it). A scan's results are now sorted and indexed on the scanning thread, not the screen's.
+- **The audio no longer gives up at the first try.** When the screen was swapping something in at the exact moment the audio wanted it, the audio played one block of silence. It now tries again for up to half a millisecond (never waiting, never taking memory) before doing that. The EQ's new settings are worked out before, not while, the audio is held.
+- **Smaller things:** the engine no longer copies every automation lane on every change when none changed; ending notes that were deleted walks only the notes, not every controller event; the cores' shared counters sit apart so they don't slow each other down; auto-save tells whether a plug-in's settings changed by a number, not by reading every byte of every plug-in; renders and exports copy the song without the plug-ins' saved settings (several MB each); edits to a few parts leave every other track's parts shared with the undo history; opening a song lists its recordings faster; plug-in windows no longer ask a VST3 whether it has a window after it has just opened one (Kontakt builds its window to answer).
+
+**New in SETTINGS: how many cores the tracks share.** Beside MULTI-CORE AUDIO there's a choice: AUTOMATIC (every core but one, as before) or a number of helper threads. Fewer leaves cores free for a plug-in that runs threads of its own.
+
+**A tip if the studio crackles under load with Kontakt:** Kontakt has its own Multiprocessor Support setting, in its own options. Inside PR7-S, turn it off: the studio already spreads the tracks over the cores, and both fighting for the same cores can crackle. If it still crackles, try 2 or 3 helper threads in SETTINGS.
+
+**Not done, on purpose (for later rounds):**
+- Group and FX channels started as soon as what feeds them is done (they still wait for a whole stage): it changes the order of the multi-core work, so it needs its own careful release.
+- Automation shared with the undo history (as parts are): a bigger change to how the song is stored.
+- A mono track processed as one channel instead of two: it touches every plug-in's set-up.
+- Reading a song and the MediaBay's store off the screen's thread: the screen would need to show half-loaded states.
+- Keeping VariAudio's rendered pieces between edits.
+- The screen's own list (the MIDI editor finding its part for every note, the keys' shadows blurred on every paint, the track list redrawing every row, the tempo map rebuilt on every timer tick, and more): next, in 0.191.0.
+
+**What I couldn't check here:** how much of this you'll feel on your machine with your plug-ins. The numbers above are from the tests here; the crackle tip is general advice, not something I could try with Kontakt.
+
 ## 0.189.0
 
 You asked for the flat orange to go, for the family gradient in its place, for the line under the Hub's mark to be the gradient too, and for the info line's pink message to be white. All four are done.

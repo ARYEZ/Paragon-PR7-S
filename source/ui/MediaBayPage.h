@@ -149,6 +149,9 @@ private:
     std::vector<int> results;
     std::optional<std::pair<pr7s::MediaColumn, bool>> sortOrder;
     juce::File selectedFolder;
+    // (0.190.0) Every filter column's counts made in one walk, kept while the query and the items are the same.
+    mutable juce::String countsKey;
+    mutable std::vector<std::vector<std::pair<juce::String, int>>> countsKept;
     juce::StringArray localFavorites;   // (without a settings file: the tests)
     int scanFrames = 0;
     int scansSeen = 0;   // (0.174.0)

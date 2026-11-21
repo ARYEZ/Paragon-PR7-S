@@ -2,6 +2,8 @@
 #include "Stretch.h"
 
 #include <juce_dsp/juce_dsp.h>
+#include <cstring>
+#include <limits>
 
 namespace pr7s
 {
@@ -280,6 +282,58 @@ namespace pr7s
     }
 
     //==========================================================================
+    namespace
+    {
+        juce::int64 samplesOf (const juce::AudioBuffer<float>& b) noexcept { return (juce::int64) b.getNumSamples() * b.getNumChannels(); }
+    }
+
+    juce::int64 WarpRenderer::wholeSamplesHeld() const noexcept
+    {
+        juce::int64 n = 0;
+        for (const auto& [key, kept] : whole)
+            n += samplesOf (*kept.sound);
+        return n;
+    }
+
+    juce::int64 WarpRenderer::wholeSamplesUnreferenced() const noexcept
+    {
+        juce::int64 n = 0;
+        for (const auto& [key, kept] : whole)
+            if (kept.sound.use_count() == 1)
+                n += samplesOf (*kept.sound);
+        return n;
+    }
+
+    void WarpRenderer::forgetFile (const juce::String& audioFile)
+    {
+        for (auto* map : { &pieces, &whole })
+            for (auto it = map->begin(); it != map->end();)
+                it = it->second.file == audioFile ? map->erase (it) : std::next (it);
+    }
+
+    template <typename Map>
+    void WarpRenderer::evict (Map& map, juce::int64 budgetSamples, size_t most)
+    {
+        // Only what nothing else holds counts and can go, least recently used first.
+        for (;;)
+        {
+            juce::int64 free = 0;
+            size_t count = 0;
+            auto oldest = map.end();
+            for (auto it = map.begin(); it != map.end(); ++it)
+                if (it->second.sound.use_count() == 1)
+                {
+                    free += samplesOf (*it->second.sound);
+                    ++count;
+                    if (oldest == map.end() || it->second.used < oldest->second.used)
+                        oldest = it;
+                }
+            if (oldest == map.end() || (free <= budgetSamples && count <= most))
+                return;
+            map.erase (oldest);
+        }
+    }
+
     std::shared_ptr<const juce::AudioBuffer<float>> WarpRenderer::render (const Part& part, const juce::AudioBuffer<float>& recording,
                                                                           double sampleRate, const TempoMap& tempo)
     {
@@ -288,26 +342,30 @@ namespace pr7s
         std::string key;
         const auto& events = tempo.getEvents();
         key.reserve ((size_t) part.audioFile.getNumBytesAsUTF8() + 1 + sizeof (double) * (3 + 2 * part.warp.size() + 3 * events.size()));
-        const auto add = [&key] (double value) { key.append (reinterpret_cast<const char*> (&value), sizeof (value)); };
+        const auto add = [] (std::string& into, double value) { into.append (reinterpret_cast<const char*> (&value), sizeof (value)); };
         key.append (part.audioFile.toRawUTF8());
         key.push_back ('\0');
-        add (sampleRate);
-        add (part.start);
-        add (part.length);
-        add ((double) part.stretchMode);   // (0.187.0: how it's stretched)
+        add (key, sampleRate);
+        add (key, part.start);
+        add (key, part.length);
+        add (key, (double) part.stretchMode);   // (0.187.0: how it's stretched)
         for (const auto& m : part.warp)
         {
-            add (m.beat);
-            add (m.seconds);
+            add (key, m.beat);
+            add (key, m.seconds);
         }
         for (const auto& e : events)
         {
-            add (e.beat);
-            add (e.bpm);
-            add (e.ramp ? 1.0 : 0.0);
+            add (key, e.beat);
+            add (key, e.bpm);
+            add (key, e.ramp ? 1.0 : 0.0);
         }
+        ++tick;
         if (auto found = whole.find (key); found != whole.end())
-            return found->second;
+        {
+            found->second.used = tick;
+            return found->second.sound;
+        }
 
         const auto channels = recording.getNumChannels(), available = recording.getNumSamples();
         const auto songAt = [&] (double beat) { return tempo.secondsAt (part.start + beat); };
@@ -316,6 +374,14 @@ namespace pr7s
         auto out = std::make_shared<juce::AudioBuffer<float>> (channels, total);
         out->clear();
         constexpr int crossfade = 128;   // (samples: ~3 ms, the joins between stretches)
+        // (0.190.0) Copies of whole stretches in one go (the same samples as one at a time).
+        const auto copyRange = [] (float* dest, const float* source, int length, int from, int sourceLength)
+        {
+            // dest[i] = source[from + i] where that's inside the source; the rest left as it is.
+            const auto lo = juce::jmax (0, -from), hi = juce::jmin (length, sourceLength - from);
+            if (hi > lo)
+                std::memcpy (dest + lo, source + from + lo, sizeof (float) * (size_t) (hi - lo));
+        };
         const auto& m = part.warp;
         for (size_t k = 0; k + 1 < m.size(); ++k)
         {
@@ -330,9 +396,14 @@ namespace pr7s
             // after its end is stretched with it, so the next hit (at the next marker) isn't smeared early.
             const auto lead = k > 0 ? crossfade : 0;
             const auto wanted = count + lead;
-            juce::String pieceKey;
-            pieceKey << part.audioFile << "|" << sampleRate << "|" << srcStart << "|" << srcEnd << "|" << count << "|" << lead << "|" << part.stretchMode;
-            auto piece = pieces[pieceKey];
+            std::string pieceKey;
+            pieceKey.append (part.audioFile.toRawUTF8());
+            pieceKey.push_back ('\0');
+            for (const auto v : { sampleRate, srcStart, srcEnd, (double) count, (double) lead, (double) part.stretchMode })
+                add (pieceKey, v);
+            auto& keptPiece = pieces[pieceKey];
+            auto piece = keptPiece.sound;
+            keptPiece.used = tick;
             if (piece == nullptr)
             {
                 auto made = std::make_shared<juce::AudioBuffer<float>> (channels, wanted);
@@ -343,9 +414,7 @@ namespace pr7s
                     // At its own speed: the recording as it is.
                     const auto from = (int) std::llround (srcStart) - lead;
                     for (int c = 0; c < channels; ++c)
-                        for (int i = 0; i < wanted; ++i)
-                            if (juce::isPositiveAndBelow (from + i, available))
-                                made->setSample (c, i, recording.getSample (c, from + i));
+                        copyRange (made->getWritePointer (c), recording.getReadPointer (c), wanted, from, available);
                 }
                 else
                 {
@@ -362,51 +431,37 @@ namespace pr7s
                         const auto stretched = stretchAudio (input, sampleRate, stretchedLength, 0.0, part.stretchMode);
                         const auto from = (int) std::llround ((srcStart - inStart) * ratio) - lead;
                         for (int c = 0; c < juce::jmin (channels, stretched.getNumChannels()); ++c)
-                            for (int i = 0; i < wanted; ++i)
-                                if (juce::isPositiveAndBelow (from + i, stretched.getNumSamples()))
-                                    made->setSample (c, i, stretched.getSample (c, from + i));
+                            copyRange (made->getWritePointer (c), stretched.getReadPointer (c), wanted, from, stretched.getNumSamples());
                     }
                 }
                 piece = made;
-                pieces[pieceKey] = made;
-                samplesKept += (juce::int64) wanted * channels;
+                keptPiece.sound = made;
+                keptPiece.file = part.audioFile;
             }
             for (int c = 0; c < channels; ++c)
             {
                 auto* dest = out->getWritePointer (c);
                 const auto* source = piece->getReadPointer (c);
-                for (int i = 0; i < wanted; ++i)
+                // Faded in over the end of the stretch before.
+                for (int i = 0; i < juce::jmin (lead, wanted); ++i)
                 {
                     const auto at = outStart - lead + i;
                     if (at < 0 || at >= total)
                         continue;
-                    if (i < lead)
-                    {
-                        // Faded in over the end of the stretch before.
-                        const auto w = (float) i / (float) lead;
-                        dest[at] = dest[at] * (1.0f - w) + source[i] * w;
-                    }
-                    else
-                        dest[at] = source[i];
+                    const auto w = (float) i / (float) lead;
+                    dest[at] = dest[at] * (1.0f - w) + source[i] * w;
                 }
+                // The rest as it is.
+                const auto from = juce::jmax (lead, -(outStart - lead)), to = juce::jmin (wanted, total - (outStart - lead));
+                if (to > from)
+                    std::memcpy (dest + outStart - lead + from, source + from, sizeof (float) * (size_t) (to - from));
             }
         }
-        // (Kept within about 400 MB of stretches; then forgotten and made again when needed.)
-        if (samplesKept > 100'000'000)
-        {
-            pieces.clear();
-            samplesKept = 0;
-        }
-        // (0.34.1) The whole clips too, by size: each marker drag or tempo edit makes a new one, and
-        // 64 three-minute clips were 4 GB. Every sound kept is counted, both sides.
-        const auto outSamples = (juce::int64) out->getNumSamples() * out->getNumChannels();
-        if (whole.size() >= 64 || wholeSamplesKept + outSamples > 100'000'000)
-        {
-            whole.clear();
-            wholeSamplesKept = 0;
-        }
-        whole[key] = out;
-        wholeSamplesKept += outSamples;
+        whole[key] = { out, tick, part.audioFile };
+        // (Kept within about 400 MB of stretches and of whole clips, each counted both sides; then the
+        // least recently used that nothing holds are forgotten, and made again when needed.)
+        evict (pieces, budget, std::numeric_limits<size_t>::max());
+        evict (whole, budget, mostWhole);
         return out;
     }
 }

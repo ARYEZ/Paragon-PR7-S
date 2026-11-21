@@ -61,12 +61,12 @@ void KeyCheckPage::check()
 {
     const auto& project = studio.getProject();
     issues = studio.checkSongKey (chosen);
-    seenVersion = studio.getChangeVersion();
+    seenVersion = studio.getContentVersion();   // (0.190.0: a track click changes no note)
     if (chosen.has_value())
         keyText = keyName (*chosen);
     else if (! project.chordTrack.scales.empty())
         keyText = "THE CHORD TRACK'S KEYS";
-    else if (const auto guessed = pr7s::guessSongKey (project))
+    else if (const auto guessed = studio.getGuessedSongKey())
         keyText = keyName (*guessed) + " (GUESSED FROM THE NOTES)";
     else
         keyText = "NO NOTES YET";
@@ -213,7 +213,7 @@ void KeyCheckPage::listBoxItemClicked (int row, const juce::MouseEvent& e)
 
 void KeyCheckPage::timerCallback()
 {
-    if (studio.getChangeVersion() != seenVersion)
+    if (studio.getContentVersion() != seenVersion)
         check();
 }
 

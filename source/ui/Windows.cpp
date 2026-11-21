@@ -4,6 +4,7 @@
 #include "engine/SessionLog.h"
 
 #include "engine/AudioAdvice.h"
+#include "engine/AudioWorkers.h"
 #include "ui/Finish.h"
 #include "ui/ParagonLookAndFeel.h"
 
@@ -80,6 +81,19 @@ namespace Windows
                                       "Off: everything on one core, as before 0.34.5, for a plug-in that misbehaves beside others. "
                                       "What you hear is the same either way.");
                 multiCore.onClick = [this] { studio.setMultiCoreAudio (multiCore.getToggleState()); refreshMultiCore(); };
+                // (0.190.0) How many helpers: fewer leaves cores to a plug-in's own threads (Kontakt's multiprocessing).
+                {
+                    const auto most = pr7s::AudioWorkers::helpersForThisComputer();
+                    helperBox.addItem ("AUTOMATIC (" + juce::String (most) + (most == 1 ? " HELPER)" : " HELPERS)"), 1);
+                    for (int n = 1; n <= most; ++n)
+                        helperBox.addItem (juce::String (n) + (n == 1 ? " HELPER" : " HELPERS") + " (" + juce::String (n + 1) + " CORES)", n + 1);
+                    helperBox.setSelectedId (juce::jlimit (0, most, studio.getAudioHelperChoice()) + 1, juce::dontSendNotification);
+                    helperBox.setTooltip ("How many cores share the tracks while MULTI-CORE AUDIO is on. Automatic: every core but one. "
+                                          "If a plug-in runs its own threads (Kontakt's multiprocessing), choose fewer here, or turn "
+                                          "that plug-in's own multiprocessing off: both fighting for the same cores can crackle.");
+                    helperBox.onChange = [this] { studio.setAudioHelperChoice (helperBox.getSelectedId() - 1); refreshMultiCore(); };
+                    addAndMakeVisible (helperBox);
+                }
                 refreshMultiCore();
                 addAndMakeVisible (multiCore);
                 // (0.60.0) The windows drawn with the processor (a graphics driver that hangs).
@@ -123,7 +137,12 @@ namespace Windows
                 finishRow.removeFromLeft (16);
                 span.setBounds (finishRow.removeFromLeft (180));
                 bottom.removeFromTop (8);
-                multiCore.setBounds (bottom.removeFromTop (28));
+                {
+                    auto row = bottom.removeFromTop (28);
+                    helperBox.setBounds (row.removeFromRight (230));
+                    row.removeFromRight (8);
+                    multiCore.setBounds (row);
+                }
                 bottom.removeFromTop (8);
                 softwareDrawing.setBounds (bottom.removeFromTop (28));
                 note.setBounds (bottom.withTrimmedTop (8));
@@ -148,6 +167,7 @@ namespace Windows
             void refreshMultiCore()
             {
                 const auto helpers = studio.getAudioHelperThreads();
+                helperBox.setEnabled (studio.getMultiCoreAudio());
                 multiCore.setButtonText ("MULTI-CORE AUDIO" + juce::String (helpers > 0 ? ": tracks on " + juce::String (helpers + 1) + " cores at once"
                                                                                       : juce::String (": off, everything on one core")));
             }
@@ -183,6 +203,7 @@ namespace Windows
             juce::ComboBox finish;
             juce::TextButton span;
             juce::ToggleButton multiCore, softwareDrawing;
+            juce::ComboBox helperBox;   // (0.190.0)
             std::function<void()> toggleSpan;
             std::function<bool()> isSpanning;
             juce::Image satin;
@@ -687,14 +708,19 @@ namespace Windows
     {
         setUsingNativeTitleBar (true);
         pluginName = instance.getName();
+        auto ownEditor = false;
         {
             const pr7s::SessionLog::Step step ("Opening the window of " + instance.getName() + " (" + trackName + ")");
             if (auto* editor = instance.createEditorAndMakeActive())
+            {
                 setContentOwned (editor, true);
+                ownEditor = true;
+            }
             else   // (0.123.0: one taken to have an editor that hasn't: its knobs, plainly)
                 setContentOwned (new juce::GenericAudioProcessorEditor (instance), true);
         }
-        setResizable (instance.hasEditor() && getContentComponent() != nullptr
+        // (0.190.0) Whether it made its own editor is what was just seen: hasEditor() would make a VST3's view again.
+        setResizable (ownEditor && getContentComponent() != nullptr
                           && dynamic_cast<juce::AudioProcessorEditor*> (getContentComponent())->isResizable(),
                       false);
         // (0.52.1, the owner asked) Centred on the right-hand screen (the owner's third); one screen: that one.

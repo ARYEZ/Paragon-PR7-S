@@ -1638,7 +1638,24 @@ std::vector<std::pair<juce::String, int>> MediaBayPage::getFilterValues (int col
         return {};
     auto query1 = query;
     query1.folder = selectedFolder;
-    auto values = database.valueCounts (query1, query.attributes[(size_t) column].attribute);
+    // (0.190.0) All the columns at once, once (each column walked every file before, with the others' filters).
+    juce::String key;
+    key << (int) database.getGeneration() << "|" << query1.text << "|" << query1.minimumRating << "|" << query1.folder.getFullPathName()
+        << "|" << (query1.subfolders ? 1 : 0) << "|";
+    for (const auto t : query1.types)
+        key << (int) t << ",";
+    std::vector<pr7s::AttributeId> columns;
+    for (const auto& f : query1.attributes)
+    {
+        key << "|" << (int) f.attribute.kind << ":" << f.attribute.user << "=" << f.values.joinIntoString ("\x1f");
+        columns.push_back (f.attribute);
+    }
+    if (key != countsKey || countsKept.size() != columns.size())
+    {
+        countsKept = database.valueCountsAll (query1, columns);
+        countsKey = key;
+    }
+    auto values = countsKept[(size_t) column];
     // A chosen value no file has any more stays in the list (with 0), so it can be unchosen.
     for (const auto& chosen : query.attributes[(size_t) column].values)
         if (std::none_of (values.begin(), values.end(), [&] (const auto& v) { return v.first == chosen; }))
