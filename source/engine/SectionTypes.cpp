@@ -185,6 +185,15 @@ namespace pr7s
                          { "CLAP CLAVE OVER SIXTEENTH HATS", "The drums alone: hats on every sixteenth, a clap clave, the kick on 1 and late in the bar; the band out or in later", r, {}, b },
                          { "HORN LINE ALONE, CRASH ON ONE", "A keys line in octaves alone, stepping up in eighths into a held note, one crash on the first 1; the band in on beat 3 of the last bar", r, {}, b },
                          { "TWO ROOTS AND A RUNG CHORD", "Two low roots and a ringing add-nine chord on every beat, the shape fixed over the pedal, a pickup on the and of 4 every fourth bar", r, {}, b },
+                         // (0.198.0) Round seven (the owner's 70 songs; shapes only, our names): five led by the ACOUSTIC lane
+                         // (applying one switches it on), then two electric.
+                         { "ACOUSTIC ALONE, SHAKER AND HATS JOIN", "The verse's acoustic part alone, then closed hats and a shaker join halfway, a kick every four bars, strings swelling at the end", r, {}, b },
+                         { "CHORUS CHORDS STRUMMED, THEN A TONIC LINK", "The chorus's chords strummed in growing fifth stacks with the band out, then two bars of the key's root and fifth in eighths alone", r, {}, b },
+                         { "STRUMMED TRIADS IN SIXES, ALONE", "Close triads strummed in six-sixteenth cells (6+6+4 across the bar), a chord a bar, alone", r, {}, b },
+                         { "NYLON DOUBLES THE INTRO, THEN LEAVES", "A picked arpeggio in 3+3+2 under a fixed top, a nylon doubling the electric for the first half, then leaving it alone", r, {}, b },
+                         { "EMBELLISHED STRUM ALONE", "A two-bar one-chord strum with flicks alone, a slow line climbing the chord over it; the bass and a side stick from halfway", r, {}, b },
+                         { "HIGH ONE-NOTE PULSE OVER A TRITONE BASS", "The key's note high in steady eighths, the bass holding the flat five with the root on 4-and, the ride and a kick, no snare", r, {}, b },
+                         { "HELD TRIADS STEPPING DOWN, TAMBOURINE", "High triads held a bar, stepping down the key, a choir with them; the kick on 1 and 3, the ride, a tambourine off the beat", r, {}, b },
                          droning, open };
             }
             case 1:
@@ -529,6 +538,12 @@ namespace pr7s
                          // (0.185.0) Round six (the owner's 25 songs; shapes only, our names; also intro types).
                          { "HORN LINE ALONE, CRASH ON ONE", "A keys line in octaves alone, stepping up in eighths into a held note, one crash on the first 1; the band in on beat 3 of the last bar", r, {}, b },
                          { "TWO ROOTS AND A RUNG CHORD", "Two low roots and a ringing add-nine chord on every beat, the shape fixed over the pedal, a pickup on the and of 4 every fourth bar", r, {}, b },
+                         // (0.198.0) Round seven (the owner's 70 songs; shapes only, our names): all led by the ACOUSTIC lane.
+                         { "ROLLED LAST CHORD, FALLING TOP", "The strum to the last bar, its chord rolled low, middle, top, then three single notes falling from its top, ringing", r, {}, b },
+                         { "STRUM OFF THE ONE TO THE END", "Full chords strummed off the beat, each coming in on beat 3, a crash and a tom fill every four bars; the last chord held", r, {}, b },
+                         { "INTRO PICKING RETURNS, ONE CHORD HELD", "The intro's picked arpeggio back, alone, ending on one chord held a bar", r, {}, b },
+                         { "DOTTED COUNTER-LINES OVER THE ARPEGGIO", "A picked arpeggio with a twin under it, a dotted counter-line stepping down over it, a second a third under from halfway", r, {}, b },
+                         { "CHORD TO PEDAL, LAST CHORD HELD", "The chord to the open pedal strummed, a tambourine on 2 and 4, the bass walking up every other bar; the last chord held", r, {}, b },
                          droning, stabs };
             }
             case 6: return { driving, droning };
@@ -1292,6 +1307,42 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "TOMS, SIDESTICK AND CLAP GROOVE", "TOMS AND CLAPS, KICK ON THE BEATS" }, {} },
                 { "WIDE CHORD RUNG OVER THE CHUG", { "THE CHUG, A SECOND RINGS A WIDE CHORD EVERY FOURTH BAR", "THE CHUG, THE WIDE CHORD ON ITS OWN BARS" }, { "DOUBLES THE CHUG", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK WITH THE CHUG, SNARE ON THREE", "KICK WITH THE CHUG, BACKBEAT" }, {} },
+                // (0.198.0) Round seven's intros and outros: the acoustic-led ones list the ACOUSTIC lane's options last.
+                { "ACOUSTIC ALONE, SHAKER AND HATS JOIN", { "OUT", "A SOFT CHORD EACH FOUR BARS ONCE THE KIT JOINS" }, { "THE ROOT ON ONE ONCE THE KIT JOINS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "STRINGS SWELL INTO THE NEXT BLOCK", "SILENT" }, { "HATS AND A SHAKER HALFWAY, A KICK EACH FOUR BARS", "A SHAKER HALFWAY, A SOFT SNARE AT THE END" }, {},
+                  { "THE VERSE'S PICKING ALONE", "THE VERSE'S SOFT STRUM ALONE" } },
+                { "CHORUS CHORDS STRUMMED, THEN A TONIC LINK", { "OUT", "THE TONIC LINK ON THE ELECTRIC" }, { "OUT", "ROOT WHOLE NOTES UNTIL THE LINK", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SHAKER EIGHTHS, LOUDER ON THE ANDS, OUT FOR THE LINK", "KICK EIGHTHS, SNARE ON THREE, CRASH QUARTERS, OUT FOR THE LINK" }, {},
+                  { "FIFTH STACKS, THEN THE TONIC DYAD LINK", "FIFTH STACKS AND A SECOND'S SEESAW, THEN THE LINK" } },
+                { "STRUMMED TRIADS IN SIXES, ALONE", { "OUT", "THE TRIAD CELLS HIGH ON THE ELECTRIC" }, { "OUT", "THE ROOT ON EACH CELL", "LOCKED WITH THE KICK" },
+                  { "SILENT", "THE TRIAD CELLS ON THE KEYS" }, { "A CYMBAL SWELL ON THE LAST BAR ONLY", "THE BELL ON EACH CELL" }, {},
+                  { "TRIADS STRUMMED IN CELLS OF SIX", "TRIAD CELLS, A SECOND'S HIGH THIRDS" } },
+                { "NYLON DOUBLES THE INTRO, THEN LEAVES", { "THE ARPEGGIO ON THE ELECTRIC, ALL THROUGH", "THE ARPEGGIO ON THE ELECTRIC FROM HALFWAY" }, { "ROOTS WITH THE LOW CHANGES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "THE BELL ON THE BEATS ONCE THE NYLON LEAVES", "A CRASH SWELL INTO THE BAND" },
+                  { "A SWELLED NOTE EVERY OTHER BAR", "SILENT" },
+                  { "NYLON DOUBLES THE FIRST HALF", "NYLON DOUBLES IT ALL THROUGH" } },
+                { "EMBELLISHED STRUM ALONE", { "OUT", "THE CLIMBING LINE ON THE ELECTRIC" }, { "OUT", "ROOT WHOLE NOTES FROM HALFWAY", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "A SIDE STICK ON THE BEATS FROM HALFWAY", "A SIDE STICK ON TWO AND FOUR FROM HALFWAY" }, {},
+                  { "THE EMBELLISHED FIGURE ALONE", "THE FIGURE, A SECOND CLIMBING THE CHORD" } },
+                { "HIGH ONE-NOTE PULSE OVER A TRITONE BASS", { "THE KEY'S NOTE HIGH IN EIGHTHS", "THE HIGH PULSE, A SECOND HOLDS THE ROOT" }, { "FLAT FIVE HELD, THE ROOT ON FOUR-AND", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE EIGHTHS, KICK ON ONE AND FOUR-AND, NO SNARE", "RIDE EIGHTHS, A KICK ON ONE, TOMS AT THE END" }, {} },
+                { "HELD TRIADS STEPPING DOWN, TAMBOURINE", { "HIGH TRIADS STEPPING DOWN THE KEY", "HIGH TRIADS ON THE CHORDS" }, { "OUT", "THE TRIAD'S ROOT HELD", "LOCKED WITH THE KICK" },
+                  { "A CHOIR HOLDS THE TRIADS", "SILENT" }, { "KICK ON ONE AND THREE, RIDE, TAMBOURINE OFF THE BEAT", "TAMBOURINE OFF THE BEAT, A KICK ON ONE" }, {} },
+                { "ROLLED LAST CHORD, FALLING TOP", { "OUT", "A FIFTH STACK HELD UNDER THE LAST CHORD" }, { "ROOTS HELD", "OUT", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SHAKER EIGHTHS, NOTHING UNDER THE LAST CHORD", "A CRASH WITH THE LAST CHORD ONLY" }, {},
+                  { "THE FIFTH STACKS, THEN THE ROLLED CHORD", "THE ARCH PICKING, THEN THE ROLLED CHORD" } },
+                { "STRUM OFF THE ONE TO THE END", { "OUT", "POWER CHORDS COMING IN ON THREE" }, { "THE DOWNBEAT ALONE, CHANGING ON THREE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "A CRASH ON ONE, A TOM FILL EVERY FOURTH BAR", "A CRASH ON EACH ONE, NO FILLS" }, {},
+                  { "OFF THE ONE, THE LAST CHORD HELD", "OFF THE ONE, A SECOND AS THE BASS, THE LAST HELD" } },
+                { "INTRO PICKING RETURNS, ONE CHORD HELD", { "OUT", "THE LAST CHORD HELD ON THE ELECTRIC" }, { "OUT", "ROOTS ON ONE, THE LAST CHORD HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "A SIDE STICK ON TWO AND FOUR AND A SHAKER", "THE BELL ON EACH ONE, A CRASH ON THE LAST CHORD" }, {},
+                  { "THE ADD9 ARPEGGIO, THE LAST CHORD HELD", "THE NYLON PICKING, THE LAST CHORD HELD" } },
+                { "DOTTED COUNTER-LINES OVER THE ARPEGGIO", { "TWO COUNTER-LINES, THE SECOND IN HALFWAY", "ONE DOTTED COUNTER-LINE" }, { "ROOTS HELD", "OUT", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SOFT BACKBEAT, RIDE EIGHTHS, A CRASH TO END", "A SHAKER ON THE EIGHTHS, A KICK ON EACH ONE" }, {},
+                  { "THE ARPEGGIO, A SECOND'S TWIN ARPEGGIO", "THE ARPEGGIO, ONE ACOUSTIC" } },
+                { "CHORD TO PEDAL, LAST CHORD HELD", { "OUT", "A CLEAN CHORD RUNG EVERY TWO BARS" }, { "ROOT, PASSING NOTE, PEDAL, WALK-UPS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "TAMBOURINE ON TWO AND FOUR, A CRASH AT EACH END", "TAMBOURINE EIGHTHS, A CRASH ON THE LAST CHORD" }, {},
+                  { "THE PEDAL STRUM, THE LAST CHORD HELD", "THE PEDAL STRUM, A SECOND'S FILLS, THE LAST HELD" } },
                 // (0.183.0) Round six's pre-choruses.
                 { "PIANO EIGHTHS, CLAPS ON THE BEATS, GUITARS RING", { "CHORD RUNG, SIXTEENTH PICKUP PAIR", "MUTED EIGHTHS UNDER THE CLAPS" }, { "ROOTS HELD", "ROOT HELD, PICKUP PAIR", "LOCKED WITH THE KICK" },
                   { "PIANO CHORD EIGHTHS", "HELD PADS" }, { "CLAPS ON EVERY BEAT, CRASH ON ONE", "CLAPS ON THE BEATS, SPARSE KICK" }, {} },

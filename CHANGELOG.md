@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.198.0
+
+**Seven more intro types and five more outro types**, from the owner's 70 song files (round seven, read for their shapes only; the names and descriptions are ours). Ten are led by the ACOUSTIC GUITAR lane, two are electric. All in 4/4. The intros are in an intro block's TYPE menu after TWO ROOTS AND A RUNG CHORD (before DRONING and OPEN CHORDS); the outros in an outro, ending, tag or coda block's after TWO ROOTS AND A RUNG CHORD (before DRONING and STABS).
+
+**Intros, acoustic-led** (choosing one switches the ACOUSTIC GUITAR lane on and writes it):
+- **ACOUSTIC ALONE, SHAKER AND HATS JOIN:** the verse's acoustic part alone (the fingerpicking or a soft strum with flicks); from halfway closed hats and a shaker on the eighths, a kick on the first bar of every four, the bass's root on 1; a soft snare on 3 near the end and strings swelling in over the last two bars. The GUITAR lane is OUT first.
+- **CHORUS CHORDS STRUMMED, THEN A TONIC LINK:** the chords strummed in fifth stacks that grow inside the bar (or with a second acoustic's high seesaw), the band out but a shaker or a light kit, then the last two bars the key's root and fifth in eighths alone into the next block. The GUITAR lane is OUT first (or plays the link).
+- **STRUMMED TRIADS IN SIXES, ALONE:** close triads strummed in six-sixteenth cells, 6+6+4 across the bar, a chord a bar (the fourth bar two); no kit but a cymbal swell into the band or the ride's bell on each cell. The GUITAR lane is OUT first.
+- **NYLON DOUBLES THE INTRO, THEN LEAVES:** a picked arpeggio in 3+3+2 under a fixed top on a clean electric, a nylon doubling it for the first half and then leaving it alone (or staying); the bass on the arpeggio's low changes, a swelled lead note every other bar, the ride's bell once the nylon leaves.
+- **EMBELLISHED STRUM ALONE:** the two-bar one-chord strum with its flicks alone (or with a second acoustic climbing the chord slowly); the bass's whole notes and a side stick from halfway. The GUITAR lane is OUT first.
+
+**Intros, electric:**
+- **HIGH ONE-NOTE PULSE OVER A TRITONE BASS:** the key's note two octaves up in steady eighths, never moving, rocking a half step down and fading in the last bar; the bass holding the flat five with the root on 4-and, walking up at the end; the ride on the eighths with its bell late in beats 2 and 4, the kick on 1 and 4-and, no snare or hats, toms down in the last bar.
+- **HELD TRIADS STEPPING DOWN, TAMBOURINE:** high triads with their octave held a bar, stepping down the key (the tonic and the step under in turn, then a half step and a third down), a choir with them; the kick on 1 and 3, the ride, a tambourine on every off-beat eighth, no snare; a low note held on 3 of the last bar into the next block.
+
+**Outros, all acoustic-led:**
+- **ROLLED LAST CHORD, FALLING TOP:** the fifth stacks strummed (or the arch picking) to the last bar, its chord rolled (the low strings, the middle a sixteenth later, the top three after), then three notes falling from its top on 2-and, 3-and and 4-and, a second acoustic holding a fifth stack. The GUITAR lane is OUT first.
+- **STRUM OFF THE ONE TO THE END:** full chords strummed off the beat, each coming in on beat 3, the bass on the downbeat alone and changing on 3; a crash every four bars with a tom fill, the last chord held. The GUITAR lane is OUT first.
+- **INTRO PICKING RETURNS, ONE CHORD HELD:** the intro's picked arpeggio back alone (the add-nine arpeggio or the two-bar nylon picking), ending on one chord held a bar; a side stick and a shaker, or the ride's bell. The GUITAR lane is OUT first.
+- **DOTTED COUNTER-LINES OVER THE ARPEGGIO:** an acoustic arpeggio with a second acoustic's twin on the same rhythm; over it the GUITAR lane's counter-line on sixteenths 4 and 10, then 0, 6, 12 and 14, a scale step lower every note, a second guitar a third under it from halfway; the last chord held.
+- **CHORD TO PEDAL, LAST CHORD HELD:** the chord strummed then the open tonic dropped in under it (or with a second acoustic's fills); the bass's root, a passing note, the key's low note, a walk up every other bar; a tambourine on 2 and 4 with a crash at each end. The GUITAR lane is OUT first.
+
+Each type has its own guitar, bass, keys and drums options (the bass's last is still LOCKED WITH THE KICK), with the shared options after them; NYLON DOUBLES THE INTRO has lead options too. A second guitar's or second acoustic's part goes onto the lane's second track when it has two, as before.
+
+**Our guesses:** where a part comes in (halfway, the last two bars) is scaled to the block; the songs that slowed at the end are written as a held or rolled last chord (the architect writes no tempo); the stepping triads follow the key, not the chord track (a second option follows the chords); the counter-line's starting note (the key's fifth, high) and the roll's split of low and middle strings are ours; the kits under the acoustic intros and outros are ours where the songs had none.
+
+**Not checked here:** how it sounds. The tests check the shapes (which lanes play, where the hits fall, the acoustic lane switched on and written).
+
 ## 0.197.0
 
 **Nine more bridge types and five more breakdown types**, from the owner's 70 song files (round seven, read for their shapes only; the names and descriptions are ours). Four are led by the ACOUSTIC GUITAR lane, ten are electric. All in 4/4. The bridges are in a bridge, middle 8 or break block's TYPE menu after RIDE AND BASS SIXTEENTHS UNDER A CLEAN ARPEGGIO (before CREEP, OPEN CHORDS and DRONING), and in an interlude's after the interlude's own; the breakdowns in a breakdown block's after HALF-STEP FALL OVER THE OPEN ROOT (before HEAVY CHUG and STACCATO CHUG).

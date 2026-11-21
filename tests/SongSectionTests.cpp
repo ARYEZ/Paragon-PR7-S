@@ -3109,14 +3109,14 @@ TEST_CASE ("0.111.0: intro and outro types, every lane's options a different par
                                              "FALLING OCTAVE PEDAL",   // (0.117.0)
                                              "EVERY OTHER BAR EMPTY", "SINGLE-NOTE BAR, CHORD BAR" };   // (0.124.0)
     const auto intro = sectionTypesFor ("Intro");
-    REQUIRE (intro.size() == intros.size() + 8 + 8 + 6 + 2);   // (0.143.0: eight more; 0.151.0: eight; 0.185.0: six)
+    REQUIRE (intro.size() == intros.size() + 8 + 8 + 6 + 7 + 2);   // (0.143.0: eight more; 0.151.0: eight; 0.185.0: six; 0.198.0: seven)
     for (size_t i = 0; i < intros.size(); ++i)
         CHECK (intro[i].name == intros[i]);
-    CHECK (intro[intros.size() + 8 + 8 + 6].name == "DRONING");
+    CHECK (intro[intros.size() + 8 + 8 + 6 + 7].name == "DRONING");
     for (const auto* name : { "Outro", "Ending", "Coda", "Tag" })
     {
         const auto outro = sectionTypesFor (name);
-        REQUIRE (outro.size() == outros.size() + 8 + 4 + 2 + 2);   // (0.143.0: eight more; 0.151.0: four; 0.185.0: two)
+        REQUIRE (outro.size() == outros.size() + 8 + 4 + 2 + 5 + 2);   // (0.143.0: eight more; 0.151.0: four; 0.185.0: two; 0.198.0: five)
         for (size_t i = 0; i < outros.size(); ++i)
             CHECK (outro[i].name == outros[i]);
     }
@@ -5921,8 +5921,8 @@ TEST_CASE ("0.185.0: round six's intro and outro types, every lane's options a d
     const std::vector<juce::String> outros { "HORN LINE ALONE, CRASH ON ONE", "TWO ROOTS AND A RUNG CHORD" };
     const auto intro = sectionTypesFor ("Intro");
     const auto outro = sectionTypesFor ("Outro");
-    REQUIRE (intro.size() == 31 + 6 + 2);
-    REQUIRE (outro.size() == 24 + 2 + 2);
+    REQUIRE (intro.size() == 31 + 6 + 7 + 2);   // (0.198.0: seven more)
+    REQUIRE (outro.size() == 24 + 2 + 5 + 2);   // (0.198.0: five more)
     for (size_t i = 0; i < intros.size(); ++i)
     {
         CHECK (intro[31 + i].name == intros[i]);   // (after 0.151.0's)
@@ -8681,5 +8681,280 @@ TEST_CASE ("0.197.0: round seven's bridge and breakdown types, every lane's opti
         CHECK (starts (layers[b], 0.0, 4.0) == chug);
         CHECK (hitsOf (layers[d], GmDrum::kick, 0.0, 4.0) == chug);
         CHECK (starts (layersOf ("WIDE CHORD RUNG OVER THE CHUG", 1, 0, 0)[g], 0.0, 4.0) == V { 0.0 });
+    }
+}
+
+TEST_CASE ("0.198.0: round seven's intro and outro types, every lane's options a different part", "[sections][types][bookend198]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars; the guitar's low A 33)
+    const std::vector<juce::String> intros { "ACOUSTIC ALONE, SHAKER AND HATS JOIN", "CHORUS CHORDS STRUMMED, THEN A TONIC LINK", "STRUMMED TRIADS IN SIXES, ALONE",
+                                             "NYLON DOUBLES THE INTRO, THEN LEAVES", "EMBELLISHED STRUM ALONE", "HIGH ONE-NOTE PULSE OVER A TRITONE BASS",
+                                             "HELD TRIADS STEPPING DOWN, TAMBOURINE" };
+    const std::vector<juce::String> outros { "ROLLED LAST CHORD, FALLING TOP", "STRUM OFF THE ONE TO THE END", "INTRO PICKING RETURNS, ONE CHORD HELD",
+                                             "DOTTED COUNTER-LINES OVER THE ARPEGGIO", "CHORD TO PEDAL, LAST CHORD HELD" };
+    const std::set<juce::String> electric { "HIGH ONE-NOTE PULSE OVER A TRITONE BASS", "HELD TRIADS STEPPING DOWN, TAMBOURINE" };
+    const std::set<juce::String> withElectric { "NYLON DOUBLES THE INTRO, THEN LEAVES", "DOTTED COUNTER-LINES OVER THE ARPEGGIO" };
+    const std::set<juce::String> withLead { "NYLON DOUBLES THE INTRO, THEN LEAVES" };
+    const auto intro = sectionTypesFor ("Intro");
+    const auto outro = sectionTypesFor ("Outro");
+    CHECK (intro[intro.size() - 2 - intros.size() - 1].name == "TWO ROOTS AND A RUNG CHORD");
+    CHECK (intro[intro.size() - 2].name == "DRONING");
+    CHECK (outro[outro.size() - 2 - outros.size() - 1].name == "TWO ROOTS AND A RUNG CHORD");
+    CHECK (outro[outro.size() - 2].name == "DRONING");
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << (n.harmony ? "h" : "") << ";";
+        return k;
+    };
+    std::vector<std::pair<juce::String, juce::String>> all;   // (section, type)
+    for (size_t i = 0; i < intros.size(); ++i)
+    {
+        CHECK (intro[intro.size() - 2 - intros.size() + i].name == intros[i]);   // (before DRONING, OPEN CHORDS)
+        all.push_back ({ "Intro", intros[i] });
+    }
+    for (size_t i = 0; i < outros.size(); ++i)
+    {
+        CHECK (outro[outro.size() - 2 - outros.size() + i].name == outros[i]);   // (before DRONING, STABS)
+        all.push_back ({ "Outro", outros[i] });
+    }
+    CHECK (sectionTypeNamed ("Ending", "STRUM OFF THE ONE TO THE END").has_value());
+    CHECK (sectionTypeNamed ("Coda", "CHORD TO PEDAL, LAST CHORD HELD").has_value());
+    CHECK_FALSE (sectionTypeNamed ("Outro", "EMBELLISHED STRUM ALONE").has_value());
+    CHECK_FALSE (sectionTypeNamed ("Intro", "ROLLED LAST CHORD, FALLING TOP").has_value());
+    for (const auto& [section, type] : all)
+    {
+        INFO (type);
+        REQUIRE (sectionTypeCalled (type).has_value());
+        CHECK (sectionTypeCalled (type)->band == SectionType::Band::bookend);
+        const auto isLed = electric.count (type) == 0;
+        ComposerState s;
+        REQUIRE_FALSE (s.lane (ComposerLayer::acoustic).on);
+        applySectionType (s, section, type);
+        REQUIRE (s.sectionType == type);
+        // The acoustic-led types switch the ACOUSTIC lane on and write it; the electric ones leave it to its own styles.
+        CHECK (s.lane (ComposerLayer::acoustic).on == isLed);
+        CHECK (sectionTypeWritesLane (ComposerLayer::acoustic, s, c) == isLed);
+        CHECK ((sectionApproaches (s, ComposerLayer::guitar)[0] == "OUT") == (isLed && withElectric.count (type) == 0));
+        CHECK (sectionApproaches (s, ComposerLayer::lead).isEmpty() == (withLead.count (type) == 0));
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            CHECK (sectionTypeWritesLane (l, s, c) == (l != ComposerLayer::melody && l != ComposerLayer::clean
+                                                       && (l != ComposerLayer::lead || withLead.count (type) > 0)
+                                                       && (l != ComposerLayer::acoustic || isLed)));
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            if (l == ComposerLayer::drums)
+                CHECK (options[0] != "OUT");
+            for (const auto& shared : extraApproaches (l))   // (the types' own options differ from the shared ones)
+                CHECK_FALSE (options.contains (shared));
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                INFO (composerLayerName (l) << " " << o << " " << sectionApproaches (s, l)[(int) o]);
+                CHECK (seen.insert (key (choices[o])).second);
+                const auto name = sectionApproaches (s, l)[(int) o];
+                if (name != "OUT" && name != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                if (l == ComposerLayer::acoustic)
+                    CHECK (choices[o].part == LineIdea::Part::acoustic);
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+    }
+
+    const auto layersOf = [&] (const juce::String& type, int guitar, int bass, int drums, int acoustic = 0, int keys = 0, int lead = 0)
+    {
+        ComposerState s;
+        applySectionType (s, std::find (intros.begin(), intros.end(), type) != intros.end() ? "Intro" : "Outro", type);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::bass).approach = bass;
+        s.lane (ComposerLayer::drums).approach = drums;
+        s.lane (ComposerLayer::acoustic).approach = acoustic;
+        s.lane (ComposerLayer::chords).approach = keys;
+        s.lane (ComposerLayer::lead).approach = lead;
+        s.lane (ComposerLayer::lead).on = true;
+        return composeLayers (s, spans, c);
+    };
+    const auto starts = [] (const LineIdea& idea, double from, double to, bool harmony = false)
+    {
+        std::vector<double> out;
+        for (const auto& n : idea.notes)
+            if (n.beat >= from - 1.0e-6 && n.beat < to - 1.0e-6 && n.harmony == harmony && ! n.keyswitch
+                && (out.empty() || std::abs (out.back() - n.beat) > 0.02))
+                out.push_back (std::round (n.beat * 4.0) / 4.0);
+        return out;
+    };
+    const auto hitsOf = [] (const LineIdea& idea, int pitch, double from, double to)
+    {
+        std::vector<double> out;
+        for (const auto& n : idea.notes)
+            if (n.pitch == pitch && n.beat >= from - 1.0e-6 && n.beat < to - 1.0e-6)
+                out.push_back (std::round (n.beat * 4.0) / 4.0);
+        return out;
+    };
+    using V = std::vector<double>;
+    const auto g = (size_t) ComposerLayer::guitar, b = (size_t) ComposerLayer::bass, d = (size_t) ComposerLayer::drums,
+               a = (size_t) ComposerLayer::acoustic, k = (size_t) ComposerLayer::chords, ld = (size_t) ComposerLayer::lead;
+    constexpr int shaker = 82, tambourine = 54;
+    // ACOUSTIC ALONE: the acoustic alone, the hats and shaker from halfway, a kick every four bars, a soft snare on 3 at the end.
+    {
+        const auto layers = layersOf ("ACOUSTIC ALONE, SHAKER AND HATS JOIN", 0, 0, 0);
+        CHECK (layers[g].notes.empty());
+        CHECK (starts (layers[b], 0.0, 16.0).empty());
+        CHECK (starts (layers[b], 16.0, 20.0) == V { 16.0 });
+        CHECK (hitsOf (layers[d], shaker, 0.0, 16.0).empty());
+        CHECK (hitsOf (layers[d], shaker, 16.0, 20.0).size() == 8);
+        CHECK (hitsOf (layers[d], GmDrum::closedHat, 16.0, 20.0).size() == 8);
+        CHECK (hitsOf (layers[d], GmDrum::kick, 0.0, 32.0) == V { 16.0 });
+        CHECK (hitsOf (layers[d], GmDrum::snare, 0.0, 32.0) == V { 26.0, 30.0 });
+        CHECK (starts (layers[k], 0.0, 24.0).empty());
+        CHECK (! starts (layers[k], 24.0, 32.0).empty());
+        CHECK (! starts (layers[a], 0.0, 4.0).empty());
+    }
+    // CHORUS CHORDS STRUMMED, THEN A TONIC LINK: the fifth stacks, then the root and fifth in eighths alone for two bars.
+    {
+        const auto layers = layersOf ("CHORUS CHORDS STRUMMED, THEN A TONIC LINK", 1, 0, 0);
+        CHECK (starts (layers[a], 24.0, 28.0) == V { 24.0, 24.5, 25.0, 25.5, 26.0, 26.5, 27.0, 27.5 });
+        std::set<int> link;
+        for (const auto& n : layers[a].notes)
+            if (n.beat >= 24.0 - 1.0e-6)
+                link.insert (n.pitch % 12);
+        CHECK (link == std::set<int> { 9, 4 });   // (A and E)
+        CHECK (hitsOf (layers[d], shaker, 0.0, 4.0).size() == 8);
+        CHECK (hitsOf (layers[d], shaker, 24.0, 32.0).empty());
+        CHECK (starts (layers[g], 0.0, 24.0).empty());
+        CHECK (starts (layers[g], 24.0, 28.0).size() == 8);
+    }
+    // STRUMMED TRIADS IN SIXES: the 6+6+4 cells; the root on each cell; no kit but the ride's swell over the last bar.
+    {
+        const auto layers = layersOf ("STRUMMED TRIADS IN SIXES, ALONE", 0, 1, 0);
+        CHECK (starts (layers[a], 0.0, 4.0) == V { 0.0, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 2.25, 2.5, 2.75, 3.0, 3.5, 3.75 });
+        CHECK (starts (layers[b], 0.0, 4.0) == V { 0.0, 1.5, 3.0 });
+        CHECK (starts (layers[d], 0.0, 28.0).empty());
+        CHECK (hitsOf (layers[d], GmDrum::ride, 28.0, 32.0).size() == 16);
+        CHECK (layers[g].notes.empty());
+    }
+    // NYLON DOUBLES THE INTRO: the nylon gone from halfway, the electric all through; the bell then; a swell every other bar.
+    {
+        const auto layers = layersOf ("NYLON DOUBLES THE INTRO, THEN LEAVES", 0, 0, 0);
+        CHECK (! starts (layers[a], 0.0, 16.0).empty());
+        CHECK (starts (layers[a], 16.0, 32.0).empty());
+        CHECK (! starts (layers[g], 0.0, 4.0).empty());
+        CHECK (starts (layers[g], 0.0, 4.0) == starts (layers[a], 0.0, 4.0));
+        CHECK (starts (layersOf ("NYLON DOUBLES THE INTRO, THEN LEAVES", 1, 0, 0)[g], 0.0, 16.0).empty());
+        CHECK (hitsOf (layers[d], GmDrum::rideBell, 0.0, 16.0).empty());
+        CHECK (hitsOf (layers[d], GmDrum::rideBell, 16.0, 20.0) == V { 16.0, 17.0, 18.0, 19.0 });
+        CHECK (starts (layers[ld], 0.0, 32.0) == V { 0.0, 8.0, 16.0, 24.0 });
+        REQUIRE (! layers[ld].notes.empty());
+        CHECK (layers[ld].notes[0].effect == LineNote::Effect::swell);
+    }
+    // EMBELLISHED STRUM ALONE: the side stick on the beats from halfway; the second acoustic's climbing line.
+    {
+        const auto layers = layersOf ("EMBELLISHED STRUM ALONE", 0, 0, 0, 1);
+        CHECK (layers[g].notes.empty());
+        CHECK (layers[b].notes.empty());
+        CHECK (hitsOf (layers[d], GmDrum::sideStick, 0.0, 16.0).empty());
+        CHECK (hitsOf (layers[d], GmDrum::sideStick, 16.0, 20.0) == V { 16.0, 17.0, 18.0, 19.0 });
+        CHECK (starts (layers[a], 0.0, 8.0, true) == V { 0.0, 1.5, 3.0, 4.0, 5.5, 7.0 });
+        CHECK (! starts (layers[a], 0.0, 8.0).empty());
+    }
+    // HIGH ONE-NOTE PULSE: one high note in eighths, the bass's flat five and the root on 4-and, no snare; toms at the end.
+    {
+        const auto layers = layersOf ("HIGH ONE-NOTE PULSE OVER A TRITONE BASS", 0, 0, 0);
+        CHECK (starts (layers[g], 0.0, 4.0) == V { 0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5 });
+        std::set<int> pitches;
+        for (const auto& n : layers[g].notes)
+            if (n.beat < 28.0 - 1.0e-6)
+                pitches.insert (n.pitch);
+        CHECK (pitches.size() == 1);
+        CHECK (*pitches.begin() % 12 == 9);
+        CHECK (starts (layers[b], 0.0, 4.0) == V { 0.0, 3.5 });
+        CHECK (hitsOf (layers[d], GmDrum::kick, 0.0, 4.0) == V { 0.0, 3.5 });
+        CHECK (hitsOf (layers[d], GmDrum::rideBell, 0.0, 4.0) == V { 1.75, 3.75 });
+        CHECK (hitsOf (layers[d], GmDrum::snare, 0.0, 32.0).empty());
+        CHECK (! hitsOf (layers[d], GmDrum::tomFloor, 30.0, 32.0).empty());
+    }
+    // HELD TRIADS STEPPING DOWN: a triad a bar; the kick on 1 and 3, the tambourine off the beat, no snare; the low pickup.
+    {
+        const auto layers = layersOf ("HELD TRIADS STEPPING DOWN, TAMBOURINE", 0, 0, 0);
+        CHECK (starts (layers[g], 0.0, 8.0) == V { 0.0, 4.0 });
+        CHECK (starts (layers[g], 0.0, 32.0, true) == V { 30.0 });
+        CHECK (hitsOf (layers[d], GmDrum::kick, 0.0, 4.0) == V { 0.0, 2.0 });
+        CHECK (hitsOf (layers[d], tambourine, 0.0, 4.0) == V { 0.5, 1.5, 2.5, 3.5 });
+        CHECK (hitsOf (layers[d], GmDrum::snare, 0.0, 32.0).empty());
+        CHECK (layers[b].notes.empty());
+        int first = 999, second = 999;
+        for (const auto& n : layers[g].notes)
+        {
+            if (n.beat < 0.01) first = juce::jmin (first, n.pitch);
+            if (std::abs (n.beat - 4.0) < 0.01) second = juce::jmin (second, n.pitch);
+        }
+        CHECK (first - second == 2);   // (A, then G: the step under)
+        CHECK (! layers[k].notes.empty());
+    }
+    // ROLLED LAST CHORD: the last bar rolled (low, middle, top), three notes falling on 2-and, 3-and, 4-and, the fifth stack held.
+    {
+        const auto layers = layersOf ("ROLLED LAST CHORD, FALLING TOP", 0, 0, 0);
+        CHECK (starts (layers[a], 28.0, 32.0) == V { 28.0, 28.25, 28.5, 29.5, 30.5, 31.5 });
+        CHECK (starts (layers[a], 28.0, 32.0, true) == V { 28.0 });
+        CHECK (hitsOf (layers[d], shaker, 28.0, 32.0).empty());
+        CHECK (hitsOf (layers[d], shaker, 0.0, 4.0).size() == 8);
+        CHECK (layers[g].notes.empty());
+    }
+    // STRUM OFF THE ONE: nothing on the downbeat, the last chord held; a crash every four bars, a tom fill, the bass's change on 3.
+    {
+        const auto layers = layersOf ("STRUM OFF THE ONE TO THE END", 0, 0, 0);
+        CHECK (starts (layers[a], 28.0, 32.0) == V { 28.0 });
+        REQUIRE (! starts (layers[a], 0.0, 4.0).empty());
+        CHECK (starts (layers[a], 0.0, 4.0).front() > 0.1);
+        CHECK (hitsOf (layers[d], GmDrum::crash, 0.0, 32.0) == V { 0.0, 16.0, 28.0 });
+        CHECK (! hitsOf (layers[d], GmDrum::tomFloor, 15.0, 16.0).empty());
+        CHECK (starts (layers[b], 0.0, 4.0) == V { 0.0, 2.0 });
+    }
+    // INTRO PICKING RETURNS: the picking, the last chord held; the side stick on 2 and 4, a crash on the last chord.
+    {
+        const auto layers = layersOf ("INTRO PICKING RETURNS, ONE CHORD HELD", 0, 0, 0);
+        CHECK (starts (layers[a], 28.0, 32.0) == V { 28.0 });
+        CHECK (starts (layers[a], 0.0, 4.0).size() > 3);
+        CHECK (hitsOf (layers[d], GmDrum::sideStick, 0.0, 4.0) == V { 1.0, 3.0 });
+        CHECK (hitsOf (layers[d], GmDrum::crash, 0.0, 32.0) == V { 28.0 });
+        CHECK (layers[g].notes.empty());
+    }
+    // DOTTED COUNTER-LINES: the line on sixteenths 4 and 10, then 0, 6, 12, 14; the second a third under from halfway.
+    {
+        const auto layers = layersOf ("DOTTED COUNTER-LINES OVER THE ARPEGGIO", 0, 0, 0);
+        CHECK (starts (layers[g], 0.0, 8.0) == V { 1.0, 2.5, 4.0, 5.5, 7.0, 7.5 });
+        CHECK (starts (layers[g], 0.0, 16.0, true).empty());
+        CHECK (starts (layers[g], 16.0, 24.0, true) == V { 17.0, 18.5, 20.0, 21.5, 23.0, 23.5 });
+        CHECK (starts (layers[a], 0.0, 4.0) == V { 0.0, 0.5, 1.0, 1.5, 2.5, 3.0, 3.5 });
+        CHECK (starts (layers[a], 0.0, 4.0, true) == V { 0.0, 0.5, 1.0, 1.5, 2.5, 3.0, 3.5 });
+        CHECK (starts (layers[a], 28.0, 32.0) == V { 28.0 });
+        std::vector<int> line;
+        for (const auto& n : layers[g].notes)
+            if (! n.harmony && n.beat < 8.0 - 1.0e-6)
+                line.push_back (n.pitch);
+        REQUIRE (line.size() == 6);
+        for (size_t i = 1; i < line.size(); ++i)
+            CHECK ((line[i] < line[i - 1] || line[i] - line[i - 1] > 6));   // (a step lower every note, back up an octave)
+    }
+    // CHORD TO PEDAL: the bass's root, passing note and pedal, a walk-up every other bar; the tambourine on 2 and 4, crashes at the ends.
+    {
+        const auto layers = layersOf ("CHORD TO PEDAL, LAST CHORD HELD", 0, 0, 0);
+        CHECK (starts (layers[a], 28.0, 32.0) == V { 28.0 });
+        CHECK (starts (layers[b], 0.0, 4.0) == V { 0.0, 0.5, 1.5 });
+        CHECK (starts (layers[b], 4.0, 8.0) == V { 4.0, 4.5, 5.5, 6.5, 7.0, 7.5 });
+        CHECK (starts (layers[b], 28.0, 32.0) == V { 28.0 });
+        CHECK (hitsOf (layers[d], tambourine, 0.0, 4.0) == V { 1.0, 3.0 });
+        CHECK (hitsOf (layers[d], GmDrum::crash, 0.0, 32.0) == V { 0.0, 28.0 });
+        CHECK (layers[g].notes.empty());
     }
 }
