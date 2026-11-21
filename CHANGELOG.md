@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.191.0
+
+The screen's half of the speed round (0.190.0 did the engine's). What you see should not change: the new drawing was compared with the old pixel for pixel in the three finishes (the studio, the wide 5760 view, the MIDI editor with CHORD GUIDES and a cycle, the mixer, the Hub, the EQ, the BOOSTER, ARCHITECT, KEYS). Almost everything is identical; the chord guides' colours differ by at most one shade of 255 here and there (rounding), and a few pixels of the mixer's fader caps by one shade.
+
+**What was slow, and what changed:**
+
+- **The MIDI editor looked for its part through the whole song for every note it drew**, twice a note, and again on every mouse move. It now remembers where the part is and only checks it's still there (looking again when a part was added, removed or undone). In a 600-part song with a 2,000-note part: a mouse move over the notes 3 ms to 0.003 ms; the editor's whole picture 6.5-8.5 ms to 3.4-5 ms. The chord guides work out each chord's notes once, not for every row, and the drum map is looked up once per picture.
+- **The black keys' shadows were blurred again on every redraw.** Every key (the MIDI editor's panel, ARCHITECT's lanes, the mixer, the Hub...) made and blurred its soft shadow each time it was drawn. The blurred shadow is now kept and drawn again (the last 64 shapes), the same for the chrome bezels and the BOOSTER's fader cap. A panel of 120 keys: 26-34 ms to 8-10 ms. Checked pixel for pixel against JUCE's own shadow at 100, 150 and 200 %.
+- **The chord guides** were drawn as see-through colour over each row; the middle of each guide is now drawn as the solid colour it would make (the edges still see-through), so each pixel is written once.
+- **The track list redrew every row on every change** (a note moved, a part selected, a fader let go). Each row now notes what it shows and redraws only when that changed; the lane rows and take rows likewise, and the list as a whole only when rows come or go.
+- **Things worked out again on every frame or paint:** the tempo map and the signatures (the transport's TIME screen, the tempo row, the bar lines) are kept until the tempo or a signature changes; the arrangement's row layout is kept until the song changes (it was worked out 2-3 times a picture and twice a mouse move, each a walk of the folders); a part's range of pitches and a folder's blocks are kept per change; the MIDI editor's timer no longer measures the whole song every frame; automation lanes find the points near what's being redrawn by halving instead of walking every point.
+- **ARCHITECT's option window while it measures** redrew the whole (full-screen) window 60 times a second; now only the rows that were measured and the count at the top (the whole window when what's shown can change). The search's words are split once, not once per option.
+- **Smaller:** the chord pads, the MediaBay and the EQ window stop drawing while they're put away; the header's logo is drawn only when the redraw reaches it; the track list says it covers itself, so what's behind it isn't drawn first.
+
+**The numbers (here, software drawing, 1500 x 900 unless said):** a mouse move in the MIDI editor 3 ms to 0.003 ms; the MIDI editor's whole picture 6.5-8.5 to 3.4-5 ms; 120 keys 26-34 to 8-10 ms; the whole window at 5760 wide about the same (39-52 before, 43-57 after: this test's own noise is that wide; its time is mostly the arrangement and mixer, which this round didn't change much).
+
+**Not done, and why:**
+- **The cycle tint and the shade outside the part in the MIDI editor** stay see-through: the tint is drawn over the notes (folding it into the rows would change the notes' colour), and the shade's edge falls part-way through a pixel, so it can't be folded in exactly. Each is one rectangle a picture.
+- **The soft glow round each note with CHORD GUIDES on** stays: changing it is a look change, your call.
+- **The arrangement's kept picture for Page Scroll and the glide while stopped:** it's kept only for Stationary Cursor. Using it for the others touches how every edit marks the picture stale: too risky for this round.
+- **The mixer strips** don't cover their own first pixel column, so they can't be marked as covering themselves without changing their look.
+
 ## 0.190.0
 
 A speed round: the places where the studio did the same work over and over, or held the audio up while it worked. Nothing you hear or see should change: the tests compare the old way and the new one and get the same notes, the same samples and the same counts.

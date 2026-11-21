@@ -654,8 +654,11 @@ void MainView::paint (juce::Graphics& g)
 {
     g.fillAll (ParagonColours::background);
 
-    // The header: the emblem, PARAGON and the PR7-S mark.
+    // The header: the emblem, PARAGON and the PR7-S mark. (0.191.0: only when the redraw reaches them: the
+    // whole window's children repainting through here drew the mark's paths each time.)
     auto header = getLocalBounds().removeFromTop (headerHeight).toFloat();
+    if (g.getClipBounds().getY() < headerHeight)
+    {
     const juce::Rectangle<float> emblem { 16.0f, 12.0f, 30.0f, 28.0f };
     juce::Path triangle;
     triangle.addTriangle (emblem.getTopLeft(), emblem.getTopRight(), { emblem.getCentreX(), emblem.getBottom() });
@@ -670,6 +673,7 @@ void MainView::paint (juce::Graphics& g)
                     { ParagonColours::glow, ParagonColours::glow, {}, {}, 1.0f, true });
     g.setColour (ParagonColours::panelEdge);
     g.fillRect (header.withY (header.getBottom() - 1.0f).withHeight (1.0f));
+    }
 
     // The work area's frame.
     const auto middle = getLocalBounds().withTrimmedTop (headerHeight + transportHeight + (isWide() ? 0 : toolbarHeight)).toFloat().reduced (6.0f, 2.0f);

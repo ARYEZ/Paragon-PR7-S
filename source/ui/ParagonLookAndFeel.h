@@ -233,6 +233,14 @@ public:
     // every finish (0.48.0: the neon finishes' gradient is in the rings round it).
     static void drawPianoKey (juce::Graphics&, juce::Rectangle<float> area, float radius, float bevel,
                               bool pressed, bool highlighted);
+    // (0.191.0) juce::DropShadow (colour, blur, offset).drawForPath for a rounded rectangle, the blurred
+    // shape kept and drawn again at its place (it was filled and blurred again on every redraw: a panel of
+    // keys repainting with its parent). Kept by size, corner, blur, offset, the place's fraction of a pixel
+    // and the context's image type, the 64 last used. The same pixels: the blur works in the component's own
+    // units whatever the screen's scale, and a whole-pixel move moves the same image.
+    static void drawRoundedShadow (juce::Graphics&, juce::Rectangle<float> shape, float corner, juce::Colour,
+                                   int blur, juce::Point<int> offset);
+    static int getShadowsMade() noexcept;   // (tests) shadow images made so far
 
     // The mockup's LED bars: when lit, a neon tube (white-hot core inside a
     // red-orange outline, with a soft glow); when off, a dimmer solid red.

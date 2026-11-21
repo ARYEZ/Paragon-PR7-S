@@ -517,9 +517,22 @@ double Timeline::scrollLength (pr7s::Studio& studio)
     const auto& project = studio.getProject();
     auto end = project.loopOn ? project.loopEnd : 0.0;
     end = juce::jmax (end, studio.getEngine().getPosition());
-    for (const auto& track : project.tracks)
-        for (const auto& part : track.parts)
-            end = juce::jmax (end, part.start + part.length);
+    // (0.191.0) The parts' furthest end kept per change (the MIDI editor's timer asked every frame).
+    static const pr7s::Studio* keptFor = nullptr;
+    static const pr7s::Track* keptTracks = nullptr;
+    static juce::uint64 keptVersion = 0;
+    static double keptEnd = 0.0;
+    if (keptFor != &studio || keptTracks != project.tracks.data() || keptVersion != studio.getChangeVersion())
+    {
+        keptEnd = 0.0;
+        for (const auto& track : project.tracks)
+            for (const auto& part : track.parts)
+                keptEnd = juce::jmax (keptEnd, part.start + part.length);
+        keptFor = &studio;
+        keptTracks = project.tracks.data();
+        keptVersion = studio.getChangeVersion();
+    }
+    end = juce::jmax (end, keptEnd);
     const auto bar = project.beatsPerBar();
     return juce::jmax (32.0 * bar, std::ceil (end / bar) * bar + 8.0 * bar);
 }
@@ -532,6 +545,11 @@ namespace
 
 std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
 {
+    const auto& tracks = studio.getProject().tracks;
+    if (kept.studio == &studio && kept.tracks == tracks.data() && kept.count == tracks.size()
+        && kept.version == studio.getChangeVersion() && kept.zoom == rowZoom)
+        return kept.rows;
+    ++layoutsMade;
     std::vector<Row> rows;
     auto top = 0;
     const auto add = [&] (Row::Kind kind, int busId, int laneIndex, int height)
@@ -574,6 +592,7 @@ std::vector<Timeline::Row> Timeline::layout (const pr7s::Studio& studio) const
                 add (Row::Kind::take, track.id, lane, takeRowHeight());
         addLanes (track.id);
     }
+    kept = { &studio, tracks.data(), tracks.size(), studio.getChangeVersion(), rowZoom, rows };
     return rows;
 }
 
@@ -899,7 +918,7 @@ void ArrangeView::paintContent (juce::Graphics& g)
 
     // The grid: bars brighter than beats (beats only when there's room), bar by bar by the
     // signature in force there (0.45.0).
-    const auto signatures = project.signatures();
+    const auto& signatures = studio.getSignatureMap();   // (0.191.0: kept)
     const auto lastVisible = timeline.beatForX (bounds.getWidth());
     // (0.57.1) Only the stretch being redrawn (a playhead strip is 17 px of a 5760 px view), with room
     // for a bar number that starts just left of it: these loops ran the whole width every frame.
@@ -1486,7 +1505,7 @@ void ArrangeView::paint (juce::Graphics& g)
     key.scale = scale;
     key.pixelsPerBeat = timeline.pixelsPerBeat;
     key.rowZoom = timeline.rowZoom;
-    key.barLength = studio.getProject().signatures().barLengthAt (timeline.firstBeat);   // (the bar numbers' spacing)
+    key.barLength = studio.getSignatureMap().barLengthAt (timeline.firstBeat);   // (the bar numbers' spacing)
     key.finish = (int) Finish::get();
     if (! (key == cacheKey) || ! cacheImage.isValid())
     {
@@ -1598,7 +1617,7 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
         if (const auto data = studio.getHeardAudio (part.audioFile))
         {
             // (Each pixel's seconds by the tempo map: with the tempo track, a pixel isn't always as long.)
-            const auto tempo = studio.getProject().tempoMap();
+            const auto& tempo = studio.getTempoMap();   // (0.191.0: kept)
             const auto startSeconds = tempo.secondsAt (part.start);
             const auto secondsAtX = [&] (float x)
             {
@@ -1698,7 +1717,7 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
         // Its warp markers: an orange line, a handle at the top, and how much the audio before it is stretched.
         if (part.isWarped())
         {
-            const auto factors = pr7s::warpFactors (part, studio.getProject().tempoMap());
+            const auto factors = pr7s::warpFactors (part, studio.getTempoMap());
             for (size_t k = 1; k + 1 < part.warp.size(); ++k)
             {
                 const auto x = area.getX() + (float) (part.warp[k].beat * timeline.pixelsPerBeat);
@@ -1742,12 +1761,7 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
     // Its notes, scaled to the part's range of pitches.
     if (! part.notes.empty())
     {
-        auto lowest = 127, highest = 0;
-        for (const auto& note : part.notes)
-        {
-            lowest = juce::jmin (lowest, note.pitch);
-            highest = juce::jmax (highest, note.pitch);
-        }
+        const auto [lowest, highest] = pitchRangeOf (part);
         const auto span = juce::jmax (12, highest - lowest + 1);
         const auto notesArea = area.withTrimmedTop (17.0f).reduced (2.0f, 3.0f);
         const auto rowHeight = notesArea.getHeight() / (float) span;
@@ -1785,13 +1799,13 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
 
 float ArrangeView::fadeInWidth (const pr7s::Part& part) const
 {
-    const auto tempo = studio.getProject().tempoMap();
+    const auto& tempo = studio.getTempoMap();
     return (float) ((tempo.beatAfter (part.start, part.fadeIn) - part.start) * timeline.pixelsPerBeat);
 }
 
 float ArrangeView::fadeOutWidth (const pr7s::Part& part) const
 {
-    const auto tempo = studio.getProject().tempoMap();
+    const auto& tempo = studio.getTempoMap();
     return (float) ((part.end() - tempo.beatAt (tempo.secondsAt (part.end()) - part.fadeOut)) * timeline.pixelsPerBeat);
 }
 
@@ -3691,10 +3705,26 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
         const auto to = [&] (float x, float y) { runs.back().at.push_back ({ x, y }); };
         const auto inView = [&] (float x) { return x >= left && x <= right; };
         // (0.165.0) The flat ends well past the screen's edges: the glow's round caps were drawn at them.
-        begin (gaps ? timeline.xForBeat (pts.front().beat) : juce::jmin (0.0f, timeline.xForBeat (pts.front().beat)) - 1000.0f, yForValue (area, pts.front().value));
-        for (size_t i = 0; i < pts.size(); ++i)
+        // (0.191.0) Only the points the margins need, found by halving: a point before the one just ahead of
+        // the left margin (3 px short of it) and everything before it lie wholly left of what's kept, so none of
+        // their corners is kept (the last of them is kept only when the next corner is past the margin: the
+        // corners from `lo` on are left as they were); after the first point 3 px past the right margin, every
+        // corner has one before it past the margin too. The same corners are kept, so the same paths.
+        auto lo = (size_t) (std::partition_point (pts.begin(), pts.end(), [&] (const pr7s::AutomationPoint& p)
+                                                  { return timeline.xForBeat (p.beat) < left - 3.0f; }) - pts.begin());
+        lo = lo > 0 ? lo - 1 : 0;
+        auto hi = (size_t) (std::partition_point (pts.begin() + (std::ptrdiff_t) lo, pts.end(), [&] (const pr7s::AutomationPoint& p)
+                                                  { return timeline.xForBeat (p.beat) <= right + 3.0f; }) - pts.begin());
+        hi = juce::jmin (hi + 1, pts.size());
+        if (lo == 0)
+            begin (gaps ? timeline.xForBeat (pts.front().beat) : juce::jmin (0.0f, timeline.xForBeat (pts.front().beat)) - 1000.0f, yForValue (area, pts.front().value));
+        else
+            begin (timeline.xForBeat (pts[lo].beat), yForValue (area, pts[lo].value));
+        for (size_t i = lo; i < hi; ++i)
         {
             const auto x = timeline.xForBeat (pts[i].beat);
+            if (i == lo && lo > 0)
+                continue;   // (its corner began the run)
             if (i > 0 && gaps && pts[i - 1].terminator)
             {
                 begin (x, yForValue (area, pts[i].value));   // (the gap's end: a new stretch)
@@ -3858,7 +3888,11 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
     // (a write pass leaves several within a pixel or two) are drawn as one dot: the glow's see-through
     // halos stacked into a blob.
     auto lastDot = juce::Point<float> (-1.0e9f, -1.0e9f);
-    for (int i = 0; i < (int) points.size(); ++i)
+    // (0.191.0) From the first point inside what's redrawn (found by halving): those before it aren't drawn
+    // and don't move lastDot.
+    const auto firstDot = (int) (std::partition_point (points.begin(), points.end(), [&] (const pr7s::AutomationPoint& p)
+                                                       { return timeline.xForBeat (p.beat) < left; }) - points.begin());
+    for (int i = firstDot; i < (int) points.size(); ++i)
     {
         const auto at = juce::Point<float> (timeline.xForBeat (points[(size_t) i].beat), yForValue (area, points[(size_t) i].value));
         if (at.x < left || at.x > right)   // (0.165.0: by what's redrawn, not the screen's edges: a glow reaching in from past them)
@@ -6155,6 +6189,14 @@ void ArrangeView::showHitpointSettings (juce::Component* target)
 // Folder tracks (0.50.0).
 std::vector<std::pair<double, double>> ArrangeView::folderBlocks (int folderId) const
 {
+    // (0.191.0) Kept per change: paintFolders asked for them every frame.
+    if (keptFolderVersion != studio.getChangeVersion())
+    {
+        keptFolderBlocks.clear();
+        keptFolderVersion = studio.getChangeVersion();
+    }
+    if (const auto found = keptFolderBlocks.find (folderId); found != keptFolderBlocks.end())
+        return found->second;
     const auto& project = studio.getProject();
     std::vector<std::pair<double, double>> spans;
     for (const auto id : project.folderMembers (folderId, true))
@@ -6168,7 +6210,28 @@ std::vector<std::pair<double, double>> ArrangeView::folderBlocks (int folderId) 
             merged.back().second = juce::jmax (merged.back().second, span.second);
         else
             merged.push_back (span);
+    keptFolderBlocks[folderId] = merged;
     return merged;
+}
+
+std::pair<int, int> ArrangeView::pitchRangeOf (const pr7s::Part& part) const
+{
+    // (0.191.0) Kept per part and change (paintPart walked every note for it on every strip redrawn); a drag's
+    // copy of the part has notes of its own (another address), so it's worked out for that.
+    const auto version = studio.getChangeVersion();
+    if (! keptPitchRanges.empty() && keptPitchRanges.begin()->second.version != version)
+        keptPitchRanges.clear();
+    auto& kept = keptPitchRanges[part.id];
+    if (kept.version != version || kept.notes != part.notes.data() || kept.count != part.notes.size())
+    {
+        kept = { version, part.notes.data(), part.notes.size(), 127, 0 };
+        for (const auto& note : part.notes)
+        {
+            kept.lowest = juce::jmin (kept.lowest, note.pitch);
+            kept.highest = juce::jmax (kept.highest, note.pitch);
+        }
+    }
+    return { kept.lowest, kept.highest };
 }
 
 std::vector<int> ArrangeView::folderPartsIn (int folderId, double start, double end) const

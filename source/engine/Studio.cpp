@@ -6241,7 +6241,36 @@ namespace pr7s
 
     double Studio::getTempoNow() const
     {
-        return project.bpmAt (engine.getPosition());
+        return getTempoMap().bpmAt (engine.getPosition());   // (0.191.0: kept, not built again 30 times a second)
+    }
+
+    const TempoMap& Studio::getTempoMap() const
+    {
+        const auto follows = project.followsTempoTrack();
+        auto& k = keptTempo;
+        if (! k.valid || k.follows != follows || (follows ? k.events != project.tempoEvents : k.bpm != project.bpm))
+        {
+            k.map = project.tempoMap();
+            k.follows = follows;
+            k.bpm = project.bpm;
+            k.events = project.tempoEvents;
+            k.valid = true;
+        }
+        return k.map;
+    }
+
+    const SignatureMap& Studio::getSignatureMap() const
+    {
+        auto& k = keptSignatures;
+        if (! k.valid || k.numerator != project.numerator || k.denominator != project.denominator || k.changes != project.signatureChanges)
+        {
+            k.map = project.signatures();
+            k.numerator = project.numerator;
+            k.denominator = project.denominator;
+            k.changes = project.signatureChanges;
+            k.valid = true;
+        }
+        return k.map;
     }
 
     void Studio::setSignature (int numerator, int denominator)
@@ -6369,7 +6398,7 @@ namespace pr7s
 
     SignatureEvent Studio::getSignatureNow() const
     {
-        return project.signatures().segmentAt (engine.getPosition()).event;
+        return getSignatureMap().segmentAt (engine.getPosition()).event;   // (0.191.0: kept)
     }
 
     //==========================================================================

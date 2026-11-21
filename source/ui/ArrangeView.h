@@ -1,5 +1,7 @@
 #pragma once
 
+#include <map>
+
 #include "ui/ChordEventEditor.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -114,6 +116,13 @@ struct Timeline
     };
     std::vector<Row> layout (const pr7s::Studio&) const;
     int contentHeight (const pr7s::Studio&) const;
+    // (0.191.0) The last layout, kept by the song's change version and the row zoom (it was worked out
+    // afresh 2-3 times a paint and twice a mouse move, each a walk of the folders for every track).
+    struct KeptLayout { const pr7s::Studio* studio = nullptr; const void* tracks = nullptr; size_t count = 0;
+                        juce::uint64 version = 0; double zoom = 0.0; std::vector<Row> rows; };
+    mutable KeptLayout kept;
+    int getLayoutsMade() const noexcept { return layoutsMade; }   // (tests)
+    mutable int layoutsMade = 0;
 };
 
 // The arrangement (inspired by Cubase's project window, in our look): the ruler with
@@ -360,6 +369,12 @@ public:
     // blocks (where any of them has a part; each track a strip inside). A click on a block selects
     // every part in it (Shift: adds them), a drag moves them all along the song (Alt: copies them).
     std::vector<std::pair<double, double>> folderBlocks (int folderId) const;   // beats, merged
+    // (0.191.0) Kept per change: folderBlocks for each folder painted, and each MIDI part's range of pitches.
+    mutable std::map<int, std::vector<std::pair<double, double>>> keptFolderBlocks;
+    mutable juce::uint64 keptFolderVersion = ~juce::uint64 (0);
+    struct PitchRange { juce::uint64 version = 0; const void* notes = nullptr; size_t count = 0; int lowest = 127, highest = 0; };
+    mutable std::map<int, PitchRange> keptPitchRanges;   // by part id
+    std::pair<int, int> pitchRangeOf (const pr7s::Part&) const;
     std::vector<int> folderPartsIn (int folderId, double start, double end) const;   // part ids
     // Where an event is drawn, and the tempo row's curve area (tests).
     juce::Point<float> getTempoEventPosition (int index) const;

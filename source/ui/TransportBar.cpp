@@ -411,7 +411,7 @@ void TransportBar::paint (juce::Graphics& g)
             drawFixedPitch (g, value, inside, juce::jmin (44.0f, inside.getHeight() * 0.95f));
         };
         drawScreen (positionScreen, "POSITION", screenPosition (getPositionText(), [this] { auto most = studio.getProject().numerator; for (const auto& e : studio.getProject().signatureChanges) most = juce::jmax (most, e.numerator); return most; }()));
-        drawScreen (timeScreen, "TIME", pr7s::formatTime (studio.getProject().tempoMap().secondsAt (beats)));
+        drawScreen (timeScreen, "TIME", pr7s::formatTime (studio.getTempoMap().secondsAt (beats)));
     }
 
     // CPU: the audio processing load, as much of each block's time as it

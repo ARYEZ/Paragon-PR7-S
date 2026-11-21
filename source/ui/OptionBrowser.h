@@ -122,6 +122,7 @@ private:
     const Option* find (int id) const;
     bool inGroup (const Option&, const juce::String& g) const;
     bool passes (const Option&) const;
+    bool passes (const Option&, const juce::StringArray& words) const;   // (0.191.0) the search's words split once
     void refreshKeys();
     void showChosen();
     juce::Rectangle<int> groupRow (int index) const;

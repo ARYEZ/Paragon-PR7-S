@@ -10,6 +10,7 @@
 #include "engine/Controllers.h"
 
 #include <limits>
+#include <optional>
 #include <numeric>
 
 namespace
@@ -314,17 +315,45 @@ void KeyEditor::setGrid (double beats)
     repaint();
 }
 
+const pr7s::Track* KeyEditor::findShownTrack() const
+{
+    // (0.191.0) The kept place first, checked by the part's id (const access: a shared PartList isn't copied);
+    // looked for again only when the part has moved (a part removed or added before it, an undo, another song).
+    if (partId == 0)
+        return nullptr;
+    const auto& tracks = studio.getProject().tracks;
+    if (juce::isPositiveAndBelow (foundTrack, (int) tracks.size()))
+    {
+        const auto& parts = tracks[(size_t) foundTrack].parts;
+        if (juce::isPositiveAndBelow (foundPart, (int) parts.size()) && parts[(size_t) foundPart].id == partId)
+            return &tracks[(size_t) foundTrack];
+    }
+    for (int t = 0; t < (int) tracks.size(); ++t)
+    {
+        const auto& parts = tracks[(size_t) t].parts;
+        for (int i = 0; i < (int) parts.size(); ++i)
+            if (parts[(size_t) i].id == partId)
+            {
+                foundTrack = t;
+                foundPart = i;
+                return &tracks[(size_t) t];
+            }
+    }
+    foundTrack = foundPart = -1;
+    return nullptr;
+}
+
 const pr7s::Part* KeyEditor::getPart() const
 {
-    if (const auto where = studio.findPart (partId))
-        return &studio.getProject().findTrack (where->first)->parts[(size_t) where->second];
+    if (const auto* track = findShownTrack())
+        return &track->parts[(size_t) foundPart];
     return nullptr;
 }
 
 int KeyEditor::getTrackId() const
 {
-    const auto where = studio.findPart (partId);
-    return where ? where->first : 0;
+    const auto* track = findShownTrack();
+    return track != nullptr ? track->id : 0;
 }
 
 const std::vector<pr7s::Note>& KeyEditor::notes() const
@@ -805,10 +834,22 @@ juce::Rectangle<float> KeyEditor::getNoteBounds (int index) const
 
 int KeyEditor::noteAt (juce::Point<float> point) const
 {
-    // The one drawn on top (the last) first.
-    for (int i = (int) notes().size() - 1; i >= 0; --i)
-        if (getNoteBounds (i).contains (point))
+    // The one drawn on top (the last) first. (0.191.0: the part looked up once, not twice a note: this runs
+    // on every mouse move; getNoteBounds' rectangle.)
+    const auto* part = getPart();
+    if (part == nullptr)
+        return -1;
+    const auto& list = notes();
+    const auto diamonds = drumViewOn && ! showDrumLengths;
+    for (int i = (int) list.size() - 1; i >= 0; --i)
+    {
+        const auto& note = list[(size_t) i];
+        const auto x = xForBeat (part->start + note.start);
+        const auto bounds = diamonds ? juce::Rectangle<float> (x - rowHeight * 0.5f, yForPitch (note.pitch) + 1.0f, rowHeight - 1.0f, rowHeight - 1.0f)
+                                     : juce::Rectangle<float> (x, yForPitch (note.pitch) + 1.0f, juce::jmax (3.0f, (float) (note.length * pixelsPerBeat)), rowHeight - 1.0f);
+        if (bounds.contains (point))
             return i;
+    }
     return -1;
 }
 
@@ -2351,7 +2392,7 @@ void KeyEditor::paint (juce::Graphics& g)
     key.list = listWidth();
     key.lanes = getNumLanes();
     key.pixelsPerBeat = pixelsPerBeat;
-    key.barLength = studio.getProject().signatures().barLengthAt (firstBeat);
+    key.barLength = studio.getSignatureMap().barLengthAt (firstBeat);
     key.drums = drumViewOn;
     key.finish = (int) Finish::get();
     if (! (key == cacheKey) || ! cacheImage.isValid())
@@ -2567,8 +2608,8 @@ bool KeyEditor::guidesApply() const
 {
     if (! chordGuidesOn || drumViewOn)
         return false;
-    const auto* track = studio.getProject().findTrack (getTrackId());
-    return getPart() != nullptr && track != nullptr && pr7s::isPitchedTrack (*track);
+    const auto* track = findShownTrack();
+    return track != nullptr && pr7s::isPitchedTrack (*track);
 }
 
 int KeyEditor::chordGuideLevel (int writtenPitch, double songBeat) const
@@ -2580,21 +2621,41 @@ int KeyEditor::chordGuideLevel (int writtenPitch, double songBeat) const
     const auto index = track.indexAt (songBeat);
     if (index < 0 || songBeat >= track.endOf (index, studio.getProject().beatsPerBarAt (track.events[(size_t) index].beat)) - 1.0e-9)
         return 0;   // (before the first chord, or in a gap after one: nothing)
-    const auto& chord = track.events[(size_t) index].chord;
-    const auto pc = ((part->heardPitch (writtenPitch) % 12) + 12) % 12;
-    if (pc == chord.root % 12)
-        return 4;
+    return chordGuideLevels (index)[(size_t) (((part->heardPitch (writtenPitch) % 12) + 12) % 12)];
+}
+
+std::array<int, 12> KeyEditor::chordGuideLevels (int chordIndex) const
+{
+    std::array<int, 12> levels {};
+    const auto& track = studio.getProject().chordTrack;
+    if (! juce::isPositiveAndBelow (chordIndex, (int) track.events.size()))
+        return levels;
+    const auto& chord = track.events[(size_t) chordIndex].chord;
+    const auto key = studio.chordTrackKeyAt (track.events[(size_t) chordIndex].beat);
     auto triad = chord;   // (the triad's other two: its 3rd and 5th, or a sus chord's 2nd / 4th and 5th)
     triad.tension = pr7s::Chord::Tension::none;
-    for (const auto i : triad.intervals())
-        if ((chord.root + i) % 12 == pc)
-            return 3;
-    for (const auto i : chord.intervals())   // (then what's added: a 7th, 9th, 11th...)
-        if ((chord.root + i) % 12 == pc)
-            return 2;
-    if (chord.bass >= 0 && chord.bass % 12 == pc)
-        return 3;
-    return pr7s::isPitchClassInKey (pc, studio.chordTrackKeyAt (track.events[(size_t) index].beat)) ? 1 : 0;
+    const auto triadIntervals = triad.intervals();
+    const auto intervals = chord.intervals();
+    for (int pc = 0; pc < 12; ++pc)
+    {
+        auto level = 0;
+        if (pc == chord.root % 12)
+            level = 4;
+        if (level == 0)
+            for (const auto i : triadIntervals)
+                if ((chord.root + i) % 12 == pc)
+                    level = 3;
+        if (level == 0)
+            for (const auto i : intervals)   // (then what's added: a 7th, 9th, 11th...)
+                if ((chord.root + i) % 12 == pc)
+                    level = 2;
+        if (level == 0 && chord.bass >= 0 && chord.bass % 12 == pc)
+            level = 3;
+        if (level == 0)
+            level = pr7s::isPitchClassInKey (pc, key) ? 1 : 0;
+        levels[(size_t) pc] = level;
+    }
+    return levels;
 }
 
 void KeyEditor::paintChordGuides (juce::Graphics& g, juce::Rectangle<float> area)
@@ -2605,6 +2666,7 @@ void KeyEditor::paintChordGuides (juce::Graphics& g, juce::Rectangle<float> area
     const auto& track = project.chordTrack;
     if (track.events.empty())
         return;
+    const auto* part = getPart();
     const auto from = beatForX (area.getX()), to = beatForX (area.getRight());
     const auto top = pitchForY (area.getY()), bottom = pitchForY (area.getBottom());
     const auto lastLength = project.beatsPerBarAt (track.events.back().beat);
@@ -2615,9 +2677,15 @@ void KeyEditor::paintChordGuides (juce::Graphics& g, juce::Rectangle<float> area
         const auto x1 = juce::jmax (area.getX(), xForBeat (e.beat)), x2 = juce::jmin (area.getRight(), xForBeat (e.beat + e.length));
         if (x2 <= x1)
             continue;
+        // (0.191.0) The chord's levels worked out once for it, not for every pitch (chordGuideLevel's rule).
+        const auto at = e.beat + 1.0e-6;
+        const auto index = track.indexAt (at);
+        if (index < 0 || at >= track.endOf (index, project.beatsPerBarAt (track.events[(size_t) index].beat)) - 1.0e-9)
+            continue;
+        const auto levels = chordGuideLevels (index);
         for (int pitch = bottom; pitch <= top; ++pitch)
         {
-            const auto level = chordGuideLevel (pitch, e.beat + 1.0e-6);
+            const auto level = levels[(size_t) (((part->heardPitch (pitch) % 12) + 12) % 12)];
             if (level == 0)
                 continue;
             // (0.125.0, the owner: half as strong, so they're there but not prominent; no mark at the chord's start,
@@ -2625,8 +2693,32 @@ void KeyEditor::paintChordGuides (juce::Graphics& g, juce::Rectangle<float> area
             // orange the next best (its added notes), pink the borderline passing notes (in the key, not the chord).
             const auto full = level >= 3 ? pr7s::FamilyColours::red : level == 2 ? pr7s::FamilyColours::orange : pr7s::FamilyColours::pink;
             const auto alpha = level == 4 ? 0.3f : level == 3 ? 0.22f : level == 2 ? 0.14f : 0.09f;
-            g.setColour (full.withAlpha (alpha));
-            g.fillRect (juce::Rectangle<float> (x1, yForPitch (pitch) + 0.5f, x2 - x1, rowHeight - 1.0f));
+            // (0.191.0) Drawn solid, as the see-through colour over the row's own (one write a pixel, not a blend
+            // over the row): the same colour. A C's row keeps the see-through one: its octave line is under it.
+            const auto colour = full.withAlpha (alpha);
+            const auto guide = juce::Rectangle<float> (x1, yForPitch (pitch) + 0.5f, x2 - x1, rowHeight - 1.0f);
+            g.setColour (colour);
+            if (pitch % 12 == 0)
+            {
+                g.fillRect (guide);
+                continue;
+            }
+            // (Its whole pixels: over the row's colour alone, so solid; the part pixels round its edges, over the
+            // next row's edge or the next chord's, see-through as before: the same pixels within a level.)
+            const auto top = std::ceil (guide.getY()), bottomEdge = std::floor (guide.getBottom());
+            const auto left = std::ceil (guide.getX()), rightEdge = std::floor (guide.getRight());
+            if (bottomEdge <= top || rightEdge <= left)
+            {
+                g.fillRect (guide);
+                continue;
+            }
+            g.fillRect (guide.withRight (left));
+            g.fillRect (guide.withLeft (rightEdge));
+            const auto middle = guide.withLeft (left).withRight (rightEdge);
+            g.fillRect (middle.withBottom (top));
+            g.fillRect (middle.withTop (bottomEdge));
+            g.setColour ((isBlackKey (pitch) ? blackRow : whiteRow).overlaidWith (colour));
+            g.fillRect (middle.withTop (top).withBottom (bottomEdge));
         }
     }
 }
@@ -2638,12 +2730,24 @@ void KeyEditor::paintKeys (juce::Graphics& g)
     auto& keyboard = studio.getEngine().getKeyboardState();
     g.setColour (juce::Colour (0xffe9e4e7));
     g.fillRect (area);
+    // (0.191.0) The chord at the playhead and its levels looked up once for the keys, not for every key.
+    std::array<int, 12> guideLevels {};
+    const auto* guidePart = guidesApply() ? getPart() : nullptr;
+    if (guidePart != nullptr)
+    {
+        const auto& chords = studio.getProject().chordTrack;
+        const auto index = chords.indexAt (shownBeat);
+        if (index >= 0 && shownBeat < chords.endOf (index, studio.getProject().beatsPerBarAt (chords.events[(size_t) index].beat)) - 1.0e-9)
+            guideLevels = chordGuideLevels (index);
+        else
+            guidePart = nullptr;
+    }
     for (int pitch = pitchForY (area.getBottom()); pitch <= pitchForY (area.getY()); ++pitch)
     {
         const auto row = juce::Rectangle<float> (area.getX(), yForPitch (pitch), area.getWidth(), rowHeight);
         const auto lit = keyboard.isNoteOnForChannels (0xffff, pitch);
         // (0.121.0) CHORD GUIDES: the chord at the playhead's notes on the keys (a stripe at the keys' right end).
-        const auto guide = guidesApply() ? chordGuideLevel (pitch, shownBeat) : 0;
+        const auto guide = guidePart != nullptr ? guideLevels[(size_t) (((guidePart->heardPitch (pitch) % 12) + 12) % 12)] : 0;
         const auto guideStripe = [&] (juce::Rectangle<float> key)
         {
             if (guide < 2 || lit)
@@ -2718,7 +2822,7 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     paintChordGuides (g, area);   // (0.121.0: behind the grid and the notes)
 
     // Bars, beats and the grid's steps (each when there's room to see it).
-    const auto signatures = project.signatures();
+    const auto& signatures = studio.getSignatureMap();   // (0.191.0: kept)
     const auto last = beatForX (area.getRight());
     if (grid * pixelsPerBeat >= 6.0)
         for (auto beat = std::floor (juce::jmax (firstBeat, beatForX (area.getX()) - grid) / grid) * grid; beat <= last; beat += grid)
@@ -2739,10 +2843,24 @@ void KeyEditor::paintNotes (juce::Graphics& g)
         }
     }
 
+    const auto* track = findShownTrack();
     const auto* part = getPart();
-    const auto* track = project.findTrack (getTrackId());
     if (part == nullptr || track == nullptr)
         return;
+    // (0.191.0) A note's bounds as KeyEditor::getNoteBounds has them, with the part looked up once for the
+    // paint (that looked for it through the whole song for every note); x tested before y is worked out.
+    const auto partStart = part->start;
+    const auto diamonds = drumViewOn && ! showDrumLengths;
+    const auto boundsIfAcross = [&] (const pr7s::Note& note, float reach) -> std::optional<juce::Rectangle<float>>
+    {
+        const auto x = xForBeat (partStart + note.start);
+        const auto left = diamonds ? x - rowHeight * 0.5f : x;
+        const auto width = diamonds ? rowHeight - 1.0f : juce::jmax (3.0f, (float) (note.length * pixelsPerBeat));
+        if (left + width + reach < area.getX() || left - reach > area.getRight())
+            return std::nullopt;
+        return juce::Rectangle<float> (left, yForPitch (note.pitch) + 1.0f, width, rowHeight - 1.0f);
+    };
+    const auto* drumMap = diamonds ? studio.getDrumMapOf (track->id) : nullptr;
 
     // Outside the part: shaded (notes there aren't heard).
     const auto partLeft = xForBeat (part->start), partRight = xForBeat (part->end());
@@ -2760,18 +2878,21 @@ void KeyEditor::paintNotes (juce::Graphics& g)
     const auto guidesShown = guidesApply() && ! project.chordTrack.events.empty();
     for (int i = 0; i < (int) list.size(); ++i)
     {
-        const auto bounds = getNoteBounds (i);
+        const auto& note = list[(size_t) i];
+        const auto across = boundsIfAcross (note, glowReach);
+        if (! across)
+            continue;
+        const auto bounds = *across;
         // (0.166.0: with the glow's reach: a note just outside what's redrawn still lights its edge)
         if (const auto lit = bounds.expanded (glowReach);
             lit.getRight() < area.getX() || lit.getX() > area.getRight() || lit.getBottom() < area.getY() || lit.getY() > area.getBottom())
             continue;
-        const auto& note = list[(size_t) i];
         const auto isSelected = std::binary_search (selected.begin(), selected.end(), i);
         const auto fill = velocityColour (note.velocity);
         if (drumViewOn && ! showDrumLengths)
         {
             // (0.26.0) A drum hit: a diamond (muted sounds' hits hollow).
-            const auto* map = studio.getDrumMapOf (track->id);
+            const auto* map = drumMap;
             const auto muted = map != nullptr && map->sounds[(size_t) juce::jlimit (0, 127, note.pitch)].mute;
             juce::Path diamond;
             const auto c = bounds.getCentre();
@@ -2826,7 +2947,10 @@ void KeyEditor::paintNotes (juce::Graphics& g)
             const auto& note = list[(size_t) i];
             if (note.muted || part->muted)
                 continue;
-            const auto bounds = getNoteBounds (i);
+            const auto across = boundsIfAcross (note, 0.0f);
+            if (! across)
+                continue;
+            const auto bounds = *across;
             if (bounds.getRight() < area.getX() || bounds.getX() > area.getRight() || bounds.getBottom() < area.getY() || bounds.getY() > area.getBottom())
                 continue;
             if (pr7s::isPitchClassInKey (part->heardPitch (note.pitch) % 12, keyAt (part->start + note.start)))
@@ -2854,9 +2978,10 @@ void KeyEditor::paintNotes (juce::Graphics& g)
         const juce::Colour pearl (0xfff4eeea);
         for (int i = 0; i < (int) list.size(); ++i)
         {
-            const auto bounds = getNoteBounds (i);
-            if (bounds.getRight() < area.getX() || bounds.getX() > area.getRight())
+            const auto across = boundsIfAcross (list[(size_t) i], 0.0f);
+            if (! across)
                 continue;
+            const auto bounds = *across;
             if (heard[(size_t) i].dropped)
             {
                 g.setColour (pearl.withAlpha (0.8f));
@@ -2910,8 +3035,7 @@ void KeyEditor::paintVelocities (juce::Graphics& g)
     }
 
     const auto* part = getPart();
-    const auto* track = studio.getProject().findTrack (getTrackId());
-    if (part == nullptr || track == nullptr)
+    if (part == nullptr)
         return;
     juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (area.getSmallestIntegerContainer());
@@ -2978,7 +3102,7 @@ void KeyEditor::paintRuler (juce::Graphics& g)
 
     juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (rulerArea().getSmallestIntegerContainer());
-    const auto signatures = project.signatures();
+    const auto& signatures = studio.getSignatureMap();
     const auto last = beatForX ((float) juce::jmin (getWidth(), clip.getRight() + 50));
     const auto first = juce::jmax (firstBeat, beatForX ((float) clip.getX() - 50.0f));   // (a bar's number reaches 44 px right of it)
     for (auto b = signatures.barAt (first); signatures.beatOfBar (b) <= last; ++b)

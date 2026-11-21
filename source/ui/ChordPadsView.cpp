@@ -1899,6 +1899,8 @@ void ChordPadsView::itemDropped (const SourceDetails& details)
 //==============================================================================
 void ChordPadsView::timerCallback()
 {
+    if (! isShowing())
+        return;   // (0.191.0: put away, nothing to draw)
     // What's sounding and which pads are down: drawn only when it changes.
     const auto sounding = studio.getPadPlayer().getSounding();
     std::vector<bool> pressed (studio.getChordPads().pads.size());

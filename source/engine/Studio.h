@@ -1401,6 +1401,12 @@ namespace pr7s
         void setTempoView (double low, double high);   // the curve's shown range (not undo steps)
         // The tempo at the playhead (the transport shows it).
         double getTempoNow() const;
+        // (0.191.0) The song's tempo map and signatures, kept and made again only when the tempo (the tempo
+        // track's on and its events, or the fixed tempo) or the signatures changed: the screen's timers and
+        // paints built them again many times a frame. Message thread only; Project::tempoMap() / signatures()
+        // stay as they were for everything else. Hold no reference across an edit: ask again.
+        const TempoMap& getTempoMap() const;
+        const SignatureMap& getSignatureMap() const;
         // The manual's Process Tempo (0.13.0): the stretch from `start` to
         // `end` (beats; the locators) made to last `newSeconds`, by scaling the
         // tempo inside it (every event there, and its ramps, by one factor: the
@@ -1683,6 +1689,10 @@ namespace pr7s
         void setMediaPreviewLevel (float);
 
     private:
+        struct KeptTempo { bool valid = false, follows = false; double bpm = 0.0; std::vector<TempoEvent> events; TempoMap map; };
+        struct KeptSignatures { bool valid = false; int numerator = 0, denominator = 0; std::vector<SignatureEvent> changes; SignatureMap map; };
+        mutable KeptTempo keptTempo;            // (0.191.0) getTempoMap's
+        mutable KeptSignatures keptSignatures;  // (0.191.0) getSignatureMap's
         // (0.90.0) The SECTIONS row's moves: the new blocks, each from an old block's index (its music carried, cut to
         // its new length) or -1 (new and empty: what was there moves on). One undo step.
         struct SectionMove { int from = -1; SongSection block; };

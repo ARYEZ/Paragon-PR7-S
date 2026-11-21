@@ -105,11 +105,16 @@ void OptionBrowser::timerCallback()
         order.push_back (shown[(size_t) i]);
     const auto start = juce::Time::getMillisecondCounterHiRes();
     auto filled = false, any = false;
+    std::vector<int> filledIds;
     const auto take = [&] (Option& o)
     {
         if (! o.pending)
             return true;
-        filled = fillOne (o) || filled;
+        if (fillOne (o))
+        {
+            filled = true;
+            filledIds.push_back (o.id);
+        }
         return juce::Time::getMillisecondCounterHiRes() - start < 12.0;
     };
     auto going = true;
@@ -123,8 +128,19 @@ void OptionBrowser::timerCallback()
         any = any || o.pending;
     if (! any)
         stopTimer();
-    if (filled || ! any)
+    // (0.191.0) The whole (full-screen) window only when what's shown may change: the last one measured, the
+    // chosen one (its picture), or a FEEL / ENERGY key choosing by the measures. Else the rows in view that
+    // were measured (their tags) and the count at the top, 60 times a second while measuring.
+    const auto chosenFilled = std::find (filledIds.begin(), filledIds.end(), chosen) != filledIds.end();
+    if (! any || chosenFilled || (filled && (feel != pr7s::OptionFeel::unknown || energy != 0)))
         repaint();
+    else
+    {
+        repaint (getLocalBounds().reduced (12).removeFromTop (34));   // (the count: MEASURING: n TO GO)
+        for (int i = first; i < juce::jmin ((int) shown.size(), first + rows); ++i)
+            if (std::find (filledIds.begin(), filledIds.end(), shown[(size_t) i]) != filledIds.end())
+                repaint (listRow (i).getIntersection (listArea));
+    }
 }
 
 void OptionBrowser::setOptions (std::vector<Option> list)
@@ -168,7 +184,11 @@ bool OptionBrowser::inGroup (const Option& o, const juce::String& g) const
 
 bool OptionBrowser::passes (const Option& o) const
 {
-    const auto words = juce::StringArray::fromTokens (search.getText().toLowerCase(), true);
+    return passes (o, juce::StringArray::fromTokens (search.getText().toLowerCase(), true));
+}
+
+bool OptionBrowser::passes (const Option& o, const juce::StringArray& words) const
+{
     if (! words.isEmpty())
     {
         // A search looks through every group.
@@ -218,17 +238,18 @@ int OptionBrowser::countIn (const juce::String& g) const
 std::vector<int> OptionBrowser::getShown() const
 {
     std::vector<int> out;
+    const auto words = juce::StringArray::fromTokens (search.getText().toLowerCase(), true);   // (0.191.0: once, not per option)
     if (group == recentGroup && search.isEmpty())
     {
         // The recent in the order used.
         for (const auto& name : memory.recentOf (listKey))
             for (const auto& o : options)
-                if (o.name == name && passes (o))
+                if (o.name == name && passes (o, words))
                     out.push_back (o.id);
         return out;
     }
     for (const auto& o : options)
-        if (passes (o))
+        if (passes (o, words))
             out.push_back (o.id);
     return out;
 }

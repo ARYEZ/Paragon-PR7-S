@@ -850,6 +850,8 @@ juce::String EqEditor::channelName (pr7s::Studio& studio, int busId)
 
 void EqEditor::timerCallback()
 {
+    if (! isShowing())
+        return;   // (0.191.0: hidden, nothing to follow; it catches up when it shows again)
     if (const auto* eq = studio.getChannelEq (bus); eq != nullptr && ! (*eq == shown))
         refresh();
 }

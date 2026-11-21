@@ -1697,9 +1697,11 @@ void MediaBayPage::timerCallback()
         browser->repaint();
         refresh();
     }
-    else if (database.isScanning() && ++scanFrames % 10 == 0)
+    else if (database.isScanning() && ++scanFrames % 10 == 0 && isShowing())
         browser->repaint();   // (the folders being scanned in the accent colour)
     const auto playing = studio.isMediaPreviewing();
+    if (! isShowing())
+        return;   // (0.191.0: hidden, the search and the scans followed, nothing drawn)
     if ((playKey.getButtonText() == "STOP") != playing || database.isScanning())
         refreshKeys();
     if (playing)

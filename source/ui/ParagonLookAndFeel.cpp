@@ -615,7 +615,7 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
         const auto cap = juce::Rectangle<float> (channelFaderCapWidth, (float) channelFaderThumbRadius * 2.0f).withCentre ({ centreX, sliderPos });
         juce::Path outline;
         outline.addRoundedRectangle (cap, 3.5f);
-        juce::DropShadow (juce::Colours::black.withAlpha (0.6f), 8, { 0, 4 }).drawForPath (g, outline);
+        drawRoundedShadow (g, cap, 3.5f, juce::Colours::black.withAlpha (0.6f), 8, { 0, 4 });
         juce::ColourGradient chrome (juce::Colour (0xfffdfcfd), 0.0f, cap.getY(), juce::Colour (0xff5e5b60), 0.0f, cap.getBottom(), false);
         chrome.addColour (0.08, juce::Colour (0xffe6e3e7));
         chrome.addColour (0.4, juce::Colour (0xffb1aeb3));
@@ -887,6 +887,66 @@ SharedParagonLookAndFeel::~SharedParagonLookAndFeel()
     juce::Typeface::clearTypefaceCache();
 }
 
+namespace
+{
+    int shadowsMade = 0;
+}
+
+int ParagonLookAndFeel::getShadowsMade() noexcept { return shadowsMade; }
+
+void ParagonLookAndFeel::drawRoundedShadow (juce::Graphics& g, juce::Rectangle<float> shape, float corner, juce::Colour colour,
+                                            int blur, juce::Point<int> offset)
+{
+    // As juce::DropShadow::drawForPath (the path filled white into a one-channel image round its bounds
+    // expanded by the blur + 1, box-blurred, drawn in the colour), made once and kept. drawForPath makes
+    // only the part near what's redrawn; the blur reaches only its radius, so what shows is the same.
+    struct Kept
+    {
+        float width, height, cornerRadius, fracX, fracY;
+        int blur, offsetX, offsetY, typeId;
+        juce::Rectangle<int> area;   // relative to the shape's whole-pixel corner
+        juce::Image image;
+        juce::uint64 used;
+    };
+    static std::vector<Kept> kept;   // (message thread only)
+    static juce::uint64 tick = 0;
+    jassert (blur > 0);
+    juce::Path outline;
+    outline.addRoundedRectangle (shape, corner);
+    const auto full = (outline.getBounds().getSmallestIntegerContainer() + offset).expanded (blur + 1);
+    if (full.getWidth() <= 2 || full.getHeight() <= 2)
+        return;
+    const auto originX = (int) std::floor (shape.getX()), originY = (int) std::floor (shape.getY());
+    const auto fracX = shape.getX() - (float) originX, fracY = shape.getY() - (float) originY;
+    const auto type = g.getInternalContext().getPreferredImageTypeForTemporaryImages();
+    const auto typeId = type->getTypeID();
+    const auto relative = full.translated (-originX, -originY);
+    auto found = std::find_if (kept.begin(), kept.end(), [&] (const Kept& k)
+    {
+        return k.width == shape.getWidth() && k.height == shape.getHeight() && k.cornerRadius == corner && k.fracX == fracX && k.fracY == fracY
+            && k.blur == blur && k.offsetX == offset.x && k.offsetY == offset.y && k.typeId == typeId && k.area == relative;
+    });
+    if (found == kept.end())
+    {
+        if (kept.size() >= 64)
+            kept.erase (std::min_element (kept.begin(), kept.end(), [] (const Kept& a, const Kept& b) { return a.used < b.used; }));
+        juce::Image image (juce::Image::SingleChannel, full.getWidth(), full.getHeight(), true, *type);
+        image.setBackupEnabled (false);
+        {
+            juce::Graphics g2 (image);
+            g2.setColour (juce::Colours::white);
+            g2.fillPath (outline, juce::AffineTransform::translation ((float) (offset.x - full.getX()), (float) (offset.y - full.getY())));
+        }
+        image.getPixelData()->applySingleChannelBoxBlurEffect (blur);
+        ++shadowsMade;
+        kept.push_back ({ shape.getWidth(), shape.getHeight(), corner, fracX, fracY, blur, offset.x, offset.y, typeId, relative, image, 0 });
+        found = std::prev (kept.end());
+    }
+    found->used = ++tick;
+    g.setColour (colour);
+    g.drawImageAt (found->image, originX + found->area.getX(), originY + found->area.getY(), true);
+}
+
 void ParagonLookAndFeel::drawPianoKey (juce::Graphics& g, juce::Rectangle<float> area, float radius, float bevel,
                                        bool pressed, bool highlighted)
 {
@@ -895,8 +955,8 @@ void ParagonLookAndFeel::drawPianoKey (juce::Graphics& g, juce::Rectangle<float>
 
     juce::Path outline;
     outline.addRoundedRectangle (area, radius);
-    juce::DropShadow (juce::Colours::black.withAlpha (pressed ? 0.45f : 0.6f), juce::roundToInt (bevel * 3.0f),
-                      { 0, juce::roundToInt (bevel * (pressed ? 0.6f : 1.4f)) }).drawForPath (g, outline);
+    drawRoundedShadow (g, area, radius, juce::Colours::black.withAlpha (pressed ? 0.45f : 0.6f), juce::roundToInt (bevel * 3.0f),
+                       { 0, juce::roundToInt (bevel * (pressed ? 0.6f : 1.4f)) });
 
     const auto top = area.withTrimmedLeft (bevel).withTrimmedRight (bevel)
                          .withTrimmedTop (bevel * 0.7f).withTrimmedBottom (bevel * (pressed ? 1.1f : 1.6f));
@@ -970,7 +1030,7 @@ juce::Rectangle<float> ParagonLookAndFeel::drawChromeBezel (juce::Graphics& g, j
 {
     juce::Path outline;
     outline.addRoundedRectangle (bezel, radius);
-    juce::DropShadow (juce::Colours::black.withAlpha (0.45f), 10, { 0, 4 }).drawForPath (g, outline);
+    drawRoundedShadow (g, bezel, radius, juce::Colours::black.withAlpha (0.45f), 10, { 0, 4 });
 
     // Chrome: lit along the top, darker towards the front, with the bright
     // and dark bands of its curved sides.
