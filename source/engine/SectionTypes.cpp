@@ -79,7 +79,14 @@ namespace pr7s
                      { "KICK EIGHTHS, THEN SNARE EIGHTHS", "The kick on the front half's eighths and the snare on the back half's, over a held chord and root eighths", RiffFlavour::openChords, {}, pre },
                      { "TRITONE CHORDS BETWEEN ROOT SINGLES, SNARE CLIMB", "Power chords a tritone and a fifth over the root between low root singles, the snare climbing in eighths", RiffFlavour::openChords, {}, pre },
                      { "DOTTED KICK, SNARE PAIRS, MUTED ROOT STABS", "The kick on a dotted 3+3+2 twice, snare pairs on 2 and 4, muted root stabs off the beat", RiffFlavour::openChords, {}, pre },
-                     { "SIXTEENTHS UP A HALF STEP AFTER SIX", "Sixteenths with the bass: six on the root, ten a half step up, every bar, over ride sixteenths and snare eighths", RiffFlavour::openChords, {}, pre } };
+                     { "SIXTEENTHS UP A HALF STEP AFTER SIX", "Sixteenths with the bass: six on the root, ten a half step up, every bar, over ride sixteenths and snare eighths", RiffFlavour::openChords, {}, pre },
+                     // (0.196.0) Round seven (the owner's 70 songs; shapes only, our names): three led by the ACOUSTIC lane
+                     // (applying one switches it on), then two electric.
+                     { "STRUMS AND STRINGS, DRUMS OUT", "An acoustic's quarter accents with light ups, two chords a bar climbing to the chorus, strings on 1 and 3, the drums out", RiffFlavour::openChords, {}, pre },
+                     { "ACOUSTIC EIGHTHS, THEN A STUTTER", "An acoustic's full chords in eighths, every fourth bar a stutter: two chords pushed together, low strums, a sixteenth run; the kick and open hats on every eighth", RiffFlavour::openChords, {}, pre },
+                     { "FULL ACOUSTIC EIGHTHS, 3+3+2 HIT, STOP", "An acoustic strumming every eighth, a bar of three held hits on 3+3+2, the last chord struck once and held; the band on the hits", RiffFlavour::openChords, {}, pre },
+                     { "OFF-THE-ONE EIGHTHS, BASS ON THE EDGES", "A bar of quarter chords, then a bar of eighths coming in after the one; the bass only on the entry and the pickup", RiffFlavour::openChords, {}, pre },
+                     { "FOUR-STAGE BUILD", "Root eighths alone over quarter kicks, then a stab cell joins, then everyone on eighths over a backbeat, then the snare on every quarter", RiffFlavour::openChords, {}, pre } };
             for (auto& t : sectionTypesFor ("Verse"))   // (0.118.0: the whole verse list, its new types too)
                 types.push_back (std::move (t));
             return types;
@@ -116,7 +123,16 @@ namespace pr7s
                 // (0.170.0) Round five (the owner's 12 songs; shapes only, our names).
                 { "NINTH CLASH IN EIGHTHS", "A root-and-ninth cluster on every eighth with the bass a whole step above it, crashes on the beats", r, {}, i },
                 { "ONE CHORD RUNG OVER THE INTRO BEAT", "One open chord struck and rung eight bars over a half-time hat groove, the bass holding the root", r, {}, i },
-                { "HELD SECOND CLUSTER, SIXTEENTH PICKUP", "A ninth-and-third cluster held each bar, a sixteenth pickup into the next chord, a tom groove", r, {}, i } };
+                { "HELD SECOND CLUSTER, SIXTEENTH PICKUP", "A ninth-and-third cluster held each bar, a sixteenth pickup into the next chord, a tom groove", r, {}, i },
+                // (0.196.0) Round seven (the owner's 70 songs; shapes only, our names): three led by the ACOUSTIC lane
+                // (applying one switches it on), then four electric.
+                { "ACOUSTIC UNDER THE RIFF", "An acoustic's chord-to-pedal strum under a low single-note riff, the bass doubling the riff and alone every fourth bar", r, {}, i },
+                { "STRUM, THEN THE LOW-STRING WALK", "An acoustic's chord on 1 and its own bass line one bar, a climb of single notes and a pickup strum the next", r, {}, i },
+                { "HIGH THIRDS OVER THE ARPEGGIO", "An acoustic's arch arpeggio over the chord's fifth, a second acoustic's high thirds in eighths over it, a ride bell", r, {}, i },
+                { "BURST ON ONE UNDER HELD TRIADS", "A five-sixteenth tremolo burst on beat 1, then silence, under a high triad held each bar; kick, snare and open hat together on 2 and 4", r, {}, i },
+                { "BELL ON THE DOTTED QUARTERS, GUITAR ALONE", "One guitar's power eighths over a ride bell on the dotted quarters, the bass out; the band takes it from halfway", r, {}, i },
+                { "BASS BREAK, KICK ON THE QUARTERS", "The bass alone in sixteenth pairs over the kick on the quarters and closed hats, no snare, then a unison fill", r, {}, i },
+                { "ALTERNATING BLAST UNDER TREMOLO CHORDS", "Tremolo-picked chords a bar each, the snare on the eighths and the kick between them, then kick sixteenths, a kick roll and two stabs", r, {}, i } };
             const auto before = sectionTypesFor (base == "Post-Chorus" ? juce::String ("Chorus") : juce::String ("Bridge"));
             types.insert (types.end(), before.begin(), before.end());
             return types;
@@ -1334,6 +1350,37 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "HALF TIME, SNARE ROLL INTO THE CHANGE", "HALF TIME" }, {} },
                 { "KICK TRIPLE-SIXTEENTHS, SNARE AND CHINA ON THE ANDS", { "PAIRS EVERY SIX SIXTEENTHS", "PAIRS EVERY SIX, RUNG" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK TRIPLETS, SNARE AND CHINA ON THE ANDS", "BACKBEAT, CLOSED HATS" }, {} },
+                // (0.196.0) Round seven's pre-choruses, post-choruses and interludes: the acoustic-led ones list the ACOUSTIC lane's options last.
+                { "STRUMS AND STRINGS, DRUMS OUT", { "OUT", "SOFT CHORD RUNG EACH HALF BAR" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HIGH STRINGS ON ONE AND THREE", "SILENT" }, { "CYMBAL SWELL ON THE LAST BAR", "OUT" }, {},
+                  { "ACCENTS AND LIGHT UPS, RISING TO THE CHORUS", "ACCENTS AND LIGHT UPS, A SECOND'S HIGH THIRDS" } },
+                { "ACOUSTIC EIGHTHS, THEN A STUTTER", { "OUT", "POWER EIGHTHS WITH THE STUTTER" }, { "ROOT EIGHTHS WITH THE STUTTER", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND OPEN HATS ON EVERY EIGHTH, NO SNARE", "KICK EIGHTHS, SNARE ON THE STUTTER" }, {},
+                  { "FULL EIGHTHS, THEN THE STUTTER BAR", "FULL EIGHTHS AND THE STUTTER, A SECOND'S HIGH THIRDS" } },
+                { "FULL ACOUSTIC EIGHTHS, 3+3+2 HIT, STOP", { "OUT", "POWER CHORDS ON THE HITS" }, { "ON THE HITS, HELD BETWEEN", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE QUARTERS, SNARE ON THREE, A ROLL INTO THE STOP", "KICK AND CRASH ON THE HITS ONLY" }, {},
+                  { "EIGHTHS, A 3+3+2 BAR, THE LAST CHORD HELD", "EIGHTHS AND THE HIT BAR, A SECOND AS THE BASS" } },
+                { "OFF-THE-ONE EIGHTHS, BASS ON THE EDGES", { "QUARTER CHORDS, THEN EIGHTHS OFF THE ONE", "EIGHTHS OFF THE ONE EVERY BAR" }, { "ONLY THE ENTRY AND THE PICKUP", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK BEFORE EACH SNARE, THEN KICK ON ONE-AND", "BACKBEAT, HATS ON THE EIGHTHS" }, {} },
+                { "FOUR-STAGE BUILD", { "ROOT EIGHTHS, A SECOND'S CELL JOINS", "POWER EIGHTHS ALL THROUGH THE BUILD" }, { "A HIT EVERY TWO BARS, THEN THE CELL, THEN EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "PADS FROM THE THIRD STAGE" }, { "QUARTERS, CELL, BACKBEAT, SNARE QUARTERS", "BACKBEAT FROM HALFWAY" }, {} },
+                { "ACOUSTIC UNDER THE RIFF", { "LOW SINGLE-NOTE RIFF, A BAR OFF IN FOUR", "THE LOW RIFF IN OCTAVES" }, { "THE RIFF, ALONE EVERY FOURTH BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BACKBEAT, RIDE EIGHTHS, OUT IN THE BASS BAR", "HALF TIME, THE KICK ON THE RIFF" }, {},
+                  { "THE PEDAL STRUM UNDER THE RIFF", "THE PEDAL STRUM, A SECOND AS THE BASS" } },
+                { "STRUM, THEN THE LOW-STRING WALK", { "OUT", "ONE CHORD RUNG ON THE STRUM BARS" }, { "OUT", "ON ONE ONLY", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "GROOVE, THEN A DOWNBEAT-ONLY BAR", "OUT" }, {},
+                  { "CHORD AND BASS LINE, THEN THE CLIMB", "THE WALK, A SECOND'S HIGH ANSWERS" } },
+                { "HIGH THIRDS OVER THE ARPEGGIO", { "OUT", "SOFT CHORD RUNG EVERY TWO BARS" }, { "WHOLE NOTES", "OUT", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE BELL ON THE QUARTERS", "OUT" }, {},
+                  { "THE ARCH, HIGH THIRDS OVER IT", "THE ARCH, A HIGH SEESAW OVER IT" } },
+                { "BURST ON ONE UNDER HELD TRIADS", { "FIVE-SIXTEENTH BURST ON ONE", "THE BURST, A SECOND ON THE ROOT" }, { "ROOT AND FIFTH HELD", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HIGH TRIAD AND OCTAVE HELD", "SILENT" }, { "KICK, SNARE AND OPEN HAT TOGETHER ON TWO AND FOUR", "THE STOMP, A CRASH EVERY FOUR BARS" }, {} },
+                { "BELL ON THE DOTTED QUARTERS, GUITAR ALONE", { "POWER EIGHTHS, ALONE AT FIRST", "POWER EIGHTHS, ACCENTS ON THE BELL" }, { "OUT, THE ROOTS FROM HALFWAY", "OUT", "LOCKED WITH THE KICK" },
+                  { "SILENT", "PADS FROM HALFWAY" }, { "RIDE BELL ON THE DOTTED QUARTERS, THE KIT FROM HALFWAY", "RIDE BELL ON THE DOTTED QUARTERS ALONE" }, {} },
+                { "BASS BREAK, KICK ON THE QUARTERS", { "OUT, A UNISON FILL AT THE END", "OUT" }, { "SIXTEENTH PAIRS, A FILL AT THE END", "ROOT EIGHTHS, A FILL AT THE END", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK QUARTERS, CLOSED HATS, NO SNARE", "KICK QUARTERS, RIDE EIGHTHS, NO SNARE" }, {} },
+                { "ALTERNATING BLAST UNDER TREMOLO CHORDS", { "TREMOLO CHORDS, A SECOND A THIRD UP", "TREMOLO CHORDS ALONE" }, { "ROOT SIXTEENTHS UNDER THE TREMOLO", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "ALTERNATING BLAST, THEN KICK SIXTEENTHS", "ALTERNATING BLAST ALL THROUGH" }, {} },
                 // (0.195.0) Round seven's choruses: the acoustic-led ones list the ACOUSTIC lane's options last.
                 { "BIG STRUMS UNDER POWER-CHORD QUARTERS", { "POWER CHORDS ON BEATS TWO AND THREE", "POWER CHORDS ON ONE AND THREE, RUNG" }, { "ROOT ON ONE AND THE A OF FOUR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "HELD PADS", "SILENT" }, { "HALF TIME, RIDE QUARTERS, TAMBOURINE ON THE ANDS", "HALF TIME, CRASH ON EVERY BAR" }, {},

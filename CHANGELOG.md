@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.196.0
+
+**Five more pre-chorus types and seven more post-chorus / interlude types**, from the owner's 70 song files (round seven, read for their shapes only; the names and descriptions are ours). Six are led by the ACOUSTIC GUITAR lane, six are electric. All in 4/4. The pre-choruses are in a pre-chorus block's TYPE menu after SIXTEENTHS UP A HALF STEP AFTER SIX (before the verse's types); the others in a post-chorus, interlude or instrumental block's TYPE menu after HELD SECOND CLUSTER, SIXTEENTH PICKUP.
+
+**Pre-chorus, acoustic-led** (choosing one switches the ACOUSTIC GUITAR lane on and writes it; the GUITAR lane's first option is OUT, as the songs had no electric there):
+- **STRUMS AND STRINGS, DRUMS OUT:** the acoustic's quarter accents with light ups (or a second acoustic's high thirds over it), strings on 1 and 3, the drums out but for a ride swell on the last bar if you like.
+- **ACOUSTIC EIGHTHS, THEN A STUTTER:** full chords in eighths, every fourth bar a stutter (this chord on 1, the next on its e, its low strings, a sixteenth run up into it); the kick and open hats on every eighth, no snare.
+- **FULL ACOUSTIC EIGHTHS, 3+3+2 HIT, STOP:** every eighth strummed, the third bar of each eight three held hits on 3+3+2, the last chord struck once and held; the bass and drums on the hits, an eighth roll before the stop.
+
+**Pre-chorus, electric:**
+- **OFF-THE-ONE EIGHTHS, BASS ON THE EDGES:** a bar of quarter chords, then a bar of eighths coming in after the one; the bass only on the entry and the pickup; the kick a sixteenth before each snare under the quarter bars.
+- **FOUR-STAGE BUILD:** root eighths over quarter kicks, then a second guitar's stab cell (with the bass and kick), then everyone on eighths over a backbeat with crash quarters, then the snare on every quarter with no kick and a high note a bar over it.
+
+**Post-chorus / interlude, acoustic-led:**
+- **ACOUSTIC UNDER THE RIFF:** the acoustic's chord-to-pedal strum under a low single-note riff; the bass doubles the riff and plays it alone every fourth bar.
+- **STRUM, THEN THE LOW-STRING WALK:** a chord on 1 and the acoustic's own bass line (root, octave, root, fourth), then a bar of single notes climbing and a pickup strum on three strings, then five; a groove that drops to a downbeat-only bar.
+- **HIGH THIRDS OVER THE ARPEGGIO:** the arch arpeggio over the chord's fifth, a second acoustic's high thirds (or high seesaw) over it, whole-note bass, a ride bell on the quarters.
+
+**Post-chorus / interlude, electric:**
+- **BURST ON ONE UNDER HELD TRIADS:** a five-sixteenth tremolo burst on beat 1, then silence, under a high triad held each bar; the bass holds the root and fifth; kick, snare and open hat together on 2 and 4 only.
+- **BELL ON THE DOTTED QUARTERS, GUITAR ALONE:** one guitar's power eighths over a ride bell on 1, the and of 2 and 4, the bass out; the bass, pads and kit come in halfway.
+- **BASS BREAK, KICK ON THE QUARTERS:** the bass alone in sixteenth pairs over the kick on the quarters and closed hats (or the ride), no snare, then a unison fill on the last bar.
+- **ALTERNATING BLAST UNDER TREMOLO CHORDS:** tremolo-picked chords a bar each (a second guitar a third up), sixteenth roots, the snare on the beats and the kick between them, then kick sixteenths under it, then a kick roll and two stabs.
+
+Each type has its own guitar, bass, keys and drums options (the bass's last is still LOCKED WITH THE KICK), with the shared options after them. A second guitar's or second acoustic's part goes onto the lane's second track when it has two, as before.
+
+**Not checked here:** how it sounds. The tests check the shapes (which lanes play, where the hits fall, the acoustic lane switched on and written).
+
 ## 0.195.0
 
 **Eighteen more chorus types**, from the owner's 70 song files (round seven, read for their shapes only; the names and descriptions are ours). Nine are led by the ACOUSTIC GUITAR lane, nine are electric. All in 4/4. You'll find them in a chorus block's TYPE menu, after KICK TRIPLE-SIXTEENTHS, SNARE AND CHINA ON THE ANDS.
