@@ -736,7 +736,7 @@ TEST_CASE ("0.94.0: DRONING's approaches: each lane plays the one chosen", "[sec
     check (ComposerLayer::lead, 1, "roots");
     check (ComposerLayer::lead, 2, "pedal");
     check (ComposerLayer::bass, 1, "pulsed");
-    CHECK (baseSectionApproaches (s, ComposerLayer::guitar).size() == 5);
+    CHECK (baseSectionApproaches (s, ComposerLayer::guitar).size() == 6);   // (0.199.0: PUSHED WHOLE-BAR CHORDS)
     CHECK (approachName (s, ComposerLayer::drums) == "AUTOMATIC");
 }
 
@@ -2323,12 +2323,21 @@ namespace
     }
 
     const std::array<ComposerLayer, 4> bandLanes { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::drums };
+
+    // (0.199.0) Round seven's types' own options shared under every type as they are (the same notes, their own names).
+    const juce::StringArray& sharedAsTheyAre199()
+    {
+        static const juce::StringArray names { "KICK BURST, CRASH QUARTERS, CHINA ON FOUR", "KICK, SNARE AND OPEN HAT TOGETHER ON TWO AND FOUR",
+                                               "KICK AND OPEN HATS ON EVERY EIGHTH, NO SNARE", "SNARE PICKUP INTO TWO AND FOUR, PEDAL KICK",
+                                               "KICK AND TOM, SNARE AND CLAP ON THREE", "PLUCKED OSTINATO IN OCTAVES" };
+        return names;
+    }
 }
 
 TEST_CASE ("0.104.0: transitions: the last bar written for each, the melody untouched", "[sections][transitions]")
 {
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 14 + 21 + 27 + 6 + 15);   // (0.186.0: fifteen more; 0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
+    REQUIRE (list.size() == 14 + 21 + 27 + 6 + 15 + 10);   // (0.199.0: ten more; 0.186.0: fifteen more; 0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
     CHECK (list.front().name == noTransition);
     CHECK_FALSE (sectionTransitionNamed ("NONE").has_value());
     CHECK_FALSE (sectionTransitionNamed ("").has_value());
@@ -5017,7 +5026,7 @@ TEST_CASE ("0.154.0: round four's 27 transitions", "[sections][transitions][tran
                                             "TOM RUMBLE BARS", "HALF-STEP BURST BAR", "RIFF ALONE, TWO BARS", "UNISON SIXTEENTHS BAR",
                                             "SIXTEENTH SWELL, CUT SHORT", "SIX-SIXTEENTH TURNAROUND", "DROP TO KEYS AND LEAD", "CUT AT THE HALF BAR" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 35 + names.size() + 6 + 15);   // (0.172.0: six more; 0.186.0: fifteen more)
+    REQUIRE (list.size() == 35 + names.size() + 6 + 15 + 10);   // (0.172.0: six more; 0.186.0: fifteen more; 0.199.0: ten more)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (list[35 + i].name == names[i]);
     const auto plain = withTransition (noTransition);
@@ -5132,8 +5141,8 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const auto drums = extraApproaches (ComposerLayer::drums);
     const auto keys = extraApproaches (ComposerLayer::chords);
-    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7 + 11 + 1);   // (0.195.0: one more)   // (0.193.0: eleven more)   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
-    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6 + 5);   // (0.193.0: five more)   // (0.186.0: six more)
+    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7 + 11 + 1 + 10);   // (0.199.0: ten more)   // (0.195.0: one more)   // (0.193.0: eleven more)   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
+    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6 + 5 + 1);   // (0.199.0: one more)   // (0.193.0: five more)   // (0.186.0: six more)
     CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3 + 2);   // (0.193.0: two more)   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
     CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4);   // (0.193.0: four more)   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
 
@@ -7454,7 +7463,7 @@ TEST_CASE ("0.186.0: round six's transitions", "[sections][trans186]")
                             "CHORD RUNG A BAR, LAST-16TH KICK PICKUP", "UNISON HITS, THEN HELD SILENCE", "BAND HIT HELD TWO AND A HALF BEATS, RIDE PICKUP",
                             "SNARE SIXTEENTHS ON THREE INTO THE CHANGE" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 68 + std::size (names));
+    REQUIRE (list.size() == 68 + std::size (names) + 10);   // (0.199.0: ten more)
     for (size_t i = 0; i < std::size (names); ++i)
         CHECK (list[68 + i].name == names[i]);
     const auto none = withTransition ({});
@@ -7888,7 +7897,8 @@ TEST_CASE ("0.195.0: round seven's chorus types, every lane's options a differen
             if (l == ComposerLayer::bass)
                 CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
             for (const auto& shared : extraApproaches (l))   // (the types' own options differ from the shared ones)
-                CHECK_FALSE (options.contains (shared));
+                if (! sharedAsTheyAre199().contains (shared))   // (0.199.0: but the six shared under their own names)
+                    CHECK_FALSE (options.contains (shared));
             const auto choices = composerChoices (l, s, spans, c);
             REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
             std::set<juce::String> seen;
@@ -8206,7 +8216,8 @@ TEST_CASE ("0.196.0: round seven's pre-chorus and post-chorus / interlude types,
             if (l == ComposerLayer::drums)
                 CHECK (options[0] != "OUT");
             for (const auto& shared : extraApproaches (l))   // (the types' own options differ from the shared ones)
-                CHECK_FALSE (options.contains (shared));
+                if (! sharedAsTheyAre199().contains (shared))   // (0.199.0: but the six shared under their own names)
+                    CHECK_FALSE (options.contains (shared));
             const auto choices = composerChoices (l, s, spans, c);
             REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
             std::set<juce::String> seen;
@@ -8452,7 +8463,8 @@ TEST_CASE ("0.197.0: round seven's bridge and breakdown types, every lane's opti
             if (l == ComposerLayer::drums)
                 CHECK (options[0] != "OUT");
             for (const auto& shared : extraApproaches (l))   // (the types' own options differ from the shared ones)
-                CHECK_FALSE (options.contains (shared));
+                if (! sharedAsTheyAre199().contains (shared))   // (0.199.0: but the six shared under their own names)
+                    CHECK_FALSE (options.contains (shared));
             const auto choices = composerChoices (l, s, spans, c);
             REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
             std::set<juce::String> seen;
@@ -8752,7 +8764,8 @@ TEST_CASE ("0.198.0: round seven's intro and outro types, every lane's options a
             if (l == ComposerLayer::drums)
                 CHECK (options[0] != "OUT");
             for (const auto& shared : extraApproaches (l))   // (the types' own options differ from the shared ones)
-                CHECK_FALSE (options.contains (shared));
+                if (! sharedAsTheyAre199().contains (shared))   // (0.199.0: but the six shared under their own names)
+                    CHECK_FALSE (options.contains (shared));
             const auto choices = composerChoices (l, s, spans, c);
             REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
             std::set<juce::String> seen;
@@ -8956,5 +8969,319 @@ TEST_CASE ("0.198.0: round seven's intro and outro types, every lane's options a
         CHECK (hitsOf (layers[d], tambourine, 0.0, 4.0) == V { 1.0, 3.0 });
         CHECK (hitsOf (layers[d], GmDrum::crash, 0.0, 32.0) == V { 0.0, 28.0 });
         CHECK (layers[g].notes.empty());
+    }
+}
+
+TEST_CASE ("0.199.0: round seven's transitions", "[sections][transitions][trans199]")
+{
+    const char* names[] = { "CHORD TIED OVER THE BAR LINE", "RING THE BAR, THEN SILENCE", "BAND HIT, EMPTY BAR", "SILENT BAR, HALF-BAR STRUM PICKUP",
+                            "STOP AFTER TWO BEATS", "HATS ALONE BREAK", "DRUMS ALONE, BLAST, THEN THREE CHORDS", "CHROMATIC POWER-CHORD FALL",
+                            "PUSHED STRUM STUTTER", "OFF-EIGHTH KICKS INTO A STOP" };
+    const auto& list = sectionTransitions();
+    REQUIRE (list.size() == 83 + std::size (names));
+    for (size_t i = 0; i < std::size (names); ++i)
+        CHECK (list[83 + i].name == names[i]);
+    // Every lane with the acoustic on (it strums with the band where the shape is a strum).
+    const auto with = [] (const juce::String& name)
+    {
+        ComposerState s;
+        s.transition = name;
+        s.lane (ComposerLayer::acoustic).on = true;
+        return composeLayers (s, cleanSpans(), ComposerContext {});
+    };
+    const std::array<ComposerLayer, 5> lanes { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::drums, ComposerLayer::acoustic };
+    const auto none = with ({});
+    REQUIRE_FALSE (none[(size_t) ComposerLayer::acoustic].notes.empty());
+    std::set<juce::String> seen;
+    for (const auto* name : names)
+    {
+        INFO (name);
+        REQUIRE (sectionTransitionNamed (name).has_value());
+        CHECK (transitionGroupOrder().contains (transitionGroupOf (name)));
+        const auto all = with (name);
+        auto changed = false;
+        juce::String k;
+        for (const auto l : lanes)
+        {
+            changed = changed || ! sameNotes (all[(size_t) l], none[(size_t) l]);
+            for (const auto& n : all[(size_t) l].notes)
+            {
+                k << (int) l << ":" << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << ";";
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+                CHECK (n.length > 0.0);
+                if (n.beat < 24.0 - 1.0e-6)   // (only the last two bars written: before them, only notes that were there)
+                    CHECK (std::find_if (none[(size_t) l].notes.begin(), none[(size_t) l].notes.end(),
+                                         [&n] (const LineNote& o) { return o.beat == n.beat && o.pitch == n.pitch; })
+                           != none[(size_t) l].notes.end());
+            }
+        }
+        CHECK (changed);
+        CHECK (seen.insert (k).second);
+        CHECK (sameNotes (all[(size_t) ComposerLayer::melody], none[(size_t) ComposerLayer::melody]));
+    }
+    CHECK (transitionGroupOf ("CHORD TIED OVER THE BAR LINE") == "HELD CHORDS");
+    CHECK (transitionGroupOf ("BAND HIT, EMPTY BAR") == "STOPS & SILENCES");
+    CHECK (transitionGroupOf ("CHROMATIC POWER-CHORD FALL") == "WALKS & SLIDES");
+    const auto startsIn = [] (const LineIdea& idea, double from, double to, int pitch = -1)
+    {
+        std::set<int> at;
+        for (const auto& n : idea.notes)
+            if (! n.keyswitch && n.beat >= from - 1.0e-6 && n.beat < to - 1.0e-6 && (pitch < 0 || n.pitch == pitch))
+                at.insert (juce::roundToInt ((n.beat - from) * 4.0));
+        return at;
+    };
+    // CHORD TIED OVER THE BAR LINE: the next section's chord (A minor, the first again) struck on the last eighth, every lane.
+    {
+        const auto all = with ("CHORD TIED OVER THE BAR LINE");
+        for (const auto l : { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::drums })
+            checkQuietFrom (all[(size_t) l], 31.5, 31.5, 32.0);
+        for (const auto& n : all[(size_t) ComposerLayer::bass].notes)
+            if (n.beat >= 31.5 - 1.0e-6)
+                CHECK (n.pitch % 12 == 9);
+        for (const auto& n : all[(size_t) ComposerLayer::acoustic].notes)
+            if (n.beat >= 31.5 - 1.0e-6)
+                CHECK ((n.pitch % 12 == 9 || n.pitch % 12 == 0 || n.pitch % 12 == 4 || n.pitch % 12 == 11));   // (A minor's open shape, its ninth)
+        CHECK_FALSE (startsIn (all[(size_t) ComposerLayer::acoustic], 31.5, 32.0).empty());
+    }
+    // RING THE BAR, THEN SILENCE: one chord struck at bar 7 and rung through it, the last bar silent; BAND HIT: a short hit.
+    {
+        const auto ring = with ("RING THE BAR, THEN SILENCE"), hit = with ("BAND HIT, EMPTY BAR");
+        for (const auto l : { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::drums })
+        {
+            checkQuietFrom (ring[(size_t) l], 24.0, 24.0, 28.0);
+            checkQuietFrom (hit[(size_t) l], 24.0, 24.0, 25.0);
+        }
+        CHECK (startsIn (ring[(size_t) ComposerLayer::drums], 24.0, 32.0, 49) == std::set<int> { 0 });
+        CHECK (startsIn (hit[(size_t) ComposerLayer::drums], 24.0, 32.0, 49).empty());
+        CHECK (startsIn (hit[(size_t) ComposerLayer::drums], 24.0, 32.0, 38) == std::set<int> { 0 });
+    }
+    // SILENT BAR, HALF-BAR STRUM PICKUP: nothing from bar 7 to beat 3 of the last bar, then the acoustic on its eighths.
+    {
+        const auto all = with ("SILENT BAR, HALF-BAR STRUM PICKUP");
+        for (const auto l : lanes)
+            for (const auto& n : all[(size_t) l].notes)
+                if (! n.keyswitch && n.beat >= 24.0 - 1.0e-6)
+                    CHECK (n.beat >= 30.0 - 1.0e-6);
+        std::set<int> eighths;
+        for (const auto& n : all[(size_t) ComposerLayer::acoustic].notes)
+            if (n.beat >= 30.0 - 1.0e-6)
+                eighths.insert ((int) std::floor ((n.beat - 30.0) * 2.0 + 1.0e-6));
+        CHECK (eighths == std::set<int> { 0, 1, 2, 3 });
+    }
+    // STOP AFTER TWO BEATS: a hit on beat 2, nothing from 3.
+    {
+        const auto all = with ("STOP AFTER TWO BEATS");
+        for (const auto l : { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::drums })
+            checkQuietFrom (all[(size_t) l], 29.0, 29.0, 30.0);
+    }
+    // HATS ALONE BREAK: the last two bars only the hats (a china, two splashes, the snare pickup on the last beat).
+    {
+        const auto all = with ("HATS ALONE BREAK");
+        for (const auto l : { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::acoustic })
+            checkQuietFrom (all[(size_t) l], 24.0, -1.0, 24.0);
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 24.0 - 1.0e-6)
+                CHECK ((n.pitch == 42 || n.pitch == 52 || n.pitch == 55 || (n.pitch == 38 && n.beat >= 31.0 - 1.0e-6)));
+        CHECK (startsIn (all[(size_t) ComposerLayer::drums], 31.0, 32.0, 38) == std::set<int> { 0, 1, 2, 3 });
+    }
+    // DRUMS ALONE, BLAST, THEN THREE CHORDS: bar 7 the drums alone, kick and snare in turn; then the band on 1, 3 and 4.
+    {
+        const auto all = with ("DRUMS ALONE, BLAST, THEN THREE CHORDS");
+        for (const auto l : { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::acoustic })
+            for (const auto& n : all[(size_t) l].notes)
+                CHECK ((n.beat < 24.0 - 1.0e-6 || n.beat >= 28.0 - 1.0e-6));
+        CHECK (startsIn (all[(size_t) ComposerLayer::drums], 24.0, 28.0, GmDrum::kick).size() == 8);
+        CHECK (startsIn (all[(size_t) ComposerLayer::drums], 24.0, 28.0, GmDrum::snare).size() == 8);
+        CHECK (startsIn (all[(size_t) ComposerLayer::bass], 28.0, 32.0) == std::set<int> { 0, 8, 12 });
+    }
+    // CHROMATIC POWER-CHORD FALL: the guitar's roots falling a half step a sixteenth to the next chord's root (A).
+    {
+        const auto all = with ("CHROMATIC POWER-CHORD FALL");
+        std::map<int, int> lowest;
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+            {
+                const auto k = juce::roundToInt ((n.beat - 28.0) * 4.0);
+                lowest[k] = lowest.count (k) > 0 ? juce::jmin (lowest[k], n.pitch) : n.pitch;
+            }
+        REQUIRE (lowest.size() == 13u);
+        for (int k = 1; k < 13; ++k)
+            CHECK (lowest[k] == lowest[k - 1] - 1);
+        CHECK (lowest[12] % 12 == 9);
+        CHECK (lowest[0] == lowest[12] + 12);
+        checkQuietFrom (all[(size_t) ComposerLayer::chords], 28.0, -1.0, 28.0);
+    }
+    // PUSHED STRUM STUTTER: x--xxx---xx-xxxx in every lane, the acoustic strumming with it.
+    {
+        const auto all = with ("PUSHED STRUM STUTTER");
+        const std::set<int> stutter { 0, 3, 4, 5, 9, 10, 12, 13, 14, 15 };
+        CHECK (startsIn (all[(size_t) ComposerLayer::bass], 28.0, 32.0) == stutter);
+        CHECK (startsIn (all[(size_t) ComposerLayer::drums], 28.0, 32.0, GmDrum::kick) == stutter);
+        std::set<int> strums;
+        for (const auto& n : all[(size_t) ComposerLayer::acoustic].notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+                strums.insert ((int) std::floor ((n.beat - 28.0) * 4.0 + 1.0e-6));
+        CHECK (strums == stutter);
+    }
+    // OFF-EIGHTH KICKS INTO A STOP: the kick on 1-and, 2-and, 3-and and 4, nothing after.
+    {
+        const auto all = with ("OFF-EIGHTH KICKS INTO A STOP");
+        CHECK (startsIn (all[(size_t) ComposerLayer::drums], 28.0, 32.0, GmDrum::kick) == std::set<int> { 2, 6, 10, 12 });
+        for (const auto l : { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::drums })
+            checkQuietFrom (all[(size_t) l], 31.0 + 1.0e-3, -1.0, 31.5 + 1.0e-6);
+    }
+}
+
+TEST_CASE ("0.199.0: round seven's shared options and DRONING's pushed chords", "[sections][types][shared199]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<std::pair<ComposerLayer, juce::StringArray>> added {
+        { ComposerLayer::drums, { "KICK BURST, CRASH QUARTERS, CHINA ON FOUR", "KICK, SNARE AND OPEN HAT TOGETHER ON TWO AND FOUR",
+                                  "KICK AND HATS, BACKBEAT MOSTLY GONE", "SNARE QUARTERS, KICK ON THE LAST TWO ANDS", "KICK A SIXTEENTH BEFORE EACH SNARE",
+                                  "CYMBAL STABS WITH THE HIGH STABS", "KICK AND OPEN HATS ON EVERY EIGHTH, NO SNARE", "DANCE-PUNK BEAT",
+                                  "SNARE PICKUP INTO TWO AND FOUR, PEDAL KICK", "KICK AND TOM, SNARE AND CLAP ON THREE" } },
+        { ComposerLayer::chords, { "PLUCKED OSTINATO IN OCTAVES" } } };
+    for (const auto& [section, type] : std::vector<std::pair<juce::String, juce::String>> { { "Chorus", "DRIVING" }, { "Verse", "CLEAN VERSE" } })
+    {
+        ComposerState s;
+        applySectionType (s, section, type);
+        for (const auto& [l, names] : added)
+        {
+            const auto extras = extraApproaches (l);
+            const auto all = sectionApproaches (s, l);
+            std::set<juce::String> seen;
+            for (int i = 0; i < all.size(); ++i)
+            {
+                auto t = s;
+                t.lane (l).approach = i;
+                const auto idea = composeLayers (t, spans, c)[(size_t) l];
+                juce::String k;
+                for (const auto& n : idea.notes)
+                    k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << (n.harmony ? "h" : "") << ";";
+                if (names.contains (all[i]))
+                {
+                    INFO (type << " " << all[i]);
+                    CHECK (extras.contains (all[i]));
+                    CHECK_FALSE (baseSectionApproaches (s, l).contains (all[i]));
+                    CHECK (! idea.notes.empty());
+                    CHECK (idea.description.isNotEmpty());
+                    for (const auto& n : idea.notes)
+                        CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+                    CHECK (seen.count (k) == 0);   // (different from every option before it)
+                }
+                seen.insert (k);
+            }
+            for (const auto& name : names)
+                CHECK (all.contains (name));
+        }
+    }
+    ComposerState s;
+    applySectionType (s, "Chorus", "DRIVING");
+    const auto play = [&] (ComposerLayer l, const juce::String& name)
+    {
+        auto t = s;
+        t.lane (l).approach = sectionApproaches (t, l).indexOf (name);
+        return composeLayers (t, spans, c)[(size_t) l];
+    };
+    const auto at = [] (const LineIdea& idea, double beat, int pitch)
+    {
+        return std::any_of (idea.notes.begin(), idea.notes.end(), [&] (const LineNote& n) { return std::abs (n.beat - beat) < 1.0e-6 && n.pitch == pitch; });
+    };
+    const auto count = [] (const LineIdea& idea, int pitch, double from, double to)
+    {
+        return std::count_if (idea.notes.begin(), idea.notes.end(), [&] (const LineNote& n) { return n.pitch == pitch && n.beat >= from - 1.0e-6 && n.beat < to - 1.0e-6; });
+    };
+    // A type's own option shared under another type plays the same notes as under its own.
+    {
+        ComposerState own;
+        applySectionType (own, "Verse", "HIGH OSTINATO, LOW RIFF EVERY OTHER BAR");
+        own.lane (ComposerLayer::chords).approach = sectionApproaches (own, ComposerLayer::chords).indexOf ("PLUCKED OSTINATO IN OCTAVES");
+        CHECK (sameNotes (composeLayers (own, spans, c)[(size_t) ComposerLayer::chords], play (ComposerLayer::chords, "PLUCKED OSTINATO IN OCTAVES")));
+    }
+    // SNARE QUARTERS, KICK ON THE LAST TWO ANDS.
+    {
+        const auto d = play (ComposerLayer::drums, "SNARE QUARTERS, KICK ON THE LAST TWO ANDS");
+        for (const auto b : { 0.0, 1.0, 2.0, 3.0 })
+            CHECK (at (d, b, GmDrum::snare));
+        CHECK (count (d, GmDrum::kick, 0.0, 4.0) == 2);
+        CHECK (at (d, 2.5, GmDrum::kick));
+        CHECK (at (d, 3.5, GmDrum::kick));
+    }
+    // KICK A SIXTEENTH BEFORE EACH SNARE.
+    {
+        const auto d = play (ComposerLayer::drums, "KICK A SIXTEENTH BEFORE EACH SNARE");
+        for (const auto b : { 0.75, 1.75, 2.75, 3.75 })
+            CHECK (at (d, b, GmDrum::kick));
+        CHECK_FALSE (at (d, 0.0, GmDrum::snare));
+        CHECK (at (d, 4.0, GmDrum::snare));
+        CHECK (at (d, 1.0, GmDrum::snare));
+    }
+    // CYMBAL STABS WITH THE HIGH STABS: a crash on 2-and, a china on 4-and, no hat there.
+    {
+        const auto d = play (ComposerLayer::drums, "CYMBAL STABS WITH THE HIGH STABS");
+        CHECK (at (d, 1.5, GmDrum::crash));
+        CHECK (at (d, 3.5, GmDrum::china));
+        CHECK_FALSE (at (d, 1.5, GmDrum::closedHat));
+        CHECK (at (d, 1.0, GmDrum::closedHat));
+    }
+    // DANCE-PUNK BEAT: the kick on the beats, the snare on the ands, the last bar snare sixteenths alone.
+    {
+        const auto d = play (ComposerLayer::drums, "DANCE-PUNK BEAT");
+        CHECK (count (d, GmDrum::kick, 0.0, 4.0) == 4);
+        CHECK (at (d, 0.5, GmDrum::snare));
+        CHECK_FALSE (at (d, 1.0, GmDrum::snare));
+        CHECK (count (d, GmDrum::snare, 28.0, 32.0) == 16);
+        CHECK (count (d, GmDrum::kick, 28.0, 32.0) == 0);
+    }
+    // KICK AND HATS, BACKBEAT MOSTLY GONE: the snare only on 3 of the second bar, all four beats of the fourth.
+    {
+        const auto d = play (ComposerLayer::drums, "KICK AND HATS, BACKBEAT MOSTLY GONE");
+        CHECK (count (d, GmDrum::snare, 0.0, 4.0) == 0);
+        CHECK (count (d, GmDrum::snare, 4.0, 8.0) == 1);
+        CHECK (at (d, 6.0, GmDrum::snare));
+        CHECK (count (d, GmDrum::snare, 12.0, 16.0) == 4);
+        CHECK (count (d, GmDrum::openHat, 0.0, 4.0) == 4);
+        CHECK (count (d, GmDrum::kick, 0.0, 32.0) > 0);
+    }
+    // PUSHED WHOLE-BAR CHORDS (DRONING's guitar version): each chord struck on the and of four before its bar and rung
+    // across it; the droning bass doubling it.
+    {
+        ComposerState d;
+        applySectionType (d, "Chorus", "DRONING");
+        const auto own = baseSectionApproaches (d, ComposerLayer::guitar);
+        REQUIRE (own.contains ("PUSHED WHOLE-BAR CHORDS"));
+        CHECK (own[own.size() - 1] == "PUSHED WHOLE-BAR CHORDS");
+        CHECK_FALSE (typeVersionsOf ("DRIVING", ComposerLayer::guitar).contains ("PUSHED WHOLE-BAR CHORDS"));
+        d.lane (ComposerLayer::guitar).approach = own.indexOf ("PUSHED WHOLE-BAR CHORDS");
+        const auto layers = composeLayers (d, spans, c);
+        const auto& guitar = layers[(size_t) ComposerLayer::guitar];
+        std::set<int> strikes;
+        for (const auto& n : guitar.notes)
+            if (! n.keyswitch)
+                strikes.insert (juce::roundToInt (n.beat * 2.0));
+        CHECK (strikes == std::set<int> { 0, 7, 15, 23, 31, 39, 47, 55 });
+        for (const auto& n : guitar.notes)
+            if (! n.keyswitch && n.beat > 0.0)
+                CHECK (n.length > 3.5);   // (rung across the bar)
+        // F's strike on the and of four before bar 2, the first bar's A minor before it.
+        CHECK (std::any_of (guitar.notes.begin(), guitar.notes.end(), [] (const LineNote& n) { return std::abs (n.beat - 3.5) < 1.0e-6 && n.pitch % 12 == 5; }));
+        // Every other guitar option a different part.
+        std::set<juce::String> parts;
+        for (int i = 0; i < own.size(); ++i)
+        {
+            auto t = d;
+            t.lane (ComposerLayer::guitar).approach = i;
+            juce::String k;
+            for (const auto& n : composeLayers (t, spans, c)[(size_t) ComposerLayer::guitar].notes)
+                k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << ";";
+            CHECK (parts.insert (k).second);
+        }
+        // The droning bass follows the guitar's strikes.
+        std::set<int> bass;
+        for (const auto& n : layers[(size_t) ComposerLayer::bass].notes)
+            bass.insert (juce::roundToInt (n.beat * 2.0));
+        CHECK (bass.count (7) == 1);
+        CHECK (bass.count (8) == 0);
     }
 }

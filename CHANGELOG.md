@@ -2,6 +2,38 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.199.0
+
+The last release of round seven, from the owner's 70 song files (read for their shapes only; the names and descriptions are ours): ten new transitions, ten more drum options shared under every section type, a keys part shared the same way, and a new guitar option for DRONING. All in 4/4.
+
+**Transitions** (INTO THE NEXT on a block; each keeps to the block's last two bars; when the ACOUSTIC GUITAR lane is on it strums with the band's hits):
+- **CHORD TIED OVER THE BAR LINE:** the next section's first chord struck on the last eighth and held over the bar line, so the next section starts on a rest.
+- **RING THE BAR, THEN SILENCE:** the bar before last one chord struck (a crash with it) and rung the whole bar, then a silent bar.
+- **BAND HIT, EMPTY BAR:** the bar before last a short hit on its one (the snare with the kick), then nothing until the next section.
+- **SILENT BAR, HALF-BAR STRUM PICKUP:** a silent bar, then half a bar of silence and a two-beat strum in eighths into the next (the guitar's power chords with it, the bass and keys held from beat 3, the kick and snare picking up).
+- **STOP AFTER TWO BEATS:** the last bar played to beat 2, a hit there, then two beats of silence.
+- **HATS ALONE BREAK:** the last two bars only the closed hats on the eighths, a china on the first one and two splashes, a snare pickup in sixteenths on the very last beat.
+- **DRUMS ALONE, BLAST, THEN THREE CHORDS:** the bar before last the drums alone, the kick and the snare taking turns on every sixteenth; then the whole band with the kit on 1, 3 and 4.
+- **CHROMATIC POWER-CHORD FALL:** the last bar power chords falling a half step every sixteenth from an octave over the next chord's root down to it (the bass with them), toms falling under them.
+- **PUSHED STRUM STUTTER:** the last bar a stuttered push (1, the a of 1, 2, the e of 2, the e and the and of 3), then sixteenths on beat 4 already on the next chord; the acoustic strums the stutter (low strings in the middle), every lane plays it.
+- **OFF-EIGHTH KICKS INTO A STOP:** the last bar the band and the kick on the off eighths (1-and, 2-and, 3-and), one hit with a crash on 4, then silence.
+
+**Drum options shared under every named section type** (after each type's own):
+- **KICK AND HATS, BACKBEAT MOSTLY GONE:** open hats on the quarters, the kick on the guitar's accents, the snare only on 3 of every second bar and on all four beats of every fourth.
+- **SNARE QUARTERS, KICK ON THE LAST TWO ANDS:** the snare on every beat, the kick only on 3-and and 4-and, a crash on every quarter.
+- **KICK A SIXTEENTH BEFORE EACH SNARE:** the snare on every beat (the section's first left to the crash), the kick on the sixteenth before each, a crash on every bar's one.
+- **CYMBAL STABS WITH THE HIGH STABS:** a crash on 2-and and a china on 4-and where a guitar would stab high, closed hats on the other eighths.
+- **DANCE-PUNK BEAT:** the kick on every beat, the snare on every off eighth, a crash on every quarter; the section's last bar snare sixteenths alone.
+- Five of the plan's shapes were already written as other types' own options, so they're shared as they are under their existing names rather than as copies under new ones: the plan's "kick burst on one, china on four" is **KICK BURST, CRASH QUARTERS, CHINA ON FOUR**; "kick and snare together on two and four" is **KICK, SNARE AND OPEN HAT TOGETHER ON TWO AND FOUR**; "kick eighths, open hats, no snare" is **KICK AND OPEN HATS ON EVERY EIGHTH, NO SNARE**; "backbeat with a sixteenth pickup" is **SNARE PICKUP INTO TWO AND FOUR, PEDAL KICK**; "tom pulse, clap on three" is **KICK AND TOM, SNARE AND CLAP ON THREE**.
+
+**Keys, shared:** the plan's "plucked octave ostinato" was already a verse type's own part, so it's shared as **PLUCKED OSTINATO IN OCTAVES**, playing the same notes under any type.
+
+**Guitar, DRONING:** **PUSHED WHOLE-BAR CHORDS**, the last of DRONING's guitar options: each bar's chord struck an eighth early, on the and of four before its bar line (the first on the section's one), and rung across the whole bar; the droning bass doubles it as it doubles the others.
+
+**Our guesses:** which chord the pickups and pushes land on (the stutter's sixteenths and the fall go to the next section's chord, the strum pickup stays on the block's own); the toms under the fall, the hats break's splashes and the blast's crash are ours; the guitar's accents stand in for "the riff" the kick follows (with no guitar, a fixed figure); the DRONING version's full chord adds the third over the octave, and the bass's late entry the songs had isn't written (it doubles the strikes). Nothing saved moves: the new transitions and options are appended at the ends of their lists.
+
+That finishes round seven.
+
 ## 0.198.0
 
 **Seven more intro types and five more outro types**, from the owner's 70 song files (round seven, read for their shapes only; the names and descriptions are ours). Ten are led by the ACOUSTIC GUITAR lane, two are electric. All in 4/4. The intros are in an intro block's TYPE menu after TWO ROOTS AND A RUNG CHORD (before DRONING and OPEN CHORDS); the outros in an outro, ending, tag or coda block's after TWO ROOTS AND A RUNG CHORD (before DRONING and STABS).

@@ -1885,6 +1885,8 @@ namespace pr7s
             { "UNISON ROCKING RIFF", ComposerLayer::guitar, "UP A HALF STEP IN 2+1+3" },
             // (0.195.0) Round seven: the chorus's power-chord eighths with full chords on the first, fourth and seventh.
             { "DRIVING", ComposerLayer::guitar, "FULL CHORDS ON 1, 4 AND 7" },
+            // (0.199.0) Round seven: each chord pushed onto the and of four before its bar and rung the whole bar.
+            { "DRONING", ComposerLayer::guitar, "PUSHED WHOLE-BAR CHORDS" },
         };
         return list;
     }
@@ -1947,7 +1949,12 @@ namespace pr7s
                      "PEDAL HAT, DOTTED KICK, LATE SNARE", "MARACAS AND CONGAS IN THREES", "SIDESTICK AND SHAKER",
                      "BONGOS ON THE GUITAR'S RHYTHM", "TAMBOURINE EIGHTHS OVER THE BACKBEAT",
                      // (0.195.0) Round seven's choruses: the kick with an acoustic's strum.
-                     "KICK ON THE STRUM" };
+                     "KICK ON THE STRUM",
+                     // (0.199.0) Round seven's electric songs. Five are other types' own options (the same notes), shared as they are.
+                     "KICK BURST, CRASH QUARTERS, CHINA ON FOUR", "KICK, SNARE AND OPEN HAT TOGETHER ON TWO AND FOUR",
+                     "KICK AND HATS, BACKBEAT MOSTLY GONE", "SNARE QUARTERS, KICK ON THE LAST TWO ANDS", "KICK A SIXTEENTH BEFORE EACH SNARE",
+                     "CYMBAL STABS WITH THE HIGH STABS", "KICK AND OPEN HATS ON EVERY EIGHTH, NO SNARE", "DANCE-PUNK BEAT",
+                     "SNARE PICKUP INTO TWO AND FOUR, PEDAL KICK", "KICK AND TOM, SNARE AND CLAP ON THREE" };
         if (layer == ComposerLayer::bass)   // (0.160.0) round four's bass versions: put in front of LOCKED WITH THE KICK
             return { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                      "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
@@ -1996,7 +2003,9 @@ namespace pr7s
                      "STACCATO ONE-NOTE EIGHTHS OVER OCTAVE ROOTS", "PUMP BETWEEN TWO CHORDS", "OCTAVE ROOT AND TOP, CHORDS ON THE ANDS",
                      // (0.193.0) Round seven.
                      "STRINGS HALF NOTES WITH THE STRUM", "OCTAVE COUNTERLINE", "CELLO DOUBLES THE RIFF", "STRINGS PULSE ON THE ROOT",
-                     "BELL DOUBLES THE GUITAR" };
+                     "BELL DOUBLES THE GUITAR",
+                     // (0.199.0) Round seven: a type's own plucked ostinato, shared as it is.
+                     "PLUCKED OSTINATO IN OCTAVES" };
         return {};
     }
 
@@ -2159,6 +2168,17 @@ namespace pr7s
             { "UNISON HITS, THEN HELD SILENCE", "The bar before last everyone on the same hits (1, the and of 1, the and of 2, the and of 3 and 4), then a silent bar" },
             { "BAND HIT HELD TWO AND A HALF BEATS, RIDE PICKUP", "A hit on the last bar's one held two and a half beats, then the ride picks up on the eighths" },
             { "SNARE SIXTEENTHS ON THREE INTO THE CHANGE", "The last bar's second half a snare fill in sixteenths, the band holding the chord" },
+            // (0.199.0) Round seven (the owner's 70 songs; shapes only, our names; an acoustic lane that's on strums with the band).
+            { "CHORD TIED OVER THE BAR LINE", "The next section's first chord struck on the last eighth and held over the bar line, so the next section starts on a rest" },
+            { "RING THE BAR, THEN SILENCE", "The bar before last one chord struck and rung the whole bar, then a silent bar" },
+            { "BAND HIT, EMPTY BAR", "The bar before last a short hit on its one, then nothing until the next section" },
+            { "SILENT BAR, HALF-BAR STRUM PICKUP", "A silent bar, then half a bar of silence and a two-beat strum in eighths into the next" },
+            { "STOP AFTER TWO BEATS", "The last bar played to beat 2, a hit there, then two beats of silence" },
+            { "HATS ALONE BREAK", "The last two bars only the closed hats on the eighths (a china on the first one, two splashes), a snare pickup on the last beat" },
+            { "DRUMS ALONE, BLAST, THEN THREE CHORDS", "The bar before last the drums alone, kick and snare taking turns on the sixteenths; then three chords with the kit on 1, 3 and 4" },
+            { "CHROMATIC POWER-CHORD FALL", "The last bar power chords falling a half step a sixteenth from an octave over the next chord's root down to it, toms falling under them" },
+            { "PUSHED STRUM STUTTER", "The last bar a stuttered push (1, the a of 1, 2, the e of 2, the e and the and of 3), then sixteenths on 4 with the next chord" },
+            { "OFF-EIGHTH KICKS INTO A STOP", "The last bar the band and the kick on the off eighths (1-and, 2-and, 3-and), one hit on 4, then silence" },
         };
         return list;
     }
