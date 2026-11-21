@@ -2,6 +2,44 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.195.0
+
+**Eighteen more chorus types**, from the owner's 70 song files (round seven, read for their shapes only; the names and descriptions are ours). Nine are led by the ACOUSTIC GUITAR lane, nine are electric. All in 4/4. You'll find them in a chorus block's TYPE menu, after KICK TRIPLE-SIXTEENTHS, SNARE AND CHINA ON THE ANDS.
+
+**Acoustic-led** (choosing one switches the ACOUSTIC GUITAR lane on and writes it, as the 0.194.0 verses do; where the song had no electric guitar, the GUITAR lane's first option is OUT):
+- **BIG STRUMS UNDER POWER-CHORD QUARTERS:** full strums on 1 and 3 with light top strings between (or a second acoustic's high seesaw over them); power chords on beats 2 and 3, or on 1 and 3; half time with a ride and a tambourine on the ands, or a crash every bar.
+- **FIFTH STACKS GROWING IN THE BAR:** every eighth strummed on root-fifth stacks growing from the low strings to all five, a new chord's downbeat left empty; a shaker alone, or kick eighths with crash quarters.
+- **STRUM, EACH CHANGE AN EIGHTH EARLY:** each new chord struck on the bar's last eighth and tied over; the bass, an electric and the kick with a crash on every push.
+- **SIXTEENTH STRUM, CHANGE ON THE E OF THREE:** a sixteenth strum with gaps, the next chord pushed onto the e of 3; an overdriven chug under it if you like.
+- **BASS NOTE AND STRUM UNDER THE BAND:** the bass string alone on 1, the upper strings on the eighths after it, the band under it with a crash every bar.
+- **TWO ACOUSTICS, TWO STRUMS:** the bass note and strum, with a second acoustic's syncopated full strums over it, its strings added one by one.
+- **LILT IN THREES, POWER CHORDS ON TWO AND THREE:** the strum in threes across the bar (3+3+3+3+4 sixteenths), power chords only on beats 2 and 3, the kick on 3; congas on the threes as the other kit.
+- **BASS-STRING STRUM UNDER THE CHUGS:** the low-strings strum tied every other bar, under palm-muted chugs (a sixteenth burst on 1, then eighths), the bass and kick with the chugs.
+- **THE VERSE'S RHYTHM AS POWER CHORDS:** the flick strum's rhythm (in eighths, or into each half bar) played as low power chords, the acoustic quietly under it.
+
+**Electric:**
+- **OPEN-STRING CHORD HITS:** a stacked-fourths chord a half step over the root held two beats, then every open string struck on 3, its and and 4; the kick with every hit.
+- **SYNCOPATED OPEN STRUM OVER THE EIGHTHS:** power chords in straight eighths, a second guitar's open chords strummed on 1, 2, 2-a, 3-e, 3-and and 4; the bass and kick locked with the strum's back half.
+- **WALTZ GROOVE ACROSS THREE BARS:** chords every dotted quarter across the bar lines, the kit's twelve-sixteenth groove four times in three bars (a slow three in 4/4, no meter change).
+- **DOTTED CHORDS, THEN A BAR OF ROOT EIGHTHS:** three chords on the dotted quarters, then root eighths with a sixteenth push; the last bar a half step up; a high tremolo dyad over it on the other option.
+- **HELD CHORD, PUSHED PAIRS:** a chord held, then pairs of hits pushed later each bar, a fourth bar of eighths ringing out; the pushes doubled an octave up on the other option.
+- **HIT, THEN EIGHTHS OFF TWO-AND:** a chord rung three eighths, then eighths from the and of 2, every fourth bar straight eighths; a second guitar a sixth above.
+- **IN ON TWO, ANSWERS ON THE ANDS:** a bar coming in on 2, a full bar answering, the bass (and a second guitar) only on the ands of 3 and 4 in the entry bars; half time.
+- **ONE, TWO, THEN TWO PUSHES:** every lane on 1 and 2, then the a of 3 and the and of 4; the kit opens to crashes for the second half; a half step down every second four bars on the other option.
+- **HALF TIME, KICK ON TWO, HELD PAIRS:** a held chord and a short one a minor third up in turn, then off-beat eighths; the kick on 2 and the a of 4, the snare on 3.
+
+Each type has its own guitar, bass, keys and drums options (the bass's last is still LOCKED WITH THE KICK), with the shared options after them. A second guitar's or second acoustic's part goes onto the lane's second track when it has two, as before.
+
+**Two new options inside existing types:**
+- **KICK ON THE STRUM** (a drums option under every type): the kick on 1, 2, 2-and, 3-and and 4, the snare on 2 and 4, open hats on the eighths.
+- **FULL CHORDS ON 1, 4 AND 7** (DRIVING's guitar, after PUSHED FOUR-CHORD TURNAROUND): power-chord eighths with the full chord on the first, fourth and seventh eighth, every second bar a sixteenth run down to the root. DRIVING's bass DOUBLES THE GUITAR follows it. (A DRIVING guitar or shared option saved by its place moves down one.)
+
+**Renamed from the plan:** four of the plan's names were already in use, so the types have their own: FIFTH STACKS GROWING IN THE BAR (the plan's GROWING FIFTHS STRUM, an acoustic style), STRUM, EACH CHANGE AN EIGHTH EARLY (STRUM, CHANGE PUSHED AN EIGHTH, an acoustic style), LILT IN THREES, POWER CHORDS ON TWO AND THREE (LILTING STRUM IN THREES, an acoustic style) and THE VERSE'S RHYTHM AS POWER CHORDS (THE VERSE'S STRUM, DISTORTED, a shared guitar option since 0.193.0). The styles and the option keep theirs.
+
+**Fixed:** changing a built block to an acoustic-led type (0.194.0's verses or these choruses) now writes the ACOUSTIC GUITAR lane there straight away, onto the lane's tracks (ARCHITECT TRACKS' names, or a new "Acoustic Guitar" track as BUILD makes), in the same undo step as the type change. Before, it only appeared when the block was built again.
+
+**Not checked here:** how it sounds. The tests check the shapes (which lanes play, where the hits fall, the acoustic lane switched on and written).
+
 ## 0.194.0
 
 **Eighteen more verse types**, from the owner's 70 song files (round seven, read for their shapes only; the names and descriptions are ours). Ten are led by the new ACOUSTIC GUITAR lane, eight are electric. All in 4/4. You'll find them in a verse block's TYPE menu, after FIVE PICKS AND A GAP.

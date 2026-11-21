@@ -332,7 +332,27 @@ namespace pr7s
                          { "KICK ON THE BEATS, SNARE ON THE ANDS UNDER 3+3+3+3+2+2", "Sixteenth power chords grouped 3+3+3+3+2+2 rocking a whole step, the bass stabbing each group, the kick on the beats and the snare on the ands", r, {}, c },
                          { "POWER CHORD AND MAJOR CHORD IN FOURS", "Sixteenths in fours: the power chord, then the same chord with its major third, over kick runs of four", r, {}, c },
                          { "UNISON HITS ON ONE, TWO AND THE LAST TRIPLET, HALF TIME", "The guitars and the bass in unison on the beat, the next beat and its last sixteenth, two chords a bar, over a half-time kit", r, {}, c },
-                         { "KICK TRIPLE-SIXTEENTHS, SNARE AND CHINA ON THE ANDS", "Power chord pairs every six sixteenths, the kick in threes around the ands, the snare and the china on every and", r, {}, c } };
+                         { "KICK TRIPLE-SIXTEENTHS, SNARE AND CHINA ON THE ANDS", "Power chord pairs every six sixteenths, the kick in threes around the ands, the snare and the china on every and", r, {}, c },
+                         // (0.195.0) Round seven (the owner's 70 songs; shapes only, our names): nine led by the ACOUSTIC
+                         // lane (applying one switches it on), then nine electric.
+                         { "BIG STRUMS UNDER POWER-CHORD QUARTERS", "An acoustic's full strums on 1 and 3 with light top strings between, a distorted guitar's power chords over it, half time with a tambourine", r, {}, c },
+                         { "FIFTH STACKS GROWING IN THE BAR", "An acoustic strumming every eighth on root-fifth stacks that grow from the low strings to all five, a new chord's downbeat left empty", r, {}, c },
+                         { "STRUM, EACH CHANGE AN EIGHTH EARLY", "An acoustic's root-fifth-octave strum, every new chord struck on the last eighth before its bar and tied over, the band on the pushes", r, {}, c },
+                         { "SIXTEENTH STRUM, CHANGE ON THE E OF THREE", "An acoustic strumming in sixteenths with gaps, the next chord pushed onto the e of 3, over an overdriven chug if you like", r, {}, c },
+                         { "BASS NOTE AND STRUM UNDER THE BAND", "An acoustic's bass note alone on 1, the upper strings strummed on the eighths after it, the full band under it with a crash every bar", r, {}, c },
+                         { "TWO ACOUSTICS, TWO STRUMS", "One acoustic's bass note and strum, a second's syncopated full strums over it, strings added one by one", r, {}, c },
+                         { "LILT IN THREES, POWER CHORDS ON TWO AND THREE", "An acoustic's strum in threes across the bar (3+3+3+3+4 sixteenths), distorted power chords on beats 2 and 3 only, the kick on 3", r, {}, c },
+                         { "BASS-STRING STRUM UNDER THE CHUGS", "An acoustic's low strings and full strums tied every other bar, under palm-muted chugs: a sixteenth burst on 1, then eighths", r, {}, c },
+                         { "THE VERSE'S RHYTHM AS POWER CHORDS", "The verse's flick strum played as low power chords: the same rhythm, distorted, the acoustic quietly under it", r, {}, c },
+                         { "OPEN-STRING CHORD HITS", "A stacked-fourths chord a half step over the root held two beats, then every open string struck on 3, its and and 4", r, {}, c },
+                         { "SYNCOPATED OPEN STRUM OVER THE EIGHTHS", "Power chords in straight eighths, a second guitar's open chords strummed on 1, 2, 2-a, 3-e, 3-and and 4 over them", r, {}, c },
+                         { "WALTZ GROOVE ACROSS THREE BARS", "Chords struck every dotted quarter across the bar lines, the kit's twelve-sixteenth groove four times in three bars", r, {}, c },
+                         { "DOTTED CHORDS, THEN A BAR OF ROOT EIGHTHS", "Three chords on the dotted quarters, then a bar of root eighths with a sixteenth push; the last bar lifted a half step", r, {}, c },
+                         { "HELD CHORD, PUSHED PAIRS", "A chord held, then pairs of hits pushed later each bar, a fourth bar of eighths ringing out", r, {}, c },
+                         { "HIT, THEN EIGHTHS OFF TWO-AND", "A chord on 1 rung three eighths, then power-chord eighths from the and of 2; every fourth bar straight eighths", r, {}, c },
+                         { "IN ON TWO, ANSWERS ON THE ANDS", "A bar of eighths coming in on beat 2, answered by a full bar; the others stab the ands of 3 and 4; half time", r, {}, c },
+                         { "ONE, TWO, THEN TWO PUSHES", "Every lane on 1 and 2, then two pushes on the a of 3 and the and of 4; the kit opens up for the second half", r, {}, c },
+                         { "HALF TIME, KICK ON TWO, HELD PAIRS", "A power chord held and a short chord a minor third up in turn, then off-beat eighths; the kick on 2 and the a of 4, the snare on 3", r, {}, c } };
             }
             case 3:
             {
@@ -1314,6 +1334,52 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "HALF TIME, SNARE ROLL INTO THE CHANGE", "HALF TIME" }, {} },
                 { "KICK TRIPLE-SIXTEENTHS, SNARE AND CHINA ON THE ANDS", { "PAIRS EVERY SIX SIXTEENTHS", "PAIRS EVERY SIX, RUNG" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK TRIPLETS, SNARE AND CHINA ON THE ANDS", "BACKBEAT, CLOSED HATS" }, {} },
+                // (0.195.0) Round seven's choruses: the acoustic-led ones list the ACOUSTIC lane's options last.
+                { "BIG STRUMS UNDER POWER-CHORD QUARTERS", { "POWER CHORDS ON BEATS TWO AND THREE", "POWER CHORDS ON ONE AND THREE, RUNG" }, { "ROOT ON ONE AND THE A OF FOUR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "HALF TIME, RIDE QUARTERS, TAMBOURINE ON THE ANDS", "HALF TIME, CRASH ON EVERY BAR" }, {},
+                  { "BIG STRUMS, LIGHT TOPS ON THE ANDS", "BIG STRUMS, A SECOND'S HIGH SEESAW" } },
+                { "FIFTH STACKS GROWING IN THE BAR", { "OUT", "POWER EIGHTHS UNDER THE STACKS" }, { "ROOT EIGHTHS WITH THE KICK", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SHAKER EIGHTHS, LOUDER ON THE ANDS", "KICK EIGHTHS, SNARE ON THREE, CRASH QUARTERS" }, {},
+                  { "FIFTH STACKS ON EVERY EIGHTH", "FIFTH STACKS, A SECOND'S HIGH SEESAW" } },
+                { "STRUM, EACH CHANGE AN EIGHTH EARLY", { "OUT", "POWER CHORDS ON THE PUSHES" }, { "ROOTS ON THE PUSHES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND CRASH ON EVERY PUSH", "SIDESTICK BACKBEAT, SHAKER EIGHTHS" }, {},
+                  { "THE PUSHED STRUM", "THE PUSHED STRUM, A SECOND'S HIGH THIRDS" } },
+                { "SIXTEENTH STRUM, CHANGE ON THE E OF THREE", { "OUT", "OVERDRIVEN SIXTEENTH CHUG UNDER IT" }, { "ROOT SIXTEENTHS FOLLOWING THE PUSH", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BACKBEAT, CRASH ON TWO AND FOUR", "OUT" }, {},
+                  { "SIXTEENTH STRUM, THE CHANGE PUSHED", "SIXTEENTH STRUM, A SECOND'S FILLS" } },
+                { "BASS NOTE AND STRUM UNDER THE BAND", { "OUT", "POWER CHORD RUNG EACH BAR" }, { "ROOT, THEN A HALF STEP UNDER THE NEXT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ONE, TWO-AND, THREE, FOUR-AND, CRASH EVERY BAR", "OUT" }, {},
+                  { "BASS NOTE, THEN THE STRUM", "BASS NOTE AND STRUM, HIGH ANSWERS OVER IT" } },
+                { "TWO ACOUSTICS, TWO STRUMS", { "OUT", "CLEAN SLOW LINE ON THE CHORD TONES" }, { "ROOT, THEN FIFTH ON THREE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SIDESTICK QUARTERS, KICK ON ONE", "OUT" }, {},
+                  { "BASS NOTE AND STRUM, SYNCOPATED STRUMS OVER", "SYNCOPATED FULL STRUMS, STRINGS ADDED ONE BY ONE" } },
+                { "LILT IN THREES, POWER CHORDS ON TWO AND THREE", { "POWER CHORDS ON BEATS TWO AND THREE", "OUT" }, { "ROOT ON EACH THREE'S START", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ON THREE, RIDE, OPEN HATS", "CONGAS ON THE THREES, KICK ON THREE" }, {},
+                  { "THE STRUM IN THREES", "THE STRUM IN THREES, A SECOND'S HIGH THIRDS" } },
+                { "BASS-STRING STRUM UNDER THE CHUGS", { "MUTED BURST, THEN EIGHTHS", "MUTED BURST, A WALK-UP EVERY OTHER BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK WITH THE BURST, BACKBEAT, CRASH QUARTERS", "SHAKER EIGHTHS, SOFT KICK ON ONE" }, {},
+                  { "BASS-STRING STRUM, TIED OVER", "BASS-STRING STRUM, A SECOND AS THE BASS" } },
+                { "THE VERSE'S RHYTHM AS POWER CHORDS", { "FLICK EIGHTHS AS POWER CHORDS", "HALF-BAR CHORDS, A FLICK INTO EACH" }, { "ROOT EIGHTHS UNDER THE STRUM", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "BACKBEAT, RIDE EIGHTHS, PEDAL HAT ON THE BEATS", "HALF TIME, OPEN HAT QUARTERS UNDER THE STRUM" }, {},
+                  { "THE FLICK STRUM, QUIET UNDER IT", "THE LIGHT-UPS STRUM, QUIET UNDER IT" } },
+                { "OPEN-STRING CHORD HITS", { "FOURTHS CHORD, THEN THE OPEN STRINGS", "OPEN STRINGS ON EVERY HIT" }, { "HALF STEP OVER, THEN THE ROOT ON THE HITS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "LOW ROOT PAD" }, { "KICK ON EVERY HIT, SNARE ON THREE", "BACKBEAT UNDER THE OPEN HITS" }, {} },
+                { "SYNCOPATED OPEN STRUM OVER THE EIGHTHS", { "POWER EIGHTHS, A SECOND STRUMS OVER THEM", "POWER EIGHTHS ALONE" }, { "ROOT WITH THE STRUM'S BACK HALF", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK WITH THE STRUM'S BACK HALF, OPEN HAT ANDS", "BACKBEAT, OPEN HAT ON THE ANDS" }, {} },
+                { "WALTZ GROOVE ACROSS THREE BARS", { "POWER EIGHTHS, ACCENTS EVERY DOTTED QUARTER", "CHORDS RUNG EVERY DOTTED QUARTER" }, { "ROOTS ON THE DOTTED QUARTERS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "TWELVE-SIXTEENTH GROOVE ACROSS THE BAR LINES", "KICK EVERY DOTTED QUARTER, BACKBEAT" }, {} },
+                { "DOTTED CHORDS, THEN A BAR OF ROOT EIGHTHS", { "THREE DOTTED CHORDS, THEN ROOT EIGHTHS", "DOTTED CHORDS AND EIGHTHS, A HIGH TREMOLO DYAD OVER" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "DOTTED KICK, OPEN HAT EIGHTHS UNDER THE CHORDS", "BACKBEAT, CRASH QUARTERS UNDER THE DOTS" }, {} },
+                { "HELD CHORD, PUSHED PAIRS", { "HELD CHORD, PAIRS PUSHED LATER EACH BAR", "PUSHED PAIRS, AN OCTAVE UP OVER THEM" }, { "ROOTS ON THE PUSHED PAIRS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, KICKS WITH THE PAIRS", "RIDE QUARTERS, SNARE ON THREE, KICK ON ONE" }, {} },
+                { "HIT, THEN EIGHTHS OFF TWO-AND", { "HIT RUNG, EIGHTHS FROM TWO-AND", "HIT AND EIGHTHS, A SIXTH ABOVE ON A SECOND" }, { "ROOT ON ONE, THEN TWO-AND, THREE, THREE-AND, FOUR-AND", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ONE, TWO-AND, THREE, FOUR-AND, SNARE ON THREE", "SNARE ON THREE, RIDE QUARTERS" }, {} },
+                { "IN ON TWO, ANSWERS ON THE ANDS", { "IN ON TWO, A FULL BAR ANSWERS", "IN ON TWO, A SECOND STABS THE ANDS" }, { "STABS ON THREE-AND AND FOUR-AND, THEN UNISON", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, KICK ON ONE-AND AND THE STABS", "OPEN HAT QUARTERS, STRAIGHT BACKBEAT" }, {} },
+                { "ONE, TWO, THEN TWO PUSHES", { "ONE, TWO, TWO PUSHES", "ONE, TWO, TWO PUSHES, DOWN A HALF STEP" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OPEN HATS, THEN CRASHES ON ONE, TWO AND FOUR", "BACKBEAT, KICK ON THE PUSHES" }, {} },
+                { "HALF TIME, KICK ON TWO, HELD PAIRS", { "HELD PAIRS AND OFF-BEAT EIGHTHS", "HELD PAIRS ON SINGLE LOW NOTES" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE ON THREE, KICK ON TWO AND FOUR-A", "KICK AND SNARE ONLY, HATS OUT" }, {} },
                 // (0.168.0) Round five's verses.
                 { "PEDAL STUTTER UNDER OCTAVE THIRDS", { "STUTTER UNDER OCTAVE THIRDS", "STUTTER, CHORDS RUNG OVER IT" }, { "SIXTEENTH ROOTS WITH TWO HOLES", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "SYNCOPATED KICK PAIR, OPEN HATS", "CHINA EIGHTHS, SYNCOPATED KICK" }, {} },
@@ -1666,6 +1732,8 @@ namespace pr7s
             { "HOLED SIXTEENTH PEDAL", ComposerLayer::drums, "KICK ON EVERY NOTE, TOMS IN THE HOLES" },
             { "SNARE CARPET BUILD", ComposerLayer::drums, "SNARE CARPET, NO CRASH" },
             { "UNISON ROCKING RIFF", ComposerLayer::guitar, "UP A HALF STEP IN 2+1+3" },
+            // (0.195.0) Round seven: the chorus's power-chord eighths with full chords on the first, fourth and seventh.
+            { "DRIVING", ComposerLayer::guitar, "FULL CHORDS ON 1, 4 AND 7" },
         };
         return list;
     }
@@ -1726,7 +1794,9 @@ namespace pr7s
                      "TAMBOURINE ON TWO AND FOUR ONLY", "SHAKER AND HATS, KICK EVERY FOURTH BAR", "HALF TIME WITH TAMBOURINE AND SHAKER",
                      "SHAKER SIXTEENTHS, CABASA, BACKBEAT", "RIDE EIGHTHS, PEDAL HAT, SHAKER", "FLOOR TOM IN 3+3+2, NO KICK",
                      "PEDAL HAT, DOTTED KICK, LATE SNARE", "MARACAS AND CONGAS IN THREES", "SIDESTICK AND SHAKER",
-                     "BONGOS ON THE GUITAR'S RHYTHM", "TAMBOURINE EIGHTHS OVER THE BACKBEAT" };
+                     "BONGOS ON THE GUITAR'S RHYTHM", "TAMBOURINE EIGHTHS OVER THE BACKBEAT",
+                     // (0.195.0) Round seven's choruses: the kick with an acoustic's strum.
+                     "KICK ON THE STRUM" };
         if (layer == ComposerLayer::bass)   // (0.160.0) round four's bass versions: put in front of LOCKED WITH THE KICK
             return { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                      "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",

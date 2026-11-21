@@ -15508,6 +15508,38 @@ namespace pr7s
         const auto chosen = found.has_value() ? found->name : juce::String();
         if (blocks[(size_t) index].type == chosen)
             return true;
+        // (0.195.0) A built block's lanes the new type switches on (round seven's acoustic-led types turn the ACOUSTIC
+        // lane on) and the block has none of: their tracks found (or made) as BUILD would, before anything changes (a new
+        // track isn't an undo step, so the type change and its new lane are undone together).
+        std::vector<std::pair<int, int>> newLanes;   // (layer, track)
+        if (blocks[(size_t) index].recipe.isNotEmpty())
+        {
+            const auto before = ComposerState::fromString (blocks[(size_t) index].recipe);
+            auto after = before;
+            applySectionType (after, blocks[(size_t) index].name, chosen);
+            const auto lanesBefore = blocks[(size_t) index].lanes;
+            for (const auto l : composerLayers())
+            {
+                const auto layer = (int) l;
+                if (! after.lane (l).on || before.lane (l).on
+                    || std::any_of (lanesBefore.begin(), lanesBefore.end(), [layer] (const SongSection::Lane& lane) { return lane.layer == layer; }))
+                    continue;
+                const auto part = composerPartOf (l);
+                auto tracks = findIdeaTracks (part);
+                if (tracks.empty())
+                {
+                    const auto drums = part == LineIdea::Part::drums || part == LineIdea::Part::groove;
+                    const auto id = drums ? addDrumsTrack (newIdeaTrackName (part)) : addTrack (Instrument {});
+                    if (id == 0)
+                        continue;
+                    if (! drums)
+                        renameTrack (id, newIdeaTrackName (part));
+                    tracks.push_back (id);
+                }
+                for (const auto track : tracks)
+                    newLanes.emplace_back (layer, track);
+            }
+        }
         const auto linked = project.songSections.linkedWith (index);
         for (const auto i : linked)
             blocks[(size_t) i].type = chosen;
@@ -15519,7 +15551,11 @@ namespace pr7s
             for (const auto i : linked)
                 blocks[(size_t) i].recipe = state.toString();
             if (const auto place = getSongSectionPlace (index))
+            {
+                for (const auto& [layer, track] : newLanes)   // (as written: rebuildSectionLanes writes them)
+                    block.lanes.push_back ({ layer, track, trackMark (*place, track) });
                 rebuildSectionLanes (index, sectionChords (*place));
+            }
         }
         changed();
         return true;
