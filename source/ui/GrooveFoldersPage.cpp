@@ -25,7 +25,7 @@ namespace
         }
         else if (inherited)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.35f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.35f), (star).getBounds());
             g.fillPath (star);
         }
         else

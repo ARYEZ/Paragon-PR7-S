@@ -20,6 +20,7 @@ namespace ParagonColours
     }
     inline const juce::Colour text       { 0xffe8e8ea };
     inline const juce::Colour textDim    { 0xff8a8a92 };
+    inline const juce::Colour pearlWhite { 0xfff4eeea };   // (0.189.0) where the accent can't be a gradient
 
     // The silver pedal unit, and dark "ink" for text printed on it.
     inline const juce::Colour metalLight { 0xfff1edef };
@@ -208,6 +209,13 @@ public:
     void drawTableHeaderBackground (juce::Graphics&, juce::TableHeaderComponent&) override;
     void drawTableHeaderColumn (juce::Graphics&, juce::TableHeaderComponent&, const juce::String& columnName, int columnId,
                                 int width, int height, bool isMouseOver, bool isMouseDown, int columnFlags) override;
+    // (0.189.0, the owner: no flat orange) JUCE's own labels, buttons, outlines, arrows and menu
+    // headings in the accent are drawn in the family gradient (see ParagonColours::setFill).
+    void drawLabel (juce::Graphics&, juce::Label&) override;
+    void drawTextEditorOutline (juce::Graphics&, int width, int height, juce::TextEditor&) override;
+    void drawComboBox (juce::Graphics&, int width, int height, bool isButtonDown, int buttonX, int buttonY, int buttonW, int buttonH,
+                       juce::ComboBox&) override;
+    void drawPopupMenuSectionHeader (juce::Graphics&, const juce::Rectangle<int>& area, const juce::String& sectionName) override;
     void drawScrollbar (juce::Graphics&, juce::ScrollBar&, int x, int y, int width, int height, bool isScrollbarVertical,
                         int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown) override;
     int getDefaultScrollbarWidth() override { return 12; }
@@ -250,3 +258,32 @@ struct SharedParagonLookAndFeel
 
     ParagonLookAndFeel lookAndFeel;
 };
+
+// (0.189.0, the owner: "the flat orange needs to be replaced with the family gradient") The studio's
+// accent is drawn as the family's pink -> red -> orange (PR7-S's FamilyColours, lit a little for
+// the dark panels), across whatever it fills: a shape's own width (or height), or the letters of a
+// word. `accent` and `accentDim` stay the names code asks for; every paint goes through these.
+// Never `g.setColour (accent)` for drawing: use setFill / setTextFill.
+namespace ParagonColours
+{
+    inline bool isAccent (juce::Colour c)    { return (c.getARGB() & 0xffffffu) == (accent.getARGB() & 0xffffffu); }
+    inline bool isAccentDim (juce::Colour c) { return (c.getARGB() & 0xffffffu) == (accentDim.getARGB() & 0xffffffu); }
+    inline constexpr float litBrightness = 1.2f, dimBrightness = 0.42f;
+    // The gradient across `area` (left to right, or top to bottom) at `alpha`, each colour times `brightness`.
+    juce::ColourGradient accentGradient (juce::Rectangle<float> area, bool vertical = false, float alpha = 1.0f, float brightness = litBrightness);
+    // The accent (at its alpha) as the lit gradient across `area`; accentDim as the dark one; any
+    // other colour as it is.
+    void setFill (juce::Graphics&, juce::Colour, juce::Rectangle<float> area, bool vertical = false);
+    inline void setFill (juce::Graphics& g, juce::Colour c, juce::Rectangle<int> area, bool vertical = false)
+    {
+        setFill (g, c, area.toFloat(), vertical);
+    }
+    // Where `text` in `font` lands inside `box` with `justification` (one line; clipped to the box).
+    juce::Rectangle<float> textSpan (const juce::Font&, const juce::String& text, juce::Rectangle<float> box, juce::Justification);
+    // setFill across the letters of `text`, drawn next in the Graphics' current font in `box`.
+    void setTextFill (juce::Graphics&, juce::Colour, const juce::String& text, juce::Rectangle<float> box, juce::Justification);
+    inline void setTextFill (juce::Graphics& g, juce::Colour c, const juce::String& text, juce::Rectangle<int> box, juce::Justification j)
+    {
+        setTextFill (g, c, text, box.toFloat(), j);
+    }
+}

@@ -182,7 +182,7 @@ TEST_CASE ("0.174.0: the cycle's tint is solid colour in the rows", "[speed174][
     const auto y = arrange.getHeight() - 20;
     const auto inside = image.getPixelAt (juce::roundToInt (timeline.xForBeat (10.4)), y);
     const auto outside = image.getPixelAt (juce::roundToInt (timeline.xForBeat (22.4)), y);
-    const auto tint = ParagonColours::accent.withAlpha (0.07f);
+    const auto tint = pr7s::FamilyColours::red.withAlpha (0.07f);   // (0.189.0: the family red)
     const auto expected = outside.overlaidWith (tint);
     if (const auto file = juce::SystemStats::getEnvironmentVariable ("PARAGON_TINT_PNG", {}); file.isNotEmpty())
     {

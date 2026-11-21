@@ -59,9 +59,9 @@ public:
         const auto& p = page.profiles[(size_t) row];
         if (selectedRow)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.18f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.18f), juce::Rectangle<float> ((float) (0), (float) (0), (float) (w), (float) (h)));
             g.fillRect (0, 0, w, h);
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (4), (float) (3), (float) (h - 8)));
             g.fillRect (0, 4, 3, h - 8);
         }
         g.setColour (ParagonColours::text);

@@ -2,6 +2,23 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.189.0
+
+You asked for the flat orange to go, for the family gradient in its place, for the line under the Hub's mark to be the gradient too, and for the info line's pink message to be white. All four are done.
+
+- **The flat orange is now the family gradient, everywhere the studio used it.** That's the pink to red to orange of the family (the same three colours as the track colours, lit a little for the dark panels). Shapes carry it across their own width: scroll bar thumbs (along their length), the Hub's section triangles and selected rows, selection boxes, range edges, lit keys and LEDs, the warp markers, table headers' sort arrows, drop-down arrows and the outline round a box you're typing in. Words that were orange carry it across their own letters: the Hub's PROJECTS tab and its RECENT / TEMPLATES / IN ... headings, lit key names, the info line's values, the MIDI editor's heading, the Tempo Track Editor's labels, the progression filters, the key commands' keys, the tool keys' names and icons, and so on. Over 150 places were changed, most of them through one helper, so a word or shape is always coloured the same way.
+- **"HUB - RECORDING STUDIO 0.189.0"** under the Hub's mark is now the gradient across its words, pink at the start to orange at the version, instead of the printed red. The same goes for "RECORDING STUDIO" under the main window's mark, and the caption under the mark on the pages framed like the Hub (PLUGINS, SETTINGS, KEYS).
+- **The info line's message is white.** "2 POINTS SELECTED: CHANGES MOVE THEM ALL..." is pearl white now, not pink, and so is the MIDI editor's "N NOTES: CHANGES MOVE...". With several things selected, their values are white too. A single selection's values are the gradient, so you can still tell the two apart, as the manual asks ("shown in another color").
+- **The cycle's tint** across the arrangement's rows is the family red now, not orange. It's a faint wash, so it stays one colour (a gradient there would slow the arrangement's drawing). The master's automation lines, which had no track colour of their own, are the family red too.
+
+Where the gradient can't go, and is pearl white instead:
+
+- **Text you're typing**, in any box (the FOLDER NAME's UNTITLED, the search boxes, a value being typed). JUCE, the toolkit the studio is built on, draws that text itself in one colour. The cursor is white as well. The outline round the box you're typing in is the gradient.
+
+Left as they were, on purpose: the LED screens' digits, the meters, the playhead, track, part and note colours, the chord guides, the automation keys' R / W / writing colours, the markers', sections' and lanes' own colours, and recording red.
+
+What I couldn't check here: how it looks on your screens. I checked renders of the Hub, the arrangement with the info line, and the mixer in all three finishes, and scanned them for the old orange. The only old orange left in them is the LED screens' digits and the level meters.
+
 ## 0.188.0
 
 A fifth way to stretch audio clips: **RUBBER BAND**. It lets you compare a second open-source stretch engine with our CLEAN on the same clip, and keep whichever sounds better to you.

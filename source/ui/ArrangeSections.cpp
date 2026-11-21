@@ -143,8 +143,8 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
         if (b.type.isNotEmpty() && text.getHeight() >= 26.0f)
         {
             auto typeLine = text.removeFromBottom (text.getHeight() * 0.38f);
-            g.setColour (isSelected || dragged ? juce::Colours::white.withAlpha (0.85f) : ParagonColours::accent);
             g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (12.0f, typeLine.getHeight() + 1.0f)));
+            ParagonColours::setTextFill (g, isSelected || dragged ? juce::Colours::white.withAlpha (0.85f) : ParagonColours::accent, b.type, typeLine, juce::Justification::centredLeft);
             g.drawText (b.type, typeLine, juce::Justification::centredLeft, true);
             g.setColour (isSelected || dragged ? juce::Colours::white : ParagonColours::text);
             g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (16.0f, text.getHeight())));

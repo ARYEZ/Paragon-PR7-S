@@ -14,7 +14,7 @@ namespace
         star.addStar (r.getCentre(), 5, r.getWidth() * 0.22f, r.getWidth() * 0.5f, 0.0f);
         if (filled)
         {
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, (star).getBounds());
             g.fillPath (star);
         }
         else
@@ -86,7 +86,7 @@ public:
             g.fillRect (bounds);
             if (playing)
             {
-                g.setColour (ParagonColours::accent);
+                ParagonColours::setFill (g, ParagonColours::accent, bounds.withWidth (3));
                 g.fillRect (bounds.withWidth (3));
             }
             auto r = bounds.reduced (8, 6);
@@ -112,7 +112,7 @@ public:
                 const auto c = juce::Rectangle<float> (x, area.getY(), w, area.getHeight()).reduced (1.5f, 0.0f);
                 x += w;
                 const auto lit = playing && (int) s == owner.litStep;
-                g.setColour (lit ? ParagonColours::accent : cell);
+                ParagonColours::setFill (g, lit ? ParagonColours::accent : cell, c);
                 g.fillRoundedRectangle (c, 3.0f);
                 g.setColour (lit ? juce::Colour (0xff120d10) : ParagonColours::text);
                 g.setFont (ChordUi::chordFont (juce::jmin (15.0f, c.getHeight() * 0.36f)));
@@ -129,7 +129,7 @@ public:
                 const auto kb = keyBounds (row, k).toFloat();
                 const auto on = k == 0 && playing;
                 const auto over = row == hoverRow && k == hoverKey;
-                g.setColour (on ? ParagonColours::accent : over ? juce::Colour (0xff2a2229) : juce::Colour (0xff1b171c));
+                ParagonColours::setFill (g, on ? ParagonColours::accent : over ? juce::Colour (0xff2a2229) : juce::Colour (0xff1b171c), kb);
                 g.fillRoundedRectangle (kb, 4.0f);
                 g.setColour (ParagonColours::panelEdge);
                 g.drawRoundedRectangle (kb.reduced (0.5f), 4.0f, 1.0f);
@@ -200,7 +200,7 @@ public:
             juce::Image image (juce::Image::ARGB, 200, 30, true);
             {
                 juce::Graphics g (image);
-                g.setColour (ParagonColours::accent.withAlpha (0.85f));
+                ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.85f), image.getBounds().toFloat());
                 g.fillRoundedRectangle (image.getBounds().toFloat(), 5.0f);
                 g.setColour (juce::Colour (0xff120d10));
                 g.setFont (interFont (14.0f));
@@ -313,14 +313,19 @@ public:
             {
                 g.setColour (rowLit);
                 g.fillRoundedRectangle (r.toFloat(), 3.0f);
-                g.setColour (ParagonColours::accent);
-                g.fillRect (r.removeFromLeft (3));
+                const auto mark = r.removeFromLeft (3);
+                ParagonColours::setFill (g, ParagonColours::accent, mark, true);
+                g.fillRect (mark);
             }
-            g.setColour (count == 0 && ! chosen ? ParagonColours::textDim.withAlpha (0.5f) : chosen ? ParagonColours::accent : ParagonColours::text);
+            const auto rowColour = count == 0 && ! chosen ? ParagonColours::textDim.withAlpha (0.5f) : chosen ? ParagonColours::accent : ParagonColours::text;
             g.setFont (ParagonLookAndFeel::textFont (14.0f));
             auto text = r.reduced (8, 0);
-            g.drawText (juce::String (count), text.removeFromRight (34), juce::Justification::centredRight, false);
-            g.drawText (item.value.isEmpty() ? "ALL" : item.value, text, juce::Justification::centredLeft, true);
+            const auto countArea = text.removeFromRight (34);
+            ParagonColours::setTextFill (g, rowColour, juce::String (count), countArea, juce::Justification::centredRight);
+            g.drawText (juce::String (count), countArea, juce::Justification::centredRight, false);
+            const auto valueText = juce::String (item.value.isEmpty() ? "ALL" : item.value);
+            ParagonColours::setTextFill (g, rowColour, valueText, text, juce::Justification::centredLeft);
+            g.drawText (valueText, text, juce::Justification::centredLeft, true);
         }
     }
 
@@ -595,7 +600,7 @@ void ProgressionsPage::toIdeas (int index)
 void ProgressionsPage::paint (juce::Graphics& g)
 {
     g.fillAll (page);
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     auto head = getLocalBounds().removeFromTop (headerHeight).reduced (gap, 8);
     auto title = head.removeFromTop (30);

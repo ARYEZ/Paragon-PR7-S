@@ -38,7 +38,7 @@ public:
             p.addTriangle (area.getX(), area.getY() + 2.0f, area.getRight(), area.getY() + 2.0f, area.getCentreX(), area.getBottom() - 1.0f);
         else
             p.addTriangle (area.getX() + 2.0f, area.getY(), area.getX() + 2.0f, area.getBottom(), area.getRight() - 1.0f, area.getCentreY());
-        g.setColour (isMouseOver() || open ? ParagonColours::accent : ParagonColours::textDim);
+        ParagonColours::setFill (g, isMouseOver() || open ? ParagonColours::accent : ParagonColours::textDim, (p).getBounds());
         g.fillPath (p);
     }
     void mouseEnter (const juce::MouseEvent&) override { repaint(); }
@@ -263,7 +263,7 @@ public:
         }
         if (selected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.6f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.6f), bounds.withTrimmedLeft (6.0f));
             g.drawRect (bounds.withTrimmedLeft (6.0f), 1.0f);
         }
 
@@ -289,9 +289,11 @@ public:
             if (const auto* link = owner.studio.getLinkGroupOf (t->id)) states.add ("LINKED: " + link->name.toUpperCase());
             if (! states.isEmpty())
             {
-                g.setColour (t->solo || t->armed ? ParagonColours::accent : juce::Colour (0xfff4eeea).withAlpha (0.75f));
                 g.setFont (font (13.0f));
-                g.drawText (states.joinIntoString ("  "), name.getBounds().withTrimmedLeft (4).removeFromBottom (16), juce::Justification::bottomLeft, false);
+                const auto statesArea = name.getBounds().withTrimmedLeft (4).removeFromBottom (16);
+                ParagonColours::setTextFill (g, t->solo || t->armed ? ParagonColours::accent : juce::Colour (0xfff4eeea).withAlpha (0.75f),
+                                             states.joinIntoString ("  "), statesArea, juce::Justification::bottomLeft);
+                g.drawText (states.joinIntoString ("  "), statesArea, juce::Justification::bottomLeft, false);
             }
         }
 
@@ -565,7 +567,7 @@ public:
         g.setColour (juce::Colour (0xff050405));
         g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
         const auto* track = owner.studio.getProject().findTrack (busId);
-        g.setColour ((track != nullptr ? track->colour : ParagonColours::accent).withAlpha (0.45f));
+        ParagonColours::setFill (g, (track != nullptr ? track->colour : ParagonColours::accent).withAlpha (0.45f), bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
         g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
         g.setColour (ParagonColours::textDim);
         g.setFont (ParagonLookAndFeel::textFont (12.0f));
@@ -637,7 +639,7 @@ public:
         g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
         if (selected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.6f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.6f), bounds.withTrimmedLeft (6.0f));
             g.drawRect (bounds.withTrimmedLeft (6.0f), 1.0f);
         }
         g.setColour (ParagonColours::text);
@@ -2125,7 +2127,7 @@ void TrackList::paintOverChildren (juce::Graphics& g)
     // Where the dragged tracks would go: a line between the rows.
     if (dropIndex >= 0 && dropY >= 0)
     {
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> (0.0f, (float) dropY - 1.5f, (float) getWidth(), 3.0f));
         g.fillRect (juce::Rectangle<float> (0.0f, (float) dropY - 1.5f, (float) getWidth(), 3.0f));
     }
 }

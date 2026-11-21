@@ -46,7 +46,7 @@ void FamilyColourPicker::resized()
 void FamilyColourPicker::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0c0a0d));
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     for (const auto& [r, colour] : swatches)
     {
@@ -114,7 +114,7 @@ void TrackTypeColoursPage::SwatchKey::paintButton (juce::Graphics& g, bool over,
         g.setFont (ParagonLookAndFeel::titleFont (15.0f));
         g.drawText ("AUTOMATIC", r, juce::Justification::centred);
     }
-    g.setColour (down ? ParagonColours::accent : over ? juce::Colour (0xfff4eeea) : ParagonColours::panelEdge);
+    ParagonColours::setFill (g, down ? ParagonColours::accent : over ? juce::Colour (0xfff4eeea) : ParagonColours::panelEdge, r);
     g.drawRoundedRectangle (r, 4.0f, over || down ? 1.5f : 1.0f);
 }
 

@@ -72,7 +72,7 @@ public:
             const auto out = ! c.chord.isInKey (key);
             g.setColour (juce::Colour (0xff1d191f));
             g.fillRoundedRectangle (r, 5.0f);
-            g.setColour (out ? juce::Colour (pr7s::FamilyColours::pink) : (dragging && i == from ? ParagonColours::accent : juce::Colour (0xff3a333d)));
+            ParagonColours::setFill (g, out ? juce::Colour (pr7s::FamilyColours::pink) : (dragging && i == from ? ParagonColours::accent : juce::Colour (0xff3a333d)), r.reduced (0.5f));
             g.drawRoundedRectangle (r.reduced (0.5f), 5.0f, dragging && i == from ? 2.0f : 1.0f);
             auto inner = r.reduced (6.0f, 4.0f);
             g.setColour (ParagonColours::text);
@@ -88,7 +88,7 @@ public:
         {
             const auto x = target < (int) editor.chords.size() ? cell (target).getX() - 2
                          : cell ((int) editor.chords.size() - 1).getRight() + 2;
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (x - 1), (float) (0), (float) (3), (float) (getHeight())));
             g.fillRect (x - 1, 0, 3, getHeight());
         }
     }

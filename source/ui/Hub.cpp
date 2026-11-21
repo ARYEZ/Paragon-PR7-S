@@ -88,17 +88,18 @@ public:
                 arrow.addTriangle (c.x - 3.0f, c.y - 5.0f, c.x - 3.0f, c.y + 5.0f, c.x + 4.0f, c.y);
             else
                 arrow.addTriangle (c.x - 5.0f, c.y - 3.0f, c.x + 5.0f, c.y - 3.0f, c.x, c.y + 4.0f);
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, arrow.getBounds());
             g.fillPath (arrow);
             g.setFont (ParagonLookAndFeel::titleFont (15.0f));
+            ParagonColours::setTextFill (g, ParagonColours::accent, item.section, area.withTrimmedLeft (32.0f), juce::Justification::centredLeft);
             g.drawText (item.section, area.withTrimmedLeft (32.0f), juce::Justification::centredLeft, true);
             return;
         }
         if (selected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.22f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.22f), area);
             g.fillRect (area);
-            g.setColour (ParagonColours::accent.withAlpha (0.7f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.7f), area.withWidth (3.0f), true);
             g.fillRect (area.withWidth (3.0f));
         }
         drawSongIcon (g, area.withX (22.0f).withWidth (20.0f).reduced (0.0f, 10.0f), ParagonColours::text);
@@ -744,9 +745,11 @@ void Hub::paint (juce::Graphics& g)
     auto badge = header.toFloat().reduced (24.0f, 14.0f).withWidth (300.0f);
     Logo::drawMark (g, badge.removeFromTop (badge.getHeight() * 0.66f), juce::Justification::centredLeft,
                     { Finish::ink(), juce::Colour (0xffe0103c), Finish::stampEdge(), {}, 1.0f, false });
-    g.setColour (Finish::printedRed());
+    // (0.189.0, the owner) The line under the mark in the family gradient across its letters.
     g.setFont (font (12.0f));
-    g.drawText ("HUB  -  RECORDING STUDIO " + juce::String (PR7S_VERSION), badge, juce::Justification::topLeft, false);
+    const auto what = "HUB  -  RECORDING STUDIO " + juce::String (PR7S_VERSION);
+    ParagonColours::setTextFill (g, ParagonColours::accent, what, badge, juce::Justification::topLeft);
+    g.drawText (what, badge, juce::Justification::topLeft, false);
     g.setColour (Finish::ink());
     g.setFont (font (10.0f));
     g.drawText ("AUDIO DRIVER", driverBox.getBounds().translated (0, -14).withHeight (12).toFloat(), juce::Justification::bottomLeft, false);

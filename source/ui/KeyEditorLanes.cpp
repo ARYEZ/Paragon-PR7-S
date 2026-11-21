@@ -1319,7 +1319,7 @@ void KeyEditor::paintLaneHeader (juce::Graphics& g, int lane)
     juce::Path arrow;
     const auto ax = title.getRight() - 4.0f, ay = title.getCentreY();
     arrow.addTriangle (ax - 3.5f, ay - 2.0f, ax + 3.5f, ay - 2.0f, ax, ay + 2.5f);
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, (arrow).getBounds());
     g.fillPath (arrow);
     g.setColour (lane == activeLane && lanesFocused ? ParagonColours::text : ParagonColours::textDim);
     g.setFont (font (8.5f));
@@ -1477,9 +1477,9 @@ void KeyEditor::paintControllerLane (juce::Graphics& g, int lane)
     if (lane == activeLane)
         if (const auto box = getControllerBox(); ! box.isEmpty())
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.08f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.08f), box);
             g.fillRect (box);
-            g.setColour (ParagonColours::accent.withAlpha (0.8f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.8f), box);
             g.drawRect (box, 1.0f);
             for (const auto c : { box.getTopLeft(), juce::Point<float> (box.getCentreX(), box.getY()), box.getTopRight(),
                                   juce::Point<float> (box.getRight(), box.getCentreY()) })
@@ -1487,16 +1487,16 @@ void KeyEditor::paintControllerLane (juce::Graphics& g, int lane)
                 const auto r = juce::Rectangle<float> (7.0f, 7.0f).withCentre (c);
                 g.setColour (juce::Colour (0xff0b090c));
                 g.fillRect (r);
-                g.setColour (ParagonColours::accent);
+                ParagonColours::setFill (g, ParagonColours::accent, r);
                 g.drawRect (r, 1.2f);
             }
         }
     // A rectangle being dragged to select.
     if (gesture == Gesture::controllerBand && lane == activeLane && ! band.isEmpty())
     {
-        g.setColour (ParagonColours::accent.withAlpha (0.12f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.12f), band);
         g.fillRect (band);
-        g.setColour (ParagonColours::accent.withAlpha (0.7f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.7f), band);
         g.drawRect (band, 1.0f);
     }
 }

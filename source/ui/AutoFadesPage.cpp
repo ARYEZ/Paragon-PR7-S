@@ -112,7 +112,7 @@ void AutoFadesPage::apply()
 void AutoFadesPage::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0c0a0d));
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (15.0f));

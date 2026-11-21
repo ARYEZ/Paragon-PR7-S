@@ -129,10 +129,10 @@ public:
             juce::Path shape;
             shape.addRoundedRectangle (icon.withTrimmedTop (2.0f), 1.5f);
             shape.addRoundedRectangle (icon.withWidth (6.0f).withHeight (4.0f), 1.0f);
-            g.setColour (colour.withAlpha (0.75f));
+            ParagonColours::setFill (g, colour.withAlpha (0.75f), shape.getBounds());
             g.fillPath (shape);
-            g.setColour (colour);
             g.setFont (interFont (12.0f));
+            ParagonColours::setTextFill (g, colour, label, juce::Rectangle<int> (40, 0, width - 42, height), juce::Justification::centredLeft);
             g.drawText (label, 40, 0, width - 42, height, juce::Justification::centredLeft, true);
         }
 

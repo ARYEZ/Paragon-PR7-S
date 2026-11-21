@@ -3,6 +3,7 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "ui/ArrangeView.h"
+#include "ui/ParagonLookAndFeel.h"
 
 // The arrangement's tools' icons (as the manual's toolbar has a picture for
 // each; ours drawn in the family's look): on their keys, and as the mouse
@@ -160,7 +161,7 @@ namespace ToolIcons
         const auto box = area.withSizeKeepingCentre (size, size);
         const auto transform = juce::AffineTransform::scale (size / 24.0f).translated (box.getX(), box.getY());
         const auto icon = make (tool);
-        g.setColour (colour);
+        ParagonColours::setFill (g, colour, box);   // (0.189.0: a lit tool in the family gradient)
         g.fillPath (icon.fill, transform);
         g.strokePath (icon.stroke, juce::PathStrokeType (juce::jmax (1.2f, size / 12.0f), juce::PathStrokeType::curved,
                                                          juce::PathStrokeType::rounded), transform);
@@ -229,7 +230,7 @@ namespace ToolIcons
         const auto box = area.withSizeKeepingCentre (size, size);
         const auto transform = juce::AffineTransform::scale (size / 24.0f).translated (box.getX(), box.getY());
         const auto icon = make (tool);
-        g.setColour (colour);
+        ParagonColours::setFill (g, colour, box);   // (0.189.0: a lit tool in the family gradient)
         g.fillPath (icon.fill, juce::AffineTransform::scale (0.78f).followedBy (transform));
         g.strokePath (sizingMark (sizing), juce::PathStrokeType (juce::jmax (1.2f, size / 13.0f), juce::PathStrokeType::curved,
                                                                  juce::PathStrokeType::rounded), transform);

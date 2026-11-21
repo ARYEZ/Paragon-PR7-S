@@ -103,7 +103,7 @@ public:
         if (project.loopOn)
         {
             const auto x1 = editor.xForBeat (project.loopStart), x2 = editor.xForBeat (project.loopEnd);
-            g.setColour (ParagonColours::accent.withAlpha (0.08f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.08f), juce::Rectangle<float> (x1, ruler.getBottom(), x2 - x1, bounds.getHeight()).getIntersection (bounds.withTrimmedLeft ((float) scaleWidth)));
             g.fillRect (juce::Rectangle<float> (x1, ruler.getBottom(), x2 - x1, bounds.getHeight()).getIntersection (bounds.withTrimmedLeft ((float) scaleWidth)));
         }
 
@@ -119,10 +119,14 @@ public:
             const auto x0 = editor.xForBeat (segment.beat);
             if (x0 < (float) scaleWidth - 1.0f || x0 > bounds.getRight())
                 continue;
-            g.setColour (segment.event.bar == 0 ? ParagonColours::accent : pr7s::FamilyColours::pink);
-            g.fillRect (juce::Rectangle<float> (x0, signature.getY() + 2.0f, 1.5f, signature.getHeight() - 4.0f));
-            g.drawText (juce::String (segment.event.numerator) + "/" + juce::String (segment.event.denominator),
-                        juce::Rectangle<float> (x0 + 4.0f, signature.getY(), 60.0f, signature.getHeight()), juce::Justification::centredLeft, false);
+            const auto signatureColour = segment.event.bar == 0 ? ParagonColours::accent : pr7s::FamilyColours::pink;
+            const juce::Rectangle<float> line (x0, signature.getY() + 2.0f, 1.5f, signature.getHeight() - 4.0f);
+            ParagonColours::setFill (g, signatureColour, line);
+            g.fillRect (line);
+            const auto signatureText = juce::String (segment.event.numerator) + "/" + juce::String (segment.event.denominator);
+            const juce::Rectangle<float> signatureArea (x0 + 4.0f, signature.getY(), 60.0f, signature.getHeight());
+            ParagonColours::setTextFill (g, signatureColour, signatureText, signatureArea, juce::Justification::centredLeft);
+            g.drawText (signatureText, signatureArea, juce::Justification::centredLeft, false);
         }
 
         // The tempo scale: BPM along the left, with level lines across.
@@ -190,9 +194,9 @@ public:
         }
         if (drag == Drag::band)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.15f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.15f), band);
             g.fillRect (band);
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, band);
             g.drawRect (band, 1.0f);
         }
         // The playhead: pearl white, a pink glow (as the arrangement's).
@@ -490,16 +494,17 @@ public:
         const auto& e = events[(size_t) row];
         if (selected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.22f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.22f), g.getClipBounds());
             g.fillAll();
         }
         g.setColour (ParagonColours::text);
         g.setFont (font (13.0f));
         g.drawText (pr7s::formatBarsBeats (e.beat, editor.studio.getProject()), 8, 0, 110, height, juce::Justification::centredLeft, false);
         g.drawText (bpmText (e.bpm), 110, 0, 60, height, juce::Justification::centredRight, false);
-        g.setColour (row == 0 ? ParagonColours::textDim : ParagonColours::accent);
-        g.drawText (row == 0 ? juce::String ("START") : e.ramp ? juce::String ("RAMP") : juce::String ("STEP"), width - 62, 0, 56, height,
-                    juce::Justification::centredRight, false);
+        const auto kind = row == 0 ? juce::String ("START") : e.ramp ? juce::String ("RAMP") : juce::String ("STEP");
+        const juce::Rectangle<int> kindArea (width - 62, 0, 56, height);
+        ParagonColours::setTextFill (g, row == 0 ? ParagonColours::textDim : ParagonColours::accent, kind, kindArea, juce::Justification::centredRight);
+        g.drawText (kind, kindArea, juce::Justification::centredRight, false);
     }
     void selectedRowsChanged (int) override
     {
@@ -1084,9 +1089,10 @@ void ProcessTempoPage::paint (juce::Graphics& g)
     auto area = getLocalBounds().reduced (22, 18).toFloat();
     const auto heading = [&] (const juce::String& text)
     {
-        g.setColour (ParagonColours::accent);
         g.setFont (ParagonLookAndFeel::titleFont (14.0f));
-        g.drawText (text, area.removeFromTop (22.0f), juce::Justification::centredLeft, false);
+        const auto headingArea = area.removeFromTop (22.0f);
+        ParagonColours::setTextFill (g, ParagonColours::accent, text, headingArea, juce::Justification::centredLeft);
+        g.drawText (text, headingArea, juce::Justification::centredLeft, false);
     };
     const auto row = [&] (const juce::String& label, const juce::String& value)
     {

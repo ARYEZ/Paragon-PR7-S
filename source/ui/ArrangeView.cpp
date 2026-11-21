@@ -850,7 +850,7 @@ void ArrangeView::paintContent (juce::Graphics& g)
     paintedSelection = studio.getSelectedTrack();   // (0.164.0: what a selection-only change starts from)
     const struct Forget { const std::vector<Timeline::Row>*& rows; ~Forget() { rows = nullptr; } } forget { rowsInPaint };
     auto trackNumber = 0;
-    const auto cycleTint = ParagonColours::accent.withAlpha (project.loopOn ? 0.07f : 0.025f);
+    const auto cycleTint = pr7s::FamilyColours::red.withAlpha (project.loopOn ? 0.07f : 0.025f);   // (0.189.0: the family red, not the flat orange)
     const auto cycleFrom = juce::jmax (0.0f, (float) timeline.xForBeat (project.loopStart));
     const auto cycleTo = juce::jmin (bounds.getWidth(), (float) timeline.xForBeat (project.loopEnd));
     if (cycleTo > cycleFrom)
@@ -1142,18 +1142,20 @@ void ArrangeView::paintContent (juce::Graphics& g)
         auto bottom = top + (float) timeline.trackRowHeight();
         if (const auto* t = project.findTrack (compTrack); t != nullptr && t->showLanes)
             bottom = partRow (compTrack, t->numLanes()).getBottom();
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> (x - 1.0f, top, 2.0f, bottom - top));
         g.fillRect (juce::Rectangle<float> (x - 1.0f, top, 2.0f, bottom - top));
     }
     if (drag == Drag::slip && dragMoved)
         if (const auto at = studio.findPart (slipPartId))
         {
             const auto area = getPartBounds (at->first, at->second);
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, area);
             g.drawRoundedRectangle (area, 4.0f, 2.0f);
             g.setFont (font (12.0f));
-            g.drawText ("SLIP " + juce::String (slipDelta >= 0.0 ? "+" : "") + juce::String (slipDelta, 3) + " BEATS",
-                        area.withTrimmedTop (16.0f).reduced (6.0f, 2.0f), juce::Justification::topRight, false);
+            const auto slipText = "SLIP " + juce::String (slipDelta >= 0.0 ? "+" : "") + juce::String (slipDelta, 3) + " BEATS";
+            const auto slipArea = area.withTrimmedTop (16.0f).reduced (6.0f, 2.0f);
+            ParagonColours::setTextFill (g, ParagonColours::accent, slipText, slipArea, juce::Justification::topRight);
+            g.drawText (slipText, slipArea, juce::Justification::topRight, false);
         }
 
     // (0.32.0) WARP: the marker being dragged, where it'll go.
@@ -1163,7 +1165,7 @@ void ArrangeView::paintContent (juce::Graphics& g)
             const auto& p = project.findTrack (at->first)->parts[(size_t) at->second];
             const auto area = getPartBounds (at->first, at->second);
             const auto x = timeline.xForBeat (p.start + warpTo);
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> (x - 1.0f, area.getY(), 2.0f, area.getHeight()));
             g.fillRect (juce::Rectangle<float> (x - 1.0f, area.getY(), 2.0f, area.getHeight()));
         }
 
@@ -1173,9 +1175,9 @@ void ArrangeView::paintContent (juce::Graphics& g)
         const auto strip = partRow (compTrack, compLane);
         const auto x1 = timeline.xForBeat (compFrom), x2 = timeline.xForBeat (compTo);
         const juce::Rectangle<float> band (x1, strip.getY(), x2 - x1, strip.getHeight());
-        g.setColour (ParagonColours::accent.withAlpha (0.25f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.25f), band);
         g.fillRect (band);
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, band);
         g.drawRect (band, 1.5f);
     }
 
@@ -1185,7 +1187,7 @@ void ArrangeView::paintContent (juce::Graphics& g)
         if (drag == Drag::newPart)
         {
             const auto* track = project.findTrack (newPartTrack);
-            const auto colour = track != nullptr ? track->colour : ParagonColours::accent;
+            const auto colour = track != nullptr ? track->colour : pr7s::FamilyColours::red;
             g.setColour (colour.withAlpha (0.35f));
             g.fillRoundedRectangle (toolBand, 4.0f);
             g.setColour (colour);
@@ -1193,9 +1195,9 @@ void ArrangeView::paintContent (juce::Graphics& g)
         }
         else
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.12f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.12f), toolBand);
             g.fillRect (toolBand);
-            g.setColour (ParagonColours::accent.withAlpha (0.8f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.8f), toolBand);
             g.drawRect (toolBand, 1.0f);
         }
     }
@@ -1700,7 +1702,7 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
             for (size_t k = 1; k + 1 < part.warp.size(); ++k)
             {
                 const auto x = area.getX() + (float) (part.warp[k].beat * timeline.pixelsPerBeat);
-                g.setColour (ParagonColours::accent);
+                ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> (x - 4.0f, wave.getY(), 8.0f, wave.getHeight()), true);
                 g.fillRect (juce::Rectangle<float> (x - 0.75f, wave.getY(), 1.5f, wave.getHeight()));
                 g.fillRect (juce::Rectangle<float> (x - 4.0f, wave.getY(), 8.0f, 6.0f));
                 // (Only where it's stretched or squeezed, and where the label has room before it.)
@@ -1708,6 +1710,8 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
                 if (area.getHeight() > 34.0f && room > 36.0 && std::abs (factors[k] - 1.0) > 0.005)
                 {
                     g.setFont (font (10.0f));
+                    ParagonColours::setTextFill (g, ParagonColours::accent, juce::String (factors[k], 2),
+                                                 juce::Rectangle<float> (x - 34.0f, wave.getY() + 7.0f, 31.0f, 12.0f), juce::Justification::centredRight);
                     g.drawText (juce::String (factors[k], 2), juce::Rectangle<float> (x - 34.0f, wave.getY() + 7.0f, 31.0f, 12.0f),
                                 juce::Justification::centredRight, false);
                 }
@@ -1716,8 +1720,8 @@ void ArrangeView::paintPart (juce::Graphics& g, juce::Rectangle<float> area, con
             // stretched part), in the title strip's right end.
             const juce::String stamp = part.stretchMode == 0 ? juce::String ("WARP") : "WARP: " + juce::String (pr7s::StretchModes::name (part.stretchMode));
             const auto stampArea = area.withTrimmedTop (1.0f).withHeight (13.0f).reduced (5.0f, 0.0f);
-            g.setColour (ParagonColours::accent.withAlpha (0.8f));
             g.setFont (font (10.0f));
+            ParagonColours::setTextFill (g, ParagonColours::accent.withAlpha (0.8f), stamp, stampArea, juce::Justification::centredRight);
             g.drawText (stamp, stampArea, juce::Justification::centredRight, false);
             const auto textWidth = juce::GlyphArrangement::getStringWidth (juce::Font (font (10.0f)), stamp);
             const auto markBox = juce::Rectangle<float> (stampArea.getRight() - textWidth - 15.0f, stampArea.getY() + 1.0f, 12.0f, 11.0f);
@@ -3650,7 +3654,8 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
     const auto area = juce::Rectangle<float> (0.0f, rowTop (row), (float) getWidth(), (float) row.height).reduced (0.0f, laneInset);
     const auto* track = studio.getProject().findTrack (row.busId);
     const auto active = studio.getAutomationRead (row.busId) && ! lane->muted;
-    const auto colour = active ? (track != nullptr ? track->colour : ParagonColours::accent) : ParagonColours::textDim.withAlpha (0.6f);
+    // (0.189.0) The master's lanes in the family red (a track colour), not the flat accent orange.
+    const auto colour = active ? (track != nullptr ? track->colour : pr7s::FamilyColours::red) : ParagonColours::textDim.withAlpha (0.6f);
     const auto editing = (drag == Drag::points || drag == Drag::draw || drag == Drag::erasePoints || drag == Drag::pointHandle
                           || drag == Drag::curve || drag == Drag::segmentScale)
                          && pointSelection.busId == row.busId && pointSelection.laneIndex == row.laneIndex;
@@ -3893,9 +3898,9 @@ void ArrangeView::paintAutomation (juce::Graphics& g, const Timeline::Row& row) 
     }
     if (drag == Drag::band && selectedHere)
     {
-        g.setColour (ParagonColours::accent.withAlpha (0.15f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.15f), pointBand);
         g.fillRect (pointBand);
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, pointBand);
         g.drawRect (pointBand, 1.0f);
     }
     paintPointHandles (g, row);
@@ -4509,8 +4514,8 @@ void ToolKey::paintButton (juce::Graphics& g, bool highlighted, bool down)
     }
     ToolIcons::draw (g, tool, area.removeFromLeft (area.getHeight()).reduced (3.0f), colour, sizing);
     area.removeFromLeft (2.0f);
-    g.setColour (colour);
     g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (12.0f, area.getHeight() * 0.7f)));
+    ParagonColours::setTextFill (g, colour, getButtonText(), area.toNearestInt(), juce::Justification::centred);
     g.drawFittedText (getButtonText(), area.toNearestInt(), juce::Justification::centred, 1, 0.7f);
 }
 
@@ -4851,8 +4856,9 @@ void ArrangeView::paintRange (juce::Graphics& g) const
             const juce::Rectangle<float> area (x1, top, x2 - x1, (float) timeline.trackRowHeight());
             g.setColour (juce::Colours::white.withAlpha (ghost ? 0.08f : 0.16f));
             g.fillRect (area);
-            g.setColour (ParagonColours::accent.withAlpha (ghost ? 0.5f : 0.9f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (ghost ? 0.5f : 0.9f), area.withWidth (1.5f));
             g.fillRect (area.withWidth (1.5f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (ghost ? 0.5f : 0.9f), area.withX (area.getRight() - 1.5f).withWidth (1.5f));
             g.fillRect (area.withX (area.getRight() - 1.5f).withWidth (1.5f));
         }
     };
@@ -5000,9 +5006,9 @@ void ArrangeView::paintTempo (juce::Graphics& g, const Timeline::Row& row) const
     }
     if (drag == Drag::tempoBand)
     {
-        g.setColour (ParagonColours::accent.withAlpha (0.15f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.15f), pointBand);
         g.fillRect (pointBand);
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, pointBand);
         g.drawRect (pointBand, 1.0f);
     }
 }

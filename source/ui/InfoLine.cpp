@@ -218,8 +218,8 @@ void InfoLine::paint (juce::Graphics& g)
                     getLocalBounds().reduced (12, 0), juce::Justification::centredLeft, true);
         return;
     }
-    // Several: in pink (the manual: "shown in another color"), the first one's values.
-    const auto valueColour = count > 1 ? pr7s::FamilyColours::pink.brighter (0.25f) : ParagonColours::accent;
+    // Several: in pearl white (the manual: "shown in another color"; 0.189.0, the owner: not pink), the first one's values.
+    const auto valueColour = count > 1 ? ParagonColours::pearlWhite : ParagonColours::accent;
     for (const auto& f : fields)
     {
         auto area = f.area;
@@ -230,13 +230,14 @@ void InfoLine::paint (juce::Graphics& g)
         g.drawText (f.name, area.removeFromTop (getHeight() / 2).reduced (8, 0), juce::Justification::bottomLeft, false);
         if (f.name == editing && editor != nullptr)
             continue;
-        g.setColour (f.editable || f.name == "TYPE" || f.name == "FILE" ? valueColour : ParagonColours::textDim);
         g.setFont (ParagonLookAndFeel::textFont (15.0f));
+        ParagonColours::setTextFill (g, f.editable || f.name == "TYPE" || f.name == "FILE" ? valueColour : ParagonColours::textDim,
+                                     f.value.toUpperCase(), area.reduced (8, 0), juce::Justification::topLeft);
         g.drawFittedText (f.value.toUpperCase(), area.reduced (8, 0), juce::Justification::topLeft, 1, 0.8f);
     }
     if (count > 1)
     {
-        g.setColour (pr7s::FamilyColours::pink.brighter (0.25f));
+        g.setColour (ParagonColours::pearlWhite);   // (0.189.0, the owner: white, not pink)
         g.setFont (ParagonLookAndFeel::textFont (13.0f));
         const auto x = fields.back().area.getRight() + 12;
         g.drawText (juce::String (count) + (showingParts ? " PARTS SELECTED" : " POINTS SELECTED") + ": CHANGES MOVE THEM ALL BY THE SAME AMOUNT (CTRL+ENTER: ALL TO THE VALUE)",

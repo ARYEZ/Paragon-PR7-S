@@ -99,14 +99,14 @@ public:
         {
             g.setColour (juce::Colour (0xff1b1419));
             g.fillRect (area);
-            g.setColour (ParagonColours::accent);
             g.setFont (ParagonLookAndFeel::titleFont (11.0f));
+            ParagonColours::setTextFill (g, ParagonColours::accent, r.text, area.reduced (10, 0), juce::Justification::centredLeft);
             g.drawText (r.text, area.reduced (10, 0), juce::Justification::centredLeft, false);
             return;
         }
         if (isSelected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.22f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.22f), area);
             g.fillRect (area);
         }
         auto& map = page.map;
@@ -121,9 +121,10 @@ public:
         juce::StringArray keys;
         for (const auto& key : map.keysFor (r.id))
             keys.add (KeyCommands::describe (key));
-        g.setColour (keys.isEmpty() ? ParagonColours::textDim : ParagonColours::accent);
-        g.drawText (keys.isEmpty() ? juce::String ("-") : keys.joinIntoString ("   "), area.withTrimmedLeft (width * 2 / 3 - 30).withTrimmedRight (10),
-                    juce::Justification::centredRight, true);
+        const auto keysText = keys.isEmpty() ? juce::String ("-") : keys.joinIntoString ("   ");
+        const auto keysArea = area.withTrimmedLeft (width * 2 / 3 - 30).withTrimmedRight (10);
+        ParagonColours::setTextFill (g, keys.isEmpty() ? ParagonColours::textDim : ParagonColours::accent, keysText, keysArea, juce::Justification::centredRight);
+        g.drawText (keysText, keysArea, juce::Justification::centredRight, true);
     }
 
     void selectedRowsChanged (int row) override
@@ -158,7 +159,7 @@ public:
             return;
         if (isSelected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.22f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.22f), g.getClipBounds());
             g.fillAll();
         }
         const auto& m = page.map.getMacros()[(size_t) row];
@@ -168,7 +169,7 @@ public:
         g.setColour (ParagonColours::text);
         g.setFont (font (13.0f));
         g.drawText (m.name + "  (" + juce::String (m.commands.size()) + ")", 10, 0, width - 20, height, juce::Justification::centredLeft, true);
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setTextFill (g, ParagonColours::accent, keys.joinIntoString ("   "), juce::Rectangle<float> ((float) (10), (float) (0), (float) (width - 20), (float) (height)), juce::Justification::centredRight);
         g.drawText (keys.joinIntoString ("   "), 10, 0, width - 20, height, juce::Justification::centredRight, true);
     }
     void selectedRowsChanged (int row) override
@@ -207,7 +208,7 @@ public:
             return;
         if (isSelected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.22f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.22f), g.getClipBounds());
             g.fillAll();
         }
         g.setColour (ParagonColours::textDim);
@@ -236,9 +237,9 @@ public:
     {
         const auto area = getLocalBounds().toFloat().reduced (1.0f);
         const auto waiting = hasKeyboardFocus (false);
-        g.setColour (waiting ? ParagonColours::accent.withAlpha (0.18f) : juce::Colour (0xff151217));
+        ParagonColours::setFill (g, waiting ? ParagonColours::accent.withAlpha (0.18f) : juce::Colour (0xff151217), area);
         g.fillRoundedRectangle (area, 4.0f);
-        g.setColour (waiting ? ParagonColours::accent : ParagonColours::panelEdge);
+        ParagonColours::setFill (g, waiting ? ParagonColours::accent : ParagonColours::panelEdge, area);
         g.drawRoundedRectangle (area, 4.0f, waiting ? 1.6f : 1.0f);
         g.setColour (waiting ? ParagonColours::text : ParagonColours::textDim);
         g.setFont (ParagonLookAndFeel::titleFont (14.0f));
@@ -597,8 +598,8 @@ void KeyCommandsPage::paint (juce::Graphics& g)
     g.drawText ("KEY COMMANDS", commandArea.getX(), HubFrame::contentOf (getLocalBounds()).getY(), 300, 22, juce::Justification::centredLeft, false);
     g.drawText (selected.startsWith (KeyCommands::Map::macroPrefix) ? "THE MACRO'S KEYS" : "ITS KEYS", keysTitle, juce::Justification::centredLeft, false);
     g.drawText ("MACROS", macrosTitle, juce::Justification::centredLeft, false);
-    g.setColour (ParagonColours::accent);
     g.setFont (font (14.0f));
+    ParagonColours::setTextFill (g, ParagonColours::accent, map.nameOf (selected), keysTitle.translated (0, 22), juce::Justification::centredLeft);
     g.drawText (map.nameOf (selected), keysTitle.translated (0, 22), juce::Justification::centredLeft, true);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (12.0f));

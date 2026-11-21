@@ -2210,7 +2210,7 @@ void KeyEditor::paintBody (juce::Graphics& g)
         // (0.81.0) The cycle range down the notes, faintly (as the arrangement's).
         const auto& project = studio.getProject();
         const auto x1 = xForBeat (project.loopStart), x2 = xForBeat (project.loopEnd);
-        g.setColour (ParagonColours::accent.withAlpha (project.loopOn ? 0.06f : 0.02f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (project.loopOn ? 0.06f : 0.02f), juce::Rectangle<float> (x1, notesTop(), x2 - x1, (float) getHeight()));
         g.fillRect (juce::Rectangle<float> (x1, notesTop(), x2 - x1, (float) getHeight()));
     }
     const auto redrawn = g.getClipBounds();   // (0.83.1: the keys and the ruler only when they're redrawn)
@@ -2467,9 +2467,10 @@ void KeyEditor::paintPanel (juce::Graphics& g)
     g.fillRect (panel.withWidth (6.0f).reduced (0.0f, 1.0f));
 
     auto area = panel.withTrimmedLeft (18.0f).reduced (0.0f, 8.0f).withTrimmedRight (6.0f);
-    g.setColour (ParagonColours::accent);
     g.setFont (ParagonLookAndFeel::titleFont (9.5f));
-    g.drawText ("MIDI EDITOR", area.removeFromTop (12.0f), juce::Justification::centredLeft, false);
+    const auto heading = area.removeFromTop (12.0f);
+    ParagonColours::setTextFill (g, ParagonColours::accent, "MIDI EDITOR", heading, juce::Justification::centredLeft);
+    g.drawText ("MIDI EDITOR", heading, juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (15.0f));
     g.drawText (part != nullptr ? (part->name.isNotEmpty() ? part->name : juce::String ("Part")) : juce::String ("No part"),
@@ -2653,7 +2654,7 @@ void KeyEditor::paintKeys (juce::Graphics& g)
         if (isBlackKey (pitch))
         {
             const auto key = row.withWidth (area.getWidth() * 0.6f).reduced (0.0f, 0.5f);
-            g.setColour (lit ? ParagonColours::accent : juce::Colour (0xff1a1519));
+            ParagonColours::setFill (g, lit ? ParagonColours::accent : juce::Colour (0xff1a1519), key);
             g.fillRect (key);
             guideStripe (key);
             continue;
@@ -2661,7 +2662,7 @@ void KeyEditor::paintKeys (juce::Graphics& g)
         guideStripe (row.withTrimmedRight (1.0f));
         if (lit)
         {
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, row.reduced (0.0f, 0.5f));
             g.fillRect (row.reduced (0.0f, 0.5f));
         }
         const auto inOctave = pitch % 12;
@@ -2881,9 +2882,9 @@ void KeyEditor::paintNotes (juce::Graphics& g)
 
     if ((gesture == Gesture::band || gesture == Gesture::muteBand) && ! band.isEmpty())
     {
-        g.setColour (ParagonColours::accent.withAlpha (0.12f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.12f), band);
         g.fillRect (band);
-        g.setColour (ParagonColours::accent.withAlpha (0.8f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.8f), band);
         g.drawRect (band, 1.0f);
     }
 }
@@ -2933,16 +2934,16 @@ void KeyEditor::paintVelocities (juce::Graphics& g)
     // The handles' box round the selected notes' bars (two or more).
     if (const auto box = getVelocityBox(); ! box.isEmpty())
     {
-        g.setColour (ParagonColours::accent.withAlpha (0.08f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.08f), box);
         g.fillRect (box);
-        g.setColour (ParagonColours::accent.withAlpha (0.8f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.8f), box);
         g.drawRect (box, 1.0f);
         const auto square = [&] (juce::Point<float> c)
         {
             const auto r = juce::Rectangle<float> (7.0f, 7.0f).withCentre (c);
             g.setColour (juce::Colour (0xff0b090c));
             g.fillRect (r);
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, r);
             g.drawRect (r, 1.2f);
         };
         square (box.getTopLeft());
@@ -3162,7 +3163,7 @@ void KeyEditor::paintInfoLine (juce::Graphics& g)
                     juce::Justification::centredLeft, true);
         return;
     }
-    const auto valueColour = count > 1 ? pr7s::FamilyColours::pink.brighter (0.25f) : ParagonColours::accent;
+    const auto valueColour = count > 1 ? ParagonColours::pearlWhite : ParagonColours::accent;   // (0.189.0: several in white, not pink)
     auto right = strip.getX();
     for (const auto& [name, area] : infoAreas())
     {
@@ -3173,8 +3174,8 @@ void KeyEditor::paintInfoLine (juce::Graphics& g)
         g.drawText (name, a.removeFromLeft (labelWidth), juce::Justification::centredLeft, false);
         if (name != infoEditing || infoEditor == nullptr)
         {
-            g.setColour (valueColour);
             g.setFont (name == "CHORD" ? ChordUi::chordFont (13.0f) : font (13.0f));   // (chord names in Inter: "Dm", not "DM")
+            ParagonColours::setTextFill (g, valueColour, getInfoField (name), a.reduced (2.0f, 0.0f), juce::Justification::centredLeft);
             g.drawText (getInfoField (name), a.reduced (2.0f, 0.0f), juce::Justification::centredLeft, false);
         }
         g.setColour (ParagonColours::panelEdge);
@@ -3183,7 +3184,7 @@ void KeyEditor::paintInfoLine (juce::Graphics& g)
     }
     if (count > 1)
     {
-        g.setColour (pr7s::FamilyColours::pink.brighter (0.25f));
+        g.setColour (ParagonColours::pearlWhite);   // (0.189.0, the owner: white, not pink)
         g.setFont (font (11.5f));
         g.drawText (juce::String (count) + " NOTES: CHANGES MOVE THEM ALL BY THE SAME AMOUNT (CTRL+ENTER: ALL TO THE VALUE)",
                     juce::Rectangle<float> (right + 6.0f, 0.0f, juce::jmax (0.0f, strip.getRight() - right - 12.0f), (float) infoHeight),

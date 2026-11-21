@@ -3005,7 +3005,7 @@ void ComposerPage::paint (juce::Graphics& g)
     const auto clip = g.getClipBounds();
     if (clip.getY() < headerHeight)
     {
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     auto head = getLocalBounds().removeFromTop (headerHeight).reduced (gap, 8);
     g.setColour (ParagonColours::text);
@@ -3191,7 +3191,7 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
         const auto r = lane.header.toFloat();
         g.setColour (juce::Colour (0xff141015));
         g.fillRoundedRectangle (r, 5.0f);
-        g.setColour (s.locked ? ParagonColours::accent : ParagonColours::panelEdge);
+        ParagonColours::setFill (g, s.locked ? ParagonColours::accent : ParagonColours::panelEdge, r.reduced (0.5f));
         g.drawRoundedRectangle (r.reduced (0.5f), 5.0f, s.locked ? 1.5f : 1.0f);
         g.setColour (colour.withAlpha (s.on ? 1.0f : 0.35f));
         g.fillRoundedRectangle (r.withWidth (4.0f).reduced (0.0f, 8.0f).withX (r.getX() + 6.0f), 1.5f);
@@ -3206,10 +3206,11 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
         if (! s.locked && ! sync.has_value() && (s.ownStyles ? typeWouldWrite (l) : pr7s::sectionTypeWritesLane (l, state, context)))
         {
             // (0.126.0) Whether the section type writes this lane, or it plays its own styles.
-            g.setColour (s.ownStyles ? ParagonColours::textDim : ParagonColours::accent);
             g.setFont (ParagonLookAndFeel::titleFont (11.0f));
-            g.drawText (s.ownStyles ? "OWN STYLES" : "FOLLOWS THE SECTION TYPE",
-                        lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200), juce::Justification::centredRight, false);
+            const auto words = juce::String (s.ownStyles ? "OWN STYLES" : "FOLLOWS THE SECTION TYPE");
+            const auto wordsArea = lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200);
+            ParagonColours::setTextFill (g, s.ownStyles ? ParagonColours::textDim : ParagonColours::accent, words, wordsArea, juce::Justification::centredRight);
+            g.drawText (words, wordsArea, juce::Justification::centredRight, false);
         }
         else if (s.locked || sync.has_value())
         {
@@ -3217,9 +3218,10 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
             const auto word = sync == l ? juce::String ("SYNC LEADER") + (s.locked ? " - LOCKED" : "")
                             : sync.has_value() ? (s.doubleSync ? "DOUBLES THE " : "FOLLOWS THE ") + pr7s::composerLayerName (*sync) + (s.locked ? " - LOCKED" : "")
                                                : juce::String ("LOCKED");
-            g.setColour (sync == l ? pr7s::FamilyColours::pink : ParagonColours::accent);
             g.setFont (ParagonLookAndFeel::titleFont (11.0f));
-            g.drawText (word, lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200), juce::Justification::centredRight, false);
+            const auto wordArea = lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200);
+            ParagonColours::setTextFill (g, sync == l ? pr7s::FamilyColours::pink : ParagonColours::accent, word, wordArea, juce::Justification::centredRight);
+            g.drawText (word, wordArea, juce::Justification::centredRight, false);
         }
         // Where it's heard, when that's not where it's written.
         const auto writes = trackFor (l, false), heard = trackFor (l, true);

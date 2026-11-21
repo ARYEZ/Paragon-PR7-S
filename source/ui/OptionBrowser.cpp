@@ -534,9 +534,11 @@ void OptionBrowser::paint (juce::Graphics& g)
             g.drawHorizontalLine (row.getBottom() - 1, (float) row.getX(), (float) row.getRight());
             auto r = row.reduced (8, 0);
             const auto fav = memory.isFavourite (listKey, o.name);
-            g.setColour (fav ? ParagonColours::accent : starOff);
             g.setFont (words (16.0f, juce::Font::plain));
-            g.drawText (juce::String (juce::CharPointer_UTF8 (fav ? "\xe2\x98\x85" : "\xe2\x98\x86")), r.removeFromLeft (22), juce::Justification::centredLeft);
+            const auto starArea = r.removeFromLeft (22);
+            const auto star = juce::String (juce::CharPointer_UTF8 (fav ? "\xe2\x98\x85" : "\xe2\x98\x86"));
+            ParagonColours::setTextFill (g, fav ? ParagonColours::accent : starOff, star, starArea, juce::Justification::centredLeft);
+            g.drawText (star, starArea, juce::Justification::centredLeft);
             const auto tag = ! search.isEmpty() || ! measured ? o.group
                              : o.measure.feel == pr7s::OptionFeel::unknown ? juce::String()
                              : pr7s::optionFeelName (o.measure.feel) + ", " + pr7s::energyName (o.measure.energy);
@@ -561,9 +563,11 @@ void OptionBrowser::paint (juce::Graphics& g)
         g.drawFittedText (o->name.toUpperCase(), d.removeFromTop (60), juce::Justification::topLeft, 2);
         if (o->measure.feel != pr7s::OptionFeel::unknown)
         {
-            g.setColour (ParagonColours::accent);
             g.setFont (words (13.0f));
-            g.drawText (pr7s::optionFeelName (o->measure.feel) + "  /  " + pr7s::energyName (o->measure.energy), d.removeFromTop (20), juce::Justification::centredLeft);
+            const auto feelText = pr7s::optionFeelName (o->measure.feel) + "  /  " + pr7s::energyName (o->measure.energy);
+            const auto feelArea = d.removeFromTop (20);
+            ParagonColours::setTextFill (g, ParagonColours::accent, feelText, feelArea, juce::Justification::centredLeft);
+            g.drawText (feelText, feelArea, juce::Justification::centredLeft);
         }
         d.removeFromTop (6);
         g.setColour (ParagonColours::textDim);

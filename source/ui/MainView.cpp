@@ -856,7 +856,7 @@ void MainView::InspectorEdge::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
     const auto lit = isMouseOverOrDragging();
-    g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+    ParagonColours::setFill (g, lit ? ParagonColours::accent : ParagonColours::panelEdge, bounds.withSizeKeepingCentre (lit ? 2.0f : 1.0f, bounds.getHeight()));
     g.fillRect (bounds.withSizeKeepingCentre (lit ? 2.0f : 1.0f, bounds.getHeight()));
 }
 
@@ -891,10 +891,10 @@ void MainView::ZoneDivider::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xff0b090c));
     g.fillRect (bounds);
     const auto lit = isMouseOverOrDragging();
-    g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+    ParagonColours::setFill (g, lit ? ParagonColours::accent : ParagonColours::panelEdge, bounds.withSizeKeepingCentre (bounds.getWidth(), 1.0f));
     g.fillRect (bounds.withSizeKeepingCentre (bounds.getWidth(), 1.0f));
     // The grip: three short lines in the middle.
-    g.setColour (lit ? ParagonColours::accent : ParagonColours::textDim);
+    ParagonColours::setFill (g, lit ? ParagonColours::accent : ParagonColours::textDim, bounds.withSizeKeepingCentre (36.0f, 6.5f));
     for (int i = -1; i <= 1; ++i)
         g.fillRoundedRectangle (bounds.withSizeKeepingCentre (36.0f, 1.5f).translated (0.0f, (float) i * 2.5f), 0.75f);
 }
@@ -2469,7 +2469,7 @@ void MainView::RightZoneEdge::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
     const auto lit = isMouseOverOrDragging();
-    g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+    ParagonColours::setFill (g, lit ? ParagonColours::accent : ParagonColours::panelEdge, bounds.withSizeKeepingCentre (lit ? 2.0f : 1.0f, bounds.getHeight()));
     g.fillRect (bounds.withSizeKeepingCentre (lit ? 2.0f : 1.0f, bounds.getHeight()));
 }
 
