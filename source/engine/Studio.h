@@ -431,6 +431,28 @@ namespace pr7s
         // (0.201.0) A new track for a lane (drums: PR7-D's, on the default map), named newIdeaTrackName and at its
         // lane's level. Every path ARCHITECT makes a track by goes through it. 0: none made.
         int addIdeaTrack (LineIdea::Part);
+        // (0.204.0, the owner asked) GUITAR TONES: when BUILD writes a lead, clean or acoustic guitar lane onto a
+        // track, PR7-G goes on its inserts with a tone (GuitarTones.h). Per part a choice: automatic (by the part's
+        // style), off, one of our tones, or one of the owner's PR7-G rigs. Settings "guitarTones" (lines
+        // "lead|auto", "clean|off", "acoustic|tone:ACOUSTIC AIR", "lead|rig:<path>"; in memory without a settings file).
+        struct ToneChoice
+        {
+            enum class Kind { automatic, off, tone, rig } kind = Kind::automatic;
+            juce::String value;   // a tone's name, or a rig file's full path
+            bool operator== (const ToneChoice&) const = default;
+        };
+        ToneChoice getToneChoice (LineIdea::Part) const;
+        void setToneChoice (LineIdea::Part, ToneChoice);
+        static juce::String suggestedToneName (LineIdea::Part, const juce::String& style);
+        // PR7-G on the track (one there already: `replaceExisting` false leaves it alone, the owner's own) with the
+        // part's tone or rig; the owner's amp model and cab IR stay. False (with `error`): off, no PR7-G, or a part
+        // without tones. `getLastTone`: the tone or rig last put on (its name).
+        bool toneTrack (int trackId, const LineIdea&, bool replaceExisting, juce::String* error = nullptr);
+        juce::String getLastTone() const { return lastTone; }
+        // What the last buildSection put on ("LEAD: SOARING LEAD ON PR7-G", ...).
+        juce::StringArray getLastTones() const { return lastTones; }
+        // (tests) Makes the PR7-G instance toneTrack adds (none set: the host's PR7-G).
+        std::function<std::unique_ptr<juce::AudioPluginInstance>()> makePr7gForTests;
         // (0.178.0, the owner) Groove folders marked as favourites (full paths, subfolders included): a quarter of a
         // section's library grooves come from them and AUTOMATIC prefers them. Settings "grooveFavouriteFolders" (a
         // path a line; in memory without a settings file). A change is announced (ARCHITECT composes again).
@@ -2023,6 +2045,10 @@ namespace pr7s
         std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;
         std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)
         bool looseCopiesHere = true;
+        std::array<ToneChoice, 3> toneChoicesHere {};   // (0.204.0; lead, clean, acoustic, without a settings file)
+        std::array<ToneChoice, 3> readToneChoices() const;
+        juce::String lastTone;
+        juce::StringArray lastTones;
         std::array<float, 8> laneLevelsHere { -5.5f, 0.0f, 0.0f, -11.5f, -9.5f, 0.0f, 0.0f, 0.0f };   // (0.201.0; without a settings file)
         juce::StringArray grooveFavouritesHere;   // (0.178.0; without a settings file)
         std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;

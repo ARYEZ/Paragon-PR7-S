@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.204.0
+
+Lead, clean and acoustic guitar parts now come with effects (you asked: "we would never just have a plain clean guitar, there'd always be some modulation, delays, reverb, same with leads"). When ARCHITECT builds a LEAD, CLEAN GUITAR or ACOUSTIC GUITAR lane onto a track, it puts **Paragon PR7-G** (the family's guitar processor) on that track's effect slots with a tone that suits the part.
+
+- **The tone is chosen from the part's style.** A shred solo gets a short, tight echo and a small plate so fast runs stay clear; a bluesy solo a slapback echo and a spring; a slow, singing melody sustain, a slow chorus, long echoes and a big space; a twin-guitar solo an echo bouncing left and right. A clean arpeggio gets a stereo chorus, a dotted echo and a hall; a clean pedal or hook part a throbbing tremolo and a spring; clean swells long tape echoes and a huge space. The acoustic gets a small room (or a doubled, wide sound for big strums, or a hall and a soft echo for picked parts), and its amp and cab are switched off: an acoustic shouldn't go through a guitar amp.
+- **Our tones (11):** SOARING LEAD (the lead's usual one), SHRED LEAD, BLUES LEAD, AMBIENT LEAD, TWIN LEAD; CLEAN SHIMMER (the clean guitar's usual one), CLEAN PULSE, CLEAN SWELL; ACOUSTIC ROOM (the acoustic's usual one), ACOUSTIC WIDE, ACOUSTIC AIR. They're our own designs, set on paper from what each effect does: I can't listen to them here, so they're starting points for your ears.
+- **Your amp stays yours.** A tone only sets PR7-G's compressor, modulation, delay and reverb (and turns its other effect blocks off so you know what you're hearing). Your amp model, cab IR, drive, EQ and levels aren't touched. The rig name in PR7-G reads the tone's name.
+- **Choose per lane:** Hub > ARCHITECT TRACKS has a **TONE** box on the LEAD, CLEAN GUITAR and ACOUSTIC GUITAR rows: AUTOMATIC (BY STYLE), OFF (nothing is added), one of our tones, or one of **your own PR7-G rigs** (every rig you've saved in PR7-G is listed under MY RIGS). A rig sets everything it holds, its amp and cab too unless it was saved to keep the current ones.
+- **Your own PR7-G is left alone:** if the track already has PR7-G on it, BUILD doesn't change it. To put the tone on anyway, right-click the lane in ARCHITECT: **Put the Suggested Tone on Its Track (PR7-G)**.
+- After BUILD the status line says what went on ("LEAD: SHRED LEAD ON PR7-G").
+- **PR7-G now ships beside the studio**, as PR7-K and PR7-D do (the Backline). If it isn't there and hasn't been scanned in PLUGINS, nothing is added.
+- **Next step (a later release):** the effects changing from section to section (more echo in the chorus, less in the verse) by automation.
+
 ## 0.203.0
 
 Every open bar on the drums lane gets its own fill (you asked: "make each open bar get its own fill"). In 0.202.0 every bar you left unlocked played the same fill.

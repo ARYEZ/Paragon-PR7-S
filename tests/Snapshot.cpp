@@ -1530,6 +1530,7 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
             hub.getComposerTracksPage()->setNames (1, "Guitar L, Guitar R");
             hub.getComposerTracksPage()->setEvery (1, true);
             hub.getComposerTracksPage()->setNames (0, "Bass, Bass DI");
+            hub.getComposerTracksPage()->setTone (2, { pr7s::Studio::ToneChoice::Kind::tone, "SHRED LEAD" });   // (0.204.0)
         }
         std::unique_ptr<juce::TemporaryFile> grooveFolder;
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "groovefolders")

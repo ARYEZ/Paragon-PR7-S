@@ -1,4 +1,5 @@
 #include "Studio.h"
+#include "GuitarTones.h"
 #include "Pr7dLink.h"
 #include "SectionTypes.h"
 #include "Controllers.h"
@@ -11631,6 +11632,178 @@ namespace pr7s
             settings->removeValue ("composerLaneLevels");
     }
 
+    //==========================================================================
+    // (0.204.0) GUITAR TONES: PR7-G on the guitar lanes' tracks.
+    namespace
+    {
+        int toneSlotOf (LineIdea::Part part)
+        {
+            return part == LineIdea::Part::lead ? 0 : part == LineIdea::Part::clean ? 1 : part == LineIdea::Part::acoustic ? 2 : -1;
+        }
+
+        const char* toneKeyOf (int slot) { return slot == 0 ? "lead" : slot == 1 ? "clean" : "acoustic"; }
+
+        juce::String tonePartLabel (LineIdea::Part part)
+        {
+            return part == LineIdea::Part::lead ? "LEAD" : part == LineIdea::Part::clean ? "CLEAN GUITAR" : "ACOUSTIC GUITAR";
+        }
+    }
+
+    std::array<Studio::ToneChoice, 3> Studio::readToneChoices() const
+    {
+        if (settings == nullptr)
+            return toneChoicesHere;
+        std::array<ToneChoice, 3> choices {};
+        for (const auto& line : juce::StringArray::fromLines (settings->getValue ("guitarTones")))
+        {
+            const auto key = line.upToFirstOccurrenceOf ("|", false, false).trim();
+            const auto what = line.fromFirstOccurrenceOf ("|", false, false).trim();
+            for (int i = 0; i < 3; ++i)
+                if (key == toneKeyOf (i))
+                {
+                    ToneChoice c;
+                    if (what == "off")
+                        c.kind = ToneChoice::Kind::off;
+                    else if (what.startsWith ("tone:"))
+                        c = { ToneChoice::Kind::tone, what.fromFirstOccurrenceOf ("tone:", false, false) };
+                    else if (what.startsWith ("rig:"))
+                        c = { ToneChoice::Kind::rig, what.fromFirstOccurrenceOf ("rig:", false, false) };
+                    choices[(size_t) i] = c;
+                }
+        }
+        return choices;
+    }
+
+    Studio::ToneChoice Studio::getToneChoice (LineIdea::Part part) const
+    {
+        const auto slot = toneSlotOf (part);
+        return slot < 0 ? ToneChoice { ToneChoice::Kind::off, {} } : readToneChoices()[(size_t) slot];
+    }
+
+    void Studio::setToneChoice (LineIdea::Part part, ToneChoice choice)
+    {
+        const auto slot = toneSlotOf (part);
+        if (slot < 0)
+            return;
+        if (choice.kind == ToneChoice::Kind::tone && toneNamed (choice.value) == nullptr)
+            choice = {};
+        if (choice.kind == ToneChoice::Kind::rig && choice.value.isEmpty())
+            choice = {};
+        if (choice.kind == ToneChoice::Kind::automatic || choice.kind == ToneChoice::Kind::off)
+            choice.value = {};
+        auto choices = readToneChoices();
+        choices[(size_t) slot] = choice;
+        toneChoicesHere = choices;
+        if (settings != nullptr)
+        {
+            juce::StringArray lines;
+            for (int i = 0; i < 3; ++i)
+            {
+                const auto& c = choices[(size_t) i];
+                lines.add (juce::String (toneKeyOf (i)) + "|"
+                           + (c.kind == ToneChoice::Kind::off ? juce::String ("off")
+                              : c.kind == ToneChoice::Kind::tone ? "tone:" + c.value
+                              : c.kind == ToneChoice::Kind::rig ? "rig:" + c.value : juce::String ("auto")));
+            }
+            settings->setValue ("guitarTones", lines.joinIntoString ("\n"));
+        }
+    }
+
+    juce::String Studio::suggestedToneName (LineIdea::Part part, const juce::String& style)
+    {
+        return hasGuitarTones (part) ? suggestedTone (part, style).name : juce::String();
+    }
+
+    bool Studio::toneTrack (int trackId, const LineIdea& idea, bool replaceExisting, juce::String* error)
+    {
+        const auto fail = [error] (const juce::String& why)
+        {
+            if (error != nullptr)
+                *error = why;
+            return false;
+        };
+        if (! hasGuitarTones (idea.part))
+            return fail ("Only the lead, clean and acoustic guitar lanes have tones");
+        const auto choice = getToneChoice (idea.part);
+        if (choice.kind == ToneChoice::Kind::off)
+            return fail ("The " + tonePartLabel (idea.part).toLowerCase() + "'s TONE is off (the Hub's ARCHITECT TRACKS)");
+        const auto findSlot = [this, trackId]
+        {
+            if (const auto* inserts = getInserts (trackId))
+                for (int i = (int) inserts->size(); --i >= 0;)
+                    if (! (*inserts)[(size_t) i].isEmpty() && isPr7g ((*inserts)[(size_t) i].plugin))
+                        return i;
+            return -1;
+        };
+        if (getInserts (trackId) == nullptr)
+            return fail ("There's no such track");
+        auto slot = findSlot();
+        if (slot >= 0 && ! replaceExisting)
+            return fail ("PR7-G is already on it (left as it is)");
+        if (slot < 0)
+        {
+            if (makePr7gForTests)
+            {
+                auto instance = makePr7gForTests();
+                if (instance == nullptr)
+                    return fail ("PR7-G wasn't made");
+                Insert insert;
+                insert.plugin = instance->getPluginDescription();
+                if (! addInsert (trackId, insert, std::move (instance)))
+                    return fail ("There's no room for another effect on it");
+            }
+            else
+            {
+                std::optional<juce::PluginDescription> description;
+                if (const auto* found = host->getStudioGuitar())
+                    description = *found;
+                else
+                    for (const auto& d : host->getKnownPlugins().getTypes())
+                        if (! d.isInstrument && d.name.containsIgnoreCase ("Paragon PR7-G"))
+                            description = d;
+                if (! description)
+                    return fail ("PR7-G wasn't found (it ships beside the studio; or scan for it in PLUGINS)");
+                juce::String problem;
+                if (! addInsert (trackId, *description, &problem))
+                    return fail (problem.isNotEmpty() ? problem : juce::String ("PR7-G couldn't be loaded"));
+            }
+            slot = findSlot();
+        }
+        auto* effect = slot >= 0 ? engine.getEffect (trackId, slot) : nullptr;
+        if (effect == nullptr)
+            return fail ("PR7-G isn't running on it");
+        juce::MemoryBlock before;
+        effect->getStateInformation (before);
+        auto settingsXml = readPr7gSettings (before);
+        if (settingsXml == nullptr)
+            return fail ("PR7-G's settings couldn't be read");
+        juce::String name;
+        if (choice.kind == ToneChoice::Kind::rig)
+        {
+            const juce::File rig (choice.value);
+            if (! applyRigFile (*settingsXml, rig))
+                return fail ("The rig " + rig.getFileNameWithoutExtension() + " couldn't be read");
+            name = rig.getFileNameWithoutExtension().toUpperCase();
+        }
+        else
+        {
+            const auto* tone = choice.kind == ToneChoice::Kind::tone ? toneNamed (choice.value) : nullptr;
+            if (tone == nullptr || tone->part != idea.part)
+                tone = &suggestedTone (idea.part, idea.style);
+            applyTone (*settingsXml, *tone);
+            name = tone->name;
+        }
+        const auto after = writePr7gSettings (*settingsXml, before);
+        effect->setStateInformation (after.getData(), (int) after.getSize());
+        notePluginChanged (effect);
+        if (auto* inserts = insertsOf (trackId); inserts != nullptr && slot < (int) inserts->size())
+            (*inserts)[(size_t) slot].state = after;
+        const auto* track = project.findTrack (trackId);
+        SessionLog::note ("Guitar tone: " + name + " on " + (track != nullptr ? track->name : juce::String (trackId)));
+        lastTone = name;
+        return true;
+    }
+
     int Studio::addIdeaTrack (LineIdea::Part part)
     {
         // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view; (0.107.0) the
@@ -12085,6 +12258,12 @@ namespace pr7s
                               + juce::String (start, 2) + " to " + juce::String (end, 2));
             changed();
         }
+        // (0.204.0) The guitar lanes' tracks get PR7-G with a tone (one already there is left alone).
+        lastTones.clear();
+        std::set<int> toned;
+        for (const auto& [trackId, idea] : plan)
+            if (hasGuitarTones (idea->part) && toned.insert (trackId).second && toneTrack (trackId, *idea, false))
+                lastTones.addIfNotAlreadyThere (tonePartLabel (idea->part) + ": " + lastTone + " ON PR7-G");
         return used;
     }
 

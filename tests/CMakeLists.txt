@@ -95,6 +95,7 @@ add_executable(ParagonPR7STests
     Speed0113Tests.cpp
     CleanGuitarTests.cpp
     AcousticLaneTests.cpp
+    GuitarToneTests.cpp
     MyRiffLaneTests.cpp
     SongKeyTests.cpp
     BlueprintTests.cpp

@@ -1,6 +1,7 @@
 #include "ComposerTracksPage.h"
 
 #include "ParagonLookAndFeel.h"
+#include "engine/GuitarTones.h"
 
 using namespace pr7s;
 
@@ -55,6 +56,35 @@ ComposerTracksPage::ComposerTracksPage (Studio& s) : studio (s)
                                "Ctrl-click for the usual one.");
         r->level.onValueChange = [this, r] { studio.setLaneLevel (r->lane, (float) r->level.getValue()); };
         content.addAndMakeVisible (r->level);
+        // (0.204.0) TONE: PR7-G on the guitar lanes' tracks.
+        if (const auto part = Studio::composerTrackPart (i); hasGuitarTones (part))
+        {
+            r->tone = std::make_unique<juce::ComboBox>();
+            r->tone->setWantsKeyboardFocus (false);
+            r->tone->setTooltip ("TONE: when BUILD writes the " + laneName (i).toLowerCase() + " lane onto a track, PR7-G goes on its "
+                                 "inserts with this tone (AUTOMATIC: chosen from the part's style). One of your own PR7-G rigs "
+                                 "works too. A PR7-G already on the track is left as it is. OFF: nothing is added.");
+            r->tone->onChange = [this, r]
+            {
+                const auto id = r->tone->getSelectedId();
+                Studio::ToneChoice c;
+                if (id == 2)
+                    c.kind = Studio::ToneChoice::Kind::off;
+                else if (id >= rigItems && id - rigItems < r->rigs.size())
+                    c = { Studio::ToneChoice::Kind::rig, r->rigs[id - rigItems].getFullPathName() };
+                else if (id >= toneItems && id - toneItems < r->toneNames.size())
+                    c = { Studio::ToneChoice::Kind::tone, r->toneNames[id - toneItems] };
+                else if (id == missingRigItem)
+                    return;
+                setTone (r->lane, c);
+            };
+            content.addAndMakeVisible (*r->tone);
+            r->toneLabel.setText ("TONE", juce::dontSendNotification);
+            r->toneLabel.setFont (ParagonLookAndFeel::textFont (13.0f));
+            r->toneLabel.setColour (juce::Label::textColourId, ParagonColours::textDim);
+            r->toneLabel.setJustificationType (juce::Justification::centredRight);
+            content.addAndMakeVisible (r->toneLabel);
+        }
         rows[(size_t) i] = std::move (row);
     }
     looseKey.setWantsKeyboardFocus (false);
@@ -69,6 +99,7 @@ ComposerTracksPage::ComposerTracksPage (Studio& s) : studio (s)
     content.addAndMakeVisible (resetKey);
     // (0.202.0) The rows in a view of their own: at the Hub's usual height they ran past the panel (the lower lanes and
     // the reset key hidden).
+    refreshTones();
     view.setViewedComponent (&content, false);
     view.setScrollBarsShown (true, false);
     view.setScrollBarThickness (10);
@@ -148,6 +179,75 @@ void ComposerTracksPage::setLevel (int lane, float db)
     refresh();
 }
 
+void ComposerTracksPage::refreshTones()
+{
+    const auto rigs = pr7gRigFiles();
+    for (auto& r : rows)
+    {
+        if (r->tone == nullptr)
+            continue;
+        r->tone->clear (juce::dontSendNotification);
+        r->toneNames.clear();
+        r->rigs = rigs;
+        r->tone->addItem ("AUTOMATIC (BY STYLE)", 1);
+        r->tone->addItem ("OFF", 2);
+        r->tone->addSectionHeading ("OUR TONES");
+        for (const auto* t : guitarTonesFor (Studio::composerTrackPart (r->lane)))
+        {
+            r->tone->addItem (t->name, toneItems + r->toneNames.size());
+            r->toneNames.add (t->name);
+        }
+        if (! rigs.isEmpty())
+        {
+            r->tone->addSectionHeading ("MY RIGS");
+            for (int k = 0; k < rigs.size(); ++k)
+                r->tone->addItem (rigs[k].getFileNameWithoutExtension().toUpperCase(), rigItems + k);
+        }
+        showToneChoice (*r);
+    }
+}
+
+void ComposerTracksPage::showToneChoice (Row& r)
+{
+    if (r.tone == nullptr)
+        return;
+    const auto choice = studio.getToneChoice (Studio::composerTrackPart (r.lane));
+    auto id = 1;
+    if (choice.kind == Studio::ToneChoice::Kind::off)
+        id = 2;
+    else if (choice.kind == Studio::ToneChoice::Kind::tone)
+        id = r.toneNames.contains (choice.value) ? toneItems + r.toneNames.indexOf (choice.value) : 1;
+    else if (choice.kind == Studio::ToneChoice::Kind::rig)
+    {
+        id = missingRigItem;
+        for (int k = 0; k < r.rigs.size(); ++k)
+            if (r.rigs[k].getFullPathName() == choice.value)
+                id = rigItems + k;
+        if (id == missingRigItem && r.tone->indexOfItemId (missingRigItem) < 0)
+            r.tone->addItem (juce::File (choice.value).getFileNameWithoutExtension().toUpperCase() + " (NOT FOUND)", missingRigItem);
+    }
+    r.tone->setSelectedId (id, juce::dontSendNotification);
+}
+
+void ComposerTracksPage::setTone (int lane, const Studio::ToneChoice& choice)
+{
+    if (lane < 0 || lane >= Studio::numComposerTrackLanes)
+        return;
+    studio.setToneChoice (Studio::composerTrackPart (lane), choice);
+    showToneChoice (*rows[(size_t) lane]);
+}
+
+juce::ComboBox* ComposerTracksPage::getToneBox (int lane)
+{
+    return lane >= 0 && lane < Studio::numComposerTrackLanes ? rows[(size_t) lane]->tone.get() : nullptr;
+}
+
+void ComposerTracksPage::visibilityChanged()
+{
+    if (isVisible())
+        refreshTones();   // (rigs saved in PR7-G since)
+}
+
 void ComposerTracksPage::resetAll()
 {
     studio.resetComposerTracks();
@@ -168,7 +268,7 @@ void ComposerTracksPage::resized()
     view.setBounds (area);
     // (0.202.0) Tighter rows (the found tracks beside the name's foot), in the view: they scroll when the panel is short.
     const auto width = juce::jmax (400, area.getWidth() - 14);
-    constexpr int rowHeight = 50;
+    constexpr int rowHeight = 56;   // (0.204.0: room for the guitar lanes' TONE box)
     content.setSize (width, Studio::numComposerTrackLanes * (rowHeight + 4) + 10 + 30 + 12 + 34 + 6);
     if (content.getHeight() <= area.getHeight())
         content.setSize (area.getWidth(), content.getHeight());
@@ -183,7 +283,15 @@ void ComposerTracksPage::resized()
         r->names.setBounds (top.removeFromLeft (juce::jmax (200, top.getWidth() - 260)));
         top.removeFromLeft (16);
         r->every.setBounds (top);
-        r->found.setBounds (row.withTrimmedLeft (140).removeFromTop (18));
+        auto foot = row.withTrimmedLeft (140).removeFromTop (22);
+        if (r->tone != nullptr)
+        {
+            auto box = foot.removeFromRight (juce::jmin (360, foot.getWidth() / 2));
+            r->toneLabel.setBounds (box.removeFromLeft (52));
+            r->tone->setBounds (box.reduced (0, 1));
+            foot.removeFromRight (12);
+        }
+        r->found.setBounds (foot);
         inside.removeFromTop (4);
     }
     inside.removeFromTop (10);

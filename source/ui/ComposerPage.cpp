@@ -1,5 +1,6 @@
 #include "ui/ComposerPage.h"
 #include "engine/SectionTypes.h"
+#include "engine/GuitarTones.h"
 
 #include "engine/MidiImport.h"
 #include "ui/ChordUi.h"
@@ -1201,6 +1202,8 @@ std::vector<int> ComposerPage::useAll()
     const auto bar = studio.getProject().signatures().barAt (placed.front().start) + 1;
     status = tracks.empty() ? juce::String ("Nothing written: switch a layer on")
                             : "Written at bar " + juce::String (bar) + " onto " + names.joinIntoString (", ");
+    if (const auto tones = studio.getLastTones(); ! tones.isEmpty() && ! tracks.empty())   // (0.204.0)
+        status += "  " + tones.joinIntoString (", ");
     refresh (false);
     return tracks;
 }
@@ -1875,6 +1878,8 @@ std::vector<int> ComposerPage::buildSection()
     }
     else
         status = built + ". The song has its ending.";
+    if (const auto tones = studio.getLastTones(); ! tones.isEmpty())   // (0.204.0)
+        status += "  " + tones.joinIntoString (", ");
     refresh (false);
     return tracks;
 }
@@ -3049,6 +3054,34 @@ void ComposerPage::showUseMenu()
                         });
 }
 
+bool ComposerPage::putToneOnLane (ComposerLayer l)
+{
+    const auto& idea = ideas[(size_t) l];
+    std::vector<int> tracks;
+    for (const auto id : tracksFor (l, false))
+        if (studio.canTakeMidi (id))
+            tracks.push_back (id);
+    if (tracks.empty() || idea.notes.empty())
+    {
+        status = "Build the " + pr7s::composerLayerName (l).toLowerCase() + " lane onto a track first";
+        repaint();
+        return false;
+    }
+    auto any = false;
+    juce::String problem;
+    for (const auto id : tracks)
+    {
+        juce::String error;
+        if (studio.toneTrack (id, idea, true, &error))
+            any = true;
+        else
+            problem = error;
+    }
+    status = any ? pr7s::composerLayerName (l).toUpperCase() + ": " + studio.getLastTone() + " ON PR7-G" : problem;
+    repaint();
+    return any;
+}
+
 void ComposerPage::showLaneMenu (ComposerLayer l)
 {
     const auto& s = state.lane (l);
@@ -3070,6 +3103,12 @@ void ComposerPage::showLaneMenu (ComposerLayer l)
         menu.addItem (13, "Choose a Fill for the Bars Not Locked...");
         menu.addItem (14, "Roll the Groove (No Fill)");
     }
+    // (0.204.0) GUITAR TONES: PR7-G on the lane's tracks.
+    if (pr7s::hasGuitarTones (pr7s::composerPartOf (l)))
+    {
+        menu.addSeparator();
+        menu.addItem (20, "Put the Suggested Tone on Its Track (PR7-G)", ! ideas[(size_t) l].notes.empty());
+    }
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
     {
         if (safe == nullptr)
@@ -3087,6 +3126,7 @@ void ComposerPage::showLaneMenu (ComposerLayer l)
             case 13: safe->showOptionBrowser (l); break;
             case 14: safe->rollGroove (l); break;
             case 15: safe->clearBarSelection (l); break;
+            case 20: safe->putToneOnLane (l); break;
             default: break;
         }
     });

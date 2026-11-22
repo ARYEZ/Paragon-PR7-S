@@ -24,6 +24,10 @@ public:
     void setEvery (int lane, bool);
     void setLooseCopies (bool);
     void setLevel (int lane, float db);   // (0.201.0) the lane's new tracks' fader level
+    // (0.204.0) TONE (the lead, clean and acoustic lanes): PR7-G's tone BUILD puts on the lane's tracks.
+    void setTone (int lane, const pr7s::Studio::ToneChoice&);
+    juce::ComboBox* getToneBox (int lane);   // (none for the other lanes)
+    void refreshTones();                     // the boxes' lists again (the owner's PR7-G rigs)
     void resetAll();
     juce::String getFoundText (int lane) const;
 
@@ -35,6 +39,10 @@ public:
         juce::ToggleButton every { "EVERY MATCHING TRACK" };
         juce::Label found;
         ValueSlider level;   // (0.201.0) LEVEL: a new track's fader, dB (double-click to type)
+        std::unique_ptr<juce::ComboBox> tone;   // (0.204.0) TONE (lead, clean, acoustic)
+        juce::Label toneLabel;
+        juce::StringArray toneNames;            // the box's tones, by item (from toneItems)
+        juce::Array<juce::File> rigs;           // the box's rigs, by item (from rigItems)
     };
     Row& getRow (int lane) { return *rows[(size_t) lane]; }
     juce::Viewport& getView() { return view; }
@@ -43,6 +51,9 @@ public:
 
 private:
     void timerCallback() override;
+    void visibilityChanged() override;
+    void showToneChoice (Row&);   // the box on the studio's choice
+    static constexpr int toneItems = 10, rigItems = 1000, missingRigItem = 999;
     pr7s::Studio& studio;
     std::array<std::unique_ptr<Row>, pr7s::Studio::numComposerTrackLanes> rows;
     juce::ToggleButton looseKey { "PLAY THE COPIES A LITTLE LOOSE (AS IF PLAYED TWICE)" };

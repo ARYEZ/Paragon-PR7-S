@@ -103,6 +103,8 @@ public:
     int trackFor (pr7s::ComposerLayer, bool hearing) const;
     // (0.112.0) Every track the lane plays on (COMPOSER TRACKS' EVERY: guitar left and right), the first as trackFor's.
     std::vector<int> tracksFor (pr7s::ComposerLayer, bool hearing) const;
+    // (0.204.0) The lane's tone (Studio::toneTrack, replacing a PR7-G there) on each of its tracks; the status says what.
+    bool putToneOnLane (pr7s::ComposerLayer);
     juce::String trackText (pr7s::ComposerLayer) const;   // "TRACK: BASS", "TRACKS: GUITAR L + GUITAR R"
     // Each lane's idea once per track it plays on (the copies after the first a little looser), with those tracks and lanes.
     struct Placed { std::vector<pr7s::LineIdea> ideas; std::vector<int> onto, layers; };
