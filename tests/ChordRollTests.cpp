@@ -397,3 +397,44 @@ TEST_CASE ("0.208.0: CHORD ROLL's keys: ARCHITECT's ROLL CHORDS (a block, or the
             CHECK (c.chord.isInKey (studio.getSongSectionKey (1)));
     }
 }
+
+TEST_CASE ("0.209.0: the roll keys draw a die and their name in the accent", "[chordroll]")
+{
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    // Family-coloured: red the strongest channel, well over green and blue (the pearl and onyx have them about equal).
+    const auto countAccent = [] (const juce::Image& image, juce::Rectangle<int> area)
+    {
+        int n = 0;
+        for (int y = area.getY(); y < area.getBottom(); ++y)
+            for (int x = area.getX(); x < area.getRight(); ++x)
+            {
+                // As seen over a dark page: the snapshot is see-through, and a faint pixel's colour alone reads as full red.
+                const auto c = juce::Colours::black.overlaidWith (image.getPixelAt (x, y));
+                if (c.getRed() > 120 && c.getRed() > c.getGreen() + 60 && c.getRed() > c.getBlue() + 40)
+                    ++n;
+            }
+        return n;
+    };
+    {
+        DiceKey key ("ROLL CHORDS");
+        key.setSize (140, 26);
+        const auto image = key.createComponentSnapshot (key.getLocalBounds(), true, 2.0f);
+        const auto die = countAccent (image, { 0, 0, 100, image.getHeight() });
+        CHECK (die > 40);   // the die and the start of the name, left of centre
+        CHECK (countAccent (image, image.getBounds()) > die);   // the name on to the right
+        // Disabled: still drawn, much fainter.
+        key.setEnabled (false);
+        const auto faint = key.createComponentSnapshot (key.getLocalBounds(), true, 2.0f);
+        CHECK (countAccent (faint, faint.getBounds()) < countAccent (image, image.getBounds()) / 2);
+    }
+    {
+        Studio studio (false);
+        studio.appendSongSection ("Chorus", 4);
+        SectionEditor editor (studio, studio.getSongSections().blocks[0].id);
+        CHECK (dynamic_cast<DiceKey*> (&editor.getRollKey()) != nullptr);
+        ComposerPage page (studio);
+        CHECK (dynamic_cast<DiceKey*> (&page.getRollChordsKey()) != nullptr);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

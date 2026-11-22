@@ -2,6 +2,7 @@
 
 #include "engine/Studio.h"
 #include "ui/ChordUi.h"
+#include "ui/DiceKey.h"
 
 // A block on the SECTIONS row edited where it is (0.103.0, the owner: "right click and get a quick menu ... name, type,
 // length, and the ability to change or reorder that block's chords ... the scale set for the entire song, then for each
@@ -61,7 +62,8 @@ private:
                 transitionLabel { {}, "INTO THE NEXT" };
     juce::ComboBox nameBox, typeBox, lengthBox, keyBox, transitionBox;
     std::unique_ptr<Strip> strip;
-    juce::TextButton addKey { "+ CHORD" }, rollKey { "ROLL" }, clearKey { "CLEAR CHORDS" }, openKey { "OPEN IN THE ARCHITECT" }, moreKey { "MORE..." };
+    juce::TextButton addKey { "+ CHORD" }, clearKey { "CLEAR CHORDS" }, openKey { "OPEN IN THE ARCHITECT" }, moreKey { "MORE..." };
+    DiceKey rollKey { "ROLL" };   // (0.209.0: a die, in the accent)
     bool refreshing = false;
 
     double beatsPerBar() const;

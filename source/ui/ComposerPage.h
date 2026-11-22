@@ -8,6 +8,7 @@
 #include "ui/LinesPage.h"
 #include "ui/PartDropTarget.h"
 #include "ui/OptionBrowser.h"
+#include "ui/DiceKey.h"
 
 // THE COMPOSER (0.58.0, the owner asked: "a combined page, all layers stacked, each with a lock and a
 // re-roll, and one generate button"). engine/Composer.h says how the layers are chosen.
@@ -405,7 +406,7 @@ private:
     juce::ComboBox keyBox, genreBox, moodBox, lengthBox, styleBox;
     juce::TextButton progressionKey, libraryKey { "LIBRARY" }, chordTrackKey { "CHORD TRACK" }, toChordTrackKey { "+ CHORD TRACK" };
     juce::TextButton hearKey { "HEAR" }, useKey { "USE ALL" }, generateKey { "GENERATE" };
-    juce::TextButton rollChordsKey { "ROLL CHORDS" };   // (0.208.0)
+    DiceKey rollChordsKey { "ROLL CHORDS" };   // (0.208.0)
     std::vector<juce::String> chordRollsLately;          // (0.208.0) without a block: the last rolls (fingerprints)
     juce::Rectangle<int> ruler, controlsLabels;
     // (0.74.0)

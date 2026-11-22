@@ -210,7 +210,7 @@ SectionEditor::SectionEditor (pr7s::Studio& s, int id) : studio (s), blockId (id
     };
 
     addAndMakeVisible (*strip);
-    for (auto* k : { &addKey, &rollKey, &clearKey, &openKey, &moreKey })
+    for (auto* k : std::initializer_list<juce::TextButton*> { &addKey, &rollKey, &clearKey, &openKey, &moreKey })
     {
         ChordUi::styleKey (*k);
         addAndMakeVisible (*k);
@@ -515,9 +515,9 @@ void SectionEditor::resized()
     strip->setBounds (r.removeFromTop (110));
     hint.setBounds (r.removeFromTop (22));
     auto keys = r.removeFromBottom (32);
-    for (auto* k : { &addKey, &rollKey, &clearKey })
+    for (auto* k : std::initializer_list<juce::TextButton*> { &addKey, &rollKey, &clearKey })
     {
-        k->setBounds (keys.removeFromLeft (k == &rollKey ? 90 : 130));
+        k->setBounds (keys.removeFromLeft (k == &rollKey ? 110 : 130));
         keys.removeFromLeft (8);
     }
     moreKey.setBounds (keys.removeFromRight (110));

@@ -2,6 +2,12 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.209.0
+
+The chord roll keys stand out (you asked).
+
+- **ROLL CHORDS** in ARCHITECT and **ROLL** in the section editor now show a die beside their name, both drawn in the family's red, pink and orange, so they read at a glance among the plain keys. Disabled (ARCHITECT reading the chord track with no block chosen), they're drawn faint.
+
 ## 0.208.0
 
 CHORD ROLL: a section's chords drawn anew in its key, as often as you like, leaning toward the chords that usually go together; and one way to add chords in ARCHITECT and the rest of the studio.
