@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.205.0
+
+The guitar tones now change from section to section (the second step of your PR7-G idea). When ARCHITECT builds a LEAD, CLEAN GUITAR or ACOUSTIC GUITAR lane and puts PR7-G on its track (0.204.0), it also writes **PR7-G's effects as automation, block by block of the SECTIONS row**: a little less echo and room in the verse, the tone as chosen in the chorus, more space in the bridge, a dry and tight breakdown.
+
+- **What moves:** five of PR7-G's knobs: the modulation's mix, the delay's mix and feedback, the reverb's mix and size. Nothing else (your amp, cab, drive, EQ and the effects' types stay as they are).
+- **How much (our own table, set on paper):** the chorus plays the tone exactly as chosen. Against that:
+  - **Verse:** drier (delay mix 60%, reverb mix 70%, modulation 80%, a little less feedback and a slightly smaller room), so the vocal has room.
+  - **Pre-Chorus:** just a touch drier than the chorus (90%), building towards it.
+  - **Bridge:** wetter (reverb mix +30%, delay +25%, modulation +20%, a bigger room).
+  - **Breakdown:** dry and tight (delay mix 40%, reverb mix 50%, a smaller room).
+  - **Solo:** a bit more echo (+15%) and a closer room (reverb 90%).
+  - **Intro:** open (reverb +40%, delay +30%, a bigger room).
+  - **Interlude, Post-Chorus and Instrumental:** a little wetter (+10 to +20%).
+  - **Outro, Ending, Tag and Coda:** the tails ring out (reverb +50%, delay +30%, more feedback, the biggest room).
+  - Every value stays inside PR7-G's own range (the delay's feedback never past its 95%).
+- **What it starts from:** the tone ARCHITECT put on (one of ours, by its name in PR7-G); with one of your own rigs, PR7-G's knobs as they are now. A tone that doesn't use an effect (SOARING LEAD has no modulation) gets no lane for it.
+- **The lanes are hidden** (five lanes under every guitar track would bury the arrangement). To see them: open the track's automation, or use the lane menu's **Show All Used**. You can edit them as any automation; the track's R (read) is switched on.
+- **Building again or changing the row:** right-click the lane in ARCHITECT: **Write the Tone's Section Changes (PR7-G)** writes them again over the whole SECTIONS row on each of the lane's tracks (what was inside the row is replaced; points of yours after the row's end are kept). The status line says how many sections were written, or why not (no PR7-G, no SECTIONS blocks).
+- **The switch:** Hub > ARCHITECT TRACKS, under the rows: **TONES CHANGE WITH THE SECTIONS** (on to start). Off: BUILD writes no automation (the tone still goes on).
+- One undo step takes BUILD's section changes away (the PR7-G insert itself is its own step, as in 0.204.0).
+- I can't listen to it here: the table is a starting point for your ears.
+
 ## 0.204.0
 
 Lead, clean and acoustic guitar parts now come with effects (you asked: "we would never just have a plain clean guitar, there'd always be some modulation, delays, reverb, same with leads"). When ARCHITECT builds a LEAD, CLEAN GUITAR or ACOUSTIC GUITAR lane onto a track, it puts **Paragon PR7-G** (the family's guitar processor) on that track's effect slots with a tone that suits the part.

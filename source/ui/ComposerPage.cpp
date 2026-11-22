@@ -3082,6 +3082,25 @@ bool ComposerPage::putToneOnLane (ComposerLayer l)
     return any;
 }
 
+bool ComposerPage::writeSectionTonesOnLane (ComposerLayer l)
+{
+    auto written = 0;
+    juce::String problem = "No track plays the " + pr7s::composerLayerName (l).toLowerCase() + " lane yet";
+    for (const auto id : tracksFor (l, false))
+    {
+        juce::String error;
+        if (studio.writeSectionTones (id, &error))
+            ++written;
+        else
+            problem = error;
+    }
+    status = written > 0 ? pr7s::composerLayerName (l).toUpperCase() + ": PR7-G FOLLOWS " + juce::String (studio.getSectionToneBlocks())
+                               + " SECTIONS" + (written > 1 ? " ON " + juce::String (written) + " TRACKS" : juce::String())
+                         : problem;
+    repaint();
+    return written > 0;
+}
+
 void ComposerPage::showLaneMenu (ComposerLayer l)
 {
     const auto& s = state.lane (l);
@@ -3108,6 +3127,7 @@ void ComposerPage::showLaneMenu (ComposerLayer l)
     {
         menu.addSeparator();
         menu.addItem (20, "Put the Suggested Tone on Its Track (PR7-G)", ! ideas[(size_t) l].notes.empty());
+        menu.addItem (21, "Write the Tone's Section Changes (PR7-G)", ! studio.getSongSections().blocks.empty());
     }
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
     {
@@ -3127,6 +3147,7 @@ void ComposerPage::showLaneMenu (ComposerLayer l)
             case 14: safe->rollGroove (l); break;
             case 15: safe->clearBarSelection (l); break;
             case 20: safe->putToneOnLane (l); break;
+            case 21: safe->writeSectionTonesOnLane (l); break;
             default: break;
         }
     });

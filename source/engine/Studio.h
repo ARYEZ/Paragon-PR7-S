@@ -453,6 +453,18 @@ namespace pr7s
         juce::StringArray getLastTones() const { return lastTones; }
         // (tests) Makes the PR7-G instance toneTrack adds (none set: the host's PR7-G).
         std::function<std::unique_ptr<juce::AudioPluginInstance>()> makePr7gForTests;
+        // (0.205.0, step 2 of the owner's PR7-G idea) THE TONES CHANGE WITH THE SECTIONS (GuitarTones.h's table): on,
+        // BUILD writes PR7-G's mod mix, delay mix and feedback, reverb mix and size as automation over each block of
+        // the SECTIONS row on the lanes it tones. Settings "sectionTones" (default on; in memory without a settings file).
+        bool getSectionTones() const;
+        void setSectionTones (bool);
+        // The track's PR7-G (the last on its inserts): for every SECTIONS block a point at its start and one a 960th
+        // of a beat before its end on the five knobs' lanes (made when missing, hidden; what was inside the row
+        // replaced, points outside it kept), R on; one undo step. The baseline: the tone named by PR7-G's rig, else its
+        // knobs as they are. False (with `error`): no track, no PR7-G, no SECTIONS blocks, or none of the knobs found.
+        // `announce` false: no changed() (buildSection makes one for all its tracks).
+        bool writeSectionTones (int trackId, juce::String* error = nullptr, bool announce = true);
+        int getSectionToneBlocks() const noexcept { return sectionToneBlocks; }   // blocks the last write covered
         // (0.178.0, the owner) Groove folders marked as favourites (full paths, subfolders included): a quarter of a
         // section's library grooves come from them and AUTOMATIC prefers them. Settings "grooveFavouriteFolders" (a
         // path a line; in memory without a settings file). A change is announced (ARCHITECT composes again).
@@ -2045,6 +2057,8 @@ namespace pr7s
         std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;
         std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)
         bool looseCopiesHere = true;
+        bool sectionTonesHere = true;   // (0.205.0, without a settings file)
+        int sectionToneBlocks = 0;
         std::array<ToneChoice, 3> toneChoicesHere {};   // (0.204.0; lead, clean, acoustic, without a settings file)
         std::array<ToneChoice, 3> readToneChoices() const;
         juce::String lastTone;

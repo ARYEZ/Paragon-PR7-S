@@ -29,6 +29,9 @@ public:
     juce::ComboBox* getToneBox (int lane);   // (none for the other lanes)
     void refreshTones();                     // the boxes' lists again (the owner's PR7-G rigs)
     void resetAll();
+    // (0.205.0) TONES CHANGE WITH THE SECTIONS (Studio::setSectionTones).
+    void setSectionTones (bool);
+    juce::ToggleButton& getSectionTonesKey() { return sectionTonesKey; }
     juce::String getFoundText (int lane) const;
 
     struct Row
@@ -57,6 +60,7 @@ private:
     pr7s::Studio& studio;
     std::array<std::unique_ptr<Row>, pr7s::Studio::numComposerTrackLanes> rows;
     juce::ToggleButton looseKey { "PLAY THE COPIES A LITTLE LOOSE (AS IF PLAYED TWICE)" };
+    juce::ToggleButton sectionTonesKey { "TONES CHANGE WITH THE SECTIONS" };
     juce::TextButton resetKey { "ALL BACK TO THE USUAL NAMES AND LEVELS" };
     juce::Rectangle<int> titleArea, noteArea, headArea;
     juce::Component content;    // (0.202.0) the rows, in `view`: scrolled when the panel is short

@@ -92,6 +92,13 @@ ComposerTracksPage::ComposerTracksPage (Studio& s) : studio (s)
                          "differences (kept in their velocity layers), as a second take would have. Off: the same notes on each.");
     looseKey.onClick = [this] { setLooseCopies (looseKey.getToggleState()); };
     content.addAndMakeVisible (looseKey);
+    // (0.205.0) PR7-G's mix, delay and reverb follow the SECTIONS row.
+    sectionTonesKey.setWantsKeyboardFocus (false);
+    sectionTonesKey.setTooltip ("On: when BUILD puts a tone on a lead, clean or acoustic guitar track, PR7-G's modulation, delay and "
+                                "reverb change block by block of the SECTIONS row (drier verses, wetter bridges, intros and outros), "
+                                "written as automation on hidden lanes (the track's automation shows them)");
+    sectionTonesKey.onClick = [this] { setSectionTones (sectionTonesKey.getToggleState()); };
+    content.addAndMakeVisible (sectionTonesKey);
     resetKey.setWantsKeyboardFocus (false);
     resetKey.setTooltip ("Every lane back to its usual track name (Bass, Guitar, Lead Guitar, Piano, Melody, Drums...), one track each, "
                          "and its usual level (chords -11.5 dB, melody -9.5, bass -5.5, the rest 0)");
@@ -138,6 +145,7 @@ void ComposerTracksPage::refresh()
             r->level.setValue (studio.getLaneLevels()[(size_t) r->lane], juce::dontSendNotification);
     }
     looseKey.setToggleState (studio.getLooseCopies(), juce::dontSendNotification);
+    sectionTonesKey.setToggleState (studio.getSectionTones(), juce::dontSendNotification);
     seenChange = studio.getChangeVersion();
 }
 
@@ -248,6 +256,12 @@ void ComposerTracksPage::visibilityChanged()
         refreshTones();   // (rigs saved in PR7-G since)
 }
 
+void ComposerTracksPage::setSectionTones (bool on)
+{
+    studio.setSectionTones (on);
+    sectionTonesKey.setToggleState (on, juce::dontSendNotification);
+}
+
 void ComposerTracksPage::resetAll()
 {
     studio.resetComposerTracks();
@@ -269,7 +283,7 @@ void ComposerTracksPage::resized()
     // (0.202.0) Tighter rows (the found tracks beside the name's foot), in the view: they scroll when the panel is short.
     const auto width = juce::jmax (400, area.getWidth() - 14);
     constexpr int rowHeight = 56;   // (0.204.0: room for the guitar lanes' TONE box)
-    content.setSize (width, Studio::numComposerTrackLanes * (rowHeight + 4) + 10 + 30 + 12 + 34 + 6);
+    content.setSize (width, Studio::numComposerTrackLanes * (rowHeight + 4) + 10 + 30 + 4 + 30 + 12 + 34 + 6);
     if (content.getHeight() <= area.getHeight())
         content.setSize (area.getWidth(), content.getHeight());
     auto inside = content.getLocalBounds();
@@ -296,6 +310,8 @@ void ComposerTracksPage::resized()
     }
     inside.removeFromTop (10);
     looseKey.setBounds (inside.removeFromTop (30).withWidth (juce::jmin (520, inside.getWidth())));
+    inside.removeFromTop (4);
+    sectionTonesKey.setBounds (inside.removeFromTop (30).withWidth (juce::jmin (520, inside.getWidth())));
     inside.removeFromTop (12);
     resetKey.setBounds (inside.removeFromTop (34).withWidth (380));
 }

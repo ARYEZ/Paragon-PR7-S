@@ -11804,6 +11804,105 @@ namespace pr7s
         return true;
     }
 
+    //==========================================================================
+    // (0.205.0) The tones change with the sections.
+    bool Studio::getSectionTones() const
+    {
+        return settings != nullptr ? settings->getBoolValue ("sectionTones", true) : sectionTonesHere;
+    }
+
+    void Studio::setSectionTones (bool on)
+    {
+        sectionTonesHere = on;
+        if (settings != nullptr)
+            settings->setValue ("sectionTones", on);
+    }
+
+    bool Studio::writeSectionTones (int trackId, juce::String* error, bool announce)
+    {
+        const auto fail = [error] (const juce::String& why)
+        {
+            if (error != nullptr)
+                *error = why;
+            return false;
+        };
+        sectionToneBlocks = 0;
+        auto* track = project.findTrack (trackId);
+        const auto* inserts = getInserts (trackId);
+        if (track == nullptr || inserts == nullptr)
+            return fail ("There's no such track");
+        auto slot = -1;
+        for (int i = (int) inserts->size(); --i >= 0 && slot < 0;)
+            if (! (*inserts)[(size_t) i].isEmpty() && isPr7g ((*inserts)[(size_t) i].plugin))
+                slot = i;
+        auto* effect = slot >= 0 ? engine.getEffect (trackId, slot) : nullptr;
+        if (effect == nullptr)
+            return fail ("PR7-G isn't on it");
+        const auto places = getSongSectionPlaces();
+        const auto& blocks = project.songSections.blocks;
+        if (places.empty() || places.size() != blocks.size())
+            return fail ("The SECTIONS row has no blocks");
+        juce::MemoryBlock state;
+        effect->getStateInformation (state);
+        const auto settingsXml = readPr7gSettings (state);
+        if (settingsXml == nullptr)
+            return fail ("PR7-G's settings couldn't be read");
+        const auto baseline = sectionToneBaseline (*settingsXml);
+
+        // Each knob's index on the running plug-in, by its name.
+        const auto& parameters = effect->getParameters();
+        auto written = 0;
+        for (const auto& knob : sectionToneParameters())
+        {
+            if (baseline.find (knob.id) == baseline.end())
+                continue;   // (the tone doesn't use that block)
+            auto index = -1;
+            for (int i = 0; i < parameters.size() && index < 0; ++i)
+                if (parameters[i]->getName (64).trim().equalsIgnoreCase (knob.name))
+                    index = i;
+            if (index < 0)
+                continue;
+            AutomationLane wanted;
+            wanted.target = AutomationLane::Target::insert;
+            wanted.slot = slot;
+            wanted.parameter = index;
+            auto lane = std::find_if (track->automation.begin(), track->automation.end(),
+                                      [&] (const AutomationLane& l) { return l.sameControl (wanted); });
+            if (lane == track->automation.end())
+            {
+                // Hidden: five lanes under every guitar track would bury the arrangement (Show All Used shows them).
+                wanted.parameterName = parameters[index]->getName (64);
+                wanted.shown = false;
+                track->automation.push_back (wanted);
+                lane = track->automation.end() - 1;
+            }
+            auto& points = lane->points;
+            for (const auto& place : places)
+                points.erase (std::remove_if (points.begin(), points.end(), [&] (const AutomationPoint& p)
+                              { return p.beat >= place.start - 1.0e-9 && p.beat < place.end - 1.0e-9; }), points.end());
+            for (size_t b = 0; b < places.size(); ++b)
+            {
+                const auto values = sectionToneValues (baseline, sectionToneScale (blocks[b].name));
+                const auto found = values.find (knob.id);
+                if (found == values.end())
+                    continue;
+                const auto value = juce::jlimit (0.0f, 1.0f, found->second / knob.maximum);
+                points.push_back ({ places[b].start, value });
+                points.push_back ({ juce::jmax (places[b].start, places[b].end - 1.0 / 960.0), value });
+            }
+            std::stable_sort (points.begin(), points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+            ++written;
+        }
+        if (written == 0)
+            return fail ("PR7-G's mix, delay and reverb knobs weren't found on it");
+        track->automationRead = true;
+        sectionToneBlocks = (int) places.size();
+        SessionLog::note ("Section tones: " + juce::String ((int) places.size()) + " blocks on " + track->name);
+        if (announce)
+            changed();
+        return true;
+    }
+
     int Studio::addIdeaTrack (LineIdea::Part part)
     {
         // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view; (0.107.0) the
@@ -12261,9 +12360,20 @@ namespace pr7s
         // (0.204.0) The guitar lanes' tracks get PR7-G with a tone (one already there is left alone).
         lastTones.clear();
         std::set<int> toned;
+        auto sectionTonesWritten = 0;
         for (const auto& [trackId, idea] : plan)
-            if (hasGuitarTones (idea->part) && toned.insert (trackId).second && toneTrack (trackId, *idea, false))
+        {
+            if (! hasGuitarTones (idea->part) || ! toned.insert (trackId).second)
+                continue;
+            if (toneTrack (trackId, *idea, false))
                 lastTones.addIfNotAlreadyThere (tonePartLabel (idea->part) + ": " + lastTone + " ON PR7-G");
+            // (0.205.0) Its knobs follow the SECTIONS row (one undo step for every track, after the tone's).
+            if (getSectionTones() && getToneChoice (idea->part).kind != ToneChoice::Kind::off
+                && writeSectionTones (trackId, nullptr, false))
+                ++sectionTonesWritten;
+        }
+        if (sectionTonesWritten > 0)
+            changed();
         return used;
     }
 

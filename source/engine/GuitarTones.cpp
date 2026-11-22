@@ -1,5 +1,8 @@
 #include "GuitarTones.h"
 
+#include "engine/Markers.h"
+#include "engine/SongSections.h"
+
 namespace pr7s
 {
     namespace
@@ -370,5 +373,64 @@ namespace pr7s
     bool isPr7g (const juce::PluginDescription& d)
     {
         return d.name.containsIgnoreCase ("PR7-G");
+    }
+
+    //==========================================================================
+    // (0.205.0) The tones change with the sections.
+    SectionToneScale sectionToneScale (const juce::String& sectionName)
+    {
+        const auto base = sectionBaseOf (sectionName);
+        if (base.isEmpty())
+            return {};
+        if (base == "Pre-Chorus")
+            return { 0.9f, 0.85f, 0.95f, 0.9f, 1.0f };
+        if (base == "Post-Chorus" || base == "Interlude" || base == "Instrumental")
+            return { 1.1f, 1.2f, 1.05f, 1.2f, 1.1f };
+        switch (composerSectionFor (base))
+        {
+            case 0:  return { 1.0f, 1.3f, 1.1f, 1.4f, 1.2f };     // intro: wide open
+            case 1:  return { 0.8f, 0.6f, 0.85f, 0.7f, 0.9f };    // verse: drier, room for the vocal
+            case 2:  return {};                                   // chorus: the tone as chosen
+            case 3:  return { 1.2f, 1.25f, 1.1f, 1.3f, 1.15f };   // bridge: wetter, somewhere else
+            case 4:  return { 0.6f, 0.4f, 0.7f, 0.5f, 0.8f };     // breakdown: dry and tight
+            case 5:  return { 1.0f, 1.3f, 1.2f, 1.5f, 1.25f };    // outro: the tails ring out
+            case 6:  return { 1.0f, 1.15f, 1.05f, 0.9f, 1.0f };   // solo: more echo, a closer room
+            default: return {};
+        }
+    }
+
+    const std::vector<SectionToneParameter>& sectionToneParameters()
+    {
+        // PR7-G's Parameters.cpp: all linear from 0.
+        static const std::vector<SectionToneParameter> list {
+            { "modMix", "Mod Mix", 1.0f }, { "delayMix", "Delay Mix", 1.0f }, { "delayFeedback", "Delay Feedback", 0.95f },
+            { "reverbMix", "Reverb Mix", 1.0f }, { "reverbSize", "Reverb Size", 1.0f } };
+        return list;
+    }
+
+    std::map<juce::String, float> sectionToneValues (const std::map<juce::String, float>& baseline, const SectionToneScale& scale)
+    {
+        const float factors[] { scale.mod, scale.delay, scale.feedback, scale.reverb, scale.size };
+        std::map<juce::String, float> values;
+        const auto& params = sectionToneParameters();
+        for (size_t i = 0; i < params.size(); ++i)
+            if (const auto found = baseline.find (params[i].id); found != baseline.end())
+                values[params[i].id] = juce::jlimit (0.0f, params[i].maximum, found->second * factors[i]);
+        return values;
+    }
+
+    std::map<juce::String, float> sectionToneBaseline (const juce::XmlElement& settings)
+    {
+        std::map<juce::String, float> baseline;
+        if (const auto* tone = toneNamed (settings.getStringAttribute ("rigName")))
+        {
+            for (const auto& [id, value] : tone->settings)
+                baseline[id] = value;
+            return baseline;
+        }
+        for (const auto* p : settings.getChildWithTagNameIterator ("PARAM"))
+            if (const auto id = p->getStringAttribute ("id"); id.isNotEmpty())
+                baseline[id] = (float) p->getDoubleAttribute ("value");
+        return baseline;
     }
 }

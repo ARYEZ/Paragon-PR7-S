@@ -4,6 +4,7 @@
 
 #include "engine/Lines.h"
 
+#include <map>
 #include <memory>
 #include <utility>
 #include <vector>
@@ -56,4 +57,29 @@ namespace pr7s
     juce::File pr7gRigFolder();             // PR7-G's own rig folder (its banks are subfolders)
     juce::Array<juce::File> pr7gRigFiles(); // every .pr7rig in it, sorted by name
     bool isPr7g (const juce::PluginDescription&);   // (its name holds "PR7-G")
+
+    // (0.205.0, the owner's "PR7-G amp sim effects", step 2) THE TONES CHANGE WITH THE SECTIONS: PR7-G's modulation
+    // mix, delay mix, delay feedback, reverb mix and reverb size written as automation, block by block of the
+    // SECTIONS row, scaled from the tone as chosen (the chorus's). Our own table, by ear on paper (not listened to
+    // here): a verse drier, a bridge, an intro and an outro wetter, a breakdown dry and tight.
+    struct SectionToneScale
+    {
+        float mod = 1.0f, delay = 1.0f, feedback = 1.0f, reverb = 1.0f, size = 1.0f;
+        bool operator== (const SectionToneScale&) const = default;
+    };
+    // By the block's name (sectionBaseOf; Pre-Chorus, Post-Chorus / Interlude / Instrumental their own, the rest by
+    // composerSectionFor): Chorus (Hook, Refrain, Drop) 1; Verse (Riff) mod 0.8 delay 0.6 feedback 0.85 reverb 0.7
+    // size 0.9; Pre-Chorus 0.9 0.85 0.95 0.9 1; Bridge (Middle 8, Break) 1.2 1.25 1.1 1.3 1.15; Breakdown (Build-Up)
+    // 0.6 0.4 0.7 0.5 0.8; Solo 1 1.15 1.05 0.9 1; Intro 1 1.3 1.1 1.4 1.2; Interlude / Post-Chorus / Instrumental
+    // 1.1 1.2 1.05 1.2 1.1; Outro / Ending / Tag / Coda 1 1.3 1.2 1.5 1.25; a name not in the list: 1.
+    SectionToneScale sectionToneScale (const juce::String& sectionName);
+    // The five knobs: PR7-G's id, its name as the plug-in shows it (the automation lane is found by it), its top.
+    struct SectionToneParameter { const char* id; const char* name; float maximum; };
+    const std::vector<SectionToneParameter>& sectionToneParameters();   // modMix, delayMix, delayFeedback, reverbMix, reverbSize
+    // The five real values (by id) for a block: the baseline's times the scale, kept inside 0..maximum; a knob
+    // missing from the baseline is left out.
+    std::map<juce::String, float> sectionToneValues (const std::map<juce::String, float>& baseline, const SectionToneScale&);
+    // The tone as chosen, from PR7-G's settings: one of ours when its rigName names one (that tone's settings),
+    // else the instance's own PARAM values.
+    std::map<juce::String, float> sectionToneBaseline (const juce::XmlElement& settings);
 }
