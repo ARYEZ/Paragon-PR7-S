@@ -11245,7 +11245,8 @@ namespace pr7s
         {
             if (n.keyswitch || (n.effect != E::vibrato && n.effect != E::bend && n.effect != E::dive && n.effect != E::release
                                 && n.effect != E::slideIn && n.effect != E::fallOff && n.effect != E::slowBend && n.effect != E::wobble
-                                && n.effect != E::scoop && n.effect != E::pullUp && n.effect != E::bendDive))
+                                && n.effect != E::scoop && n.effect != E::pullUp && n.effect != E::bendDive
+                                && n.effect != E::shimmer && n.effect != E::fastWobble && n.effect != E::bendBack))
                 continue;
             auto found = false;
             for (auto& g : groups)
@@ -11343,6 +11344,42 @@ namespace pr7s
                     const int shape[] = { 1, 0, -1, 0 };
                     out.push_back ({ Controller::Type::pitchbend, 0, x, juce::jlimit (0, 16383, 8192 + shape[(k - 1) % 4] * swing), true });
                 }
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::shimmer || g.effect == E::fastWobble)
+            {
+                // (0.207.0, the owner's round-six solos) The whammy bar shaken: a slow narrow shimmer from the start,
+                // `amount` semitones (0.4 if none) either way about three times a second; or a wide fast shake from a
+                // tenth of the note, `amount` (1.5 if none) either way about nine times a second; back to none at the end.
+                const auto slow = g.effect == E::shimmer;
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : slow ? 0.4 : 1.5;
+                const auto swing = juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0);
+                const auto from = slow ? g.at : g.at + (end - g.at) * 0.1;
+                const auto hz = slow ? 3.0 : 9.0;
+                const auto quarter = bpm > 0.0 ? (1.0 / (4.0 * hz)) * bpm / 60.0 : (slow ? 0.17 : 0.06);
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                if (from > g.at)
+                    out.push_back ({ Controller::Type::pitchbend, 0, from, 8192, false });
+                auto k = 1;
+                for (auto x = from + quarter; x < end - 1.0e-6 && k < 400; x += quarter, ++k)
+                {
+                    const int shape[] = { 1, 0, -1, 0 };
+                    out.push_back ({ Controller::Type::pitchbend, 0, x, juce::jlimit (0, 16383, 8192 + shape[(k - 1) % 4] * swing), true });
+                }
+                out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
+            }
+            else if (g.effect == E::bendBack)
+            {
+                // (0.207.0) Bent up by its amount (2 if none) over a third of the note (0.15 s to 1.2 s), held, let back
+                // down onto the note by 85 % of it, and played out straight.
+                const auto semitones = g.amount > 0.0f ? (double) g.amount : 2.0;
+                const auto bent = juce::jlimit (0, 16383, 8192 + juce::roundToInt (juce::jmin (1.0, semitones / range) * 8191.0));
+                const auto length = end - g.at;
+                const auto rise = juce::jmin (length * 0.4, bpm > 0.0 ? juce::jlimit (0.15, 1.2, 0.33 * length * 60.0 / bpm) * bpm / 60.0 : length * 0.33);
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at, 8192, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + rise, bent, true });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + length * 0.6, bent, false });
+                out.push_back ({ Controller::Type::pitchbend, 0, g.at + length * 0.85, 8192, true });
                 out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
             }
             else if (g.effect == E::slideIn)

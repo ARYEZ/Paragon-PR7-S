@@ -89,7 +89,7 @@ namespace pr7s
             n.pitch = juce::jlimit (0, 127, f[2].getIntValue());
             n.velocity = juce::jlimit (0.0f, 1.0f, f[3].getFloatValue());
             n.keyswitch = f[4] == "1";
-            n.effect = (LineNote::Effect) juce::jlimit (0, (int) LineNote::Effect::bendDive, f[5].getIntValue());
+            n.effect = (LineNote::Effect) juce::jlimit (0, (int) LineNote::Effect::bendBack, f[5].getIntValue());
             n.amount = f[6].getFloatValue();
             n.technique = (LineNote::Technique) juce::jlimit (0, (int) LineNote::Technique::harmonic, f[7].getIntValue());
             n.harmony = f[8] == "1";

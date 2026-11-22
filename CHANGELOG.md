@@ -2,6 +2,46 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.207.0
+
+Solos, round six: twenty new solo styles from your new songs' solos (read for their shapes only: how the phrases sit, their rhythm, register, note choice and techniques; never a solo note for note; the names are ours). Each writes the whole solo its own way, so the styles you already have play exactly as before.
+
+From melodic metal solos:
+- **HOLD, PEDAL, TWIN, STORM**: four-bar blocks, one idea each: two long notes then a picked pedal with a neighbour above, the same long notes then the chords' triads in triplets, a slow falling melody with a second guitar a third above, and a storm of three-note cells and a scale climb to a held note.
+- **PANELS OVER THE CHUG**: short panels in turn over a low chug: a chug figure and a two-octave leap, a minor triad looped fast, two held notes, a line two octaves down, a pedal-and-neighbour cell, a half-step trill, one high stab on the flat seven.
+- **SEQUENCE SOLO, THEN TWIN ARPEGGIOS**: two calls, four-note scale sequences climbing with a hold on beat three each bar, a minor-third trill, a falling run, a high minor sixth; then two guitars a third apart picking each chord's triad.
+- The first two end, on every other take, with **power chords falling a half step each sixteenth into the low tonic** (a new ending).
+
+From grunge solos with a wah and slow bends:
+- **TRILL, THEN HOLD**: in on a fast trill, then one phrase a bar, a few pickup notes into a long held note, whole-step bends, an octave lower before the last phrase.
+- **WAH WAVES**: three bursts of falling zigzag cells, each landing on a held note, lighter triplet lines between, down to the low root at the end.
+- **MAJOR RUB OVER A MINOR RIFF**: the key's major pentatonic over a minor riff, a calm first half, one build, two long notes bent up slowly.
+- **OCTAVE LEAPS & CRIES**: big register leaps, a note bent into the root again and again, falling octave pairs dipped with the bar, the last note bent up a fourth and back.
+- **LATE CALLS, BENT HOME**: three short calls coming in late in the bar, then one long build; most held notes start a slow bend into a chord tone.
+- **CELLS UP, SHAKE THE TOP**: four-note cells each played three or four times and moved up, two octaves; held notes shaken very wide.
+
+From alternative rock solos, electric and unplugged:
+- **STOP-TIME DOUBLE STOPS**: a screaming octave tremolo, then held double stops one every other bar where the band stops.
+- **PICKUP INTO CHORD STABS, RUNS TO LAND**: sixteenth pickups into held four-note seventh chords, then scale runs each landing a step higher, ending on the second.
+- **BLUES CURLS UNDER THE TONIC**: low, in the octave under the tonic, small half-step curls, many notes off the beat.
+- **PICKUP-QUARTER BREAK, LONG RING**: one cell (three sixteenths into a quarter) again and again with new notes, then a top note rung for the last quarter.
+- **UNPLUGGED PENTATONIC STREAM**: a quiet continuous line with no real rests, rising and falling every four bars, small bends on the fourth only.
+- **TRIPLET HAMMER, THEN FALLING TUNE**: one note hammered in triplets across the bar lines, then a falling major pentatonic tune.
+
+From sparse grunge solos that play the tune:
+- **THE TUNE AN OCTAVE DOWN**: a low singable tune in two-bar units played as exact copies, ornaments only on its long notes.
+- **THE RIFF ON A WARPED BAR**: three notes high up, a four-bar cycle played the same to the end, the whammy bar shimmering most notes.
+- **SUNG TWICE, TURNED**: a small tune of pickups and repeated notes with half-step turns, played twice, doubled an octave down by the lane's second guitar.
+- **SEESAW AND RING**: quarter notes seesawing between the low root and a note up high, busiest first and dying away, a chord rung at the end.
+- **FOUR BENDS AND OUT**: few phrases each ending on a long note, slides in from below, and out on power chords in sixteenths (a new ending).
+
+Also:
+- **BY STYLE with the metalcore guitar** now picks ROLLING SEQUENCES (the first take, as before) or one of the three melodic metal styles above, by the take.
+- **New whammy and bend moves** written as pitch bend: a slow narrow shimmer, a wide fast shake, and a bend let back down onto its note.
+- The options window files the new styles under BENDS, MELODIC, FAST RUNS & CELLS, TREMOLO & TRILLS, WHAMMY & SQUEALS and OTHER.
+
+Where I had to come close rather than exact: the files' 32nds are written as sixteenths or sixteenth triplets (your shortest note), the octave scream's bend is written in steps when it's picked in sixteenths, and THE RIFF ON A WARPED BAR uses its own riff cell (the solo can't see the guitar lane's riff). I can't listen here: these are checked by numbers, not by ear.
+
 ## 0.206.0
 
 Two fixes from your reports.

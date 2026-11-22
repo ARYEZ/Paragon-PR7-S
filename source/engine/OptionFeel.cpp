@@ -280,6 +280,28 @@ namespace pr7s
     {
         const auto n = soloStyleName (style) + " " + soloStyleDescription (style);
         const auto name = soloStyleName (style);
+        // (0.207.0) Round six's styles by what they are (their names would put several in the wrong place).
+        switch (style)
+        {
+            case SoloStyle::holdPedalTwinStorm: case SoloStyle::sequenceThenTwinArpeggios: case SoloStyle::wahWaves:
+            case SoloStyle::cellsUpShakeTheTop:
+                return "FAST RUNS & CELLS";
+            case SoloStyle::trillThenHold:
+                return "TREMOLO & TRILLS";
+            case SoloStyle::majorRubOverMinorRiff: case SoloStyle::octaveLeapsAndCries: case SoloStyle::lateCallsBentHome:
+            case SoloStyle::bluesCurlsUnderTheTonic: case SoloStyle::fourBendsAndOut:
+                return "BENDS";
+            case SoloStyle::pickupQuarterBreak: case SoloStyle::unpluggedPentatonicStream: case SoloStyle::tripletHammerFallingTune:
+            case SoloStyle::tuneAnOctaveDown: case SoloStyle::sungTwiceTurned:
+                return "MELODIC";
+            case SoloStyle::riffOnAWarpedBar:
+                return "WHAMMY & SQUEALS";
+            case SoloStyle::panelsOverTheChug: case SoloStyle::stopTimeDoubleStops: case SoloStyle::pickupIntoChordStabs:
+            case SoloStyle::seesawAndRing:
+                return "OTHER";
+            default:
+                break;
+        }
         if (hasWord (name, { "TAP", "LEGATO", "PULL-OFF", "PULL OFF", "THROW" }))
             return "TAPPING & LEGATO";
         if (hasWord (name, { "TREMOLO", "TRILL" }))
