@@ -12902,6 +12902,7 @@ namespace pr7s
             {
                 auto state = ComposerState::fromString (b.recipe);
                 state.key = newKey;
+                dropPitchedBarLocks (state);   // (0.202.0: kept notes in the old key)
                 b.recipe = state.toString();
             }
             for (auto& lane : b.lanes)
@@ -15527,6 +15528,10 @@ namespace pr7s
             auto state = ComposerState::fromString (block.recipe);
             state.bars = block.bars;
             state.transition = block.transition;   // (0.104.0: the block's own, whenever it was chosen)
+            // (0.202.0) The chords changed under it: a pitched lane's locked bars no longer fit them (written again);
+            // the drums' stay as kept. Bars past the block's end are let go.
+            dropPitchedBarLocks (state);
+            trimBarLocks (state, block.bars, getProject().signatures().barLengthAt (place.start));
             const auto context = getComposerContext (place.start);
             // (0.175.0) Each lane made only when one of its tracks is still as built (not every lane, lead and
             // solo included, before finding out none was).

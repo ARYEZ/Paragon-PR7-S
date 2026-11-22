@@ -20,22 +20,22 @@ ComposerTracksPage::ComposerTracksPage (Studio& s) : studio (s)
         r->name.setText (laneName (i), juce::dontSendNotification);
         r->name.setFont (ParagonLookAndFeel::titleFont (18.0f));
         r->name.setColour (juce::Label::textColourId, ParagonColours::text);
-        addAndMakeVisible (r->name);
+        content.addAndMakeVisible (r->name);
         r->names.setTooltip ("The names of the tracks the " + laneName (i).toLowerCase()
                              + " lane plays on, separated by commas (upper or lower case alike). A name's words found in a track's name count too: "
                              "RHYTHM finds RHYTHM GUITAR LEFT and RHYTHM GUITAR RIGHT. The first is what a new one is called.");
         r->names.setFont (ParagonLookAndFeel::textFont (16.0f));
         r->names.onReturnKey = [this, r] { setNames (r->lane, r->names.getText()); };
         r->names.onFocusLost = [this, r] { setNames (r->lane, r->names.getText()); };
-        addAndMakeVisible (r->names);
+        content.addAndMakeVisible (r->names);
         r->every.setWantsKeyboardFocus (false);
         r->every.setTooltip ("On: the lane plays on every track with one of these names (a guitar left and a guitar right). "
                              "Off: on the first one found.");
         r->every.onClick = [this, r] { setEvery (r->lane, r->every.getToggleState()); };
-        addAndMakeVisible (r->every);
+        content.addAndMakeVisible (r->every);
         r->found.setFont (ParagonLookAndFeel::textFont (13.0f));
         r->found.setColour (juce::Label::textColourId, ParagonColours::textDim);
-        addAndMakeVisible (r->found);
+        content.addAndMakeVisible (r->found);
         // (0.201.0, the owner's levels) LEVEL: where a new track's fader starts.
         r->level.setSliderStyle (juce::Slider::LinearBar);
         r->level.setRange (-60.0, 6.0, 0.1);
@@ -54,19 +54,25 @@ ComposerTracksPage::ComposerTracksPage (Studio& s) : studio (s)
                              + " lane starts at. Tracks it finds by name keep their own fader. Double-click to type a value; "
                                "Ctrl-click for the usual one.");
         r->level.onValueChange = [this, r] { studio.setLaneLevel (r->lane, (float) r->level.getValue()); };
-        addAndMakeVisible (r->level);
+        content.addAndMakeVisible (r->level);
         rows[(size_t) i] = std::move (row);
     }
     looseKey.setWantsKeyboardFocus (false);
     looseKey.setTooltip ("A lane on two or more tracks: the copies after the first with their own small timing and velocity "
                          "differences (kept in their velocity layers), as a second take would have. Off: the same notes on each.");
     looseKey.onClick = [this] { setLooseCopies (looseKey.getToggleState()); };
-    addAndMakeVisible (looseKey);
+    content.addAndMakeVisible (looseKey);
     resetKey.setWantsKeyboardFocus (false);
     resetKey.setTooltip ("Every lane back to its usual track name (Bass, Guitar, Lead Guitar, Piano, Melody, Drums...), one track each, "
                          "and its usual level (chords -11.5 dB, melody -9.5, bass -5.5, the rest 0)");
     resetKey.onClick = [this] { resetAll(); };
-    addAndMakeVisible (resetKey);
+    content.addAndMakeVisible (resetKey);
+    // (0.202.0) The rows in a view of their own: at the Hub's usual height they ran past the panel (the lower lanes and
+    // the reset key hidden).
+    view.setViewedComponent (&content, false);
+    view.setScrollBarsShown (true, false);
+    view.setScrollBarThickness (10);
+    addAndMakeVisible (view);
     refresh();
     startTimerHz (4);
 }
@@ -159,23 +165,31 @@ void ComposerTracksPage::resized()
     area.removeFromTop (8);
     headArea = area.removeFromTop (22);
     area.removeFromTop (4);
+    view.setBounds (area);
+    // (0.202.0) Tighter rows (the found tracks beside the name's foot), in the view: they scroll when the panel is short.
+    const auto width = juce::jmax (400, area.getWidth() - 14);
+    constexpr int rowHeight = 50;
+    content.setSize (width, Studio::numComposerTrackLanes * (rowHeight + 4) + 10 + 30 + 12 + 34 + 6);
+    if (content.getHeight() <= area.getHeight())
+        content.setSize (area.getWidth(), content.getHeight());
+    auto inside = content.getLocalBounds();
     for (auto& r : rows)
     {
-        auto row = area.removeFromTop (58);
-        auto top = row.removeFromTop (34).reduced (0, 2);
+        auto row = inside.removeFromTop (rowHeight);
+        auto top = row.removeFromTop (30).reduced (0, 1);
         r->name.setBounds (top.removeFromLeft (140));
         r->level.setBounds (top.removeFromRight (180).reduced (0, 3));
         top.removeFromRight (16);
         r->names.setBounds (top.removeFromLeft (juce::jmax (200, top.getWidth() - 260)));
         top.removeFromLeft (16);
         r->every.setBounds (top);
-        r->found.setBounds (row.withTrimmedLeft (140).removeFromTop (20));
-        area.removeFromTop (4);
+        r->found.setBounds (row.withTrimmedLeft (140).removeFromTop (18));
+        inside.removeFromTop (4);
     }
-    area.removeFromTop (10);
-    looseKey.setBounds (area.removeFromTop (30).withWidth (juce::jmin (520, area.getWidth())));
-    area.removeFromTop (12);
-    resetKey.setBounds (area.removeFromTop (34).withWidth (380));
+    inside.removeFromTop (10);
+    looseKey.setBounds (inside.removeFromTop (30).withWidth (juce::jmin (520, inside.getWidth())));
+    inside.removeFromTop (12);
+    resetKey.setBounds (inside.removeFromTop (34).withWidth (380));
 }
 
 void ComposerTracksPage::paint (juce::Graphics& g)

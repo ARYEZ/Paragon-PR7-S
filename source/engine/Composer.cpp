@@ -63,6 +63,60 @@ namespace pr7s
         lane (ComposerLayer::drums).style = 1;
     }
 
+    namespace
+    {
+        // (0.202.0) A lane's bar locks as three fields of its text (no commas, semicolons or bars in them): the bars in
+        // hex, the kept notes ("beat:length:pitch:velocity:keyswitch:effect:amount:technique:harmony" by slashes; "-"
+        // none) and the fill (its id's bytes in hex; "-" none).
+        juce::String barLocksToText (const ComposerLane& l)
+        {
+            juce::StringArray notes;
+            for (const auto& n : l.keptNotes)
+                notes.add (juce::String (n.beat, 6) + ":" + juce::String (n.length, 6) + ":" + juce::String (n.pitch) + ":"
+                           + juce::String (n.velocity, 4) + ":" + (n.keyswitch ? "1" : "0") + ":" + juce::String ((int) n.effect) + ":"
+                           + juce::String (n.amount, 4) + ":" + juce::String ((int) n.technique) + ":" + (n.harmony ? "1" : "0"));
+            const auto fill = l.fill.isEmpty() ? juce::String ("-") : juce::String::toHexString (l.fill.toRawUTF8(), (int) l.fill.getNumBytesAsUTF8(), 0);
+            return juce::String::toHexString ((juce::int64) l.lockedBars) + "," + (notes.isEmpty() ? juce::String ("-") : notes.joinIntoString ("/"))
+                 + "," + fill;
+        }
+
+        void barLocksFromText (ComposerLane& l, const juce::String& bars, const juce::String& notes, const juce::String& fill)
+        {
+            l.lockedBars = (juce::uint64) bars.getHexValue64();
+            l.keptNotes.clear();
+            if (notes != "-")
+                for (const auto& text : juce::StringArray::fromTokens (notes, "/", ""))
+                {
+                    const auto f = juce::StringArray::fromTokens (text, ":", "");
+                    if (f.size() < 9)
+                        continue;
+                    LineNote n;
+                    n.beat = f[0].getDoubleValue();
+                    n.length = juce::jmax (0.0, f[1].getDoubleValue());
+                    n.pitch = juce::jlimit (0, 127, f[2].getIntValue());
+                    n.velocity = juce::jlimit (0.0f, 1.0f, f[3].getFloatValue());
+                    n.keyswitch = f[4] == "1";
+                    n.effect = (LineNote::Effect) juce::jlimit (0, (int) LineNote::Effect::bendDive, f[5].getIntValue());
+                    n.amount = f[6].getFloatValue();
+                    n.technique = (LineNote::Technique) juce::jlimit (0, (int) LineNote::Technique::harmonic, f[7].getIntValue());
+                    n.harmony = f[8] == "1";
+                    l.keptNotes.push_back (n);
+                }
+            l.fill = {};
+            if (fill != "-" && fill.isNotEmpty())
+            {
+                juce::MemoryBlock bytes;
+                bytes.loadFromHexString (fill);
+                l.fill = juce::String::fromUTF8 ((const char*) bytes.getData(), (int) bytes.getSize());
+            }
+            if (l.lockedBars == 0)
+            {
+                l.keptNotes.clear();
+                l.fill = {};
+            }
+        }
+    }
+
     juce::String ComposerState::toString() const
     {
         // key index | genre | mood | bars | progression | fromChordTrack | toChordTrack | lanes (on,locked,style,variation;...)
@@ -73,7 +127,8 @@ namespace pr7s
             lanesText.add (juce::String (l.on ? 1 : 0) + "," + juce::String (l.locked ? 1 : 0) + "," + juce::String (l.style) + "," + juce::String (l.variation)
                            + "," + juce::String (l.busy, 2) + "," + juce::String (l.lowString ? 1 : 0) + "," + juce::String (l.onlyString)
                            + "," + juce::String (l.doubleSync ? 1 : 0) + "," + juce::String (l.approach) + "," + juce::String (l.octave)
-                           + "," + juce::String (l.ownStyles ? 1 : 0) + "," + juce::String (l.syncTo) + "," + juce::String (l.second));
+                           + "," + juce::String (l.ownStyles ? 1 : 0) + "," + juce::String (l.syncTo) + "," + juce::String (l.second)
+                           + "," + barLocksToText (l));   // (0.202.0: the bar locks, three more fields)
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
              + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
@@ -129,6 +184,8 @@ namespace pr7s
                 l.syncTo = juce::jlimit (-1, composerLayerCount - 1, v[11].getIntValue());   // (0.126.0)
             if (v.size() >= 13)
                 l.second = juce::jlimit (0, secondAcousticParts().size() - 1, v[12].getIntValue());   // (0.193.0)
+            if (v.size() >= 16)
+                barLocksFromText (l, v[13], v[14], v[15]);   // (0.202.0; older text: no bar locks)
         }
         if (parts.size() >= 9)
         {
@@ -2140,6 +2197,7 @@ namespace pr7s
         //   RISING BASS (At the End of August): tremolo-picked or held chords while the bass climbs a scale step a bar.
         std::optional<LineIdea> extraOptionLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
         LineIdea syncedLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+        void lockedLane (ComposerLayer, LineIdea&, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);   // (0.202.0)
 
         // (0.193.0) The guitar lane as it plays here, made with no sync anywhere (so a lane asking for it can never
         // come back round to itself): what the acoustic's riff styles and the shared options that follow the guitar read.
@@ -26071,7 +26129,9 @@ namespace pr7s
             auto unsynced = plain;
             for (auto& each : unsynced.lanes)
                 each.syncTo = -1;
-            const auto leader = s.followsOwnLeader (l) ? syncedLayer (*leaderLayer, unsynced, spans, c) : rawLayer (*leaderLayer, plain, spans, c);
+            auto leader = s.followsOwnLeader (l) ? syncedLayer (*leaderLayer, unsynced, spans, c) : rawLayer (*leaderLayer, plain, spans, c);
+            if (! s.followsOwnLeader (l))
+                lockedLane (*leaderLayer, leader, plain, spans, c);   // (0.202.0: the leader as it plays, its locked bars in)
             const auto rhythm = syncRhythmOf (*leaderLayer, leader, c.beatsPerBar, 0.0);   // (an idea's beats: from its first chord)
             if (rhythm.all.empty())
                 return rawLayer (l, s, spans, c);
@@ -26193,9 +26253,29 @@ namespace pr7s
             sortNotes (idea);
             return idea;
         }
-        LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        LineIdea syncedLayerUnlocked (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
             return ComposeMemo::get (ComposeMemo::Kind::synced, l, s, spans, c, [&] { return syncedLayerMade (l, s, spans, c); });
+        }
+        // (0.202.0) A lane's bar locks (and its chosen fill) laid over an idea made for it.
+        void lockedLane (ComposerLayer l, LineIdea& idea, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            const auto& lane = s.lane (l);
+            if (! lane.hasBarLocks() || spans.empty())
+                return;
+            std::vector<LineNote> fill;
+            auto fillLength = 0.0;
+            if (l == ComposerLayer::drums && lane.fill.isNotEmpty())
+                fill = composerFillNotes (lane.fill, s, c, fillLength);
+            applyBarLocks (idea, lane, c.beatsPerBar, composerBarCount (spans, c.beatsPerBar), fill.empty() ? nullptr : &fill, fillLength);
+        }
+        // What every writer that follows a lane reads (SYNC, the bass doubling the guitar, the kick on the riff): the
+        // lane as it plays, its locked bars in (0.202.0).
+        LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            auto idea = syncedLayerUnlocked (l, s, spans, c);
+            lockedLane (l, idea, s, spans, c);
+            return idea;
         }
     }
 
@@ -28272,9 +28352,10 @@ namespace pr7s
                 // (0.114.0) Your riff: nothing done to it (the others follow it through SYNC).
                 auto riff = rawLayer (l, s, spans, c);
                 moveByOctaves (riff, l, s.lane (l).octave);
+                lockedLane (l, riff, s, spans, c);   // (0.202.0)
                 return riff;
             }
-            auto idea = syncedLayer (l, s, spans, c);
+            auto idea = syncedLayerUnlocked (l, s, spans, c);   // (0.202.0: its bar locks laid over last, as they were kept)
             idea.part = composerPartOf (l);
             applyTransition (l, idea, s, spans, c);   // (0.104.0: the block's hand-over to the next)
             // IDEAS' HUMANIZE, the same rules (a guitar's velocity layers kept; FEEL: rhythm and bass ahead,
@@ -28311,6 +28392,7 @@ namespace pr7s
                               spans.back().end - spans.front().start, on.profile != nullptr ? on.profile->releaseKey() : -1);
             }
             moveByOctaves (idea, l, s.lane (l).octave);   // (0.120.0: OCTAVE, last)
+            lockedLane (l, idea, s, spans, c);   // (0.202.0: the locked bars exactly as kept, after everything)
             return idea;
         }
     }
@@ -28333,6 +28415,368 @@ namespace pr7s
         for (auto& n : idea.notes)
             if (! n.keyswitch)
                 n.pitch = juce::jlimit (0, 127, n.pitch + 12 * octaves);
+    }
+
+    //==========================================================================
+    // (0.202.0) BAR LOCKS.
+    namespace
+    {
+        constexpr int mostLockedBars = 64;
+        bool barLocked (juce::uint64 mask, int bar, int barCount) noexcept
+        {
+            return bar >= 0 && bar < juce::jmin (barCount, mostLockedBars) && ((mask >> bar) & 1u) != 0;
+        }
+        int barOf (double beat, double bpb) noexcept { return (int) std::floor (beat / bpb + 1.0e-9); }
+        // The end (in beats) of the run of locked bars `bar` is in.
+        double runEndOf (juce::uint64 mask, int bar, int barCount, double bpb) noexcept
+        {
+            auto b = bar;
+            while (barLocked (mask, b, barCount))
+                ++b;
+            return b * bpb;
+        }
+        double runStartOf (juce::uint64 mask, int bar, int barCount, double bpb) noexcept
+        {
+            auto b = bar;
+            while (barLocked (mask, b - 1, barCount))
+                --b;
+            return b * bpb;
+        }
+        // The first locked bar's start after `bar` (none: -1).
+        double nextLockedStart (juce::uint64 mask, int bar, int barCount, double bpb) noexcept
+        {
+            for (auto b = bar + 1; b < juce::jmin (barCount, mostLockedBars); ++b)
+                if (barLocked (mask, b, barCount))
+                    return b * bpb;
+            return -1.0;
+        }
+        juce::uint64 barsMask (int barCount) noexcept
+        {
+            return barCount >= mostLockedBars ? ~(juce::uint64) 0 : barCount <= 0 ? 0 : (((juce::uint64) 1 << barCount) - 1);
+        }
+        // The bar a kept note belongs to: its own, or (a keyswitch just before a locked bar) the one it's pressed for.
+        int keptBarOf (const LineNote& n, juce::uint64 mask, int barCount, double bpb) noexcept
+        {
+            const auto own = barOf (n.beat, bpb);
+            if (n.keyswitch && ! barLocked (mask, own, barCount) && barLocked (mask, barOf (n.beat + 0.25, bpb), barCount))
+                return barOf (n.beat + 0.25, bpb);
+            return own;
+        }
+        void sortByBeat (std::vector<LineNote>& notes)
+        {
+            std::stable_sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        }
+    }
+
+    int composerBarCount (const std::vector<ChordSpan>& spans, double beatsPerBar)
+    {
+        if (spans.empty() || beatsPerBar <= 0.0)
+            return 0;
+        return juce::jmax (1, (int) std::ceil ((spans.back().end - spans.front().start) / beatsPerBar - 1.0e-6));
+    }
+
+    void lockLaneBars (ComposerLane& lane, const LineIdea& shown, juce::uint64 bars, double bpb, int barCount)
+    {
+        if (bpb <= 0.0)
+            return;
+        const auto mask = (lane.lockedBars | bars) & barsMask (juce::jmin (barCount, mostLockedBars));
+        std::vector<LineNote> kept;
+        for (auto n : shown.notes)
+        {
+            const auto bar = keptBarOf (n, mask, barCount, bpb);
+            if (! barLocked (mask, bar, barCount))
+                continue;
+            if (! n.keyswitch)
+            {
+                n.length = juce::jmin (n.length, runEndOf (mask, bar, barCount, bpb) - n.beat);
+                if (n.length <= 0.0)
+                    continue;
+            }
+            kept.push_back (n);
+        }
+        lane.lockedBars = mask;
+        lane.keptNotes = std::move (kept);
+        if (mask == 0)
+            lane.fill = {};
+    }
+
+    void unlockLaneBars (ComposerLane& lane, juce::uint64 bars, double bpb)
+    {
+        if (bpb <= 0.0)
+            return;
+        const auto mask = lane.lockedBars & ~bars;
+        std::vector<LineNote> kept;
+        for (auto n : lane.keptNotes)
+        {
+            const auto bar = keptBarOf (n, mask, mostLockedBars, bpb);
+            if (! barLocked (mask, bar, mostLockedBars))
+                continue;
+            if (! n.keyswitch)
+                n.length = juce::jmin (n.length, runEndOf (mask, bar, mostLockedBars, bpb) - n.beat);
+            kept.push_back (n);
+        }
+        lane.lockedBars = mask;
+        lane.keptNotes = std::move (kept);
+        if (mask == 0)
+            lane.fill = {};
+    }
+
+    void dropBarLocks (ComposerLane& lane)
+    {
+        lane.lockedBars = 0;
+        lane.keptNotes.clear();
+        lane.fill = {};
+    }
+
+    void dropPitchedBarLocks (ComposerState& s)
+    {
+        for (const auto l : composerLayers())
+            if (l != ComposerLayer::drums)
+                dropBarLocks (s.lane (l));
+    }
+
+    void trimBarLocks (ComposerState& s, int barCount, double bpb)
+    {
+        const auto keep = barsMask (juce::jmin (barCount, mostLockedBars));
+        for (const auto l : composerLayers())
+            if (auto& lane = s.lane (l); (lane.lockedBars & ~keep) != 0)
+                unlockLaneBars (lane, lane.lockedBars & ~keep, bpb);
+    }
+
+    void applyBarLocks (LineIdea& idea, const ComposerLane& lane, double bpb, int barCount, const std::vector<LineNote>* fill, double fillLength)
+    {
+        const auto mask = lane.lockedBars;
+        if (mask == 0 || bpb <= 0.0 || barCount <= 0)
+            return;
+        const auto length = barCount * bpb;
+        const auto original = idea.notes;
+        std::vector<LineNote> out;
+        out.reserve (original.size() + lane.keptNotes.size());
+        // The new notes: only in bars not locked, none ringing into a locked one (keyswitches are held: left as they are).
+        for (auto n : original)
+        {
+            const auto bar = barOf (n.beat, bpb);
+            if (barLocked (mask, bar, barCount))
+                continue;
+            if (! n.keyswitch)
+                if (const auto next = nextLockedStart (mask, bar, barCount, bpb); next >= 0.0 && n.beat + n.length > next)
+                {
+                    n.length = next - n.beat;
+                    if (n.length < 0.01)
+                        continue;
+                }
+            out.push_back (n);
+        }
+        // A fill over the end of every bar not locked (the drums' FILLS).
+        if (fill != nullptr && ! fill->empty())
+        {
+            const auto fl = juce::jlimit (0.05, bpb, fillLength > 0.0 ? fillLength : bpb);
+            for (int bar = 0; bar < barCount; ++bar)
+            {
+                if (barLocked (mask, bar, barCount))
+                    continue;
+                const auto end = juce::jmin (length, (bar + 1) * bpb);
+                const auto from = juce::jmax (bar * bpb, end - fl);
+                out.erase (std::remove_if (out.begin(), out.end(), [&] (const LineNote& n)
+                           { return ! n.keyswitch && n.beat >= from - 1.0e-6 && n.beat < end - 1.0e-6; }), out.end());
+                for (const auto& n : *fill)
+                    if (const auto at = from + n.beat; at < end - 1.0e-6 && at >= from - 1.0e-6)
+                    {
+                        auto placed = n;
+                        placed.beat = at;
+                        placed.length = juce::jmin (n.length > 0.0 ? n.length : 0.1, end - at);
+                        out.push_back (placed);
+                    }
+            }
+        }
+        // The kept notes, each to the end of its locked run (a keyswitch pressed just before a run: the new ones from
+        // there to the run's start give way to it).
+        for (auto n : lane.keptNotes)
+        {
+            const auto bar = keptBarOf (n, mask, barCount, bpb);
+            if (! barLocked (mask, bar, barCount) || n.beat >= length - 1.0e-9)
+                continue;
+            if (n.keyswitch)
+            {
+                if (const auto start = runStartOf (mask, bar, barCount, bpb); n.beat < start)
+                    out.erase (std::remove_if (out.begin(), out.end(), [&] (const LineNote& o)
+                               { return o.keyswitch && o.beat >= n.beat - 1.0e-9 && o.beat < start; }), out.end());
+            }
+            else
+            {
+                n.length = juce::jmin (n.length, runEndOf (mask, bar, barCount, bpb) - n.beat);
+                if (n.length <= 0.0)
+                    continue;
+            }
+            out.push_back (n);
+        }
+        // Back in the new notes after a locked run: the articulation the new idea was on there (a short keyswitch
+        // pressed again), so a kept bar's keyswitch doesn't carry on into them.
+        for (int bar = 1; bar < barCount; ++bar)
+        {
+            if (barLocked (mask, bar, barCount) || ! barLocked (mask, bar - 1, barCount))
+                continue;
+            const auto at = bar * bpb;
+            const LineNote* last = nullptr;
+            for (const auto& n : original)
+                if (n.keyswitch && n.beat < at - 1.0e-9 && n.length < bpb)
+                    last = &n;
+            const auto already = std::any_of (out.begin(), out.end(), [at] (const LineNote& n) { return n.keyswitch && std::abs (n.beat - at) < 0.02; });
+            if (last != nullptr && ! already)
+            {
+                auto again = *last;
+                again.beat = at;
+                out.push_back (again);
+            }
+        }
+        // A fill lands: the locked bar after one starts on a crash and a kick.
+        if (fill != nullptr && ! fill->empty())
+        {
+            std::map<int, int> kicks;
+            for (const auto& n : original)
+                if (n.pitch >= 33 && n.pitch <= 36)
+                    ++kicks[n.pitch];
+            auto kick = GmDrum::kick;
+            for (const auto& [pitch, count] : kicks)
+                if (count > kicks[kick])
+                    kick = pitch;
+            for (int bar = 1; bar < barCount; ++bar)
+            {
+                if (! barLocked (mask, bar, barCount) || barLocked (mask, bar - 1, barCount))
+                    continue;
+                const auto at = bar * bpb;
+                const auto has = [&] (auto test)
+                {
+                    return std::any_of (out.begin(), out.end(), [&] (const LineNote& n) { return ! n.keyswitch && std::abs (n.beat - at) < 0.03 && test (n.pitch); });
+                };
+                if (! has ([] (int p) { return p == GmDrum::crash || p == GmDrum::crash2 || p == GmDrum::china || p == 55; }))
+                    out.push_back ({ at, 0.5, GmDrum::crash, 0.9f });
+                if (! has ([] (int p) { return p >= 33 && p <= 36; }))
+                    out.push_back ({ at, 0.25, kick, 0.9f });
+            }
+        }
+        sortByBeat (out);
+        idea.notes = std::move (out);
+    }
+
+    std::vector<ComposerFill> composerFills (const ComposerState& s, const ComposerContext& c)
+    {
+        std::vector<ComposerFill> out;
+        const auto section = juce::jlimit (0, (int) drumSections().size() - 1, s.lane (ComposerLayer::drums).style);
+        const auto bpb = c.beatsPerBar;
+        // The library's fill files for the section (the favourite folders' first, as the drums lane's own fills).
+        if (! c.libraryGrooves.empty())
+        {
+            auto fills = libraryGroovesFor (c.libraryGrooves, section, true, 24, true);
+            for (auto& f : fills)
+                f.favourite = isInFavouriteFolder (f.file, c.favouriteFolders);
+            std::stable_partition (fills.begin(), fills.end(), [] (const LibraryGroove& f) { return f.favourite; });
+            for (const auto& f : fills)
+            {
+                const auto path = f.file.getFullPathName();
+                out.push_back ({ "lib:" + path, f.name + " (" + f.folder + ")", "FILLS",
+                                 "A fill from " + f.folder + (f.favourite ? " (a favourite folder)" : juce::String()) + "  -  " + path });
+            }
+        }
+        // The beat maker's own.
+        static const char* kinds[] = { "Snare Roll", "Round the Toms", "Snare and Toms in Turn", "Snare, Then the Toms" };
+        for (const auto beats : { 1, 2 })
+            for (int kind = 0; kind < 4; ++kind)
+                out.push_back ({ "gen:" + juce::String (kind) + ":" + juce::String (beats),
+                                 "Beat Maker: " + juce::String (kinds[kind]) + (beats == 1 ? " (1 Beat)" : " (2 Beats)"), "FILLS",
+                                 "The beat maker's " + juce::String (kinds[kind]).toLowerCase() + " over the bar's last "
+                                   + (beats == 1 ? juce::String ("beat") : juce::String ("two beats")) + ", in the "
+                                   + guitarStyleName (c.style).toLowerCase() + " style" });
+        juce::ignoreUnused (bpb);
+        // The learned drummer's, for the section (else the verse's, the chorus's).
+        if (c.drummer.has_value())
+            for (const auto at : { section, 1, 2 })
+                if (const auto& habits = c.drummer->sections[(size_t) juce::jlimit (0, (int) DrumProfile::sectionCount - 1, at)]; ! habits.fills.empty())
+                {
+                    for (size_t i = 0; i < habits.fills.size(); ++i)
+                        out.push_back ({ "learned:" + juce::String (at) + ":" + juce::String ((int) i),
+                                         c.drummer->name + "'s Fill " + juce::String ((int) i + 1) + " (" + juce::String (habits.fills[i].beats)
+                                           + (habits.fills[i].beats == 1 ? " Beat)" : " Beats)"),
+                                         "FILLS",
+                                         "A fill " + c.drummer->name + " played " + juce::String (habits.fills[i].count) + " times" });
+                    break;
+                }
+        return out;
+    }
+
+    std::vector<LineNote> composerFillNotes (const juce::String& id, const ComposerState& s, const ComposerContext& c, double& length)
+    {
+        length = 0.0;
+        const auto bpb = c.beatsPerBar;
+        if (id.startsWith ("gen:"))
+        {
+            const auto f = juce::StringArray::fromTokens (id.substring (4), ":", "");
+            const auto beats = juce::jlimit (1, 4, f[1].getIntValue());
+            length = beats * bpb / 4.0;
+            return generatedFillBar (c.style, f[0].getIntValue(), beats, bpb);
+        }
+        if (id.startsWith ("learned:"))
+        {
+            if (! c.drummer.has_value())
+                return {};
+            const auto f = juce::StringArray::fromTokens (id.substring (8), ":", "");
+            const auto at = f[0].getIntValue(), index = f[1].getIntValue();
+            if (! juce::isPositiveAndBelow (at, (int) DrumProfile::sectionCount))
+                return {};
+            const auto& fills = c.drummer->sections[(size_t) at].fills;
+            if (! juce::isPositiveAndBelow (index, (int) fills.size()))
+                return {};
+            const auto& pattern = fills[(size_t) index];
+            length = juce::jlimit (1, 4, pattern.beats) * bpb / 4.0;
+            std::vector<LineNote> out;
+            for (const auto& h : pattern.hits)
+                out.push_back ({ h.step * bpb / (double) learnSteps, 0.1, h.note, (float) juce::jlimit (1, 127, h.velocity) / 127.0f });
+            sortByBeat (out);
+            return out;
+        }
+        if (id.startsWith ("lib:"))
+        {
+            const auto path = id.substring (4);
+            std::optional<LibraryGroove> groove;
+            const auto section = juce::jlimit (0, (int) drumSections().size() - 1, s.lane (ComposerLayer::drums).style);
+            for (const auto& f : libraryGroovesFor (c.libraryGrooves, section, true, 24, true))
+                if (f.file.getFullPathName() == path)
+                    groove = f;
+            if (! groove.has_value())
+                for (const auto& f : c.libraryGrooves)
+                    if (f.file.getFullPathName() == path)
+                        groove = f;
+            if (! groove.has_value())
+                return {};
+            auto notes = libraryFillBar (*groove, bpb);
+            if (notes.empty())
+                return {};
+            auto last = 0.0;
+            for (const auto& n : notes)
+                last = juce::jmax (last, n.beat);
+            length = juce::jlimit (bpb / 4.0, bpb, std::ceil ((last + 1.0e-6) / (bpb / 4.0)) * (bpb / 4.0));
+            return notes;
+        }
+        return {};
+    }
+
+    bool rollFill (ComposerState& s, const ComposerContext& c, juce::Random& random)
+    {
+        const auto fills = composerFills (s, c);
+        if (fills.empty())
+            return false;
+        auto& lane = s.lane (ComposerLayer::drums);
+        if (fills.size() == 1)
+        {
+            lane.fill = fills.front().id;
+            return true;
+        }
+        juce::String next;
+        do
+            next = fills[(size_t) random.nextInt ((int) fills.size())].id;
+        while (next == lane.fill);
+        lane.fill = next;
+        return true;
     }
 
     //==========================================================================

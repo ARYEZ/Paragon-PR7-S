@@ -369,6 +369,17 @@ TEST_CASE ("Snapshot: the composer (0.58.0)", "[.][snapshot-composer]")
             page.setDoubleSync (L::drums, true);
         }
         page.setSize (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SYNC", {}) == "1" ? 1700 : 1500, 900);
+        // (0.202.0) PARAGON_SNAPSHOT_BARLOCKS=1: the drums' bars 1-3 and 5-7 locked, rolled to a fill; bars 2-4 of the
+        // bass chosen.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_BARLOCKS", {}) == "1")
+        {
+            page.setSize (1700, 900);
+            page.lockBars (L::drums, 0x77);
+            page.roll (L::drums);
+            page.setLocked (L::bass, false);
+            page.lockBars (L::bass, 0x3f);
+            page.selectBars (L::melody, 1, 3);
+        }
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };

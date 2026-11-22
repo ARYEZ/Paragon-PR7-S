@@ -21,6 +21,9 @@ namespace pr7s
     // (0.65.0: SOLO, the owner asked: a guitar solo's section; added last, so the others keep their numbers.)
     enum class DrumSection { intro, verse, chorus, bridge, breakdown, ending, solo };
     const std::vector<DrumSection>& drumSections();
+    // (0.202.0) One of the generator's fills on its own (kind 0-3: a snare roll, round the toms, snare and toms in turn,
+    // snare then the toms; over the bar's last `beats` beats), beats from the fill's start (General MIDI notes).
+    std::vector<LineNote> generatedFillBar (GuitarStyle, int kind, int beats, double beatsPerBar);
     juce::String drumSectionName (DrumSection);   // "INTRO", "VERSE"...
 
     struct DrumSettings

@@ -37,6 +37,7 @@ public:
         ValueSlider level;   // (0.201.0) LEVEL: a new track's fader, dB (double-click to type)
     };
     Row& getRow (int lane) { return *rows[(size_t) lane]; }
+    juce::Viewport& getView() { return view; }
 
     static juce::String laneName (int lane);   // "BASS", "GUITAR", ...
 
@@ -47,5 +48,7 @@ private:
     juce::ToggleButton looseKey { "PLAY THE COPIES A LITTLE LOOSE (AS IF PLAYED TWICE)" };
     juce::TextButton resetKey { "ALL BACK TO THE USUAL NAMES AND LEVELS" };
     juce::Rectangle<int> titleArea, noteArea, headArea;
+    juce::Component content;    // (0.202.0) the rows, in `view`: scrolled when the panel is short
+    juce::Viewport view;
     juce::uint64 seenChange = 0;
 };

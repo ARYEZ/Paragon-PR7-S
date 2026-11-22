@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.202.0
+
+BAR LOCKS in ARCHITECT: keep the bars of a lane you like, and roll only the rest (you asked: "lock bars 1-3 and 5-7, hit roll and get better fills for the end of each four bars").
+
+- **Choosing bars:** in a lane's notes, drag sideways across the bars you want (they light up). Hold Shift or Ctrl while you drag, or Shift/Ctrl-click a bar, to add more bars to the ones already chosen. A plain click lets the chosen bars go (with nothing chosen, a click still plays or stops, as before). Dragging up or down still takes the lane out as a MIDI file.
+- **Locking them:** press the lane's new **LOCK BARS** key (beside ROLL), or right-click the lane: Lock the Chosen Bars, Unlock the Chosen Bars, Unlock All Bars. Locked bars are shaded, with a red line over them and LOCKED written in them. With nothing chosen, the key reads **UNLOCK ALL** and lets every bar go.
+- **What stays:** a locked bar keeps exactly the notes it had when you locked it (what you were hearing, keyswitches included). ROLL, GENERATE, a new style or approach, BUSY, the section type: they all rewrite only the bars not locked. A note from an unlocked bar never rings into a locked one (it's cut where the locked bar starts), and a locked note stops where its locked bars end.
+- **The whole-lane LOCK** works as before: the whole lane stays as it is through GENERATE.
+- **Drums with bars locked, ROLL gives you fills:** each ROLL puts a different fill into every bar that isn't locked (bars 4 and 8 in your example). The bar after a fill (bar 5) gets a crash and a kick on its first beat if it hasn't one, so the fill lands. To roll the groove itself instead, right-click the lane: Roll the Groove (No Fill).
+- **The FILLS list:** open the drums' options (the style key's MORE OPTIONS, or right-click > Choose a Fill for the Bars Not Locked...). With bars locked it opens on a **FILLS** group: one-bar fills from your library's fill files (your favourite folders first), the beat maker's four kinds (snare roll, round the toms, snare and toms in turn, snare then the toms) over one beat and over two, and your learned drummer's fills when a drummer is chosen. Each one plays at once when highlighted (Up / Down to go through them), with your locked bars around it; USE IT keeps it. Choosing a groove or a style again takes the fill away.
+- **Everywhere:** HEAR, USE ALL, BUILD, Use Only This Layer and dragging a lane out all use the lane with its locked bars. SYNC followers follow the leader as it plays, locked bars included.
+- **Saved:** the locks and the kept notes are saved with ARCHITECT's settings, so they're still there when you close and open its window, or open the studio again. A section built into a SECTIONS block keeps them in its recipe.
+- **When locks are let go (our choices):** a locked bar past the end of the section (a shorter LENGTH or block) is let go. When the chords change under a pitched lane (another progression, key, block or a changed chord), its locked bars are let go, since their notes were written for the old chords; the drums' locked bars stay. When a built block's chords change and its lanes are written again, the same rule: the drums keep their locked bars, the pitched lanes are written fresh.
+
+Also: Hub > ARCHITECT TRACKS fits at the Hub's usual size now (the lower lanes and the reset key had run off the bottom of the panel): the rows are a little tighter and scroll when the panel is short.
+
 ## 0.201.0
 
 ARCHITECT now loads each new track at your levels.

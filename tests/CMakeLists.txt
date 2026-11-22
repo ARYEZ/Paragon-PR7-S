@@ -41,6 +41,7 @@ add_executable(ParagonPR7STests
     ComposerTests.cpp
     ComposerTracksTests.cpp
     ArchitectLevelsTests.cpp
+    BarLockTests.cpp
     ComposerSpeedTests.cpp
     InstrumentTests.cpp
     GrooveTests.cpp

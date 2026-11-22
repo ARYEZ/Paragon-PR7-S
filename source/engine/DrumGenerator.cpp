@@ -178,13 +178,19 @@ namespace pr7s
         }
 
         // A fill over the bar's last `beats` beats, from the style's words.
+        void addFillKind (Bar& bar, GuitarStyle style, int beats, int kind);
         void addFill (Bar& bar, GuitarStyle style, int beats, juce::Random& rng)
+        {
+            addFillKind (bar, style, beats, rng.nextInt (style == GuitarStyle::numetal || style == GuitarStyle::groove ? 3 : 4));
+        }
+        // (0.202.0) The same fill by its kind (0 a snare roll, 1 round the toms, 2 snare and toms in turn, 3 snare then
+        // the toms): the bar locks' FILLS list offers each.
+        void addFillKind (Bar& bar, GuitarStyle style, int beats, int kind)
         {
             const auto from = 16 - 4 * beats;
             bar.erase (std::remove_if (bar.begin(), bar.end(), [from] (const Hit& h) { return h.step >= from; }), bar.end());
             const auto metal = style != GuitarStyle::rock;
             const int toms[] = { tomHigh, tomMid, tomLow, tomFloor };
-            const auto kind = rng.nextInt (style == GuitarStyle::numetal || style == GuitarStyle::groove ? 3 : 4);
             for (auto step = from; step < 16; ++step)
             {
                 const auto along = (float) (step - from) / (float) juce::jmax (1, 16 - from);
@@ -212,6 +218,20 @@ namespace pr7s
     }
 
     //==========================================================================
+    std::vector<LineNote> generatedFillBar (GuitarStyle style, int kind, int beats, double beatsPerBar)
+    {
+        Bar bar;
+        beats = juce::jlimit (1, 4, beats);
+        addFillKind (bar, style, beats, juce::jlimit (0, 3, kind));
+        const auto step = beatsPerBar / 16.0;
+        const auto from = (16 - 4 * beats) * step;
+        std::vector<LineNote> out;
+        for (const auto& h : bar)
+            out.push_back ({ h.step * step - from, step * 2.0, h.note, (float) juce::jlimit (1, 127, h.velocity) / 127.0f });
+        std::stable_sort (out.begin(), out.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        return out;
+    }
+
     const std::vector<DrumSection>& drumSections()
     {
         static const std::vector<DrumSection> all { DrumSection::intro, DrumSection::verse, DrumSection::chorus,

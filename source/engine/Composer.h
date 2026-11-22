@@ -73,6 +73,15 @@ namespace pr7s
         // (0.193.0) SECOND ACOUSTIC (the ACOUSTIC GUITAR lane): what its second track plays (secondAcousticParts(); 0
         // LOOSER COPY). Saved as the lane's 13th field.
         int second = 0;
+        // (0.202.0, the owner: "lock bars 1-3 and 5-7, hit roll and get better fills for the end of each four bars") BAR
+        // LOCKS: the bars kept (a bit a bar from the section's first, bar 1 = bit 0; 64 bars at most) and their notes as
+        // they were when locked (beats from the section's start, keyswitches too: they can't be made again from a seed).
+        // ROLL, GENERATE and every change rewrite only the other bars. `fill`: a fill chosen for the bars not locked
+        // (composerFills' id; empty: the lane's own notes there). Saved as the lane's 14th-16th fields.
+        juce::uint64 lockedBars = 0;
+        std::vector<LineNote> keptNotes;
+        juce::String fill;
+        bool hasBarLocks() const noexcept { return lockedBars != 0; }
         bool operator== (const ComposerLane&) const = default;
     };
 
@@ -214,6 +223,34 @@ namespace pr7s
     LineIdea composeLayer (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);   // (0.175.0: one of them)
     // (0.120.0) OCTAVE: every note but keyswitches moved by whole octaves (kept in 0-127; the drums never).
     void moveByOctaves (LineIdea&, ComposerLayer, int octaves);
+
+    // (0.202.0) BAR LOCKS (ComposerLane::lockedBars). The bars a section has (whole bars of `beatsPerBar`, from the first
+    // chord's start; 64 at most can be locked).
+    int composerBarCount (const std::vector<ChordSpan>&, double beatsPerBar);
+    // Bars locked (the bits of `bars` added to the lane's): the lane's notes as `shown` has them in every locked bar
+    // kept, each cut at the end of the run of locked bars it starts in (a keyswitch just before a run kept with it).
+    void lockLaneBars (ComposerLane&, const LineIdea& shown, juce::uint64 bars, double beatsPerBar, int barCount);
+    // Bars let go (their kept notes too); none left: the fill goes as well.
+    void unlockLaneBars (ComposerLane&, juce::uint64 bars, double beatsPerBar);
+    // The idea's notes in locked bars replaced by the kept ones; its notes in the other bars cut where a locked bar
+    // starts (none rings into one). `fill` (one bar of notes from the fill's start, `fillLength` beats): written over
+    // the end of every bar not locked, and a locked bar right after one starts on a crash and a kick if it has none.
+    // Bars past `barCount` are ignored. Nothing done without locks.
+    void applyBarLocks (LineIdea&, const ComposerLane&, double beatsPerBar, int barCount,
+                        const std::vector<LineNote>* fill = nullptr, double fillLength = 0.0);
+    // A lane's locks gone (the bars no longer what they were: the chords changed under a pitched lane's).
+    void dropBarLocks (ComposerLane&);
+    void dropPitchedBarLocks (ComposerState&);   // every lane's but the drums'
+    void trimBarLocks (ComposerState&, int barCount, double beatsPerBar);   // locks past the section's last bar dropped
+    // (0.202.0) The drums lane's FILLS (offered while it has bar locks): one-bar fills from the library's fill files
+    // (the section's, the favourite folders' first), the beat maker's own four kinds over one and two beats, and the
+    // learned drummer's fills for the section. `id` is what ComposerLane::fill keeps.
+    struct ComposerFill { juce::String id, name, group, description; };   // (group: "FILLS")
+    std::vector<ComposerFill> composerFills (const ComposerState&, const ComposerContext&);
+    // A fill's notes (beats from its start) and its length in beats (empty: unknown, or the file can't be read).
+    std::vector<LineNote> composerFillNotes (const juce::String& id, const ComposerState&, const ComposerContext&, double& length);
+    // ROLL on a drums lane with bar locks: another fill (random, never the one it has). False: no fills.
+    bool rollFill (ComposerState&, const ComposerContext&, juce::Random&);
 
     // (0.85.0) The guitar's riff generator recipe for the state (its section, flavour, BUSY, the take's seed), and
     // that riff's fingerprint (empty with written riffs or your riff): the composer tells repeats apart by it.

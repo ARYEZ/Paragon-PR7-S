@@ -148,6 +148,27 @@ public:
     // (0.179.0) withParts false: the library grooves' names only (pending, made by fillGrooveOption), for the short
     // menu and the browser; the other options are always whole.
     std::vector<OptionBrowser::Option> laneOptions (pr7s::ComposerLayer, bool withParts = true) const;
+    // (0.202.0, the owner: "lock bars 1-3 and 5-7, hit roll and get better fills for the end of each four bars") BAR
+    // LOCKS: bars chosen on a lane (dragged across in its notes; Shift or Ctrl adds), then LOCK BARS keeps their notes
+    // exactly while ROLL, GENERATE and every change rewrite the others. On the drums with bars locked, ROLL gives
+    // another fill (composerFills) and the options window lists the FILLS first (ids `fillId` + the fill's place).
+    void selectBars (pr7s::ComposerLayer, int firstBar, int lastBar, bool add = false);   // 0 = bar 1
+    void clearBarSelection (pr7s::ComposerLayer);
+    juce::uint64 getBarSelection (pr7s::ComposerLayer l) const noexcept { return barSelection[(size_t) l]; }
+    juce::uint64 getLockedBars (pr7s::ComposerLayer l) const noexcept { return state.lane (l).lockedBars; }
+    void lockBars (pr7s::ComposerLayer, juce::uint64 bars);
+    void unlockBars (pr7s::ComposerLayer, juce::uint64 bars);
+    void lockSelectedBars (pr7s::ComposerLayer);      // (LOCK BARS: every chosen bar locked, or let go if all were)
+    void unlockAllBars (pr7s::ComposerLayer);
+    void rollGroove (pr7s::ComposerLayer);            // ROLL as without bar locks (the drums: a new groove, no fill)
+    int barCount() const;
+    int barAtX (pr7s::ComposerLayer, int x) const;
+    juce::Rectangle<int> getBarBounds (pr7s::ComposerLayer, int bar) const;
+    juce::TextButton& getBarsKey (pr7s::ComposerLayer l) { return lanes[(size_t) l].bars; }
+    static constexpr int fillId = 300000;
+    static inline const juce::String fillsGroup = "FILLS";
+    std::vector<OptionBrowser::Option> fillOptions() const;   // (none without bar locks on the drums)
+    juce::String getFill() const { return state.lane (pr7s::ComposerLayer::drums).fill; }
     juce::String optionListKey (pr7s::ComposerLayer l) const { return "lane:" + pr7s::composerLayerName (l).toLowerCase(); }
     // (0.177.0, the owner: "if it is selecting 100 riffs from my library why wouldn't I literally hear 100 different
     // options") While the drums play grooves from the library, the drums lane's options ARE the section's grooves
@@ -274,13 +295,19 @@ private:
     int targetBlock = 0;   // (0.90.0) the SECTIONS row's block composed (its id; 0: none)
     struct Lane
     {
-        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "ANY STRING" }, octave { "OCTAVE 0" },
+        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, bars { "LOCK BARS" }, style, track, busy, low { "ANY STRING" }, octave { "OCTAVE 0" },
                          second { "2ND: LOOSER COPY" };   // (0.193.0: the acoustic lane only)
         juce::Slider volume { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };   // (0.76.0) the track it's heard on
         juce::Rectangle<int> header, notes;
         juce::Rectangle<int> note;   // (0.120.0) under the keys: where it's heard (empty: no room)
     };
 
+    std::vector<OptionBrowser::Option> laneOptionsOwn (pr7s::ComposerLayer, bool withParts) const;
+    std::array<juce::uint64, pr7s::composerLayerCount> barSelection {};   // (0.202.0) the bars chosen on each lane
+    bool selectingBars = false;
+    int barAnchor = 0;
+    juce::uint64 selectionBefore = 0;
+    void refreshBarKeys();
     void timerCallback() override;
     void refresh (bool rehear = true);   // spans, ideas, keys, the state saved; heard again when hearing
     void showStyleMenu (pr7s::ComposerLayer);
