@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.201.0
+
+ARCHITECT now loads each new track at your levels.
+
+- **Your levels by default:** a track ARCHITECT makes for a lane starts with its fader at the level you set. The lanes start at your numbers: CHORDS -11.5 dB, MELODY -9.5 dB, BASS -5.5 dB, and GUITAR, LEAD, CLEAN GUITAR, ACOUSTIC GUITAR and DRUMS at 0.0 dB.
+- **Every way ARCHITECT makes a track:** BUILD, USE ALL, using one lane, the TRACK menu's "Make the track now", a section type that switches on a lane with no track yet, and IDEAS' USE IT when it makes a new track. HEAR never makes a track (it plays on the lane's track, or the selected one), so it isn't affected.
+- **Your own mix is left alone:** a track ARCHITECT finds by name (your "Bass", "Guitar L"...) keeps its fader where you put it. The levels are only for tracks ARCHITECT makes itself. This was our choice, so a BUILD never moves faders you've already mixed.
+- **Changing them:** Hub > ARCHITECT TRACKS has a LEVEL bar on each lane's row. Drag it (half-dB steps), double-click to type a value ("-8", "-6 dB"), or Ctrl-click for the usual level. The levels are saved with the rest of the ARCHITECT TRACKS settings.
+- **Resetting:** the page's reset key is now ALL BACK TO THE USUAL NAMES AND LEVELS. It puts the names back and the levels back to the numbers above.
+
+Next: locking bars in a lane, so ROLL changes only some bars of a part (the bar-lock idea).
+
 ## 0.200.0
 
 EXPORT writes FLAC and MP3 now, not only WAV (you asked: a 6-minute WAV was over a 30 MB upload limit). The export page has a **FILE TYPE** box, and each type shows its own options, laid out after the reference DAW's Export Audio Mixdown file formats.

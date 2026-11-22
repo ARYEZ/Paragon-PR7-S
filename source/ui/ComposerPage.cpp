@@ -2796,7 +2796,7 @@ void ComposerPage::showTrackMenu (ComposerLayer l)
         if (studio.canTakeMidi (t.id))
             menu.addItem (1000 + t.id, t.name, true, trackChoice[(size_t) l] != 0 && t.id == current);
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (lanes[(size_t) l].track),
-                        [safe = juce::Component::SafePointer<ComposerPage> (this), l, name] (int chosen)
+                        [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
                         {
                             if (safe == nullptr || chosen == 0)
                                 return;
@@ -2807,9 +2807,8 @@ void ComposerPage::showTrackMenu (ComposerLayer l)
                                 auto& studio = safe->studio;
                                 // (0.107.0) A drums track plays the studio's drums (PR7-D) when found, on the
                                 // default map (0.77.3).
-                                const auto id = l == ComposerLayer::drums ? studio.addDrumsTrack (name) : studio.addTrack (pr7s::Instrument {});
-                                if (id != 0 && l != ComposerLayer::drums)
-                                    studio.renameTrack (id, name);
+                                // (0.201.0) At the lane's level (Hub > ARCHITECT TRACKS).
+                                studio.addIdeaTrack (pr7s::composerPartOf (l));
                                 safe->setTrack (l, 0);
                             }
                             else

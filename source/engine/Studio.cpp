@@ -11450,14 +11450,9 @@ namespace pr7s
         auto trackId = canTakeMidi (ontoTrackId) ? ontoTrackId : 0;
         if (trackId == 0)
         {
-            // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view; (0.107.0) the
-            // studio's drums (PR7-D) when it's found.
-            const auto drums = idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove;
-            trackId = drums ? addDrumsTrack (newIdeaTrackName (idea.part)) : addTrack (Instrument {});
+            trackId = addIdeaTrack (idea.part);   // (0.201.0: at the lane's level)
             if (trackId == 0)
                 return 0;
-            if (! drums)
-                renameTrack (trackId, newIdeaTrackName (idea.part));
         }
         auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
         linkForPr7d (trackId, idea, part);   // (0.108.0)
@@ -11580,6 +11575,79 @@ namespace pr7s
         looseCopiesHere = on;
         if (settings != nullptr)
             settings->setValue ("composerLooseCopies", on);
+    }
+
+    float Studio::defaultLaneLevel (int lane)
+    {
+        // (0.201.0, the owner's) bass, guitar, lead, chords, melody, drums, clean, acoustic
+        static const float levels[] { -5.5f, 0.0f, 0.0f, -11.5f, -9.5f, 0.0f, 0.0f, 0.0f };
+        static_assert (std::size (levels) == (size_t) numComposerTrackLanes);
+        return levels[juce::jlimit (0, numComposerTrackLanes - 1, lane)];
+    }
+
+    std::array<float, 8> Studio::getLaneLevels() const
+    {
+        static_assert (numComposerTrackLanes == 8);
+        if (settings == nullptr)
+            return laneLevelsHere;
+        std::array<float, 8> levels {};
+        const auto lines = juce::StringArray::fromLines (settings->getValue ("composerLaneLevels"));
+        for (int i = 0; i < numComposerTrackLanes; ++i)
+        {
+            const auto line = lines[i].trim();
+            levels[(size_t) i] = line.isNotEmpty() && line.containsAnyOf ("0123456789")
+                                   ? juce::jlimit (-60.0f, 6.0f, line.getFloatValue()) : defaultLaneLevel (i);
+        }
+        return levels;
+    }
+
+    float Studio::getLaneLevel (LineIdea::Part part) const
+    {
+        const auto lane = composerTrackLane (part);
+        return lane < 0 ? 0.0f : getLaneLevels()[(size_t) lane];
+    }
+
+    void Studio::setLaneLevel (int lane, float db)
+    {
+        if (lane < 0 || lane >= numComposerTrackLanes)
+            return;
+        auto levels = getLaneLevels();
+        levels[(size_t) lane] = juce::jlimit (-60.0f, 6.0f, std::round (db * 10.0f) / 10.0f);
+        laneLevelsHere = levels;
+        if (settings != nullptr)
+        {
+            juce::StringArray lines;
+            for (const auto l : levels)
+                lines.add (juce::String (l, 1));
+            settings->setValue ("composerLaneLevels", lines.joinIntoString ("\n"));
+        }
+    }
+
+    void Studio::resetLaneLevels()
+    {
+        for (int i = 0; i < numComposerTrackLanes; ++i)
+            laneLevelsHere[(size_t) i] = defaultLaneLevel (i);
+        if (settings != nullptr)
+            settings->removeValue ("composerLaneLevels");
+    }
+
+    int Studio::addIdeaTrack (LineIdea::Part part)
+    {
+        // (0.54.0) Drums: a drum map (0.77.3: the default one), the MIDI editor's drum view; (0.107.0) the
+        // studio's drums (PR7-D) when it's found.
+        const auto drums = part == LineIdea::Part::drums || part == LineIdea::Part::groove;
+        const auto name = newIdeaTrackName (part);
+        const auto id = drums ? addDrumsTrack (name) : addTrack (Instrument {});
+        if (id == 0)
+            return 0;
+        // (0.201.0) The lane's level, set before the change that names it (so it's in the same undo step).
+        if (auto* track = project.findTrack (id))
+            track->volumeDb = getLaneLevel (part);
+        if (drums)
+            changed();
+        else
+            renameTrack (id, name);
+        return id;
     }
 
     juce::StringArray Studio::getGrooveFavouriteFolders() const
@@ -11995,12 +12063,9 @@ namespace pr7s
             auto trackId = i < onto.size() && canTakeMidi (onto[i]) ? onto[i] : findIdeaTrack (idea.part);
             if (trackId == 0)
             {
-                const auto drums = idea.part == LineIdea::Part::drums || idea.part == LineIdea::Part::groove;
-                trackId = drums ? addDrumsTrack (newIdeaTrackName (idea.part)) : addTrack (Instrument {});   // (0.107.0: PR7-D)
+                trackId = addIdeaTrack (idea.part);   // (0.107.0: PR7-D; 0.201.0: at the lane's level)
                 if (trackId == 0)
                     continue;
-                if (! drums)
-                    renameTrack (trackId, newIdeaTrackName (idea.part));
             }
             plan.emplace_back (trackId, &idea);
             used.push_back (trackId);
@@ -15541,12 +15606,9 @@ namespace pr7s
                 auto tracks = findIdeaTracks (part);
                 if (tracks.empty())
                 {
-                    const auto drums = part == LineIdea::Part::drums || part == LineIdea::Part::groove;
-                    const auto id = drums ? addDrumsTrack (newIdeaTrackName (part)) : addTrack (Instrument {});
+                    const auto id = addIdeaTrack (part);   // (0.201.0: at the lane's level)
                     if (id == 0)
                         continue;
-                    if (! drums)
-                        renameTrack (id, newIdeaTrackName (part));
                     tracks.push_back (id);
                 }
                 for (const auto track : tracks)

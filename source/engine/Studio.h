@@ -419,6 +419,18 @@ namespace pr7s
         void resetComposerTracks();
         bool getLooseCopies() const;
         void setLooseCopies (bool);
+        // (0.201.0, the owner's levels) The fader level a track ARCHITECT itself makes for a lane starts at (by lane,
+        // composerTrackPart's order; defaults chords -11.5, melody -9.5, bass -5.5 dB, the rest 0). Tracks found by
+        // name keep their own fader. Settings "composerLaneLevels" (dB a line; in memory without a settings file),
+        // -60 to +6. resetLaneLevels: the owner's numbers again (the page's ALL BACK TO THE USUAL key does both).
+        static float defaultLaneLevel (int lane);
+        std::array<float, 8> getLaneLevels() const;
+        float getLaneLevel (LineIdea::Part) const;
+        void setLaneLevel (int lane, float db);
+        void resetLaneLevels();
+        // (0.201.0) A new track for a lane (drums: PR7-D's, on the default map), named newIdeaTrackName and at its
+        // lane's level. Every path ARCHITECT makes a track by goes through it. 0: none made.
+        int addIdeaTrack (LineIdea::Part);
         // (0.178.0, the owner) Groove folders marked as favourites (full paths, subfolders included): a quarter of a
         // section's library grooves come from them and AUTOMATIC prefers them. Settings "grooveFavouriteFolders" (a
         // path a line; in memory without a settings file). A change is announced (ARCHITECT composes again).
@@ -2011,6 +2023,7 @@ namespace pr7s
         std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;
         std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)
         bool looseCopiesHere = true;
+        std::array<float, 8> laneLevelsHere { -5.5f, 0.0f, 0.0f, -11.5f, -9.5f, 0.0f, 0.0f, 0.0f };   // (0.201.0; without a settings file)
         juce::StringArray grooveFavouritesHere;   // (0.178.0; without a settings file)
         std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;
         void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)

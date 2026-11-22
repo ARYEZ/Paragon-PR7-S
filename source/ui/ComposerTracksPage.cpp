@@ -36,6 +36,25 @@ ComposerTracksPage::ComposerTracksPage (Studio& s) : studio (s)
         r->found.setFont (ParagonLookAndFeel::textFont (13.0f));
         r->found.setColour (juce::Label::textColourId, ParagonColours::textDim);
         addAndMakeVisible (r->found);
+        // (0.201.0, the owner's levels) LEVEL: where a new track's fader starts.
+        r->level.setSliderStyle (juce::Slider::LinearBar);
+        r->level.setRange (-60.0, 6.0, 0.1);
+        r->level.dragStep = 0.5;
+        r->level.setTextBoxIsEditable (false);   // (a double-click opens ValueSlider's own entry)
+        r->level.setColour (juce::Slider::trackColourId, ParagonColours::accent.withAlpha (0.55f));
+        r->level.setColour (juce::Slider::backgroundColourId, juce::Colour (0xff151217));
+        r->level.setColour (juce::Slider::textBoxTextColourId, ParagonColours::text);
+        r->level.setColour (juce::Slider::textBoxOutlineColourId, ParagonColours::panelEdge);
+        r->level.textFromValueFunction = [] (double v) { return v <= -60.0 ? juce::String ("-INF") : juce::String (v, 1) + " DB"; };
+        r->level.parse = [] (const juce::String& text) { return ValueEntry::parseDb (text); };
+        r->level.updateText();   // (a value equal to the slider's start isn't a change: its text was made before the function)
+        r->level.setDoubleClickReturnValue (true, Studio::defaultLaneLevel (i), juce::ModifierKeys::commandModifier);
+        r->level.setWantsKeyboardFocus (false);
+        r->level.setTooltip ("LEVEL: the fader a track Architect makes for the " + laneName (i).toLowerCase()
+                             + " lane starts at. Tracks it finds by name keep their own fader. Double-click to type a value; "
+                               "Ctrl-click for the usual one.");
+        r->level.onValueChange = [this, r] { studio.setLaneLevel (r->lane, (float) r->level.getValue()); };
+        addAndMakeVisible (r->level);
         rows[(size_t) i] = std::move (row);
     }
     looseKey.setWantsKeyboardFocus (false);
@@ -44,7 +63,8 @@ ComposerTracksPage::ComposerTracksPage (Studio& s) : studio (s)
     looseKey.onClick = [this] { setLooseCopies (looseKey.getToggleState()); };
     addAndMakeVisible (looseKey);
     resetKey.setWantsKeyboardFocus (false);
-    resetKey.setTooltip ("Every lane back to its usual track name (Bass, Guitar, Lead Guitar, Piano, Melody, Drums), one track each");
+    resetKey.setTooltip ("Every lane back to its usual track name (Bass, Guitar, Lead Guitar, Piano, Melody, Drums...), one track each, "
+                         "and its usual level (chords -11.5 dB, melody -9.5, bass -5.5, the rest 0)");
     resetKey.onClick = [this] { resetAll(); };
     addAndMakeVisible (resetKey);
     refresh();
@@ -77,6 +97,8 @@ void ComposerTracksPage::refresh()
             r->names.setText (tracks.names.joinIntoString (", "), false);
         r->every.setToggleState (tracks.every, juce::dontSendNotification);
         r->found.setText (getFoundText (r->lane), juce::dontSendNotification);
+        if (! r->level.isMouseButtonDown())
+            r->level.setValue (studio.getLaneLevels()[(size_t) r->lane], juce::dontSendNotification);
     }
     looseKey.setToggleState (studio.getLooseCopies(), juce::dontSendNotification);
     seenChange = studio.getChangeVersion();
@@ -112,9 +134,18 @@ void ComposerTracksPage::setLooseCopies (bool on)
     refresh();
 }
 
+void ComposerTracksPage::setLevel (int lane, float db)
+{
+    if (lane < 0 || lane >= Studio::numComposerTrackLanes)
+        return;
+    studio.setLaneLevel (lane, db);
+    refresh();
+}
+
 void ComposerTracksPage::resetAll()
 {
     studio.resetComposerTracks();
+    studio.resetLaneLevels();   // (0.201.0) and the owner's levels
     for (auto& r : rows)
         r->names.setText (studio.getComposerTracks (Studio::composerTrackPart (r->lane)).names.joinIntoString (", "), false);
     refresh();
@@ -133,6 +164,8 @@ void ComposerTracksPage::resized()
         auto row = area.removeFromTop (58);
         auto top = row.removeFromTop (34).reduced (0, 2);
         r->name.setBounds (top.removeFromLeft (140));
+        r->level.setBounds (top.removeFromRight (180).reduced (0, 3));
+        top.removeFromRight (16);
         r->names.setBounds (top.removeFromLeft (juce::jmax (200, top.getWidth() - 260)));
         top.removeFromLeft (16);
         r->every.setBounds (top);
@@ -142,7 +175,7 @@ void ComposerTracksPage::resized()
     area.removeFromTop (10);
     looseKey.setBounds (area.removeFromTop (30).withWidth (juce::jmin (520, area.getWidth())));
     area.removeFromTop (12);
-    resetKey.setBounds (area.removeFromTop (34).withWidth (300));
+    resetKey.setBounds (area.removeFromTop (34).withWidth (380));
 }
 
 void ComposerTracksPage::paint (juce::Graphics& g)
@@ -154,9 +187,11 @@ void ComposerTracksPage::paint (juce::Graphics& g)
     g.setFont (ParagonLookAndFeel::textFont (13.0f));
     g.drawFittedText ("The tracks each Architect lane plays on when its TRACK menu is on automatic: an instrument track with one of these names "
                       "(several by commas; upper or lower case alike). The first name is what a new one is called. EVERY MATCHING TRACK plays "
-                      "the lane on all of them, a guitar left and a guitar right.", noteArea, juce::Justification::topLeft, 3);
+                      "the lane on all of them, a guitar left and a guitar right. LEVEL is where the fader of a track Architect makes starts; "
+                      "tracks it finds by name keep their own.", noteArea, juce::Justification::topLeft, 3);
     g.setFont (ParagonLookAndFeel::textFont (12.0f));
     auto head = headArea;
     g.drawText ("LANE", head.removeFromLeft (140), juce::Justification::centredLeft, false);
+    g.drawText ("LEVEL (A NEW TRACK'S FADER)", head.removeFromRight (180), juce::Justification::centredLeft, false);
     g.drawText ("TRACK NAMES", head, juce::Justification::centredLeft, false);
 }

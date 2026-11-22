@@ -3,12 +3,13 @@
 #include <juce_gui_basics/juce_gui_basics.h>
 
 #include "engine/Studio.h"
+#include "ui/ValueSlider.h"
 
 // (0.112.0, the owner asked) The Hub's COMPOSER TRACKS tab: for each composer lane the names of the
 // tracks it plays on (several, by commas: the first track found with any of them; upper or lower case
 // alike; the first name is what BUILD calls a new one), EVERY MATCHING TRACK (the owner's guitar left
 // and right: the lane plays on each), and LOOSE COPIES (the copies after the first humanized again, as
-// a second take). A track chosen in a lane's TRACK menu still wins for as long as the composer is open.
+// a second take), and (0.201.0) LEVEL: the fader a track ARCHITECT makes for the lane starts at. A track chosen in a lane's TRACK menu still wins for as long as the composer is open.
 class ComposerTracksPage final : public juce::Component, private juce::Timer
 {
 public:
@@ -22,6 +23,7 @@ public:
     void setNames (int lane, const juce::String& commaSeparated);
     void setEvery (int lane, bool);
     void setLooseCopies (bool);
+    void setLevel (int lane, float db);   // (0.201.0) the lane's new tracks' fader level
     void resetAll();
     juce::String getFoundText (int lane) const;
 
@@ -32,6 +34,7 @@ public:
         juce::TextEditor names;
         juce::ToggleButton every { "EVERY MATCHING TRACK" };
         juce::Label found;
+        ValueSlider level;   // (0.201.0) LEVEL: a new track's fader, dB (double-click to type)
     };
     Row& getRow (int lane) { return *rows[(size_t) lane]; }
 
@@ -42,7 +45,7 @@ private:
     pr7s::Studio& studio;
     std::array<std::unique_ptr<Row>, pr7s::Studio::numComposerTrackLanes> rows;
     juce::ToggleButton looseKey { "PLAY THE COPIES A LITTLE LOOSE (AS IF PLAYED TWICE)" };
-    juce::TextButton resetKey { "ALL BACK TO THE USUAL NAMES" };
+    juce::TextButton resetKey { "ALL BACK TO THE USUAL NAMES AND LEVELS" };
     juce::Rectangle<int> titleArea, noteArea, headArea;
     juce::uint64 seenChange = 0;
 };
