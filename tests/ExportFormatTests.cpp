@@ -1,6 +1,7 @@
 // (0.200.0, the owner asked: "add FLAC and mp3 to the export options ... build LAME in") EXPORT's file
 // types: FLAC (lossless, JUCE's encoder) and MP3 (LAME, built in), each with its own options, read back.
 
+#include <string_view>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_floating_point.hpp>
 
@@ -197,8 +198,14 @@ TEST_CASE ("0.200.0: MP3 through LAME: the tone, its level, the length, mono, bi
     CHECK (std::string ((const char*) bytes.getData() + bytes.getSize() - 125, 12) == "Ten Ton Test");
     const auto* begin = (const char*) bytes.getData();
     const auto* end = begin + bytes.getSize();
-    CHECK (std::search (begin, end, "Info", "Info" + 4) != end);
-    CHECK (std::search (begin, end, "Paragon", "Paragon" + 7) != end);
+    // (Each text searched for kept in one string: "Info", "Info" + 4 can be two different copies of the
+    // literal on MSVC, and the search then ran over neither. Windows failed on it.)
+    const auto contains = [begin, end] (std::string_view text)
+    {
+        return std::search (begin, end, text.begin(), text.end()) != end;
+    };
+    CHECK (contains ("Info"));
+    CHECK (contains ("Paragon"));
 
     // Bit rates: the files' sizes in proportion.
     o.mp3.id3 = false;
