@@ -665,6 +665,22 @@ namespace pr7s
         }
         if (markerTrack.shown || ! markerTrack.isEmpty())
             xml->addChildElement (markerTrack.toXml().release());   // (0.49.0)
+        if (architectState.isNotEmpty() || architectRiff.has_value())   // (0.206.0)
+        {
+            auto* a = xml->createNewChildElement ("Architect");
+            if (architectState.isNotEmpty())
+                a->setAttribute ("state", architectState);
+            if (architectRiff.has_value())
+            {
+                auto* r = a->createNewChildElement ("Riff");
+                r->setAttribute ("bars", architectRiff->bars);
+                r->setAttribute ("section", architectRiff->section);
+                r->setAttribute ("name", architectRiff->name);
+                r->setAttribute ("played", architectRiff->played);
+                r->setAttribute ("chordsFrom", architectRiff->chordsFrom);
+                r->setAttribute ("notes", architectRiff->notes);
+            }
+        }
         if (! songSections.shown || ! songSections.isEmpty())   // (0.103.0: shown by default; a hidden row is written)
             xml->addChildElement (songSections.toXml().release());   // (0.90.0)
         if (! signatureChanges.empty() || signatureTrackShown)
@@ -1002,6 +1018,21 @@ namespace pr7s
         }
         if (const auto* markers = xml.getChildByName ("MarkerTrack"))
             project.markerTrack = MarkerTrack::fromXml (*markers);   // (0.49.0)
+        if (const auto* a = xml.getChildByName ("Architect"))   // (0.206.0)
+        {
+            project.architectState = a->getStringAttribute ("state");
+            if (const auto* r = a->getChildByName ("Riff"))
+            {
+                Project::ArchitectRiff riff;
+                riff.bars = juce::jlimit (1, 64, r->getIntAttribute ("bars", 1));
+                riff.section = juce::jmax (0, r->getIntAttribute ("section", 1));
+                riff.name = r->getStringAttribute ("name");
+                riff.played = r->getBoolAttribute ("played");
+                riff.chordsFrom = r->getBoolAttribute ("chordsFrom");
+                riff.notes = r->getStringAttribute ("notes");
+                project.architectRiff = riff;
+            }
+        }
         if (const auto* sections = xml.getChildByName ("SongSections"))
             project.songSections = SongSections::fromXml (*sections);   // (0.90.0)
         if (const auto* signature = xml.getChildByName ("Signatures"))

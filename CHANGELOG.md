@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.206.0
+
+Two fixes from your reports.
+
+**1. ARCHITECT no longer brings in another song's lanes.** You closed a song, started a new one from your clean template, opened ARCHITECT, and the lanes and riff from the previous song were still there. That was because ARCHITECT kept its settings in the studio's own settings file (shared by every song), and its window, kept open in the background since 0.176.0, also remembered what it had worked out.
+
+- **ARCHITECT now belongs to the song.** Everything you set in it (each lane's style, ON, LOCK, BUSY, OCTAVE, the bar locks, the key, the progression, SYNC, the section and its type, and your pasted riff with whether the guitar plays it and whether the chords come from it) is saved inside the .pr7s file.
+- **A new song starts ARCHITECT clean.** Opening another song brings that song's own ARCHITECT back; a template carries its ARCHITECT settings, so a new song from it starts from them.
+- **The kept window starts over** when the song changes: the old song's hearing stops, the options window closes, ideas taken from IDEAS, chords you swapped, bars chosen and tracks picked by hand are forgotten, and it aims at the new song's first SECTIONS block not built yet. (Your MIXER, IDEAS tab choice and the Hub's ARCHITECT TRACKS are preferences and stay.)
+- **Old songs** have no ARCHITECT settings saved in them, so they open with ARCHITECT clean once. The old shared setting isn't read any more (it's left in the settings file, unused).
+- **Changing something in ARCHITECT now marks the song unsaved** (SAVE lights up), because it's part of the song. It isn't an undo step. Just opening ARCHITECT doesn't mark it.
+- Swapped chords and chords chosen by hand on the lanes are still not saved (they're forgotten with the song, as before).
+
+**2. ARCHITECT's volumes.** The level bar on each lane showed the wrong thing: a lane with no track of its own showed (and moved!) the fader of whatever track was selected, which is why your CHORDS lane read BASS's 0 dB. And your template's tracks (BASS, RHYTHM GUITAR LEFT/RIGHT, LEAD GUITAR, CLEAN GUITAR, DRUMS) were all at 0 dB, and tracks ARCHITECT finds keep their own fader, so the Hub's levels never reached them. As you put it, ARCHITECT's volume is for hearing the ideas in ARCHITECT; once the music is in the song, the mixer is its volume. So now:
+
+- **The lane bar is the lane's ARCHITECT level**, the same number as ARCHITECT TRACKS in the Hub (change one, the other follows). It never reads or moves a track's fader.
+- **HEAR plays each lane at its ARCHITECT level.** The tracks it plays through get that level only while hearing; your mixer faders stay exactly as they are. Pan, effects, mute and the mixer's solo are still the track's own (as in 0.76.0). Moving a lane's bar while HEAR plays is heard at once. It's a setting, not an undo step.
+- **BUILD, USE ALL and IDEAS' USE IT:** a track ARCHITECT makes starts at the lane's level (as since 0.201.0), and now so does a track it finds that is still empty (your template's), the first time it writes onto it, in the same undo step as the music. So right after BUILD it sounds the way it did in HEAR. A track that already has music keeps its fader.
+- Changing a section's type that switches on a new lane does the same for that lane's empty track.
+
+I can't listen here: the levels are checked by numbers, not by ear.
+
 ## 0.205.0
 
 The guitar tones now change from section to section (the second step of your PR7-G idea). When ARCHITECT builds a LEAD, CLEAN GUITAR or ACOUSTIC GUITAR lane and puts PR7-G on its track (0.204.0), it also writes **PR7-G's effects as automation, block by block of the SECTIONS row**: a little less echo and room in the verse, the tone as chosen in the chorus, more space in the bridge, a dry and tight breakdown.

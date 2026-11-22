@@ -86,6 +86,12 @@ TEST_CASE ("0.201.0: a track found by name keeps its own fader", "[composer][arc
     LineIdea idea;
     idea.part = LineIdea::Part::bass;
     idea.notes.push_back ({ 0.0, 1.0, 40, 0.8f });
+    {   // (0.206.0: a track with music keeps its fader; an empty one would start at the lane's level)
+        Part p;
+        p.start = 16.0;
+        p.length = 4.0;
+        studio.addPart (bass, p);
+    }
     const auto made = studio.buildSection ({ idea }, spans, "Verse");
     REQUIRE (made == std::vector<int> { bass });
     CHECK (levelOf (studio, bass) == 2.5f);

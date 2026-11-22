@@ -113,6 +113,12 @@ public:
     Placed placeLanes (double originBeat, bool hearing) const;   // (0: a new track when used / not heard)
     bool hear();                             // false: nothing to play them on
     void closeOptionBrowser();   // (0.176.0) the OPTIONS browser window, if one is open
+    // (0.206.0) ARCHITECT's state is the song's: when the song is replaced (Studio::getSongGeneration moved) the page
+    // starts over from the new song's (state, riff, nothing taken, swapped, chosen, composed or heard; its first block).
+    // The timer does it while shown; MainView::openComposer before showing the kept window. False: the same song.
+    bool startOverIfNewSong();
+    std::function<void()> onSongChanged;   // (the suite: IDEAS back on the new song's chords)
+    juce::uint64 getSeenSongGeneration() const noexcept { return seenGeneration; }
     void stop();
     bool isHearing() const;
     std::vector<int> useAll();               // the tracks written
@@ -400,6 +406,9 @@ private:
     std::map<int, pr7s::Chord> chordOverrides;
     juce::TextButton myRiffKey { "MY RIFF" }, pasteKey { "+ MY RIFF" }, mixerKey { "MIXER" }, syncKey { "SYNC: OFF" };
     void refreshVolumes();
+    juce::uint64 seenGeneration = 0;
+    int quietWrites = 0;   // (0.206.0) > 0: what refresh writes back into the song doesn't mark it modified
+    void startOverForSong();
     int draggingVolume = -1;
     std::unique_ptr<juce::FileChooser> chooser;
 };

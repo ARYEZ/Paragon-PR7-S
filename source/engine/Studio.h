@@ -482,8 +482,14 @@ namespace pr7s
         LineIdea doubledCopy (const LineIdea&, int copy, double originBeat, int copies = 1) const;   // (0.129.0) copies: how many tracks the lane is on (a twin lead's harmony onto the second)
         // THE COMPOSER (0.58.0): what its layers are made with (IDEAS' settings; the tempo and bar at `atBeat`).
         ComposerContext getComposerContext (double atBeat) const;
-        juce::String getComposerState() const;            // (settings key "composer"; in memory without a settings file)
-        void setComposerState (const juce::String&);
+        // (0.206.0) The song's own (Project::architectState; empty: the defaults): saved with it, a template carries it.
+        // Setting a different one marks the song modified (not an undo step) unless `marksModified` is false (ARCHITECT
+        // writing back what it worked out when it loaded the song). The old settings key "composer" isn't read any more.
+        juce::String getComposerState() const { return project.architectState; }
+        void setComposerState (const juce::String&, bool marksModified = true);
+        // (0.206.0) A counter bumped whenever the song is replaced (new, open, a template, an import as a new song):
+        // ARCHITECT starts over from the new song's state when it sees it move.
+        juce::uint64 getSongGeneration() const noexcept { return songGeneration; }
         // Hearing the composer: its layers played through the song's own tracks (each onto `trackId`), looped over
         // [start, end), those tracks alone (soloed), while the song itself stays as it is (the engine plays a copy,
         // as the comp tool's audition). Called again while it plays: the new layers from where it is. False when
@@ -492,6 +498,7 @@ namespace pr7s
         bool auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end);
         void stopComposerAudition();
         bool isComposerAuditioning() const noexcept { return composerAudition.has_value(); }
+        std::optional<Project> getComposerAuditionCopyForTests() const { return composerAuditionCopy(); }   // (0.206.0)
         double getComposerAuditionStart() const noexcept { return composerAudition.has_value() ? composerAudition->start : 0.0; }
         double getComposerAuditionEnd() const noexcept { return composerAudition.has_value() ? composerAudition->end : 0.0; }
         // The sections built so far in this song (for what comes next; forgotten with the song).
@@ -499,8 +506,12 @@ namespace pr7s
         void noteBuiltSection (const BuiltSection&);   // (replaces one built over the same stretch)
         void clearBuiltSections() { builtSections.clear(); }
         // (0.75.0) Your own riff in the composer (engine/RiffPaste.h; forgotten with the song, as the sections).
+        // (0.206.0) Saved in the song (Project::architectRiff), with whether the guitar plays it and the chords come from it.
         const std::optional<ComposerRiff>& getComposerRiff() const noexcept { return composerRiff; }
-        void setComposerRiff (std::optional<ComposerRiff> r) { composerRiff = std::move (r); }
+        void setComposerRiff (std::optional<ComposerRiff>);
+        bool isComposerRiffPlayed() const noexcept { return project.architectRiff.has_value() && project.architectRiff->played; }
+        bool areComposerChordsFromRiff() const noexcept { return project.architectRiff.has_value() && project.architectRiff->chordsFrom; }
+        void setComposerRiffUse (bool played, bool chordsFrom, bool marksModified = true);
         // The chords for the section after `from`, as long as `spans`: the chord track's there when it
         // has a chord starting in that stretch; else `spans` again from `from`, written onto the
         // chord track (one undo step) so the song keeps its chords.
@@ -1886,7 +1897,10 @@ namespace pr7s
         // ones among them you soloed), each track's own fader, pan, inserts and mute. Empty: none can play.
         std::optional<Project> composerAuditionCopy() const;
         std::optional<ComposerAudition> composerAudition;   // (0.58.0)
-        juce::String composerState;                         // (without a settings file)
+        juce::uint64 songGeneration = 0;                    // (0.206.0)
+        void loadComposerRiff();                            // (0.206.0) composerRiff from the song's
+        bool levelEmptyTrack (int trackId, LineIdea::Part); // (0.206.0) an empty found track: the lane's Hub level
+        void hearLaneLevels();                              // (0.206.0) the hearing's copy's mix again after a lane level
         void endComposerAudition (bool backToSong);
         std::map<juce::String, std::pair<std::shared_ptr<const AudioData>, std::vector<Hitpoint>>> hitpointCache;   // (0.32.0) every candidate, by recording and the data they came from
         void forgetAudio (const juce::String& name);   // (0.34.1) a recording and everything made from it

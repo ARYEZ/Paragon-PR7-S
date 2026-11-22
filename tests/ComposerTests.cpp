@@ -932,12 +932,17 @@ TEST_CASE ("0.76.0: the mixer while the composer is heard: faders follow, hearin
     const auto before = heardPeak();
     REQUIRE (before > 0.001f);
 
-    // The track's fader down 20 dB (as the mixer's drag, then its release): still heard, quieter.
-    studio.setVolume (piano, -20.0f, false);
-    studio.setVolume (piano, -20.0f, true);
+    // (0.206.0) The lane's ARCHITECT level down 20 dB: still heard, quieter; the track's fader isn't what HEAR plays at.
+    const auto faderBefore = studio.getProject().findTrack (piano)->volumeDb;
+    studio.setLaneLevel (Studio::composerTrackLane (LineIdea::Part::chords), studio.getLaneLevel (LineIdea::Part::chords) - 20.0f);
     CHECK (studio.isComposerAuditioning());
     CHECK (studio.getEngine().isPlaying());
     CHECK (heardPeak() < before * 0.3f);
+    CHECK (studio.isComposerAuditioning());
+    CHECK (studio.getProject().findTrack (piano)->volumeDb == faderBefore);
+    // A fader move in the mixer (a rebuild of the copy): the hearing goes on.
+    studio.setVolume (piano, -20.0f, false);
+    studio.setVolume (piano, -20.0f, true);
     CHECK (studio.isComposerAuditioning());
 
     // Muted in the mixer: not heard, the hearing goes on.
@@ -946,11 +951,12 @@ TEST_CASE ("0.76.0: the mixer while the composer is heard: faders follow, hearin
     CHECK (heardPeak() < 1.0e-4f);
     studio.setMute (piano, false);
 
-    // The composer's lanes: VOLUME is that track's fader.
+    // The composer's lanes: VOLUME is the lane's ARCHITECT level (0.206.0), never the track's fader.
     ComposerPage page (studio);
     page.setTrack (L::chords, piano);
     page.setLaneVolume (L::chords, -6.0f);
-    CHECK (studio.getProject().findTrack (piano)->volumeDb == -6.0f);
+    CHECK (studio.getLaneLevel (LineIdea::Part::chords) == -6.0f);
+    CHECK (studio.getProject().findTrack (piano)->volumeDb == -20.0f);
     page.setTrack (L::chords, piano);   // (a refresh)
     CHECK (page.getLaneVolume (L::chords).getValue() == -6.0);
     REQUIRE (page.keyNamed ("MIXER") != nullptr);

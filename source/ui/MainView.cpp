@@ -2620,6 +2620,7 @@ void MainView::openComposer()
     {
         // (0.176.0) Kept since it was last closed (hidden, its timers idle): shown again, not built again. Building it
         // and taking it down each time was the lag the owner felt opening and closing it.
+        composerWindow->getPage().startOverIfNewSong();   // (0.206.0: another song since: its own ARCHITECT)
         if (! composerWindow->isVisible())
         {
             composerWindow->getPage().aimAtSectionsRow();   // (its block gone: the first not built, as a fresh one)

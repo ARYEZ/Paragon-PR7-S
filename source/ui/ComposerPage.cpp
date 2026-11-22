@@ -38,7 +38,12 @@ namespace
 ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
 {
     random.setSeedRandomly();
+    // (0.206.0) The song's own state and riff.
+    seenGeneration = studio.getSongGeneration();
     state = pr7s::ComposerState::fromString (studio.getComposerState());
+    useMyRiff = studio.getComposerRiff().has_value() && studio.isComposerRiffPlayed();
+    fromRiff = studio.getComposerRiff().has_value() && studio.areComposerChordsFromRiff();
+    ++quietWrites;
 
     // Header keys.
     for (auto* key : { &hearKey, &useKey, &generateKey })
@@ -211,7 +216,9 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
         lane.volume.setTextValueSuffix (" dB");
         lane.volume.setNumDecimalPlacesToDisplay (1);
         lane.volume.setTextBoxStyle (juce::Slider::TextBoxLeft, true, 70, 20);
-        lane.volume.setTooltip ("The volume of the track this lane plays on: the same as its fader in the mixer. Double-click: 0 dB");
+        lane.volume.setTooltip ("This lane's Architect level: what HEAR plays it at (the song's faders stay as they are) and where a track "
+                                "Architect makes for it, or first writes onto while it's empty, starts. The same as ARCHITECT TRACKS in the Hub. "
+                                "Once the music is in the song, its mixer fader is its volume. Double-click: 0 dB");
         lane.volume.onDragStart = [this, l] { draggingVolume = (int) l; };
         lane.volume.onValueChange = [this, l]
         {
@@ -229,7 +236,63 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
 
     setSize (1700, 940);
     refresh (false);
+    --quietWrites;
     startTimerHz (30);
+}
+
+bool ComposerPage::startOverIfNewSong()
+{
+    if (studio.getSongGeneration() == seenGeneration)
+        return false;
+    startOverForSong();
+    return true;
+}
+
+void ComposerPage::startOverForSong()
+{
+    seenGeneration = studio.getSongGeneration();
+    ++quietWrites;
+    // The options window and a trial: closed without putting another song's lane back.
+    trial = {};
+    if (browserWindow != nullptr)
+        browserWindow->getBrowser().onClosed = nullptr;
+    browserWindow.reset();
+    stop();
+    chooser.reset();
+    // The new song's state and riff; everything worked out for the old one forgotten.
+    state = pr7s::ComposerState::fromString (studio.getComposerState());
+    useMyRiff = studio.getComposerRiff().has_value() && studio.isComposerRiffPlayed();
+    fromRiff = studio.getComposerRiff().has_value() && studio.areComposerChordsFromRiff();
+    taken = {};
+    chordOverrides.clear();
+    lastSpans.clear();
+    composedFrom = {};
+    composed = {};
+    ideas = {};
+    spans.clear();
+    chordNames.clear();
+    fillsShown.clear();
+    grooveOptionsKey = {};
+    grooveOptionsKept.clear();
+    grooveFilesKept.clear();
+    grooveOptionsState = {};
+    barSelection = {};
+    selectingBars = false;
+    trackChoice = {};
+    recentRiffs.clear();
+    nextShown.clear();
+    targetBlock = 0;
+    hearingStart = 0.0;
+    shownHearBeat = -1.0;
+    pressedLane = -1;
+    draggedOut = false;
+    draggingVolume = -1;
+    status = {};
+    refresh (false);
+    aimAtSectionsRow();   // (its first block not built yet, as a fresh window)
+    --quietWrites;
+    if (onSongChanged)
+        onSongChanged();
 }
 
 ComposerPage::~ComposerPage()
@@ -388,7 +451,8 @@ void ComposerPage::refresh (bool rehear)
     for (const auto l : pr7s::composerLayers())
         if (taken[(size_t) l].has_value())
             ideas[(size_t) l] = *taken[(size_t) l];
-    studio.setComposerState (state.toString());
+    studio.setComposerState (state.toString(), quietWrites == 0);
+    studio.setComposerRiffUse (useMyRiff, fromRiff, quietWrites == 0);   // (0.206.0: kept with the song's riff)
 
     // The keys.
     const auto& keys = pr7s::Key::all();
@@ -1224,15 +1288,16 @@ int ComposerPage::useLayer (ComposerLayer l)
 }
 
 //==============================================================================
-// (0.76.0) Each lane's volume: the fader of the track it's heard on.
+// (0.76.0) Each lane's volume. (0.206.0, the owner: "the whole reason to set ARCHITECT volume is for hearing the riffs
+// play in ARCHITECT") The lane's ARCHITECT level (the Hub's ARCHITECT TRACKS shows the same): what HEAR plays its tracks
+// at and where a new or empty track of it starts. It never reads or moves a track's fader (it read the hearing's
+// stand-in, the selected or first instrument track: the owner's CHORDS lane showed BASS's 0 dB and dragged BASS).
 void ComposerPage::setLaneVolume (ComposerLayer l, float db, bool undoable)
 {
-    const auto id = trackFor (l, true);
-    if (id == 0)
-        return;
-    if (const auto* t = studio.getProject().findTrack (id); t != nullptr && std::abs (t->volumeDb - db) < 0.01f && ! undoable)
-        return;
-    studio.setVolume (id, db, undoable);
+    juce::ignoreUnused (undoable);   // (a setting, not a song edit: no undo steps)
+    const auto part = pr7s::composerPartOf (l);
+    if (const auto lane = pr7s::Studio::composerTrackLane (part); lane >= 0 && std::abs (studio.getLaneLevel (part) - db) >= 0.01f)
+        studio.setLaneLevel (lane, db);   // (heard at once while HEAR plays)
 }
 
 void ComposerPage::refreshVolumes()
@@ -1240,11 +1305,9 @@ void ComposerPage::refreshVolumes()
     for (const auto l : pr7s::composerLayers())
     {
         auto& v = lanes[(size_t) l].volume;
-        const auto id = trackFor (l, true);
-        const auto* t = id != 0 ? studio.getProject().findTrack (id) : nullptr;
-        v.setEnabled (t != nullptr);
-        if (t != nullptr && std::abs (v.getValue() - (double) t->volumeDb) > 0.01)
-            v.setValue (t->volumeDb, juce::dontSendNotification);
+        const auto db = (double) studio.getLaneLevel (pr7s::composerPartOf (l));
+        if (std::abs (v.getValue() - db) > 0.01)
+            v.setValue (db, juce::dontSendNotification);
     }
 }
 
@@ -3450,6 +3513,8 @@ void ComposerPage::timerCallback()
     }
     if (! isShowing())
         return;   // (0.164.0: behind the IDEAS tab or a closed window it rebuilt on every change; it catches up when shown)
+    if (startOverIfNewSong())   // (0.206.0: another song: its own ARCHITECT)
+        return;
     // The song changed (tracks added or renamed, the chord track): the lanes' tracks and chords again.
     // (0.190.0) A track clicked (a selection alone) changes nothing the lanes are made from: only
     // the "heard on" lines (painted from the selection) are drawn again, not the whole composition.
@@ -3960,6 +4025,15 @@ ComposerSuite::ComposerSuite (pr7s::Studio& s) : studio (s), composer (s)
     {
         const auto l = ComposerPage::layerOf (part);
         return l.has_value() ? pr7s::composerLayerName (*l) : juce::String();
+    };
+    composer.onSongChanged = [this]   // (0.206.0) another song: IDEAS on its chords, nothing heard
+    {
+        ideasOnOtherChords = false;
+        if (ideas != nullptr)
+        {
+            ideas->stop();
+            ideas->setChords (composer.spansAt (composer.buildStart()));
+        }
     };
     composer.onChordsChanged = [this] (const std::vector<pr7s::ChordSpan>& spans)
     {

@@ -63,6 +63,41 @@ namespace pr7s
         lane (ComposerLayer::drums).style = 1;
     }
 
+    juce::String lineNotesToText (const std::vector<LineNote>& list)
+    {
+        juce::StringArray notes;
+        for (const auto& n : list)
+            notes.add (juce::String (n.beat, 6) + ":" + juce::String (n.length, 6) + ":" + juce::String (n.pitch) + ":"
+                       + juce::String (n.velocity, 4) + ":" + (n.keyswitch ? "1" : "0") + ":" + juce::String ((int) n.effect) + ":"
+                       + juce::String (n.amount, 4) + ":" + juce::String ((int) n.technique) + ":" + (n.harmony ? "1" : "0"));
+        return notes.isEmpty() ? juce::String ("-") : notes.joinIntoString ("/");
+    }
+
+    std::vector<LineNote> lineNotesFromText (const juce::String& notes)
+    {
+        std::vector<LineNote> out;
+        if (notes == "-" || notes.isEmpty())
+            return out;
+        for (const auto& text : juce::StringArray::fromTokens (notes, "/", ""))
+        {
+            const auto f = juce::StringArray::fromTokens (text, ":", "");
+            if (f.size() < 9)
+                continue;
+            LineNote n;
+            n.beat = f[0].getDoubleValue();
+            n.length = juce::jmax (0.0, f[1].getDoubleValue());
+            n.pitch = juce::jlimit (0, 127, f[2].getIntValue());
+            n.velocity = juce::jlimit (0.0f, 1.0f, f[3].getFloatValue());
+            n.keyswitch = f[4] == "1";
+            n.effect = (LineNote::Effect) juce::jlimit (0, (int) LineNote::Effect::bendDive, f[5].getIntValue());
+            n.amount = f[6].getFloatValue();
+            n.technique = (LineNote::Technique) juce::jlimit (0, (int) LineNote::Technique::harmonic, f[7].getIntValue());
+            n.harmony = f[8] == "1";
+            out.push_back (n);
+        }
+        return out;
+    }
+
     namespace
     {
         // (0.202.0) A lane's bar locks as three fields of its text (no commas, semicolons or bars in them): the bars in
@@ -70,38 +105,14 @@ namespace pr7s
         // none) and the fill (its id's bytes in hex; "-" none).
         juce::String barLocksToText (const ComposerLane& l)
         {
-            juce::StringArray notes;
-            for (const auto& n : l.keptNotes)
-                notes.add (juce::String (n.beat, 6) + ":" + juce::String (n.length, 6) + ":" + juce::String (n.pitch) + ":"
-                           + juce::String (n.velocity, 4) + ":" + (n.keyswitch ? "1" : "0") + ":" + juce::String ((int) n.effect) + ":"
-                           + juce::String (n.amount, 4) + ":" + juce::String ((int) n.technique) + ":" + (n.harmony ? "1" : "0"));
             const auto fill = l.fill.isEmpty() ? juce::String ("-") : juce::String::toHexString (l.fill.toRawUTF8(), (int) l.fill.getNumBytesAsUTF8(), 0);
-            return juce::String::toHexString ((juce::int64) l.lockedBars) + "," + (notes.isEmpty() ? juce::String ("-") : notes.joinIntoString ("/"))
-                 + "," + fill;
+            return juce::String::toHexString ((juce::int64) l.lockedBars) + "," + lineNotesToText (l.keptNotes) + "," + fill;
         }
 
         void barLocksFromText (ComposerLane& l, const juce::String& bars, const juce::String& notes, const juce::String& fill)
         {
             l.lockedBars = (juce::uint64) bars.getHexValue64();
-            l.keptNotes.clear();
-            if (notes != "-")
-                for (const auto& text : juce::StringArray::fromTokens (notes, "/", ""))
-                {
-                    const auto f = juce::StringArray::fromTokens (text, ":", "");
-                    if (f.size() < 9)
-                        continue;
-                    LineNote n;
-                    n.beat = f[0].getDoubleValue();
-                    n.length = juce::jmax (0.0, f[1].getDoubleValue());
-                    n.pitch = juce::jlimit (0, 127, f[2].getIntValue());
-                    n.velocity = juce::jlimit (0.0f, 1.0f, f[3].getFloatValue());
-                    n.keyswitch = f[4] == "1";
-                    n.effect = (LineNote::Effect) juce::jlimit (0, (int) LineNote::Effect::bendDive, f[5].getIntValue());
-                    n.amount = f[6].getFloatValue();
-                    n.technique = (LineNote::Technique) juce::jlimit (0, (int) LineNote::Technique::harmonic, f[7].getIntValue());
-                    n.harmony = f[8] == "1";
-                    l.keptNotes.push_back (n);
-                }
+            l.keptNotes = lineNotesFromText (notes);
             l.fill = {};
             if (fill != "-" && fill.isNotEmpty())
             {

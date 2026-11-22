@@ -51,9 +51,10 @@ ComposerTracksPage::ComposerTracksPage (Studio& s) : studio (s)
         r->level.updateText();   // (a value equal to the slider's start isn't a change: its text was made before the function)
         r->level.setDoubleClickReturnValue (true, Studio::defaultLaneLevel (i), juce::ModifierKeys::commandModifier);
         r->level.setWantsKeyboardFocus (false);
-        r->level.setTooltip ("LEVEL: the fader a track Architect makes for the " + laneName (i).toLowerCase()
-                             + " lane starts at. Tracks it finds by name keep their own fader. Double-click to type a value; "
-                               "Ctrl-click for the usual one.");
+        r->level.setTooltip ("LEVEL: the " + laneName (i).toLowerCase() + " lane's Architect level: what HEAR plays it at (the song's "
+                             "faders untouched), and where a track Architect makes for it, or first writes onto while it's empty, starts. "
+                             "Tracks with music keep their own fader. The same as the lane's bar in Architect. Double-click to type a value; "
+                             "Ctrl-click for the usual one.");
         r->level.onValueChange = [this, r] { studio.setLaneLevel (r->lane, (float) r->level.getValue()); };
         content.addAndMakeVisible (r->level);
         // (0.204.0) TONE: PR7-G on the guitar lanes' tracks.
@@ -154,6 +155,11 @@ void ComposerTracksPage::timerCallback()
     // The open song's tracks change (added, renamed): what each lane finds follows.
     if (isShowing() && studio.getChangeVersion() != seenChange)
         refresh();
+    else if (isShowing())   // (0.206.0: ARCHITECT's lane bars set the same levels)
+        for (auto& r : rows)
+            if (! r->level.isMouseButtonDown())
+                if (const auto db = (double) studio.getLaneLevels()[(size_t) r->lane]; std::abs (r->level.getValue() - db) > 0.01)
+                    r->level.setValue (db, juce::dontSendNotification);
 }
 
 void ComposerTracksPage::setNames (int lane, const juce::String& text)

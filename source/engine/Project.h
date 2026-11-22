@@ -540,6 +540,19 @@ namespace pr7s
         bool signatureTrackShown = false, signatureLocked = false;
         MarkerTrack markerTrack;                // (0.49.0) the marker track and its markers
         SongSections songSections;              // (0.90.0) the SECTIONS row: the song as blocks, end to end from bar 1
+        // (0.206.0) ARCHITECT's state for this song (ComposerState::toString; empty: its defaults) and the riff pasted
+        // into it (its notes as text: Composer.h's lineNotesToText). Saved in the song, not undo steps (restore leaves
+        // them): another song, a new one or a template brings its own.
+        struct ArchitectRiff
+        {
+            juce::String notes;
+            int bars = 1, section = 1;          // (DrumSection's number)
+            juce::String name;
+            bool played = false, chordsFrom = false;   // the guitar lane plays it; the chords read from it
+            bool operator== (const ArchitectRiff&) const = default;
+        };
+        juce::String architectState;
+        std::optional<ArchitectRiff> architectRiff;
         AutoFades autoFades;                    // (0.52.0) the song's Auto Fades settings
         AutoColour autoColour;                  // (0.79.0) COLOUR IN ORDER (saved; not an undo step)
         bool autoColourTakes (const Track&) const noexcept;

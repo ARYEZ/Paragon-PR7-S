@@ -9012,6 +9012,8 @@ namespace pr7s
         engine.stop();
         unloadSongTracks();
         project = {};
+        loadComposerRiff();   // (0.206.0: ARCHITECT's state and riff are the song's: none in a new one)
+        ++songGeneration;
         padsChanged();
         file = juce::File();
         selectedTrack = 0;
@@ -9236,6 +9238,9 @@ namespace pr7s
         };
         juce::uint64 hash = mix (14695981039346656037ull, changeVersion);
         hash = mix (hash, (juce::uint64) std::bit_cast<juce::uint32> (project.masterVolumeDb));
+        hash = mix (hash, (juce::uint64) project.architectState.hashCode64());   // (0.206.0: ARCHITECT's state is the song's)
+        if (project.architectRiff.has_value())
+            hash = mix (hash, (juce::uint64) (project.architectRiff->notes.hashCode64() + project.architectRiff->played * 2 + project.architectRiff->chordsFrom));
         // (0.190.0) A running plug-in's settings by its watcher's tag (just collected from it: the tag
         // says which answer they are); only settings with no plug-in behind them are hashed byte by byte.
         const auto tagOf = [this, &stateHash] (juce::AudioProcessor* plugin, const juce::MemoryBlock& state)
@@ -10572,6 +10577,8 @@ namespace pr7s
         engine.stop();
         unloadSongTracks();
         project = std::move (*loaded);
+        loadComposerRiff();   // (0.206.0: the song's own ARCHITECT state and riff)
+        ++songGeneration;
         for (const auto& track : project.tracks)   // (never a new track with an old one's number)
             project.nextTrackId = juce::jmax (project.nextTrackId, track.id + 1);
         padsChanged();
@@ -11457,6 +11464,7 @@ namespace pr7s
         }
         auto part = partFromIdea (idea, spans.front().start, spans.back().end - spans.front().start, linePartName (idea.part) + ": " + idea.style);
         linkForPr7d (trackId, idea, part);   // (0.108.0)
+        levelEmptyTrack (trackId, idea.part);   // (0.206.0: in the same step as the part)
         addPart (trackId, part);
         return trackId;
     }
@@ -11622,6 +11630,15 @@ namespace pr7s
                 lines.add (juce::String (l, 1));
             settings->setValue ("composerLaneLevels", lines.joinIntoString ("\n"));
         }
+        hearLaneLevels();
+    }
+
+    void Studio::hearLaneLevels()
+    {
+        // (0.206.0) Heard at once while ARCHITECT plays: the mix of the hearing's copy again (nothing rebuilt, no undo step).
+        if (composerAudition.has_value() && exportJob == nullptr)
+            if (const auto heard = composerAuditionCopy())
+                engine.updateMix (*heard);
     }
 
     void Studio::resetLaneLevels()
@@ -11630,6 +11647,7 @@ namespace pr7s
             laneLevelsHere[(size_t) i] = defaultLaneLevel (i);
         if (settings != nullptr)
             settings->removeValue ("composerLaneLevels");
+        hearLaneLevels();
     }
 
     //==========================================================================
@@ -11922,6 +11940,17 @@ namespace pr7s
         return id;
     }
 
+    bool Studio::levelEmptyTrack (int trackId, LineIdea::Part part)
+    {
+        // (0.206.0) A track found for a lane that holds nothing yet (a template's) starts at the lane's level, as one
+        // ARCHITECT makes; a track with music keeps its fader. The caller's change hands it to the engine.
+        auto* track = project.findTrack (trackId);
+        if (track == nullptr || ! track->parts.empty() || composerTrackLane (part) < 0)
+            return false;
+        track->volumeDb = getLaneLevel (part);
+        return true;
+    }
+
     juce::StringArray Studio::getGrooveFavouriteFolders() const
     {
         if (settings == nullptr)
@@ -12212,16 +12241,61 @@ namespace pr7s
         return c;
     }
 
-    juce::String Studio::getComposerState() const
+    void Studio::setComposerState (const juce::String& text, bool marksModified)
     {
-        return settings != nullptr ? settings->getValue ("composer") : composerState;
+        // The defaults saved as nothing; the same state (however written) changes nothing.
+        const auto parsed = ComposerState::fromString (text);
+        const auto stored = parsed == ComposerState {} ? juce::String() : text;
+        if (stored == project.architectState)
+            return;
+        const auto same = ComposerState::fromString (project.architectState) == parsed;
+        project.architectState = stored;
+        if (marksModified && ! same)
+            modified = true;
     }
 
-    void Studio::setComposerState (const juce::String& text)
+    void Studio::setComposerRiff (std::optional<ComposerRiff> r)
     {
-        composerState = text;
-        if (settings != nullptr)
-            settings->setValue ("composer", text);
+        if (r == composerRiff)
+            return;
+        composerRiff = std::move (r);
+        if (! composerRiff.has_value())
+            project.architectRiff.reset();
+        else
+        {
+            auto saved = project.architectRiff.value_or (Project::ArchitectRiff {});
+            saved.notes = lineNotesToText (composerRiff->notes);
+            saved.bars = composerRiff->bars;
+            saved.section = (int) composerRiff->section;
+            saved.name = composerRiff->name;
+            project.architectRiff = saved;
+        }
+        modified = true;
+    }
+
+    void Studio::setComposerRiffUse (bool played, bool chordsFrom, bool marksModified)
+    {
+        if (! project.architectRiff.has_value() || (project.architectRiff->played == played && project.architectRiff->chordsFrom == chordsFrom))
+            return;
+        project.architectRiff->played = played;
+        project.architectRiff->chordsFrom = chordsFrom;
+        if (marksModified)
+            modified = true;
+    }
+
+    void Studio::loadComposerRiff()
+    {
+        composerRiff.reset();
+        if (! project.architectRiff.has_value())
+            return;
+        ComposerRiff r;
+        r.notes = lineNotesFromText (project.architectRiff->notes);
+        r.bars = project.architectRiff->bars;
+        const auto& sections = drumSections();
+        r.section = juce::isPositiveAndBelow (project.architectRiff->section, (int) sections.size())
+                      ? (DrumSection) project.architectRiff->section : DrumSection::verse;
+        r.name = project.architectRiff->name;
+        composerRiff = r;
     }
 
     std::optional<Project> Studio::composerAuditionCopy() const
@@ -12240,6 +12314,11 @@ namespace pr7s
                 continue;
             auto* track = heard.findTrack (trackId);
             track->parts.push_back (partFromIdea (idea, start, end - start, idea.style));
+            // (0.206.0, the owner: "the whole reason to set ARCHITECT volume is for hearing the riffs play in ARCHITECT")
+            // Each track a lane plays on (the hearing's stand-in too) at the lane's ARCHITECT level, in the copy only:
+            // the song's faders are never touched. Its pan, inserts, mute and the mixer's solo as the track's own.
+            if (playing.count (trackId) == 0 && composerTrackLane (idea.part) >= 0)
+                track->volumeDb = getLaneLevel (idea.part);
             playing.insert (trackId);
         }
         if (playing.empty())
@@ -12342,6 +12421,8 @@ namespace pr7s
             plan.emplace_back (trackId, &idea);
             used.push_back (trackId);
         }
+        for (const auto& [trackId, idea] : plan)
+            levelEmptyTrack (trackId, idea->part);   // (0.206.0: an empty track found for the lane: the lane's level, in this step)
         for (const auto& [trackId, idea] : plan)
             if (auto* track = project.findTrack (trackId))
             {
@@ -15906,7 +15987,10 @@ namespace pr7s
                     tracks.push_back (id);
                 }
                 for (const auto track : tracks)
+                {
+                    levelEmptyTrack (track, part);   // (0.206.0)
                     newLanes.emplace_back (layer, track);
+                }
             }
         }
         const auto linked = project.songSections.linkedWith (index);

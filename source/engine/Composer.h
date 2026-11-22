@@ -229,6 +229,10 @@ namespace pr7s
     // (0.202.0) BAR LOCKS (ComposerLane::lockedBars). The bars a section has (whole bars of `beatsPerBar`, from the first
     // chord's start; 64 at most can be locked).
     int composerBarCount (const std::vector<ChordSpan>&, double beatsPerBar);
+    // (0.206.0) Notes as text (no commas, semicolons or bars: "beat:length:pitch:velocity:keyswitch:effect:amount:technique:harmony"
+    // by slashes; "-" none): the bar locks' kept notes and the riff saved in a song.
+    juce::String lineNotesToText (const std::vector<LineNote>&);
+    std::vector<LineNote> lineNotesFromText (const juce::String&);
     // Bars locked (the bits of `bars` added to the lane's): the lane's notes as `shown` has them in every locked bar
     // kept, each cut at the end of the run of locked bars it starts in (a keyswitch just before a run kept with it).
     void lockLaneBars (ComposerLane&, const LineIdea& shown, juce::uint64 bars, double beatsPerBar, int barCount);
