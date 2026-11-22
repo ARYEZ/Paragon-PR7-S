@@ -210,13 +210,15 @@ SectionEditor::SectionEditor (pr7s::Studio& s, int id) : studio (s), blockId (id
     };
 
     addAndMakeVisible (*strip);
-    for (auto* k : { &addKey, &clearKey, &openKey, &moreKey })
+    for (auto* k : { &addKey, &rollKey, &clearKey, &openKey, &moreKey })
     {
         ChordUi::styleKey (*k);
         addAndMakeVisible (*k);
     }
     addKey.onClick = [this] { addChord(); };
     clearKey.onClick = [this] { clearChords(); };
+    rollKey.setTooltip ("New chords in the key, drawn chord to chord toward the likely ones; the section's name gives them their feel");
+    rollKey.onClick = [this] { rollChords ((juce::uint32) juce::Random::getSystemRandom().nextInt()); };
     openKey.onClick = [this] { if (onOpen && getIndex() >= 0) onOpen (getIndex()); };
     moreKey.onClick = [this] { if (onMore && getIndex() >= 0) onMore (getIndex()); };
     setSize (width, height);
@@ -402,6 +404,13 @@ void SectionEditor::removeChord (int i)
     write();
 }
 
+bool SectionEditor::rollChords (juce::uint32 seed)
+{
+    const auto done = studio.rollSectionChords (getIndex(), seed);
+    refresh();
+    return done;
+}
+
 void SectionEditor::clearChords()
 {
     chords.clear();
@@ -506,9 +515,9 @@ void SectionEditor::resized()
     strip->setBounds (r.removeFromTop (110));
     hint.setBounds (r.removeFromTop (22));
     auto keys = r.removeFromBottom (32);
-    for (auto* k : { &addKey, &clearKey })
+    for (auto* k : { &addKey, &rollKey, &clearKey })
     {
-        k->setBounds (keys.removeFromLeft (130));
+        k->setBounds (keys.removeFromLeft (k == &rollKey ? 90 : 130));
         keys.removeFromLeft (8);
     }
     moreKey.setBounds (keys.removeFromRight (110));

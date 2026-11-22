@@ -39,6 +39,9 @@ public:
     void removeChord (int i);
     void addChord();
     void clearChords();
+    // (0.208.0) ROLL: the block's chords drawn anew in its key (Studio::rollSectionChords): another roll each time.
+    bool rollChords (juce::uint32 seed);
+    juce::TextButton& getRollKey() { return rollKey; }
     juce::Rectangle<int> getChordBounds (int i) const;   // (in this component)
     juce::ComboBox& getNameBox() { return nameBox; }
     juce::ComboBox& getTypeBox() { return typeBox; }
@@ -58,7 +61,7 @@ private:
                 transitionLabel { {}, "INTO THE NEXT" };
     juce::ComboBox nameBox, typeBox, lengthBox, keyBox, transitionBox;
     std::unique_ptr<Strip> strip;
-    juce::TextButton addKey { "+ CHORD" }, clearKey { "CLEAR CHORDS" }, openKey { "OPEN IN THE ARCHITECT" }, moreKey { "MORE..." };
+    juce::TextButton addKey { "+ CHORD" }, rollKey { "ROLL" }, clearKey { "CLEAR CHORDS" }, openKey { "OPEN IN THE ARCHITECT" }, moreKey { "MORE..." };
     bool refreshing = false;
 
     double beatsPerBar() const;

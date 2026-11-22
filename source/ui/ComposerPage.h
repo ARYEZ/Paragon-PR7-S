@@ -84,6 +84,18 @@ public:
     void setMood (const juce::String&);
     void setBars (int);                      // 4, 8 or 16
     void setProgression (const juce::String& name);
+    // (0.208.0, the owner: CHORD ROLL) ROLL CHORDS on the chord line: new chords drawn in the key, chord to chord by our
+    // progressions' weights, the section's feel weighting them (engine/ChordRoll.h). On a SECTIONS block: the block's
+    // chords on the chord track (Studio::rollSectionChords: one undo step, linked copies follow, built lanes built
+    // again with their styles), the composer then reading the chord track. Without a block: each of the source's
+    // chords swapped for the roll's (its rhythm kept). The same roll isn't given twice in a row.
+    bool rollChords();
+    juce::TextButton& getRollChordsKey() noexcept { return rollChordsKey; }
+    // (0.208.0) The PROGRESSION menu's POPULAR IN <KEY> section: the studio's popular progressions in the key (those all
+    // in the key), as the chord pads show them. One: the library's progression with the same chords (genre and mood
+    // let go so it passes), else its chords over the source's, in turn.
+    std::vector<pr7s::Progression> getPopularInKey() const;
+    void usePopularProgression (int index);
     void setFromChordTrack (bool);
     void setToChordTrack (bool);
     void setTrack (pr7s::ComposerLayer, int trackId);   // 0: automatic (the one named for it, else new)
@@ -336,6 +348,7 @@ private:
     Trial trial;
     void showTypeMenu();
     void applyBlockType();   // the target block's type onto the state (when it differs)
+    static constexpr int popularItems = 10000;   // (0.208.0) the PROGRESSION menu's POPULAR IN <KEY>
     static constexpr int myRiffItem = 4900;   // (0.75.0) the guitar's style menu: My Riff   // (0.70.0) the lead's style menu: Solo Style items
     void showTrackMenu (pr7s::ComposerLayer);
     void showProgressionMenu();
@@ -392,6 +405,8 @@ private:
     juce::ComboBox keyBox, genreBox, moodBox, lengthBox, styleBox;
     juce::TextButton progressionKey, libraryKey { "LIBRARY" }, chordTrackKey { "CHORD TRACK" }, toChordTrackKey { "+ CHORD TRACK" };
     juce::TextButton hearKey { "HEAR" }, useKey { "USE ALL" }, generateKey { "GENERATE" };
+    juce::TextButton rollChordsKey { "ROLL CHORDS" };   // (0.208.0)
+    std::vector<juce::String> chordRollsLately;          // (0.208.0) without a block: the last rolls (fingerprints)
     juce::Rectangle<int> ruler, controlsLabels;
     // (0.74.0)
     juce::ComboBox sectionBox;

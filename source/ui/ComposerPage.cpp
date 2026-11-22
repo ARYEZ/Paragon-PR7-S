@@ -1,5 +1,6 @@
 #include "ui/ComposerPage.h"
 #include "engine/SectionTypes.h"
+#include "engine/ChordRoll.h"
 #include "engine/GuitarTones.h"
 
 #include "engine/MidiImport.h"
@@ -99,6 +100,12 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
         for (auto* box : { &keyBox, &genreBox, &moodBox, &lengthBox, &styleBox })
             addAndMakeVisible (*box);
     }
+    pedal (rollChordsKey);
+    rollChordsKey.setTooltip ("New chords in the key, drawn chord to chord toward the likely ones (the section's feel weights them): "
+                              "a SECTIONS block's chords onto the chord track (its lanes built again over them, their styles kept), "
+                              "else the progression's chords swapped. Again: another roll");
+    rollChordsKey.onClick = [this] { rollChords(); };
+    addAndMakeVisible (rollChordsKey);
     pedal (progressionKey, true);
     progressionKey.setTooltip ("The progression: the library's that pass KEY, GENRE and MOOD (ROLL and GENERATE keep it: choose another here)");
     progressionKey.onClick = [this] { showProgressionMenu(); };
@@ -465,6 +472,7 @@ void ComposerPage::refresh (bool rehear)
                                   : fromRiff ? juce::String ("PROGRESSION: FROM MY RIFF")
                                   : state.progression.isEmpty() ? juce::String ("NO PROGRESSION FITS") : "PROGRESSION: " + state.progression.toUpperCase());
     progressionKey.setEnabled (! state.fromChordTrack && ! fromRiff);
+    rollChordsKey.setEnabled (getTargetPlace().has_value() || ! state.fromChordTrack);   // (0.208.0)
     for (auto* box : { &genreBox, &moodBox })
         box->setEnabled (! state.fromChordTrack && ! fromRiff);
     lengthBox.setEnabled (! state.fromChordTrack && ! getTargetPlace().has_value());   // (0.90.0: a block's length is its own)
@@ -1108,6 +1116,138 @@ void ComposerPage::setProgression (const juce::String& name)
     chordOverrides.clear();
     state.progression = name;
     refresh();
+}
+
+std::vector<pr7s::Progression> ComposerPage::getPopularInKey() const
+{
+    std::vector<pr7s::Progression> out;
+    for (const auto& p : pr7s::popularProgressions (state.key))
+        if (std::all_of (p.chords.begin(), p.chords.end(), [this] (const pr7s::Chord& c) { return c.isInKey (state.key); }))
+            out.push_back (p);
+    return out;
+}
+
+void ComposerPage::usePopularProgression (int index)
+{
+    const auto popular = getPopularInKey();
+    if (! juce::isPositiveAndBelow (index, (int) popular.size()))
+        return;
+    const auto& chosen = popular[(size_t) index];
+    if (hearing)
+        stop();
+    state.fromChordTrack = false;
+    fromRiff = false;
+    chordOverrides.clear();
+    // The library's progression with these chords, when there is one (its rhythm, its name).
+    for (const auto& p : pr7s::progressionLibrary())
+    {
+        const auto steps = p.in (state.key);
+        if (steps.size() != chosen.chords.size())
+            continue;
+        auto same = true;
+        for (size_t i = 0; i < steps.size() && same; ++i)
+            same = steps[i].chord == chosen.chords[i] && std::abs (steps[i].bars - 1.0) < 1.0e-9;
+        if (! same)
+            continue;
+        state.genre = {};
+        state.mood = {};
+        state.progression = p.name;
+        status = "Popular in " + ChordUi::spokenKey (state.key) + ": " + chosen.name + " (the library's " + p.name + ")";
+        refresh();
+        return;
+    }
+    // Else its chords over the progression's, in turn.
+    spans = chordSpans();
+    for (int i = 0; i < (int) spans.size(); ++i)
+        chordOverrides[i] = chosen.chords[(size_t) i % chosen.chords.size()];
+    status = "Popular in " + ChordUi::spokenKey (state.key) + ": " + chosen.name;
+    refresh();
+}
+
+bool ComposerPage::rollChords()
+{
+    // The block's name (or the composer's SECTION's) gives the roll its feel.
+    static const juce::StringArray sectionNames { "Intro", "Verse", "Chorus", "Bridge", "Breakdown", "Ending", "Solo" };
+    const auto seed = (juce::uint32) random.nextInt();
+    if (getTargetPlace().has_value())
+    {
+        const auto& sections = studio.getSongSections();
+        const auto index = sections.indexOf (targetBlock);
+        if (! studio.rollSectionChords (index, seed))
+        {
+            status = "Nothing to roll the chords of";
+            repaint();
+            return false;
+        }
+        state.fromChordTrack = true;
+        fromRiff = false;
+        chordOverrides.clear();
+        juce::StringArray names;
+        for (const auto& c : studio.getSectionChords (index))
+            names.add (c.chord.name (studio.getSongSectionKey (index)));
+        status = "ROLL CHORDS: " + pr7s::sectionLabel (sections.blocks, index) + " now " + names.joinIntoString (" ")
+               + (studio.isSongSectionBuilt (index) ? " (its lanes built again over them)" : "");
+        refresh();
+        return true;
+    }
+    if (state.fromChordTrack)
+    {
+        status = "The chord track's chords: aim at a SECTIONS block to roll them";
+        repaint();
+        return false;
+    }
+    const auto source = chordSpans();
+    if (source.empty())
+    {
+        status = "No chords to roll";
+        repaint();
+        return false;
+    }
+    pr7s::ChordRollRequest request;
+    request.key = state.key;
+    const auto section = (int) std::distance (pr7s::drumSections().begin(),
+                                              std::find (pr7s::drumSections().begin(), pr7s::drumSections().end(), getSection()));
+    request.section = sectionNames[juce::jlimit (0, sectionNames.size() - 1, section)];
+    request.beatsPerBar = context.beatsPerBar;
+    const auto total = source.back().end - source.front().start;
+    request.bars = juce::jmax (1, juce::roundToInt (total / juce::jmax (0.25, context.beatsPerBar)));
+    for (const auto& s : source)
+        request.layout.push_back (s.end - s.start);
+    request.avoid = chordRollsLately;
+    {
+        std::vector<pr7s::RolledChord> now;
+        for (int i = 0; i < (int) source.size(); ++i)
+            now.push_back ({ chordOverrides.count (i) > 0 ? chordOverrides[i] : source[(size_t) i].chord, source[(size_t) i].end - source[(size_t) i].start });
+        request.avoid.push_back (pr7s::rolledFingerprint (now));
+    }
+    const auto rolled = pr7s::rollChords (request, seed);
+    if (rolled.empty())
+        return false;
+    chordRollsLately.push_back (pr7s::rolledFingerprint (rolled));
+    if (chordRollsLately.size() > 24)
+        chordRollsLately.erase (chordRollsLately.begin());
+    // Each of the source's chords: the rolled chord sounding at its start.
+    chordOverrides.clear();
+    for (int i = 0; i < (int) source.size(); ++i)
+    {
+        const auto offset = source[(size_t) i].start - source.front().start;
+        auto t = 0.0;
+        auto chord = rolled.front().chord;
+        for (const auto& r : rolled)
+        {
+            if (t > offset + 1.0e-6)
+                break;
+            chord = r.chord;
+            t += r.beats;
+        }
+        chordOverrides[i] = chord;
+    }
+    juce::StringArray names;
+    for (const auto& r : rolled)
+        names.add (r.chord.name (state.key));
+    status = "ROLL CHORDS: " + names.joinIntoString (" ");
+    refresh();
+    return true;
 }
 
 void ComposerPage::setFromChordTrack (bool on)
@@ -2019,6 +2159,8 @@ juce::Button* ComposerPage::keyNamed (const juce::String& name)
             return key;
     if (name == "SYNC")
         return &syncKey;
+    if (name == "ROLL CHORDS")
+        return &rollChordsKey;
     for (const auto l : pr7s::composerLayers())
     {
         auto& lane = lanes[(size_t) l];
@@ -3075,6 +3217,20 @@ void ComposerPage::showProgressionMenu()
     const auto found = pr7s::composerProgressions (state);
     const auto& library = pr7s::progressionLibrary();
     juce::PopupMenu menu;
+    // (0.208.0) The popular progressions in the key first: the same list and names the chord pads show.
+    {
+        const auto popular = getPopularInKey();
+        menu.addSectionHeader ("POPULAR IN " + ChordUi::spokenKey (state.key).toUpperCase());
+        for (int i = 0; i < (int) popular.size(); ++i)
+        {
+            juce::StringArray names;
+            for (const auto& c : popular[(size_t) i].chords)
+                names.add (c.name (state.key));
+            menu.addItem (popularItems + i, popular[(size_t) i].name + "   " + names.joinIntoString (" "));
+        }
+        menu.addSeparator();
+        menu.addSectionHeader ("THE LIBRARY");
+    }
     // By genre (each a submenu), in the order found (the key's own mode first within each).
     std::map<juce::String, juce::PopupMenu> byGenre;
     juce::StringArray order;
@@ -3092,7 +3248,11 @@ void ComposerPage::showProgressionMenu()
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (progressionKey),
                         [safe = juce::Component::SafePointer<ComposerPage> (this)] (int chosen)
                         {
-                            if (safe != nullptr && chosen > 0)
+                            if (safe == nullptr || chosen <= 0)
+                                return;
+                            if (chosen >= popularItems)
+                                safe->usePopularProgression (chosen - popularItems);
+                            else
                                 safe->setProgression (pr7s::progressionLibrary()[(size_t) chosen - 1].name);
                         });
 }
@@ -3633,7 +3793,7 @@ void ComposerPage::paint (juce::Graphics& g)
     g.setColour (ParagonColours::textDim);
     g.setFont (ParagonLookAndFeel::titleFont (11.0f));
     g.drawText ("CHORDS: CLICK TO SWAP. NOTES: CLICK TO HEAR, DRAG OUT AS MIDI",
-                juce::Rectangle<int> (gap, ruler.getY(), laneHeaderWidth, ruler.getHeight()), juce::Justification::centredLeft, true);
+                juce::Rectangle<int> (gap, ruler.getY(), laneHeaderWidth - 150, ruler.getHeight()), juce::Justification::centredLeft, true);
     for (const auto l : pr7s::composerLayers())
         if (const auto& lane = lanes[(size_t) l]; clip.intersects (lane.header.getUnion (lane.notes).getUnion (lane.note)))
             paintLane (g, l, lane);
@@ -3961,6 +4121,9 @@ void ComposerPage::resized()
         }
     }
     area.removeFromBottom (gap);
+    {
+        rollChordsKey.setBounds (juce::Rectangle<int> (area.getX() + laneHeaderWidth - 140, area.getY() + 3, 140, rulerHeight - 7));   // (0.208.0)
+    }
     ruler = area.removeFromTop (rulerHeight).withTrimmedLeft (laneHeaderWidth + gap).withTrimmedBottom (2);
     const auto laneHeight = area.getHeight() / pr7s::composerLayerCount;
     for (const auto l : pr7s::composerLayers())

@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.208.0
+
+CHORD ROLL: a section's chords drawn anew in its key, as often as you like, leaning toward the chords that usually go together; and one way to add chords in ARCHITECT and the rest of the studio.
+
+- **ROLL CHORDS** on ARCHITECT's chord line (left of the chord names). With a SECTIONS block chosen (say a SOLO in D# minor), each press writes new chords for that block onto the chord track: the lanes you built there are written again over them in the same styles (their settings kept), linked copies of the block change with it, and one Undo takes it all back. ARCHITECT then reads its chords from the chord track. Without a block, it swaps the progression's chords for new ones and keeps its rhythm. Pressing it again never gives the same chords twice in a row.
+- **How the chords are chosen** (our design): chord by chord. The first chord is drawn by how often our progressions (the progression library and the popular progressions the chord pads show) open on it: the tonic most often, but well under 70 % of the time, and any chord of the key can open. Each next chord is drawn by the chord before it: how often those progressions go from that chord to this one (a minor key's minor v and major V apart), with a little room for every move so nothing is ruled out, and never the same chord twice in a row. A round's last chord leans toward one that leads back to its first, and toward the next section's first chord when it has one. Only chords of the key.
+- **The section's feel weights it**: a verse stays near home, a pre-chorus leaves the tonic and leans toward V, a chorus lifts toward VI, III, VII and IV, a bridge seldom opens on the tonic, a breakdown sits on the tonic with longer chords more often, an outro comes home at the end, a solo makes a loop that comes round to its first chord.
+- **The rhythm**: one chord a bar in rounds of four bars repeated through the section, now and then two-bar chords in long sections, and in bridges and solos sometimes a new round of four. When the block already has two or more chords filling it, their lengths are kept and only the chords change (CLEAR CHORDS first for a fresh rhythm).
+- **ROLL** in the block editor (right-click a block), beside + CHORD: the same roll.
+- **POPULAR IN THE KEY** at the top of ARCHITECT's PROGRESSION menu: the popular progressions the chord pads and progression window show, with the same names (those all in the key). Choosing one plays the library's progression with those chords when there is one, else puts its chords in turn over the progression's.
+
 ## 0.207.0
 
 Solos, round six: twenty new solo styles from your new songs' solos (read for their shapes only: how the phrases sit, their rhythm, register, note choice and techniques; never a solo note for note; the names are ours). Each writes the whole solo its own way, so the styles you already have play exactly as before.

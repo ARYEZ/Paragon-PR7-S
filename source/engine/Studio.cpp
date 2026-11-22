@@ -1,4 +1,5 @@
 #include "Studio.h"
+#include "ChordRoll.h"
 #include "GuitarTones.h"
 #include "Pr7dLink.h"
 #include "SectionTypes.h"
@@ -14866,6 +14867,48 @@ namespace pr7s
             project.chordTrack.shown = true;
         setChordEvents (std::move (events));
         return true;
+    }
+
+    bool Studio::rollSectionChords (int index, juce::uint32 seed)
+    {
+        const auto place = getSongSectionPlace (index);
+        if (! place.has_value())
+            return false;
+        const auto& block = project.songSections.blocks[(size_t) index];
+        ChordRollRequest request;
+        request.key = getSongSectionKey (index);
+        request.section = block.name;
+        request.bars = place->bars;
+        request.beatsPerBar = project.beatsPerBarAt (place->start);
+        const auto before = getSectionChords (index);
+        auto laid = 0.0;
+        for (const auto& c : before)
+            laid += c.beats;
+        if (before.size() >= 2 && std::abs (laid - (place->end - place->start)) < 1.0e-6)
+            for (const auto& c : before)
+                request.layout.push_back (c.beats);
+        if (index + 1 < (int) project.songSections.blocks.size())
+            if (const auto after = getSectionChords (index + 1); ! after.empty())
+                request.next = after.front().chord;
+        auto& lately = rolledLately[block.id];
+        request.avoid = lately;
+        if (! before.empty())
+        {
+            std::vector<RolledChord> now;
+            for (const auto& c : before)
+                now.push_back ({ c.chord, c.beats });
+            request.avoid.push_back (rolledFingerprint (now));   // (not the chords it has already)
+        }
+        const auto rolled = rollChords (request, seed);
+        if (rolled.empty())
+            return false;
+        lately.push_back (rolledFingerprint (rolled));
+        if (lately.size() > 24)
+            lately.erase (lately.begin());
+        std::vector<SectionChord> chords;
+        for (const auto& r : rolled)
+            chords.push_back ({ r.chord, r.beats });
+        return setSectionChords (index, chords);
     }
 
     void Studio::addSongSectionTrack()

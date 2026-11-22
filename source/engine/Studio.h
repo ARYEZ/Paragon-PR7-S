@@ -1379,6 +1379,12 @@ namespace pr7s
         };
         std::vector<SectionChord> getSectionChords (int index) const;
         bool setSectionChords (int index, const std::vector<SectionChord>&);
+        // (0.208.0, the owner: CHORD ROLL) A block's chords drawn anew in its key (engine/ChordRoll.h: chord to chord
+        // by our progressions' weights, the block's name its feel; the block's own rhythm kept when it has two or more
+        // chords filling it; toward the next block's first chord), through setSectionChords: one undo step, linked
+        // copies follow, a built block's lanes are built again over them with their styles. The last rolls of each
+        // block (not saved) aren't given again. False: no such block.
+        bool rollSectionChords (int index, juce::uint32 seed);
 
         // BLUEPRINTS (0.152.0, engine/Blueprints.h): a song's section layout as a preset. Using one replaces the
         // SECTIONS row with its blocks (names, lengths, linked copies, types, transitions) from bar 1, sets the song's
@@ -1775,6 +1781,7 @@ namespace pr7s
             std::vector<ChordEvent> chords;
             bool operator== (const SectionContent&) const = default;
         };
+        std::map<int, std::vector<juce::String>> rolledLately;   // (0.208.0) by block id: the last rolls' fingerprints
         SectionContent sectionContent (const SectionPlace&) const;
         void writeSectionContent (const SectionPlace&, const SectionContent&);
         void syncLinkedSections();
