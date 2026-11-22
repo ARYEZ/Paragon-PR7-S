@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.203.0
+
+Every open bar on the drums lane gets its own fill (you asked: "make each open bar get its own fill"). In 0.202.0 every bar you left unlocked played the same fill.
+
+- **ROLL** (and GENERATE) on drums with bars locked now gives each open bar a fill of its own, picked at random. A bar never gets the fill it just had. When there are three fills or more to choose from, it never gets the same fill as the open bar before it either. With bars 1-3 and 5-7 locked, bar 4 and bar 8 end on two different fills. The status line names each bar's fill.
+- **Choosing a fill by hand** (the drums' FILLS options): choose the open bars you want first (drag across them), and the fill goes into those bars only. With no bar chosen, it goes into every open bar, as before. The options window's title says which: "FOR THE OPEN BARS CHOSEN", or "FOR THE BARS NOT LOCKED".
+- **On the lane:** each open bar's fill is written at the foot of the bar ("FILL: ..."), when there's room.
+- Songs and saved ARCHITECT settings from 0.202.0 open as they were (their one fill plays in every open bar until you roll or choose again).
+
 ## 0.202.0
 
 BAR LOCKS in ARCHITECT: keep the bars of a lane you like, and roll only the rest (you asked: "lock bars 1-3 and 5-7, hit roll and get better fills for the end of each four bars").

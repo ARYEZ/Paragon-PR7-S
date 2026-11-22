@@ -26263,11 +26263,26 @@ namespace pr7s
             const auto& lane = s.lane (l);
             if (! lane.hasBarLocks() || spans.empty())
                 return;
-            std::vector<LineNote> fill;
-            auto fillLength = 0.0;
+            const auto barCount = composerBarCount (spans, c.beatsPerBar);
+            std::map<int, BarFill> fills;
             if (l == ComposerLayer::drums && lane.fill.isNotEmpty())
-                fill = composerFillNotes (lane.fill, s, c, fillLength);
-            applyBarLocks (idea, lane, c.beatsPerBar, composerBarCount (spans, c.beatsPerBar), fill.empty() ? nullptr : &fill, fillLength);
+            {
+                // (0.203.0) Each open bar's own fill; each fill's notes read once.
+                std::map<juce::String, BarFill> read;
+                for (const auto& [bar, id] : barFills (lane, barCount))
+                {
+                    auto found = read.find (id);
+                    if (found == read.end())
+                    {
+                        BarFill f;
+                        f.notes = composerFillNotes (id, s, c, f.length);
+                        found = read.emplace (id, std::move (f)).first;
+                    }
+                    if (! found->second.notes.empty())
+                        fills[bar] = found->second;
+                }
+            }
+            applyBarLocks (idea, lane, c.beatsPerBar, barCount, fills);
         }
         // What every writer that follows a lane reads (SYNC, the bass doubling the guitar, the kick on the riff): the
         // lane as it plays, its locked bars in (0.202.0).
@@ -28545,6 +28560,16 @@ namespace pr7s
 
     void applyBarLocks (LineIdea& idea, const ComposerLane& lane, double bpb, int barCount, const std::vector<LineNote>* fill, double fillLength)
     {
+        std::map<int, BarFill> fills;
+        if (fill != nullptr && ! fill->empty())
+            for (int bar = 0; bar < barCount; ++bar)
+                if (! barLocked (lane.lockedBars, bar, barCount))
+                    fills[bar] = { *fill, fillLength };
+        applyBarLocks (idea, lane, bpb, barCount, fills);
+    }
+
+    void applyBarLocks (LineIdea& idea, const ComposerLane& lane, double bpb, int barCount, const std::map<int, BarFill>& fills)
+    {
         const auto mask = lane.lockedBars;
         if (mask == 0 || bpb <= 0.0 || barCount <= 0)
             return;
@@ -28567,14 +28592,14 @@ namespace pr7s
                 }
             out.push_back (n);
         }
-        // A fill over the end of every bar not locked (the drums' FILLS).
-        if (fill != nullptr && ! fill->empty())
+        // A fill over the end of every bar not locked (the drums' FILLS; 0.203.0: each bar its own).
+        for (const auto& [bar, barFill] : fills)
         {
-            const auto fl = juce::jlimit (0.05, bpb, fillLength > 0.0 ? fillLength : bpb);
-            for (int bar = 0; bar < barCount; ++bar)
+            if (bar < 0 || bar >= barCount || barLocked (mask, bar, barCount) || barFill.notes.empty())
+                continue;
+            const auto* fill = &barFill.notes;
+            const auto fl = juce::jlimit (0.05, bpb, barFill.length > 0.0 ? barFill.length : bpb);
             {
-                if (barLocked (mask, bar, barCount))
-                    continue;
                 const auto end = juce::jmin (length, (bar + 1) * bpb);
                 const auto from = juce::jmax (bar * bpb, end - fl);
                 out.erase (std::remove_if (out.begin(), out.end(), [&] (const LineNote& n)
@@ -28630,7 +28655,7 @@ namespace pr7s
             }
         }
         // A fill lands: the locked bar after one starts on a crash and a kick.
-        if (fill != nullptr && ! fill->empty())
+        if (! fills.empty())
         {
             std::map<int, int> kicks;
             for (const auto& n : original)
@@ -28643,6 +28668,8 @@ namespace pr7s
             for (int bar = 1; bar < barCount; ++bar)
             {
                 if (! barLocked (mask, bar, barCount) || barLocked (mask, bar - 1, barCount))
+                    continue;
+                if (const auto f = fills.find (bar - 1); f == fills.end() || f->second.notes.empty())
                     continue;
                 const auto at = bar * bpb;
                 const auto has = [&] (auto test)
@@ -28760,22 +28787,96 @@ namespace pr7s
         return {};
     }
 
-    bool rollFill (ComposerState& s, const ComposerContext& c, juce::Random& random)
+    std::map<int, juce::String> barFills (const ComposerLane& lane, int barCount)
+    {
+        std::map<int, juce::String> out;
+        if (lane.fill.isEmpty())
+            return out;
+        const auto open = [&] (int bar) { return bar >= 0 && bar < barCount && ! barLocked (lane.lockedBars, bar, barCount); };
+        if (! lane.fill.startsWith ("bars:"))
+        {
+            for (int bar = 0; bar < barCount; ++bar)
+                if (open (bar))
+                    out[bar] = lane.fill;
+            return out;
+        }
+        for (const auto& line : juce::StringArray::fromLines (lane.fill.substring (5)))
+            if (const auto eq = line.indexOfChar ('='); eq > 0)
+                if (const auto bar = line.substring (0, eq).getIntValue(); open (bar) && line.substring (eq + 1).isNotEmpty())
+                    out[bar] = line.substring (eq + 1);
+        return out;
+    }
+
+    void setBarFills (ComposerLane& lane, const std::map<int, juce::String>& fills)
+    {
+        lane.fill = {};
+        if (fills.empty())
+            return;
+        juce::String text ("bars:");
+        for (const auto& [bar, id] : fills)
+            text << "\n" << bar << "=" << id;
+        lane.fill = text;
+    }
+
+    void setFillOnBars (ComposerLane& lane, const juce::String& id, juce::uint64 bars, int barCount)
+    {
+        auto fills = barFills (lane, barCount);
+        auto chosenOpen = false;
+        for (int bar = 0; bar < juce::jmin (barCount, mostLockedBars); ++bar)
+            if (((bars >> bar) & 1u) != 0 && ! barLocked (lane.lockedBars, bar, barCount))
+                chosenOpen = true;
+        for (int bar = 0; bar < barCount; ++bar)
+            if (! barLocked (lane.lockedBars, bar, barCount))
+                if (! chosenOpen || (bar < mostLockedBars && ((bars >> bar) & 1u) != 0))
+                    fills[bar] = id;
+        setBarFills (lane, fills);
+    }
+
+    bool rollFill (ComposerState& s, const ComposerContext& c, juce::Random& random, int barCount)
     {
         const auto fills = composerFills (s, c);
         if (fills.empty())
             return false;
         auto& lane = s.lane (ComposerLayer::drums);
-        if (fills.size() == 1)
+        if (barCount <= 0)
         {
-            lane.fill = fills.front().id;
+            // (0.202.0's way: one fill for every open bar.)
+            if (fills.size() == 1)
+            {
+                lane.fill = fills.front().id;
+                return true;
+            }
+            juce::String next;
+            do
+                next = fills[(size_t) random.nextInt ((int) fills.size())].id;
+            while (next == lane.fill);
+            lane.fill = next;
             return true;
         }
-        juce::String next;
-        do
-            next = fills[(size_t) random.nextInt ((int) fills.size())].id;
-        while (next == lane.fill);
-        lane.fill = next;
+        // (0.203.0) Each open bar its own.
+        const auto before = barFills (lane, barCount);
+        std::map<int, juce::String> now;
+        juce::String last;
+        for (int bar = 0; bar < barCount; ++bar)
+        {
+            if (barLocked (lane.lockedBars, bar, barCount))
+                continue;
+            const auto had = before.count (bar) != 0 ? before.at (bar) : juce::String();
+            juce::String next = fills.front().id;
+            for (int tries = 0; tries < 64; ++tries)
+            {
+                next = fills[(size_t) random.nextInt ((int) fills.size())].id;
+                const auto sameAsHad = fills.size() >= 2 && next == had;
+                const auto sameAsLast = fills.size() >= 3 && next == last;
+                if (! sameAsHad && ! sameAsLast)
+                    break;
+            }
+            now[bar] = next;
+            last = next;
+        }
+        if (now.empty())
+            return false;
+        setBarFills (lane, now);
         return true;
     }
 

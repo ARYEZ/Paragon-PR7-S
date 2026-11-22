@@ -162,6 +162,8 @@ public:
     void unlockAllBars (pr7s::ComposerLayer);
     void rollGroove (pr7s::ComposerLayer);            // ROLL as without bar locks (the drums: a new groove, no fill)
     int barCount() const;
+    bool openBarsChosen() const;                      // (0.203.0) a drums bar chosen that isn't locked
+    juce::String fillOfBar (int bar) const;           // (0.203.0) the fill's name in that drums bar (empty: none)
     int barAtX (pr7s::ComposerLayer, int x) const;
     juce::Rectangle<int> getBarBounds (pr7s::ComposerLayer, int bar) const;
     juce::TextButton& getBarsKey (pr7s::ComposerLayer l) { return lanes[(size_t) l].bars; }
@@ -279,6 +281,7 @@ public:
     juce::TextButton* getNextKey (int i) const { return nextKeys[i]; }
 
     const pr7s::ComposerState& getState() const noexcept { return state; }
+    const pr7s::ComposerContext& getContext() const noexcept { return context; }
     const pr7s::LineIdea& getIdea (pr7s::ComposerLayer l) const noexcept { return ideas[(size_t) l]; }
     const std::vector<pr7s::ChordSpan>& getSpans() const noexcept { return spans; }
     void runTimerForTests() { timerCallback(); }
@@ -303,6 +306,7 @@ private:
     };
 
     std::vector<OptionBrowser::Option> laneOptionsOwn (pr7s::ComposerLayer, bool withParts) const;
+    std::vector<pr7s::ComposerFill> fillsShown;   // (0.203.0) the fills, for the open bars' labels
     std::array<juce::uint64, pr7s::composerLayerCount> barSelection {};   // (0.202.0) the bars chosen on each lane
     bool selectingBars = false;
     int barAnchor = 0;

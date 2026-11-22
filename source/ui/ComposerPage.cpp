@@ -373,6 +373,10 @@ void ComposerPage::refresh (bool rehear)
         composedFrom = fingerprint;
     }
     ideas = composed;
+    // (0.203.0) The fills' names, for the open bars' labels.
+    fillsShown.clear();
+    if (state.lane (ComposerLayer::drums).hasBarLocks() && state.lane (ComposerLayer::drums).fill.isNotEmpty())
+        fillsShown = pr7s::composerFills (state, context);
     if (chordsChanged && std::any_of (taken.begin(), taken.end(), [] (const auto& t) { return t.has_value(); }))
     {
         for (auto& t : taken)
@@ -653,7 +657,7 @@ void ComposerPage::generate()
     if (! state.lane (ComposerLayer::drums).locked)
     {
         if (state.lane (ComposerLayer::drums).hasBarLocks())
-            pr7s::rollFill (state, context, random);   // (0.202.0: a new fill for the bars not locked)
+            pr7s::rollFill (state, context, random, barCount());   // (0.203.0: a new fill in each bar not locked)
         else
             pr7s::rollLibraryGroove (state, placedSpans(), context, random);   // (0.137.0: the next of the section's 100)
     }
@@ -668,11 +672,16 @@ void ComposerPage::roll (ComposerLayer l)
     if (l == ComposerLayer::drums && state.lane (l).hasBarLocks())
     {
         taken[(size_t) l].reset();
-        if (pr7s::rollFill (state, context, random))
+        if (pr7s::rollFill (state, context, random, barCount()))
         {
-            for (const auto& f : pr7s::composerFills (state, context))
-                if (f.id == state.lane (l).fill)
-                    status = "Drums: a new fill for the bars not locked: " + f.name;
+            // (0.203.0, the owner: "make each open bar get its own fill") Each open bar a fill of its own.
+            const auto fills = pr7s::composerFills (state, context);
+            juce::StringArray names;
+            for (const auto& [bar, id] : pr7s::barFills (state.lane (l), barCount()))
+                for (int i = 0; i < (int) fills.size(); ++i)
+                    if (fills[(size_t) i].id == id)
+                        names.add ("bar " + juce::String (bar + 1) + ": " + fills[(size_t) i].name);
+            status = "Drums: a new fill in each bar not locked (" + names.joinIntoString (", ") + ")";
             refresh();
             return;
         }
@@ -2420,10 +2429,21 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
     if (withFills)
     {
         fills = pr7s::composerFills (state, context);
+        // (0.203.0) The fill of the first open bar chosen (else the first open bar).
+        const auto now = pr7s::barFills (lane, barCount());
+        juce::String shown;
+        for (const auto& [bar, id] : now)
+            if (shown.isEmpty() || ((barSelection[(size_t) l] >> juce::jmin (bar, 63)) & 1u) != 0)
+            {
+                const auto pick = ((barSelection[(size_t) l] >> juce::jmin (bar, 63)) & 1u) != 0;
+                shown = id;
+                if (pick)
+                    break;
+            }
         for (int i = 0; i < (int) fills.size(); ++i)
-            if (fills[(size_t) i].id == lane.fill)
+            if (fills[(size_t) i].id == shown)
                 chosen = fillId + i;
-        title << " - FILLS FOR THE BARS NOT LOCKED";
+        title << (openBarsChosen() ? " - FILLS FOR THE OPEN BARS CHOSEN" : " - FILLS FOR THE BARS NOT LOCKED (EACH ITS OWN: ROLL)");
     }
     auto browser = std::make_unique<OptionBrowser> (title, laneOptions (l, false), chosen, studio.getOptionMemory(), optionsKeyFor (l));
     browser->setAutoHear (true);   // (0.180.0, the owner: a highlighted option plays at once, in time with the song)
@@ -2560,9 +2580,10 @@ void ComposerPage::useOption (ComposerLayer l, int id)
         if (! juce::isPositiveAndBelow (i, (int) fills.size()))
             return;
         studio.noteOptionUsed (optionsKeyFor (l), fills[(size_t) i].name);
-        state.lane (ComposerLayer::drums).fill = fills[(size_t) i].id;
+        // (0.203.0) Onto the open bars chosen on the lane, else onto every open bar.
+        pr7s::setFillOnBars (state.lane (ComposerLayer::drums), fills[(size_t) i].id, barSelection[(size_t) ComposerLayer::drums], barCount());
         taken[(size_t) ComposerLayer::drums].reset();
-        status = "Drums: " + fills[(size_t) i].name + " in the bars not locked";
+        status = "Drums: " + fills[(size_t) i].name + (openBarsChosen() ? " in the open bars chosen" : " in every bar not locked");
         refresh();
         return;
     }
@@ -2616,7 +2637,7 @@ void ComposerPage::tryOption (ComposerLayer l, int id)
             state.lane (ComposerLayer::drums).fill = before;
             refresh();
         });
-        state.lane (ComposerLayer::drums).fill = fills[(size_t) i].id;
+        pr7s::setFillOnBars (state.lane (ComposerLayer::drums), fills[(size_t) i].id, barSelection[(size_t) ComposerLayer::drums], barCount());
         taken[(size_t) ComposerLayer::drums].reset();
         refresh();
         if (! hearing)
@@ -3194,6 +3215,26 @@ void ComposerPage::mouseUp (const juce::MouseEvent& e)
 
 //==============================================================================
 // (0.202.0) BAR LOCKS.
+bool ComposerPage::openBarsChosen() const
+{
+    const auto& lane = state.lane (ComposerLayer::drums);
+    const auto chosen = barSelection[(size_t) ComposerLayer::drums] & ~lane.lockedBars;
+    const auto bars = juce::jmin (64, barCount());
+    return bars > 0 && (chosen & (bars >= 64 ? ~(juce::uint64) 0 : (((juce::uint64) 1 << bars) - 1))) != 0;
+}
+
+juce::String ComposerPage::fillOfBar (int bar) const
+{
+    const auto now = pr7s::barFills (state.lane (ComposerLayer::drums), barCount());
+    const auto found = now.find (bar);
+    if (found == now.end())
+        return {};
+    for (const auto& f : fillsShown)
+        if (f.id == found->second)
+            return f.name;
+    return {};
+}
+
 int ComposerPage::barCount() const
 {
     return pr7s::composerBarCount (spans, context.beatsPerBar);
@@ -3672,6 +3713,14 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
                     g.drawText ("LOCKED", cell.reduced (5.0f, 4.0f).withHeight (14.0f).translated (0.0f, 2.0f), juce::Justification::topLeft, false);
                 }
             }
+            else if (l == ComposerLayer::drums && x1 - x0 > 40.0f)
+                if (const auto name = fillOfBar (b); name.isNotEmpty())
+                {
+                    // (0.203.0) The open bar's own fill named at its foot.
+                    g.setColour (ParagonColours::textDim);
+                    g.setFont (ParagonLookAndFeel::titleFont (10.0f));
+                    g.drawText ("FILL: " + name.toUpperCase(), cell.reduced (5.0f, 3.0f).removeFromBottom (12.0f), juce::Justification::bottomLeft, true);
+                }
             if (((barSelection[(size_t) l] >> b) & 1u) != 0)
             {
                 ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.22f), cell);

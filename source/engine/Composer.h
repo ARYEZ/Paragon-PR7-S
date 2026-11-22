@@ -1,5 +1,7 @@
 #pragma once
 
+#include <map>
+
 #include "engine/Lines.h"
 #include "engine/Progressions.h"
 #include "engine/Melody.h"
@@ -238,6 +240,17 @@ namespace pr7s
     // Bars past `barCount` are ignored. Nothing done without locks.
     void applyBarLocks (LineIdea&, const ComposerLane&, double beatsPerBar, int barCount,
                         const std::vector<LineNote>* fill = nullptr, double fillLength = 0.0);
+    // (0.203.0, the owner: "make each open bar get its own fill") Each bar's own fill (bar number -> notes and length):
+    // a bar without one in the map gets none. The one-fill form above gives every open bar the same.
+    struct BarFill { std::vector<LineNote> notes; double length = 0.0; };
+    void applyBarLocks (LineIdea&, const ComposerLane&, double beatsPerBar, int barCount, const std::map<int, BarFill>& fills);
+    // (0.203.0) ComposerLane::fill holds either one fill id (every open bar plays it, as 0.202.0 saved it) or a fill
+    // for each bar ("bars:" then "n=id" lines). These read and write it: `barFills` gives every open bar of the
+    // section its fill (none chosen: left out); `setBarFills` writes them back (all alike: the one id).
+    std::map<int, juce::String> barFills (const ComposerLane&, int barCount);
+    void setBarFills (ComposerLane&, const std::map<int, juce::String>&);
+    // The open bars' fills set to `id`: only those in `bars` (a bit a bar) when any open bar is among them, else all.
+    void setFillOnBars (ComposerLane&, const juce::String& id, juce::uint64 bars, int barCount);
     // A lane's locks gone (the bars no longer what they were: the chords changed under a pitched lane's).
     void dropBarLocks (ComposerLane&);
     void dropPitchedBarLocks (ComposerState&);   // every lane's but the drums'
@@ -249,8 +262,10 @@ namespace pr7s
     std::vector<ComposerFill> composerFills (const ComposerState&, const ComposerContext&);
     // A fill's notes (beats from its start) and its length in beats (empty: unknown, or the file can't be read).
     std::vector<LineNote> composerFillNotes (const juce::String& id, const ComposerState&, const ComposerContext&, double& length);
-    // ROLL on a drums lane with bar locks: another fill (random, never the one it has). False: no fills.
-    bool rollFill (ComposerState&, const ComposerContext&, juce::Random&);
+    // ROLL on a drums lane with bar locks: another fill in every open bar (0.203.0: each bar its own, random, never the
+    // one that bar had and, with three fills or more, never the one the open bar before it now has). False: no fills.
+    // `barCount`: the section's bars (0: as in 0.202.0, one fill for them all).
+    bool rollFill (ComposerState&, const ComposerContext&, juce::Random&, int barCount = 0);
 
     // (0.85.0) The guitar's riff generator recipe for the state (its section, flavour, BUSY, the take's seed), and
     // that riff's fingerprint (empty with written riffs or your riff): the composer tells repeats apart by it.

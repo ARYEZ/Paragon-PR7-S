@@ -311,3 +311,76 @@ TEST_CASE ("0.202.0: USE ALL writes the lane with its locked bars; SYNC follower
     CHECK (sameStarts (notesInBar (bassAfter, 0), notesInBar (bass, 0)));
     CHECK (sameNotes (notesInBar (composeLayer (L::guitar, rolled, spans, c), 1), keptBar (guitar, 1, 8.0)));
 }
+
+TEST_CASE ("0.203.0: each open bar gets its own fill", "[barlocks][ui]")
+{
+    // The owner: "make each open bar get its own fill".
+    Studio studio (false);
+    ComposerPage page (studio);
+    page.setRandomSeed (5);
+    REQUIRE (page.barCount() == 8);
+    page.selectBars (L::drums, 0, 2);
+    page.selectBars (L::drums, 4, 6, true);
+    page.lockSelectedBars (L::drums);
+    REQUIRE (page.getLockedBars (L::drums) == bits ({ 0, 1, 2, 4, 5, 6 }));
+
+    auto differ = 0;
+    for (int i = 0; i < 8; ++i)
+    {
+        page.roll (L::drums);
+        const auto fills = barFills (page.getState().lane (L::drums), page.barCount());
+        REQUIRE (fills.size() == 2);   // bars 4 and 8, the open ones
+        REQUIRE (fills.count (3) == 1);
+        REQUIRE (fills.count (7) == 1);
+        if (fills.at (3) != fills.at (7))
+        {
+            ++differ;
+            // Different fills: different notes over the end of the two bars (placed from each bar's start).
+            const auto& idea = page.getIdea (L::drums);
+            std::vector<LineNote> a, b;
+            for (const auto& n : idea.notes)
+            {
+                if (n.beat >= 14.0 - 1.0e-6 && n.beat < 16.0) { auto m = n; m.beat -= 12.0; a.push_back (m); }
+                if (n.beat >= 30.0 - 1.0e-6 && n.beat < 32.0) { auto m = n; m.beat -= 28.0; b.push_back (m); }
+            }
+            CHECK_FALSE (sameStarts (a, b));
+        }
+        // Each lands: bar 5 starts on a crash.
+        const auto bar5 = notesInBar (page.getIdea (L::drums), 4);
+        CHECK (std::any_of (bar5.begin(), bar5.end(), [] (const LineNote& n) { return std::abs (n.beat - 16.0) < 0.03 && isCrash (n.pitch); }));
+    }
+    CHECK (differ == 8);   // (with three fills or more, never the open bar before's)
+
+    // A fill chosen with only bar 8 chosen: bar 4 keeps its own.
+    const auto before = barFills (page.getState().lane (L::drums), page.barCount());
+    int picked = -1;
+    const auto all = composerFills (page.getState(), page.getContext());
+    for (int i = 0; i < (int) all.size() && picked < 0; ++i)
+        if (all[(size_t) i].id != before.at (3) && all[(size_t) i].id != before.at (7))
+            picked = i;
+    REQUIRE (picked >= 0);
+    page.selectBars (L::drums, 7, 7);
+    page.useOption (L::drums, ComposerPage::fillId + picked);
+    auto after = barFills (page.getState().lane (L::drums), page.barCount());
+    CHECK (after.at (3) == before.at (3));
+    CHECK (after.at (7) == all[(size_t) picked].id);
+    // Nothing chosen: every open bar.
+    page.clearBarSelection (L::drums);
+    page.useOption (L::drums, ComposerPage::fillId + picked);
+    after = barFills (page.getState().lane (L::drums), page.barCount());
+    CHECK (after.at (3) == all[(size_t) picked].id);
+    CHECK (after.at (7) == all[(size_t) picked].id);
+
+    // 0.202.0's one fill id still reads as every open bar's.
+    ComposerLane old;
+    old.lockedBars = bits ({ 0, 1, 2 });
+    old.fill = "gen:0:1";
+    const auto read = barFills (old, 4);
+    REQUIRE (read.size() == 1);
+    CHECK (read.at (3) == "gen:0:1");
+    // And the per-bar text survives the saved state.
+    auto s = page.getState();
+    const auto text = s.toString();
+    const auto back = ComposerState::fromString (text);
+    CHECK (barFills (back.lane (L::drums), 8) == barFills (s.lane (L::drums), 8));
+}
