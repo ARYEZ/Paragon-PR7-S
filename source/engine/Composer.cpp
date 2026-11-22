@@ -27896,19 +27896,6 @@ namespace pr7s
             return at != sorted.end() && *at <= beat + within;
         }
 
-        // Up to +4 for a tempo near the song's (half and double count), as the library's word score has it.
-        double tempoBonus (double grooveBpm, double songBpm)
-        {
-            if (grooveBpm <= 0.0 || songBpm <= 0.0)
-                return 0.0;
-            auto ratio = songBpm / grooveBpm;
-            for (const auto k : { 0.5, 2.0 })
-                if (std::abs (std::log2 (ratio * k)) < std::abs (std::log2 (ratio)))
-                    ratio *= k;
-            const auto off = std::abs (std::log2 (ratio));
-            return off < 0.05 ? 4.0 : off < 0.12 ? 2.0 : off > 0.3 ? -2.0 : 0.0;
-        }
-
         juce::String grooveHash (const LibraryGroove& g)
         {
             return juce::String::toHexString ((juce::int64) g.file.getFullPathName().hashCode64());
@@ -27940,7 +27927,6 @@ namespace pr7s
             std::shared_ptr<const void> alive;
             std::vector<bool> isFavourite;
             std::array<std::array<std::vector<size_t>, 3>, 2> groups;   // [round][fav / toon / other]
-            std::array<std::vector<size_t>, 2> toonOthers;             // [round]: Toontrack, not favourite, not naming it
         };
         std::vector<std::shared_ptr<const PoolBase>> keptBases;   // (under poolLock)
 
@@ -28131,8 +28117,6 @@ namespace pr7s
                         continue;
                     if ((g.sectionMask & (1 << sec)) != 0)
                         made->groups[(size_t) round][(size_t) groupOf (i)].push_back (i);
-                    else if (g.toontrack && ! made->isFavourite[i])
-                        made->toonOthers[(size_t) round].push_back (i);
                 }
             }
             base = made;
@@ -28152,21 +28136,15 @@ namespace pr7s
                 for (const auto i : base->groups[(size_t) round][k])
                     groups[k].push_back ({ scoreOf (i), i });
         }
-        const auto& toonOthers = base->toonOthers[(size_t) juce::jmax (0, round - 1)];
         for (auto& list : groups)
             best (list, size);
         const std::array<size_t, 3> share { size / 4, size / 2, size - size / 4 - size / 2 };   // (the owner: 50 / 100 / 50 of 200)
         std::array<size_t, 3> take {};
         for (size_t k = 0; k < 3; ++k)
             take[k] = juce::jmin (groups[k].size(), share[k]);
-        // Toontrack short of its half: its grooves not naming the section first (0.137.0's rule), nearest in tempo and fit.
-        std::vector<Scored> toonExtra;
-        if (take[toon] < share[toon])
-        {
-            for (const auto i : toonOthers)
-                toonExtra.push_back ({ fitOf (i) * 100.0 + 5.0 * tempoBonus (grooveAt (i).bpm, c.bpm), i });
-            best (toonExtra, share[toon] - take[toon]);
-        }
+        // (0.210.0, the owner: "match the part of the song") Only grooves naming the section, in every group: 0.137.0
+        // filled Toontrack's half up with its grooves naming no section at all ("Variation 1", "Variation 2"...), and
+        // with few verse grooves in the Toontrack packs most of the list was those. Short now means a shorter list.
         // A group short passes its places on.
         const auto room = [&] (size_t k) { return groups[k].size() - take[k]; };
         const auto passOn = [&] (size_t missing, std::initializer_list<int> to)
@@ -28179,7 +28157,7 @@ namespace pr7s
             }
         };
         const auto missingFav = share[fav] - take[fav];
-        const auto missingToon = share[toon] - take[toon] - toonExtra.size();
+        const auto missingToon = share[toon] - take[toon];
         const auto missingOther = share[other] - take[other];
         passOn (missingFav, { toon, other });
         passOn (missingToon, { other, fav });
@@ -28187,7 +28165,6 @@ namespace pr7s
         std::vector<Scored> chosen;
         for (size_t k = 0; k < 3; ++k)
             chosen.insert (chosen.end(), groups[k].begin(), groups[k].begin() + (std::ptrdiff_t) take[k]);
-        chosen.insert (chosen.end(), toonExtra.begin(), toonExtra.end());
         std::stable_sort (chosen.begin(), chosen.end(), better);
         std::vector<LibraryGroove> pool;
         pool.reserve (chosen.size());
@@ -28259,18 +28236,29 @@ namespace pr7s
             if (! heard.contains (current))
                 heard.add (current);
         }
+        // (0.210.0, the owner: ROLL brought "beats that don't sound like anything out of my favorites list") With
+        // favourite folders in the list, ROLL goes round only them; the rest of the 200 are there to pick by hand.
+        auto anyFavourite = false;
+        for (const auto& g : pool)
+            anyFavourite = anyFavourite || g.favourite;
+        const auto rolls = [&] (size_t i) { return ! anyFavourite || pool[i].favourite; };
         std::vector<size_t> left;
         for (size_t i = 0; i < pool.size(); ++i)
-            if (! heard.contains (grooveHash (pool[i])))
+            if (rolls (i) && ! heard.contains (grooveHash (pool[i])))
                 left.push_back (i);
         if (left.empty())
         {
             // Every one heard: the list goes round (in a new order), the one playing still last.
-            for (const auto& g : pool)
-                if (const auto h = grooveHash (g); h != current)
-                    heard.removeString (h);
+            size_t count = 0;
             for (size_t i = 0; i < pool.size(); ++i)
-                if (grooveHash (pool[i]) != current || pool.size() == 1)
+                if (rolls (i))
+                {
+                    ++count;
+                    if (const auto h = grooveHash (pool[i]); h != current)
+                        heard.removeString (h);
+                }
+            for (size_t i = 0; i < pool.size(); ++i)
+                if (rolls (i) && (grooveHash (pool[i]) != current || count == 1))
                     left.push_back (i);
         }
         const auto& next = pool[left[(size_t) random.nextInt ((int) left.size())]];

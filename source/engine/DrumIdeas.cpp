@@ -579,10 +579,32 @@ namespace pr7s
         const auto& words = sectionWords();
         const auto text = (g.file.getFullPathName() + " " + g.name + " " + g.tags).toLowerCase();   // (0.107.0: PR7-D's labels too)
         g.fill = text.contains ("fill");
+        // (0.210.0) Whole words only: "verse" in "Reverse" or "Universe", "intro" in "Introspective", "hook" in
+        // "Hooked", "solo" in "Consolation" made those grooves count as that part of a song. Letters and digits are
+        // kept apart, so "Verse2" and "Chorus_1" still count.
+        juce::String words2 (" ");
+        juce::juce_wchar last = 0;
+        for (auto t = text.getCharPointer(); ! t.isEmpty(); ++t)
+        {
+            const auto ch = *t;
+            const auto letter = juce::CharacterFunctions::isLetter (ch), digit = juce::CharacterFunctions::isDigit (ch);
+            if (! letter && ! digit)
+            {
+                if (last != ' ')
+                    words2 << ' ';
+                last = ' ';
+                continue;
+            }
+            if (last != 0 && last != ' ' && juce::CharacterFunctions::isDigit (last) != digit)
+                words2 << ' ';
+            words2 << juce::String::charToString (ch);
+            last = ch;
+        }
+        words2 << ' ';
         g.sectionMask = 0;
         for (int k = 0; k < (int) words.size(); ++k)
             for (const auto& w : words[(size_t) k])
-                if (text.contains (w))
+                if (words2.contains (" " + w + " "))
                 {
                     g.sectionMask |= 1 << k;
                     break;

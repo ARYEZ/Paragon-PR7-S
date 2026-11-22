@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.210.0
+
+ARCHITECT's drums lane, after your report: it kept pulling beats that weren't from your favourites and weren't the song's part ("Variation 1", "Variation 2" instead of verse or chorus grooves).
+
+- **Only grooves for the song's part.** When your Toontrack packs had fewer than 100 grooves for the part (a verse, say), the list was topped up with Toontrack grooves that name no part at all, which is where "Variation 1, Variation 2..." came from. Now every groove in the list names the part in its folders or its name. A part with few grooves gets a shorter list, never other grooves. A part no groove names at all (a solo, say) still borrows the nearest part's grooves (the chorus's), as before.
+- **Part names read as whole words.** "Reverse" or "Universe" counted as a verse, "Introspective" as an intro, "Hooked" as a chorus and "Consolation" as a solo. Now only the word itself counts ("Verse 2", "Verse2", "CHORUS_A" still do).
+- **ROLL stays in your favourite folders.** With favourite folders set (HUB > GROOVE FOLDERS), ROLL goes round only your favourites, each once before any comes back. The rest of the list (the other Toontrack grooves and other packs) is still there to pick by hand from the drums lane's menu and the options browser. AUTOMATIC already took a favourite.
+- The groove names in the menus are as before, so the grooves you've starred keep their stars.
+
 ## 0.209.0
 
 The chord roll keys stand out (you asked).
