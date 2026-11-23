@@ -5142,10 +5142,10 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const auto drums = extraApproaches (ComposerLayer::drums);
     const auto keys = extraApproaches (ComposerLayer::chords);
-    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7 + 11 + 1 + 10);   // (0.199.0: ten more)   // (0.195.0: one more)   // (0.193.0: eleven more)   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
-    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6 + 5 + 1);   // (0.199.0: one more)   // (0.193.0: five more)   // (0.186.0: six more)
+    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7 + 11 + 1 + 10 + 20);   // (0.218.0: twenty more)   // (0.199.0: ten more)   // (0.195.0: one more)   // (0.193.0: eleven more)   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
+    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6 + 5 + 1 + 8);   // (0.218.0: eight more)   // (0.199.0: one more)   // (0.193.0: five more)   // (0.186.0: six more)
     CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3 + 2 + 46);   // (0.217.0: 46 more)   // (0.193.0: two more)   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
-    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4);   // (0.193.0: four more)   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4 + 6);   // (0.218.0: six more)   // (0.193.0: four more)   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
 
     // Under STANDARD (no named type) nothing is added.
     {
@@ -9844,5 +9844,54 @@ TEST_CASE ("0.217.0: round eight's shared guitar options and acoustic styles", "
             CHECK (seen.count (k) == 0);
         }
         seen.insert (k);
+    }
+}
+
+TEST_CASE ("0.218.0: round eight's shared drum, bass and keys options", "[sections][types][shared218]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    for (const auto& [l, count] : std::vector<std::pair<ComposerLayer, int>> { { ComposerLayer::drums, 20 }, { ComposerLayer::bass, 6 }, { ComposerLayer::chords, 8 } })
+    {
+        const auto extras = extraApproaches (l);
+        REQUIRE (extras.size() >= count);
+        juce::StringArray added;
+        for (int i = extras.size() - count; i < extras.size(); ++i)
+            added.add (extras[i]);
+        for (const auto& [section, type] : std::vector<std::pair<juce::String, juce::String>> { { "Chorus", "DRIVING" }, { "Verse", "CLEAN VERSE" } })
+        {
+            ComposerState s;
+            applySectionType (s, section, type);
+            const auto all = sectionApproaches (s, l);
+            if (l == ComposerLayer::bass)
+                CHECK (all[all.size() - 1] == "LOCKED WITH THE KICK");   // (still last)
+            std::set<juce::String> seen;
+            for (int i = 0; i < all.size(); ++i)
+            {
+                auto t = s;
+                t.lane (l).approach = i;
+                const auto layers = composeLayers (t, spans, c);
+                const auto& idea = layers[(size_t) l];
+                juce::String k;
+                for (const auto& n : idea.notes)
+                    k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << (n.harmony ? "h" : "") << ";";
+                if (added.contains (all[i]))
+                {
+                    INFO (type << " " << all[i]);
+                    CHECK_FALSE (baseSectionApproaches (s, l).contains (all[i]));
+                    CHECK (! idea.notes.empty());
+                    CHECK (idea.description.isNotEmpty());
+                    for (const auto& n : idea.notes)
+                    {
+                        CHECK (n.length > 0.0);
+                        CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+                    }
+                    CHECK (seen.count (k) == 0);   // (different from every option before it)
+                }
+                seen.insert (k);
+            }
+            for (const auto& name : added)
+                CHECK (all.contains (name));
+        }
     }
 }
