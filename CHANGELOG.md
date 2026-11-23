@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.215.0
+
+Sixteen new section types for ARCHITECT from your 67 songs (shapes only, our names, all 4/4). Each type has two guitar parts, its own bass part (then ROOTS HELD and LOCKED WITH THE KICK), the keys' SILENT and HELD PADS, and two drum parts.
+
+Pre-chorus:
+- **WHOLE-NOTE LINE FALLING, FOUR ON THE FLOOR:** the key's chord held while the bass falls a half step a bar under it, the kick on every quarter, no snare.
+
+Post-chorus / interlude:
+- **LOW PEDAL EVERY THIRD SIXTEENTH, CHROMATIC PAIRS ABOVE:** the low root on a 3+3+2 grid, chromatic pairs an octave up between, the ride's bell on the eighths.
+
+Bridge (twelve):
+- **THREE-BAR DOTTED CYCLE UNDER A HIGH PEDAL:** a high pedal over a three-bar cycle of the bass, with kick and crash every six sixteenths.
+- **HELD THIRDS CLUSTER, KICK AND HATS BUILD:** the minor and major third rung together for bars, the snare from halfway.
+- **SNARE ON TWO AND THREE, BASS ON ONE AND FOUR.**
+- **DOTTED CRASHES, CRASHES ON THE ANDS, A SNARE ROLL BAR.**
+- **HATS ALONE, BASS PUSHES ON FOUR, TOM BUILD.**
+- **BASS, HATS AND TOMS, THEN THE GUITAR AND FLOOR TOM.**
+- **HIGH DYAD EIGHTHS OVER SOFT TOM-AND-SNARE EIGHTHS.**
+- **BROKEN FOUR-BAR BEAT UNDER STEADY EIGHTHS.**
+- **WHOLE-BAR CHORDS IN THE FLAT KEY, CHROMATIC SLIDE BACK.**
+- **BASS NEIGHBOUR SIXTEENTHS UNDER LATE DYADS.**
+- **QUARTER STABS OVER A HELD BASS, KICK 1, 2-A, 3, 3-AND.**
+- **RISING FIFTHS ON 1, 1-A, 2-AND, BAND OUT.**
+
+Breakdown (two):
+- **UNISON CHROMATIC LINE, A BAR OF ROOT TREMOLO.**
+- **ONE HIT ON ONE-AND, EVERY OTHER BAR:** one chord, then silence and a silent bar, a walk up to the root to end.
+
 ## 0.214.0
 
 Ten new chorus types for ARCHITECT, from your 67 songs (shapes only, our names, all 4/4). Each type has two guitar parts, its own bass part (then ROOTS HELD and LOCKED WITH THE KICK), the keys' SILENT and HELD PADS, and two drum parts.
