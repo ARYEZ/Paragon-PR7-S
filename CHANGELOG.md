@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.213.0
+
+Fifteen new verse types for ARCHITECT, from the 67 songs you uploaded on 23 November. The songs were read for their shapes only: rhythms, which chord tones, how the lanes lock together. Nothing was copied and the names are ours. Each type has two guitar parts, its own bass part (then ROOTS HELD and LOCKED WITH THE KICK), the keys' SILENT and HELD PADS, and two drum parts. Everything is in 4/4.
+
+- **ROOT PAIRS IN THREES, TOP NOTE TURNS:** sixteenth pairs on the low root in threes, the top of the last pair turning bar by bar.
+- **ROOT AND FLAT-SEVEN DYAD GROOVE:** the low root with the flat seventh over it on a busy sixteenth groove, the sixth every other two bars.
+- **TWO POWER CHORDS TRADED ACROSS THE BAR:** two chords traded on 1, 2, its and, the a of 2, 3 and its and.
+- **OFF-BEAT DYADS, SCRATCHES IN THE HOLES:** dyads off the beat, and a second guitar's muted scratches only where they rest.
+- **THE DOWNBEAT LEFT OUT, BAR BY BAR:** one bar comes in on 2, the next on the and of 1.
+- **TWO EIGHTHS AND A REST, A LINE IN THE GAPS:** a clean answer in the gaps.
+- **CHORD, THEN A SIXTEENTH RUN TO THE BAR LINE:** a pentatonic run, with the bass doubling it.
+- **SIX ON, TWO OFF:** a riff, its first two bars again, then two empty bars while the drums play on.
+- **SEVEN-EIGHTH CYCLE OVER FOUR-FOUR:** a loop and groove seven eighths long running across the bars. The bars stay 4/4 and the loop lines up again every seven bars.
+- **OCTAVE GUITAR DOUBLES THE WALKING BASS RIFF:** a four-bar walking eighth line.
+- **SHORT, SHORT, LONG UNISON, EIGHTHS TO END:** hits on 1, the and of 2, the and of 3 and 4, with every eighth bar in straight eighths.
+- **LINE BAR, CHORDS FROM ONE-AND:** a single-note bar, then chords from the and of 1.
+- **BASS ALONE, A HALF-STEP TOUCH, QUARTER HATS:** the guitars out, a chromatic guitar line from halfway as an option.
+- **PEDAL TRIAD WITH CLIMBING INNER VOICES:** the keys hold the key's root, with two voices over it climbing and falling back.
+- **UNISON LOW SIXTEENTHS OVER A TOM GROOVE:** a three-bar tom groove with no cymbals.
+
 ## 0.212.0
 
 ARCHITECT finds a block's chords again when CYCLE is on. The owner's VERSE block showed "The chord track has no chords" while its chords sat on the chord track.
