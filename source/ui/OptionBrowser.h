@@ -58,6 +58,9 @@ public:
     ~OptionBrowser() override;
 
     static constexpr int width = 1000, height = 560;
+    // (0.216.0) What the chosen option's panel shows: its description, then "Inspired by: ..." from the owner's
+    // private file (pr7s::inspiredBy) when it names the option.
+    static juce::String shownDescription (const Option&);
     static inline const juce::String favouritesGroup = "FAVOURITES", recentGroup = "RECENT", everythingGroup = "EVERYTHING";
 
     // For tests (and what the keys do).

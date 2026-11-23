@@ -2,6 +2,7 @@
 
 #include "ui/ParagonLookAndFeel.h"
 #include "engine/Project.h"
+#include "engine/InspiredBy.h"
 
 namespace
 {
@@ -593,11 +594,18 @@ void OptionBrowser::paint (juce::Graphics& g)
         d.removeFromTop (6);
         g.setColour (ParagonColours::textDim);
         g.setFont (words (13.0f, juce::Font::plain));
-        g.drawFittedText (o->description.isNotEmpty() ? o->description : juce::String ("(no description)"),
-                          d.withBottom (pictureArea.getY() - 6), juce::Justification::topLeft, 7);
+        g.drawFittedText (shownDescription (*o), d.withBottom (pictureArea.getY() - 6), juce::Justification::topLeft, 9);
         if (drawn)
             paintPicture (g, *o, pictureArea);
     }
+}
+
+juce::String OptionBrowser::shownDescription (const Option& o)
+{
+    auto text = o.description.isNotEmpty() ? o.description : juce::String ("(no description)");
+    if (const auto inspired = pr7s::inspiredBy (o.name); inspired.isNotEmpty())
+        text << "\n\nInspired by: " << inspired;
+    return text;
 }
 
 void OptionBrowser::paintPicture (juce::Graphics& g, const Option& o, juce::Rectangle<int> area) const

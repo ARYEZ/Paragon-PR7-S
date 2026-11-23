@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "engine/InspiredBy.h"
 #include "engine/OptionFeel.h"
 #include "engine/Studio.h"
 #include "engine/SectionTypes.h"
@@ -513,4 +514,32 @@ TEST_CASE ("0.160.0: the browser in a window of its own; menus of names", "[opti
         CHECK_FALSE (trialEnded);
     }
     CHECK (trialEnded);   // closing the window ends a trial as closing the box did
+}
+
+TEST_CASE ("0.216.0: the inspired-by notes come from the owner's private file", "[options][inspired]")
+{
+    const auto folder = juce::File::createTempFile ("inspired");
+    folder.createDirectory();
+    const auto file = folder.getChildFile ("Inspired By.txt");
+    pr7s::setInspiredByFileForTests (file);
+    OptionBrowser::Option o;
+    o.name = "Driving";
+    o.description = "Eighths all through.";
+    // No file: nothing added, nothing named.
+    CHECK (pr7s::inspiredBy ("DRIVING").isEmpty());
+    CHECK (OptionBrowser::shownDescription (o) == "Eighths all through.");
+    // A file: names matched in any case, comments and lines without a bar left out, repeated names joined.
+    file.replaceWithText ("# my notes\nDRIVING | Song A, Song B\nno bar here\n  driving |  Song C \nOTHER | Song D\n");
+    CHECK (pr7s::inspiredBy ("Driving") == "Song A, Song B; Song C");
+    CHECK (pr7s::inspiredBy ("OTHER") == "Song D");
+    CHECK (pr7s::inspiredBy ("NOT THERE").isEmpty());
+    CHECK (OptionBrowser::shownDescription (o) == "Eighths all through.\n\nInspired by: Song A, Song B; Song C");
+    // Changed on disk: read again.
+    file.replaceWithText ("DRIVING | Song E\n");
+    file.setLastModificationTime (juce::Time::getCurrentTime() + juce::RelativeTime::seconds (5));
+    CHECK (pr7s::inspiredBy ("DRIVING") == "Song E");
+    o.description = {};
+    CHECK (OptionBrowser::shownDescription (o) == "(no description)\n\nInspired by: Song E");
+    pr7s::setInspiredByFileForTests ({});
+    folder.deleteRecursively();
 }

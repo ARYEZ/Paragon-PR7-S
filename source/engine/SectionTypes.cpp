@@ -198,6 +198,9 @@ namespace pr7s
                          { "EMBELLISHED STRUM ALONE", "A two-bar one-chord strum with flicks alone, a slow line climbing the chord over it; the bass and a side stick from halfway", r, {}, b },
                          { "HIGH ONE-NOTE PULSE OVER A TRITONE BASS", "The key's note high in steady eighths, the bass holding the flat five with the root on 4-and, the ride and a kick, no snare", r, {}, b },
                          { "HELD TRIADS STEPPING DOWN, TAMBOURINE", "High triads held a bar, stepping down the key, a choir with them; the kick on 1 and 3, the ride, a tambourine off the beat", r, {}, b },
+                         // (0.216.0) Round eight (the owner's 67 songs; shapes only, our names).
+                         { "ROOT-AND-THIRD EIGHTHS ALONE, THE KIT IN STAGES", "A guitar's eighths rocking from the low root to the key's third alone, then hats, then the kick, then kick eighths, then everyone", r, {}, b },
+                         { "BASS FLICKS UNDER A KEYS RUN", "The bass alone with three-sixteenth flicks on 1 and 3, then an organ's eight-note sixteenth run over it", r, {}, b },
                          droning, open };
             }
             case 1:
@@ -1638,6 +1641,11 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "KICK GALLOP, SNARE ON TWO-AND, CRASH EIGHTHS", "KICK GALLOP, BACKBEAT, RIDE" }, {} },
                 { "CALL BAR, BASS ANSWER BAR", { "CHORD RUNG, THREE STABS, A BAR OFF", "CHORD RUNG, THREE STABS, EVERY BAR" }, { "ANSWERS IN THE EMPTY BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "HITS WITH THE CALL, GROOVE IN THE ANSWER", "HALF TIME UNDER THE CALL" }, {} },
+                // (0.216.0) Round eight's intros.
+                { "ROOT-AND-THIRD EIGHTHS ALONE, THE KIT IN STAGES", { "ROOT AND THE KEY'S THIRD IN EIGHTHS, A SECOND'S HITS", "ROOT AND THE KEY'S THIRD IN EIGHTHS ALONE" }, { "WITH THE SECOND GUITAR'S HITS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HATS ON TWO AND FOUR, THEN KICK, THEN KICK EIGHTHS", "HATS ON TWO AND FOUR, THEN A BACKBEAT" }, {} },
+                { "BASS FLICKS UNDER A KEYS RUN", { "OUT", "A HIGH ROOT EVERY BAR FROM HALFWAY" }, { "FLICKS ON ONE AND THREE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "EIGHT-NOTE RUN FROM HALFWAY", "EIGHT-NOTE RUN THROUGHOUT" }, { "CLOSED HAT QUARTERS ONLY", "CLOSED HATS, KICK ON ONE" }, {} },
                 // (0.215.0) Round eight's pre-chorus, interlude, bridges and breakdowns.
                 { "WHOLE-NOTE LINE FALLING, FOUR ON THE FLOOR", { "TONIC HELD OVER THE FALLING LINE", "THE CHORD OVER EACH BASS NOTE" }, { "WHOLE NOTES FALLING FROM THE ROOT", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "HELD PADS", "SILENT" }, { "FOUR ON THE FLOOR, SIXTEENTH HATS, NO SNARE", "FOUR ON THE FLOOR, EIGHTH HATS, NO SNARE" }, {} },
@@ -2311,6 +2319,22 @@ namespace pr7s
             { "CHROMATIC POWER-CHORD FALL", "The last bar power chords falling a half step a sixteenth from an octave over the next chord's root down to it, toms falling under them" },
             { "PUSHED STRUM STUTTER", "The last bar a stuttered push (1, the a of 1, 2, the e of 2, the e and the and of 3), then sixteenths on 4 with the next chord" },
             { "OFF-EIGHTH KICKS INTO A STOP", "The last bar the band and the kick on the off eighths (1-and, 2-and, 3-and), one hit on 4, then silence" },
+            // (0.216.0) Round eight (the owner's 67 songs; shapes only, our names).
+            { "ROOT HELD, HALF-STEP NEIGHBOURS ON FOUR", "The last bar's chord held to 4, then a half step over, a half step under and back on the last sixteenths, toms under them" },
+            { "SNARE AND TOMS TRADING SIXTEENTHS", "The last bar every sixteenth on the snare or a tom, no kick or cymbal, the band holding its chord" },
+            { "BLUES WALK DOWN IN THREES", "The last bar the root held, then the guitar and the bass walking down the blues scale every three sixteenths, crashes and splashes with it" },
+            { "TWO QUARTER HITS AND AIR", "The last bar two hits on 1 and 2, a whole step under the next chord and then on it, then two beats of air" },
+            { "FOURTH DYADS CLIMBING ON THE DOTTED GRID", "The last bar the root, then four fourth dyads climbing a half step each on the dotted sixteenths up to just under the next chord" },
+            { "TWO CHORDS IN THREE EIGHTHS, BASS ON THE ANDS", "The last bar two chords, three eighths each, this one and the next, the bass answering on the ands" },
+            { "HELD CHORD, THREE STEPS UP ON TOP", "The last bar one chord rung, three high notes climbing on 2, 3 and 4 over it, the bass walking up and a small fill" },
+            { "CHROMATIC BASS FALL INTO THE NEXT", "The last bar the bass falling a half step a sixteenth into the next chord's root, the snare and floor tom under it" },
+            { "A BAR OF HITS, HALF A BAR OF AIR, EIGHTHS", "The bar before last five hits, then half a bar of air with the bass walking up, then eighths on the next chord" },
+            { "OFF-BEAT STABS BAR, KICK AND CRASH WITH THEM", "The last bar every lane only on the off-beats (the and of each beat), the kick and a crash with them" },
+            { "SIXTEENTH PAIRS ON EVERY BEAT", "The last bar the guitar and the bass on a pair of sixteenths each beat, the snare and floor tom on the eighths, no cymbal" },
+            { "A BAR OF DYAD TREMOLO, THEN THE CHORD HELD", "The bar before last two dyads tremolo-picked in turn, then the chord struck and held, the snare and a crash on 1 and 2" },
+            { "ALL-LANE SIXTEENTH CELL, KICK AND OPEN HAT QUARTERS", "The last bar the guitar, the bass and the keys on one sixteenth cell (root, root, the seventh and the octave high), the kick and an open hat on the quarters" },
+            { "EIGHTHS TO BEAT THREE, THEN SILENCE", "The last bar the chord on the first five eighths, then silence until the next section, the kick and a crash only on 1" },
+            { "THREE EVEN STRUMS FALLING", "The last bar three chords held five, six and five sixteenths, falling from the key's flat six to its five and four" },
         };
         return list;
     }
