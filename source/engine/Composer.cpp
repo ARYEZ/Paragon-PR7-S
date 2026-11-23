@@ -12919,7 +12919,8 @@ namespace pr7s
                     text ("The low root held, seven sixteenths falling the pentatonic from the fourth, the fourth held, a power chord to end the bar (every fourth bar none)");
                     for (int bar = 0; bar < bars; ++bar)
                     {
-                        const auto root = barRoot (bar), o = bar * bpb;
+                        const auto root = barRoot (bar);
+                        const auto o = bar * bpb;
                         add (out, o, 3 * s16 * 0.9, root, open());
                         const int run[] { 17, 15, 12, 12, 10, 7, 5 };
                         for (int i = 0; i < 7; ++i)
@@ -12954,7 +12955,8 @@ namespace pr7s
                     text ("The open low root alone between two shapes in sixteenths: the root and octave, and the flat seven and fourth stacked over the root; every other bar a walk of power chords to end");
                     for (int bar = 0; bar < bars; ++bar)
                     {
-                        const auto root = barRoot (bar), o = bar * bpb;
+                        const auto root = barRoot (bar);
+                        const auto o = bar * bpb;
                         for (int k = 0; k < 16; ++k)
                         {
                             const auto t = o + k * s16;
@@ -13139,7 +13141,8 @@ namespace pr7s
                     for (int bar = 0; bar < bars; ++bar)
                     {
                         const auto& chord = chordOfBar (bar);
-                        const auto root = barRoot (bar), o = bar * bpb;
+                        const auto root = barRoot (bar);
+                        const auto o = bar * bpb;
                         for (const auto k : { 0, 3, 4 })
                             power (out, o + k * s16, (k == 4 ? 2 : 1) * s16 * 0.9, root, open());
                         const auto high = rootNear (chord, 64, 75);
@@ -13347,7 +13350,8 @@ namespace pr7s
                     text ("The key's chord and the one a whole step under traded every three sixteenths, a sparse bar, then a sixteenth crawl every fourth bar; a second guitar on the same rhythm two octaves up");
                     for (int bar = 0; bar < bars; ++bar)
                     {
-                        const auto a = barRoot (bar), b = fold213 (a - 2, low), o = bar * bpb;
+                        const auto a = barRoot (bar), b = fold213 (a - 2, low);
+                        const auto o = bar * bpb;
                         std::vector<std::pair<int, int>> hits;
                         if (bar % 4 == 1)
                             hits = { { 2, a }, { 5, b } };
@@ -13426,7 +13430,8 @@ namespace pr7s
                     text ("Two-bar cycles: a high dyad of the ninth and eleventh over the root on 1, 2 and its and, the flat five on 4; then low root eighths with a flat-seven pickup");
                     for (int bar = 0; bar < bars; ++bar)
                     {
-                        const auto root = barRoot (bar), o = bar * bpb;
+                        const auto root = barRoot (bar);
+                        const auto o = bar * bpb;
                         if (bar % 2 == 0)
                         {
                             add (out, o, 4 * s16 * 0.9, root, open());
@@ -13449,7 +13454,8 @@ namespace pr7s
                     text ("Cells of six sixteenths and one of four: the root and octave, the octave, the ninth and the low root twice, then a fifth shape and a root-and-fourth, the low root to end");
                     for (int bar = 0; bar < bars; ++bar)
                     {
-                        const auto root = barRoot (bar), o = bar * bpb;
+                        const auto root = barRoot (bar);
+                        const auto o = bar * bpb;
                         struct Hit { int k, len; std::vector<int> notes; };
                         const std::vector<Hit> hits { { 0, 2, { root, root + 12 } }, { 2, 1, { root + 12 } }, { 3, 1, { root + 14 } }, { 4, 1, { root } }, { 5, 1, { root } },
                                                       { 6, 1, { root + 7, root + 12 } }, { 7, 1, { root + 7, root + 12 } }, { 8, 1, { root } }, { 9, 2, { root + 7, root + 12 } },
@@ -13502,7 +13508,8 @@ namespace pr7s
                     text ("The power chord on 1, then single sixteenths round the root (its fourth, flat seven and octave), the flat six held, the root and a flat five tail; every fourth bar ends on the flat three chord");
                     for (int bar = 0; bar < bars; ++bar)
                     {
-                        const auto root = barRoot (bar), o = bar * bpb;
+                        const auto root = barRoot (bar);
+                        const auto o = bar * bpb;
                         power (out, o, 2 * s16 * 0.9, root, hard());
                         const int at[] { 2, 3, 4, 5, 6, 7, 8, 9 }, notes[] { 0, 0, 0, 5, 0, 22, 12, 0 };
                         for (int i = 0; i < 8; ++i)
@@ -13521,7 +13528,8 @@ namespace pr7s
                     text ("Chords on 1, 2 and the a of 2, the low root on the e of 3, the next chord's octave held from the and of 3, the low second held to end");
                     for (int bar = 0; bar < bars; ++bar)
                     {
-                        const auto root = barRoot (bar), o = bar * bpb;
+                        const auto root = barRoot (bar);
+                        const auto o = bar * bpb;
                         power (out, o, 4 * s16 * 0.9, root, hard());
                         power (out, o + 4 * s16, 3 * s16 * 0.9, root, open());
                         power (out, o + 7 * s16, s16 * 0.9, root, open());
