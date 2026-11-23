@@ -15,6 +15,7 @@
 #include "engine/RiffGenerator.h"
 #include <tuple>
 #include "engine/SectionTypes.h"
+#include "engine/Acoustic.h"
 #include "engine/Studio.h"
 #include "ui/ArrangeView.h"
 #include "ui/ComposerPage.h"
@@ -5143,7 +5144,7 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     const auto keys = extraApproaches (ComposerLayer::chords);
     CHECK (drums.size() == 9 + 11 + 12 + 7 + 7 + 11 + 1 + 10);   // (0.199.0: ten more)   // (0.195.0: one more)   // (0.193.0: eleven more)   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
     CHECK (keys.size() == 5 + 15 + 12 + 2 + 6 + 5 + 1);   // (0.199.0: one more)   // (0.193.0: five more)   // (0.186.0: six more)
-    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3 + 2);   // (0.193.0: two more)   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
+    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3 + 2 + 46);   // (0.217.0: 46 more)   // (0.193.0: two more)   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
     CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4);   // (0.193.0: four more)   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
 
     // Under STANDARD (no named type) nothing is added.
@@ -9776,5 +9777,72 @@ TEST_CASE ("0.216.0: round eight's intros and transitions", "[sections][transiti
         for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
             CHECK (n.beat >= 12.0 - 1.0e-6);
         CHECK (startsIn (layers[(size_t) ComposerLayer::drums], 12.0, 16.0) == std::set<int> { 4, 12 });
+    }
+}
+
+TEST_CASE ("0.217.0: round eight's shared guitar options and acoustic styles", "[sections][types][shared217]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const auto extras = extraApproaches (ComposerLayer::guitar);
+    REQUIRE (extras.size() >= 46);
+    juce::StringArray added;
+    for (int i = extras.size() - 46; i < extras.size(); ++i)
+        added.add (extras[i]);
+    for (const auto& [section, type] : std::vector<std::pair<juce::String, juce::String>> { { "Chorus", "DRIVING" }, { "Verse", "CLEAN VERSE" } })
+    {
+        ComposerState s;
+        applySectionType (s, section, type);
+        const auto all = sectionApproaches (s, ComposerLayer::guitar);
+        std::set<juce::String> seen;
+        for (int i = 0; i < all.size(); ++i)
+        {
+            auto t = s;
+            t.lane (ComposerLayer::guitar).approach = i;
+            const auto layers = composeLayers (t, spans, c);
+            const auto& idea = layers[(size_t) ComposerLayer::guitar];
+            juce::String k;
+            for (const auto& n : idea.notes)
+                k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << (n.harmony ? "h" : "") << ";";
+            if (added.contains (all[i]))
+            {
+                INFO (type << " " << all[i]);
+                CHECK_FALSE (baseSectionApproaches (s, ComposerLayer::guitar).contains (all[i]));
+                CHECK (! idea.notes.empty());
+                for (const auto& n : idea.notes)
+                {
+                    CHECK (n.length > 0.0);
+                    CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+                }
+                CHECK (seen.count (k) == 0);   // (different from every option before it)
+            }
+            seen.insert (k);
+        }
+        for (const auto& name : added)
+            CHECK (all.contains (name));
+    }
+    // The ten new acoustic styles: each plays, each different from the others.
+    const auto& styles = acousticGuitarStyles();
+    REQUIRE (styles.size() == 45);
+    std::set<juce::String> seen;
+    for (int i = 0; i < styles.size(); ++i)
+    {
+        ComposerState s;
+        s.lane (ComposerLayer::acoustic).on = true;
+        s.lane (ComposerLayer::acoustic).style = i;
+        const auto layers = composeLayers (s, spans, c);
+        const auto& idea = layers[(size_t) ComposerLayer::acoustic];
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << (n.harmony ? "h" : "") << ";";
+        if (i >= 35)
+        {
+            INFO (styles[i]);
+            CHECK (! idea.notes.empty());
+            for (const auto& n : idea.notes)
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+            CHECK (seen.count (k) == 0);
+        }
+        seen.insert (k);
     }
 }

@@ -20,7 +20,12 @@ namespace pr7s
             "Add9 arpeggio", "Nylon two-bar picking", "Nylon arpeggio under a fixed top", "Arch arpeggio over the fifth",
             "Fixed-top fingerpicking", "Held bass, arch on top", "One-bar fingerpick, one bar of air",
             "Fixed high figure, walk on the fourth bar", "Stab cell, a bar on, a bar off", "Root chord and high cluster in turn",
-            "Strummed tonic on the riff's accents", "Strum under the riff" };
+            "Strummed tonic on the riff's accents", "Strum under the riff",
+            // (0.217.0) Round eight (the owner's 67 songs; shapes only).
+            "Low open pedal under moving shapes", "One-a strum, the change drops four-and", "Two strum bursts a bar",
+            "Full strum every six, third dyads between", "Bass note, then a syncopated upper strum", "Open strum on 1, 2, 2-and, 3-and, 4",
+            "Drone strum, top slid in", "Alternating-bass boom-chick", "Rolled strum, change on three, a walking bar",
+            "Downstrokes on one and two, light sixteenths after" };
         return names;
     }
 
@@ -914,6 +919,173 @@ namespace pr7s
                         return r.riffAccents.empty() ? juce::String ("The open tonic as a major chord, struck on the riff's usual hits (the guitar lane is empty); the first bar one held strum")
                                                      : juce::String ("The open tonic as a major chord, struck only on the guitar riff's accents (the first bar one held strum), a sixteenth sus4 and seventh flick every four bars");
                     }
+                    // (0.217.0) Round eight (the owner's 67 songs; shapes only).
+                    case 35:   // Low open pedal under moving shapes
+                    {
+                        const auto pedal = tonicIn (48, 52);
+                        every ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            auto shape = top (full (o), 3);
+                            shape.insert (shape.begin(), pedal);
+                            if (b % 8 == 7)
+                            {
+                                const auto tops = top (shape, 2);
+                                for (int k = 0; k < 16; k += 2)
+                                    pick (main, o + k * s16, tops[(size_t) ((k / 2) % 2)], 0.56f);
+                                return;
+                            }
+                            const char* p = b % 4 == 3 ? "x---------------" : (b % 2 == 0 ? "x---x---x-x-x-x-" : "x---x-------x---");
+                            each16 (p, b, [&] (char, int k, double t) { strum (main, t, shape, positional (k), k % 4 == 0); });
+                        });
+                        return "The key's open root low under every strum, the chord's top notes moving over it; bars of quarters and eighths, a bar held, the eighth bar picked between the top two notes";
+                    }
+                    case 36:   // One-a strum, the change drops four-and
+                        every ([&] (int b)
+                        {
+                            const auto change = b + 1 < bars && chordAfter (b).root != chordOfBar (b).root;
+                            each16 (change ? "x--xx-x-x--xx---" : "x--xx-x-x--xx-x-", b, [&] (char, int k, double t)
+                            { strum (main, t, lowHalf (full (t)), positional (k) + 0.04f, down (k, true)); });
+                        });
+                        return "Low open shapes strummed on 1, its a, 2, its and, 3, its a, 4 and its and; a bar that changes chord after it leaves the and of 4 out";
+                    case 37:   // Two strum bursts a bar
+                        every ([&] (int b)
+                        {
+                            each16 ("x-xxx---x-xxx---", b, [&] (char, int k, double t)
+                            {
+                                const auto last = k % 8 == 4;
+                                strum (main, t, full (t), k % 8 == 0 ? 0.8f : 0.6f, down (k, true), last ? 4 * s16 : 0.0);
+                            });
+                        });
+                        return "Two bursts a bar, each on its half bar's chord: a strum, a pause, three sixteenths, the last rung to the next burst";
+                    case 38:   // Full strum every six, third dyads between
+                        every ([&] (int b)
+                        {
+                            each16 ("x-xxxxxxx-xxxxxx", b, [&] (char, int k, double t)
+                            {
+                                const auto& chord = chordAt (t);
+                                const auto shape = full (t);
+                                if (k % 6 == 0)
+                                    strum (main, t, shape, 0.8f, true);
+                                else if (k == 2 || k == 4 || k == 10 || k == 14)
+                                {
+                                    const auto third = pitchIn (chord.root + thirdOf (chord), 52, 63);
+                                    strum (main, t, { third, third + (fifthOf (chord) - thirdOf (chord)) }, 0.55f, false);
+                                }
+                                else
+                                    strum (main, t, top (lowHalf (shape), 3), 0.6f, down (k, true));
+                            });
+                        });
+                        return "Sixteenths: the full chord every six (1, the and of 2, 4), the chord's third-and-fifth dyad and the low strings between";
+                    case 39:   // Bass note, then a syncopated upper strum
+                        every ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            const auto& chord = chordOfBar (b);
+                            const auto shape = full (o);
+                            const auto upper = top (shape, 3);
+                            pick (main, o, root (chord), 0.82f, 4 * s16);
+                            strum (main, o + 4 * s16, upper, 0.74f, true, 3 * s16);
+                            for (const auto k : { 7, 8, 9 })
+                                strum (main, o + k * s16, top (upper, 2), 0.56f, k % 2 == 0);
+                            pick (main, o + 10 * s16, pitchIn (chord.root + 7, 43, 54), 0.7f, 2 * s16);
+                            strum (main, o + 12 * s16, upper, 0.72f, true);
+                            strum (main, o + 14 * s16, top (upper, 2), 0.54f, false);
+                        });
+                        return "The root alone on 1, the upper strings on 2, light two-string strums on the a of 2, 3 and its e, the fifth alone on the and of 3, the upper strings on 4";
+                    case 40:   // Open strum on 1, 2, 2-and, 3-and, 4
+                        every ([&] (int b)
+                        {
+                            const int at[] { 0, 4, 6, 10, 12 }, len[] { 4, 2, 4, 2, 4 };
+                            for (int i = 0; i < 5; ++i)
+                            {
+                                const auto t = b * bpb + at[i] * s16;
+                                strum (main, t, full (t), i == 0 ? 0.82f : 0.7f, at[i] % 4 == 0, len[i] * s16 * 0.97);
+                            }
+                        });
+                        return "Full open chords on 1, 2, its and, the and of 3 and 4, held a quarter, an eighth, a quarter, an eighth, a quarter";
+                    case 41:   // Drone strum, top slid in
+                    {
+                        const auto drone = tonicIn (48, 52);
+                        every ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            const auto root = pitchIn (chordOfBar (b).root, 55, 66);
+                            for (int k = 0; k < 16; ++k)
+                            {
+                                const auto t = o + k * s16;
+                                std::vector<int> shape { drone };
+                                if (k < 4)
+                                {
+                                    const auto under = k == 0 ? 1 : 0;
+                                    shape.push_back (root - under);
+                                    shape.push_back (root + 12 - under);
+                                }
+                                else
+                                {
+                                    shape.push_back (root - 5);
+                                    shape.push_back (root);
+                                    shape.push_back (root + 5);
+                                }
+                                strum (main, t, shape, positional (k), down (k, true));
+                            }
+                        });
+                        return "Every sixteenth strummed with the key's open root droning; the first beat's octave pair slid in from a half step under, then a sus shape for the rest of the bar";
+                    }
+                    case 42:   // Alternating-bass boom-chick
+                        every ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            const auto& chord = chordOfBar (b);
+                            const auto shape = full (o);
+                            pick (main, o, root (chord), 0.82f, 2 * s16);
+                            pick (main, o + 8 * s16, pitchIn (chord.root + 7, lowest, lowest + 11), 0.76f, 2 * s16);
+                            for (const auto k : { 2, 6, 10, 14 })
+                                strum (main, o + k * s16, top (shape, 3), 0.55f, k % 4 == 2);
+                            if (b % 2 == 1 && b + 1 < bars)
+                            {
+                                const auto next = root (chordAfter (b));
+                                for (const auto k : { 12, 13, 15 })
+                                    pick (main, o + k * s16, next - (16 - k), 0.62f, s16 * 0.9);
+                            }
+                        });
+                        return "Boom-chick: the root on 1, a lower string's fifth on 3, light strums on every and; a three-note walk into the next chord every other bar";
+                    case 43:   // Rolled strum, change on three, a walking bar
+                        every ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            switch (b % 4)
+                            {
+                                case 0: strum (main, o, full (o), 0.82f, true, bpb * 0.98, 60.0); break;
+                                case 1:
+                                    strum (main, o, full (o), 0.72f, true, 8 * s16 * 0.98, 40.0);
+                                    strum (main, o + 8 * s16, open (chordAfter (b), colour()), 0.74f, true, 8 * s16 * 0.98, 40.0);
+                                    break;
+                                case 2: strum (main, o, open (tonicChord (key), colour()), 0.74f, true, bpb * 0.98, 40.0); break;
+                                default:
+                                {
+                                    const auto target = root (chordAfter (b)) + 12;
+                                    for (int i = 0; i < 8; ++i)
+                                        pick (main, o + i * e8, target + 8 - i, 0.64f, e8 * 0.9);
+                                    break;
+                                }
+                            }
+                        });
+                        return "Four bars: a slow rolled strum rung, the next chord on 3, the key's chord held a bar, then single eighths walking down chromatically into the next";
+                    case 44:   // Downstrokes on one and two, light sixteenths after
+                        every ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            const auto shape = full (o);
+                            strum (main, o, shape, 0.84f, true, 4 * s16, 25.0);
+                            strum (main, o + 4 * s16, shape, 0.8f, true, 3 * s16, 25.0);
+                            for (const auto k : { 7, 8, 9, 10, 12, 14, 15 })
+                            {
+                                const auto up = k == 7 || k == 9 || k == 15;
+                                strum (main, o + k * s16, up ? top (shape, 3) : shape, 0.5f, ! up);
+                            }
+                        });
+                        return "A full downstroke on 1 held a beat and again on 2, then softer sixteenth strums after, the ups on the top three strings";
                     default: break;
                 }
                 return {};
