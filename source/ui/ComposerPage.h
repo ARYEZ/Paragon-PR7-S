@@ -239,6 +239,7 @@ public:
     static inline const juce::String typeListKey = "type", soloListKey = "solo";
     static constexpr int moreTypesItem = 4801, moreSolosItem = 4802;
     static constexpr int moreOptionsItem = 4800;
+    static constexpr int worldItems = 6400;       // (0.219.0) the keys lane's WORLD: 6400 + engine/LaneWorlds.h's LaneWorld
     static constexpr int approachItems = 6300;    // (0.94.0) the type's approaches: 6300 automatic, 6301 + i (0.156.0: up to 6399)
     static inline const juce::String typeOwnGroup = "THIS TYPE'S OWN", songsGroup = "FROM YOUR SONGS", stylesGroup = "STYLES";
     // (0.126.0) OWN STYLES: a lane the section type writes plays its own styles instead (and back).
@@ -347,7 +348,6 @@ private:
     static constexpr int flavourItems = 6000, writtenRiffsItem = 6100;   // (0.85.0) the guitar's style menu
     static constexpr int doubleSyncItem = 6200;   // (0.86.0) the bass's and drums' style menus
     static constexpr int ownStylesItem = 6290;
-    static constexpr int worldItems = 6400;       // (0.219.0) the keys lane's WORLD: 6400 + engine/LaneWorlds.h's LaneWorld
     static constexpr int syncToItems = 6260;      // (0.126.0) SYNC TO: 6260 none, 6261 + layer    // (0.126.0) the type's lanes: Play Its Own Styles / Follow Again
     // (0.157.0) HEAR in a browser: what to put back (the list it was tried from) unless USE IT.
     struct Trial { bool active = false; juce::String list; std::function<void()> restore; bool wasHearing = false; };
