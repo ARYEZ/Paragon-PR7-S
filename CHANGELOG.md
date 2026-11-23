@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.219.0
+
+**A lane's WORLD, and CYBERPUNK keys.** You can now keep a metal song's guitar, bass and drums on their section types and give the keys a cyberpunk feel. Open the keys lane's style menu in ARCHITECT and choose a WORLD at the top: ROCK / METAL (THE SECTION'S) is how it always was, CYBERPUNK swaps the keys' options for synth parts. Only the keys lane changes; the rest of the band carries on with the section type. The lane's header shows CYBERPUNK WORLD, the choice is saved with the song and in a built section's recipe, and choosing the first world again puts the keys back.
+
+The keys still follow the section's chords and key, and some parts lock to the band: the pumping pads duck on every kick of the drums lane, and the sub drops' stabs land on the guitar's chugs. AUTOMATIC picks a part for the kind of section (pre-chorus by its type, the others by the drums lane's section), so a chorus gets a chorus part and a pre-chorus gets the riser. Thirteen parts, our own design from the genre's usual habits (not from any one song):
+
+- **FILTER-OPENING ARPEGGIO** (intro): sixteenths over the chord's root, fifth, octave and third, the filter opening across every four bars.
+- **GATED STABS IN 3+3+2** (verse): short sus and add9 chords on a 3+3+2 grid, the filter jumping bar by bar.
+- **PULSING OCTAVE BASS** (verse): a sequenced synth bass, the root and its octave in turn on every sixteenth.
+- **PUMPING PADS ON THE KICK** (chorus): wide pads whose level dips on every kick and swells back.
+- **OCTAVE LEAD HOOK** (chorus): a two-bar hook high over the band, doubled an octave under, turned home every fourth bar.
+- **RISER: ARPEGGIO CLIMBS, FILTER SWEEPS** (pre-chorus): an arpeggio climbing two octaves while the filter sweeps open, landing on the next section's chord.
+- **GLITCH STUTTER** (bridge): chord tones chopped into stutters, gaps and repeats, the filter stepping about.
+- **DARK PAD, THE FLAT SIX ON TOP** (bridge): held pads with the key's sixth (a minor key's flat six) on top.
+- **SUB DROPS, STABS ON THE CHUGS** (breakdown): a sub note on every bar with the filter closing after it, stabs on the guitar's hits.
+- **SIXTEENTH SEQUENCE, SLOW FILTER WAVE** (verse, solo): a pushing sixteenth figure of the root and its octave, the filter rising and falling over two bars.
+- **CHORD ON EVERY KICK** (breakdown, chorus): the chord stabbed on each kick.
+- **BELL MOTIF WITH ECHOES** (intro, outro): a high three-note bell figure, each note echoed a dotted eighth later, softer.
+- **ARPEGGIO FADING OUT, FILTER CLOSING** (outro).
+
+**About the filter and pumping moves:** they're written into the part as MIDI controllers: CC 74 for the filter (the usual filter-cutoff controller) and CC 11 for the level. A synth that doesn't respond to those controllers plays the notes without the moves; learn them to its filter and volume to hear them. The notes and controllers are tested; the sound hasn't been checked by ear.
+
 ## 0.218.0
 
 Round eight's last part: shared drum, bass and keys options for ARCHITECT, from your 67 songs (shapes only, our names, all 4/4). They work under any section type, after the type's own options (MORE OPTIONS: FROM YOUR SONGS). That finishes round eight.

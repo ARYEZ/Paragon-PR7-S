@@ -301,7 +301,7 @@ namespace pr7s
                 for (auto t = 0.0; t < L - w.s16 - 1.0e-9; t += w.s16, ++i)
                 {
                     const auto p = t / L;
-                    const auto low = 48 + (int) std::floor (p * 4.0) * 6;
+                    const auto low = 45 + (int) std::floor (p * 4.0) * 8;   // (two octaves over the section)
                     const auto line = w.arpeggio (w.spanAt (t), low);
                     w.note (t, w.s16 * 0.85, line[(size_t) (i % (int) line.size())], (float) (0.45 + 0.45 * p));
                 }

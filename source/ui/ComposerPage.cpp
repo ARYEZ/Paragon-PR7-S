@@ -513,7 +513,9 @@ void ComposerPage::refresh (bool rehear)
         lane.lock.setToggleState (s.locked, juce::dontSendNotification);
         const auto approach = s.approach >= 0 ? pr7s::approachName (state, l) : juce::String();
         lane.style.setButtonText (taken[(size_t) l].has_value() ? "FROM IDEAS: " + ideas[(size_t) l].style.toUpperCase()
-                                  : approach.isNotEmpty() ? state.sectionType + ": " + approach
+                                  : approach.isNotEmpty() ? (s.world > 0 ? pr7s::laneWorldNames()[s.world] + ": " + approach
+                                                             : state.sectionType.isNotEmpty() ? state.sectionType + ": " + approach
+                                                             : approach)
                                   : ideas[(size_t) l].style.isEmpty() ? juce::String ("STYLE") : ideas[(size_t) l].style.toUpperCase());
         lane.track.setButtonText (trackText (l));
         lane.busy.setButtonText ("BUSY " + juce::String (juce::roundToInt (s.busy * 100.0f)) + "%");
