@@ -2,6 +2,39 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.218.0
+
+Round eight's last part: shared drum, bass and keys options for ARCHITECT, from your 67 songs (shapes only, our names, all 4/4). They work under any section type, after the type's own options (MORE OPTIONS: FROM YOUR SONGS). That finishes round eight.
+
+**20 drum parts**, among them:
+- OPEN HATS ON TWO, THREE AND FOUR, KICK ON THE RIFF (the kick follows the guitar)
+- CRASH AND SNARE ON THE DOTS, TOMS IN THE GAPS
+- KICK AND SNARE TOGETHER ON EVERY EIGHTH
+- TWO FLOOR TOMS, PEDAL HAT, NO KICK
+- TAMBOURINE ON THE ANDS, SNARE ON THREE
+- HALF TIME, KICK ON TWO AND ITS AND, A PICKUP EVERY BAR
+- GHOSTS EITHER SIDE OF THREE
+- GROOVE BAR, FILL BAR
+- SNARE FOUR-STROKES ON TWO AND FOUR
+
+**6 bass parts** (LOCKED WITH THE KICK stays last):
+- OFF THE ONE, THE NEXT ROOT HELD FROM THREE
+- EIGHT-NOTE SIXTEENTH OSTINATO ON THE KEY'S ROOT
+- FUNK BASS, TWO SIXTEENTH CLUSTERS
+- HELD FROM TWO-AND
+- EIGHTHS WITH A FIVE-SIXTEENTH RUN
+- ROOT, A BURST, THEN OCTAVE EIGHTHS
+
+**8 keys parts:**
+- FALLING SCALE EIGHTHS, A HELD TOP
+- PIANO STABS IN 3+2+3
+- PULSE ON EVERY EIGHTH BUT THE ONE
+- OFF-BEAT BELLS, FOUR VOICES ROTATING
+- DYAD PICKUP PHRASE EVERY FOUR BARS
+- BROKEN TRIAD EACH HALF BAR
+- SIXTEEN-SIXTEEN-EIGHTH CELL, FIXED NOTES
+- LEFT HAND HELD, RIGHT-HAND FIVE-NOTE RUN EACH HALF
+
 ## 0.217.0
 
 Round eight's shared options for ARCHITECT, from your 67 songs (shapes only, our names, all 4/4). Shared options work under any section type: they sit after the type's own options in a lane's style menu and in MORE OPTIONS (the group FROM YOUR SONGS).

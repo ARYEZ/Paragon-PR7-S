@@ -6272,7 +6272,7 @@ TEST_CASE ("0.160.0: round four's bass versions, in front of LOCKED WITH THE KIC
     const char* names[] = { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                             "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
                             "DOTTED FIGURE WITH THE KICK" };
-    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4);   // (0.186.0: two more; 0.193.0: four more)
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4 + 6);   // (0.218.0: six more)   // (0.186.0: two more; 0.193.0: four more)
     // Under every named type whose bass ends with LOCKED WITH THE KICK: there, just in front of it; else not at all.
     auto typed = 0;
     for (const auto* section : { "Verse", "Chorus", "Bridge", "Breakdown", "Intro", "Outro", "Pre-Chorus" })
