@@ -1461,7 +1461,9 @@ bool ComposerPage::isKeyLocked() const
 std::vector<pr7s::ChordSpan> ComposerPage::chordSpans() const
 {
     if (state.fromChordTrack)
-        return studio.getLineChords();
+        // (0.212.0, the owner: "architect is now saying it has no chords") A SECTIONS block reads every chord on the
+        // chord track: with CYCLE on, only the cycle's chords were read, then cut to a block outside the cycle.
+        return studio.getLineChords ({}, ! getTargetPlace().has_value());
     if (fromRiff)
         if (const auto& riff = studio.getComposerRiff())
         {

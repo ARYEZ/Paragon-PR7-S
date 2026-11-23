@@ -11179,14 +11179,14 @@ namespace pr7s
 
     //==========================================================================
     // Bass and melody ideas (0.18.0)
-    std::vector<ChordSpan> Studio::getLineChords (const std::vector<int>& selectedEvents) const
+    std::vector<ChordSpan> Studio::getLineChords (const std::vector<int>& selectedEvents, bool cycle) const
     {
         const auto& track = project.chordTrack;
         std::vector<int> which;
         for (const auto i : selectedEvents)
             if (juce::isPositiveAndBelow (i, (int) track.events.size()))
                 which.push_back (i);
-        if (which.empty() && project.loopOn)
+        if (which.empty() && project.loopOn && cycle)
             for (int i = 0; i < (int) track.events.size(); ++i)
                 if (track.events[(size_t) i].beat >= project.loopStart - 1.0e-6 && track.events[(size_t) i].beat < project.loopEnd - 1.0e-6)
                     which.push_back (i);
@@ -11199,7 +11199,7 @@ namespace pr7s
         {
             const auto& e = track.events[(size_t) i];
             auto end = track.endOf (i, project.beatsPerBar());
-            if (project.loopOn && e.beat < project.loopEnd && end > project.loopEnd && selectedEvents.empty())
+            if (project.loopOn && cycle && e.beat < project.loopEnd && end > project.loopEnd && selectedEvents.empty())
                 end = project.loopEnd;   // (the cycle's chords stop at its end)
             spans.push_back ({ e.beat, end, e.chord, chordTrackKeyAt (e.beat) });
         }

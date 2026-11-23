@@ -381,7 +381,7 @@ namespace pr7s
         // Bass and melody ideas (0.18.0, the owner asked). The chords they follow: the chord
         // track's events given (the selection), else those in the cycle when it's on and
         // holds some, else all; each until the next (the last a bar), with the key there.
-        std::vector<ChordSpan> getLineChords (const std::vector<int>& selectedEvents = {}) const;
+        std::vector<ChordSpan> getLineChords (const std::vector<int>& selectedEvents = {}, bool cycle = true) const;   // (0.212.0: cycle false: every chord, CYCLE on or off)
         // An idea as a part under its chords: onto `ontoTrackId` when it can take MIDI (0.19.0:
         // the selected track, the owner's guitar VST), else onto a new instrument track (the
         // studio's synth) named for the part (Bass, Melody, Piano, Guitar, Lead Guitar). The

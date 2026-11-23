@@ -9286,3 +9286,30 @@ TEST_CASE ("0.199.0: round seven's shared options and DRONING's pushed chords", 
         CHECK (bass.count (8) == 0);
     }
 }
+
+TEST_CASE ("0.212.0: a block outside the cycle still finds its chords on the chord track", "[sections][cyclechords]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    studio.appendSongSection ("Chorus", 4);
+    studio.appendSongSection ("Verse", 4);
+    studio.addChordTrack();
+    for (int bar = 0; bar < 8; ++bar)
+        studio.addChordEvent (bar * 4.0, Chord { bar % 2 == 0 ? 9 : 5, bar % 2 == 0 ? Chord::Type::minor : Chord::Type::major });
+    studio.setCycle (0.0, 16.0);   // (the chorus's bars)
+    studio.setCycleOn (true);
+    REQUIRE (studio.getProject().loopOn);
+
+    ComposerPage page (studio);
+    page.setSize (1700, 940);
+    page.setFromChordTrack (true);
+    page.targetSection (studio.getSongSections().blocks[1].id);   // (the verse: bars 5-8, outside the cycle)
+    REQUIRE (page.getSpans().size() == 4);
+    CHECK (page.getSpans().front().start == Catch::Approx (16.0));
+    CHECK (page.getSpans().back().end == Catch::Approx (32.0));
+
+    // Outside the SECTIONS row the cycle still chooses the chords, as before.
+    page.clearTargetSection();
+    CHECK (page.getSpans().size() == 4);
+    CHECK (page.getSpans().back().end == Catch::Approx (16.0));
+}

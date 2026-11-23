@@ -2,6 +2,13 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.212.0
+
+ARCHITECT finds a block's chords again when CYCLE is on. The owner's VERSE block showed "The chord track has no chords" while its chords sat on the chord track.
+
+- **Why:** with CHORDS FROM: CHORD TRACK, ARCHITECT read only the chords inside the cycle while CYCLE was on, then kept those inside the block. A block outside the cycle was left with nothing.
+- **Now** a SECTIONS block reads every chord on the chord track, whatever the cycle. Without a block chosen, the cycle still picks the chords as before.
+
 ## 0.211.0
 
 GROOVE FOLDERS now says where ARCHITECT's drum grooves come from. The owner's page listed only the MediaBay's Ghosthack folder, not their Toontrack folders.
