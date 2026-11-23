@@ -13895,7 +13895,8 @@ namespace pr7s
                     out.description = "The root on 1, the fifth on 2, a run of root, minor third and fourth into 3, then four sixteenths climbing back up to the next root";
                     for (int bar = 0; bar < bars; ++bar)
                     {
-                        const auto root = bassRoot (bar * bpb), o = bar * bpb, next = nextBass (bar);
+                        const auto root = bassRoot (bar * bpb), next = nextBass (bar);
+                        const auto o = bar * bpb;
                         const int at[] { 0, 4, 6, 7, 8, 12, 13, 14, 15 }, len[] { 4, 2, 1, 1, 4, 1, 1, 1, 1 };
                         const int pitch[] { root, root + 7, root, root + 3, root + 5, next - 4, next - 3, next - 2, next - 1 };
                         for (int i = 0; i < 9; ++i)
