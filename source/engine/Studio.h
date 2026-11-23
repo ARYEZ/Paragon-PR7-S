@@ -474,6 +474,14 @@ namespace pr7s
         bool isGrooveFolderFavourite (const juce::File& folder) const;              // marked itself (not by a folder over it)
         // The folders the library grooves come from (PR7-D's linked folders, else the MediaBay's locations).
         std::vector<juce::File> getGrooveFolderRoots() const;
+        // (0.211.0) Where the groove library comes from, in words for the GROOVE FOLDERS page: PR7-D's library (its
+        // folder, how many grooves, why any were left out), still being read, or the MediaBay standing in and why.
+        juce::String describeGrooveSource() const;
+        // Bumped each time PR7-D's library is read in (pages showing it make their lists again).
+        int getPr7dGeneration() const { getPr7dLibrary(); return pr7dGeneration; }
+        bool isReadingPr7dLibrary() const { return pr7dReading != nullptr && ! pr7dReading->done; }
+        // A folder of grooves added to the MediaBay (scanned again); what the library reads when PR7-D has none.
+        bool addGrooveFolder (const juce::File&);
         juce::String newIdeaTrackName (LineIdea::Part) const;      // the first name (a new track's)
         std::vector<int> findIdeaTracks (LineIdea::Part) const;    // every match when EVERY, else the first (none: empty)
         std::vector<int> findIdeaTracks (LineIdea::Part, bool every) const;
@@ -2134,6 +2142,7 @@ namespace pr7s
         mutable std::shared_ptr<const PreparedPr7dGrooves> keptPr7dPrepared;   // (0.176.0: labelled once per read)
         mutable juce::Time keptPr7dIndexDate;
         mutable bool keptPr7dRead = false;
+        mutable int pr7dGeneration = 0;
         // (0.112.1) PR7-D's index read on a thread of its own in the app (the owner's 100,000 grooves held the screen
         // over a second): the library kept until it's read, then swapped in by the timer and announced.
         struct Pr7dReading { juce::File folder; juce::Time date; Pr7dLibrary result; std::shared_ptr<const PreparedPr7dGrooves> prepared; std::atomic<bool> done { false }; std::thread thread; };

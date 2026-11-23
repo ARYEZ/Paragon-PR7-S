@@ -3148,6 +3148,7 @@ namespace pr7s
             keptPr7dPrepared = preparePr7dGrooves (keptPr7d);
             keptPr7dIndexDate = date;
             keptPr7dRead = true;
+            ++pr7dGeneration;
             if (keptPr7d.found)
                 SessionLog::note ("PR7-D's groove library: " + juce::String ((int) keptPr7d.grooves.size()) + " grooves (" + folder.getFullPathName() + ")");
         }
@@ -3163,6 +3164,7 @@ namespace pr7s
         keptPr7dPrepared = std::move (pr7dReading->prepared);
         keptPr7dIndexDate = pr7dReading->date;
         keptPr7dRead = true;
+        ++pr7dGeneration;
         pr7dReading.reset();
         if (keptPr7d.found)
             SessionLog::note ("PR7-D's groove library: " + juce::String ((int) keptPr7d.grooves.size()) + " grooves (" + keptPr7d.folder.getFullPathName() + ")");
@@ -12048,6 +12050,48 @@ namespace pr7s
             for (const auto& l : const_cast<Studio*> (this)->getMediaBay().getLocations())
                 roots.push_back (juce::File (l));
         return roots;
+    }
+
+    juce::String Studio::describeGrooveSource() const
+    {
+        const auto& pr7d = getPr7dLibrary();
+        const auto folder = pr7d.folder != juce::File() ? pr7d.folder
+                          : pr7dFolderOverride != juce::File() ? pr7dFolderOverride : pr7dPresetsFolder();
+        if (isReadingPr7dLibrary() && pr7d.grooves.empty())
+            return "READING PR7-D'S GROOVE LIBRARY (" + folder.getFullPathName() + ")...";
+        if (! pr7d.grooves.empty())
+        {
+            auto text = "PR7-D'S GROOVE LIBRARY: " + juce::String ((int) pr7d.grooves.size()) + " GROOVES IN "
+                      + juce::String ((int) pr7d.linkedFolders.size()) + " LINKED FOLDERS";
+            if (const auto left = pr7d.outside + pr7d.notMidi + pr7d.inDatabases; left > 0)
+                text += " (" + juce::String (left) + " LEFT OUT: OUTSIDE THE LINKED FOLDERS OR NOT .MID FILES)";
+            return text;
+        }
+        juce::String why;
+        if (! pr7d.found)
+            why = "PR7-D'S GROOVE LIST WASN'T FOUND (" + folder.getChildFile ("Grooves.xml").getFullPathName()
+                + "): OPEN PR7-D'S GROOVES TAB AND LINK YOUR FOLDERS THERE";
+        else if (pr7d.linkedFolders.empty())
+            why = "PR7-D HAS NO GROOVE FOLDERS LINKED: LINK THEM ON ITS GROOVES TAB";
+        else if (! pr7d.indexFound)
+            why = "PR7-D HAS " + juce::String ((int) pr7d.linkedFolders.size()) + " FOLDERS LINKED BUT HASN'T LISTED THEIR GROOVES YET "
+                  "(" + folder.getChildFile ("Groove Index.xml").getFullPathName() + "): OPEN ITS GROOVES TAB AND LET IT SCAN";
+        else
+            why = "PR7-D'S LIST HOLDS " + juce::String (pr7d.listed) + " GROOVES BUT NONE COULD BE USED ("
+                + juce::String (pr7d.outside) + " OUTSIDE THE LINKED FOLDERS, " + juce::String (pr7d.notMidi) + " NOT .MID, "
+                + juce::String (pr7d.inDatabases) + " IN DATABASES)";
+        return why + ". USING THE MEDIABAY'S MIDI INSTEAD.";
+    }
+
+    bool Studio::addGrooveFolder (const juce::File& folder)
+    {
+        if (! folder.isDirectory())
+            return false;
+        auto& bay = getMediaBay();
+        bay.addLocation (folder);
+        bay.rescan();
+        announce();
+        return true;
     }
 
     juce::String Studio::newIdeaTrackName (LineIdea::Part part) const

@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.211.0
+
+GROOVE FOLDERS now says where ARCHITECT's drum grooves come from. The owner's page listed only the MediaBay's Ghosthack folder, not their Toontrack folders.
+
+- **A line under the title says where the grooves come from.** ARCHITECT reads PR7-D's groove library first: the folders linked on PR7-D's GROOVES tab, as PR7-D listed them. It uses the MediaBay's drum MIDI only when PR7-D gives it no grooves. The line names the source and the count. When PR7-D gives none, it says why: PR7-D's list wasn't found (with the path it looked in), no folders are linked, the folders haven't been scanned yet, or every groove was left out (and for what).
+- **The page refreshes once PR7-D's library has loaded.** PR7-D's list is read in the background. A page opened before it finished showed the MediaBay's folders and kept showing them.
+- **ADD A GROOVE FOLDER...** adds a folder of MIDI grooves to the MediaBay and scans it. ARCHITECT uses the MediaBay when PR7-D has no grooves.
+
 ## 0.210.0
 
 ARCHITECT's drums lane, after your report: it kept pulling beats that weren't from your favourites and weren't the song's part ("Variation 1", "Variation 2" instead of verse or chorus grooves).
