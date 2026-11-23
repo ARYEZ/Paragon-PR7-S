@@ -1010,7 +1010,7 @@ namespace pr7s
                         every ([&] (int b)
                         {
                             const auto o = b * bpb;
-                            const auto root = pitchIn (chordOfBar (b).root, 55, 66);
+                            const auto root = pitchIn (chordOfBar (b).root, 52, 63);
                             for (int k = 0; k < 16; ++k)
                             {
                                 const auto t = o + k * s16;
@@ -1056,12 +1056,12 @@ namespace pr7s
                             const auto o = b * bpb;
                             switch (b % 4)
                             {
-                                case 0: strum (main, o, full (o), 0.82f, true, bpb * 0.98, 60.0); break;
+                                case 0: strum (main, o, full (o), 0.82f, true, bpb * 0.98, 24.0); break;
                                 case 1:
-                                    strum (main, o, full (o), 0.72f, true, 8 * s16 * 0.98, 40.0);
-                                    strum (main, o + 8 * s16, open (chordAfter (b), colour()), 0.74f, true, 8 * s16 * 0.98, 40.0);
+                                    strum (main, o, full (o), 0.72f, true, 8 * s16 * 0.98, 22.0);
+                                    strum (main, o + 8 * s16, open (chordAfter (b), colour()), 0.74f, true, 8 * s16 * 0.98, 22.0);
                                     break;
-                                case 2: strum (main, o, open (tonicChord (key), colour()), 0.74f, true, bpb * 0.98, 40.0); break;
+                                case 2: strum (main, o, open (tonicChord (key), colour()), 0.74f, true, bpb * 0.98, 22.0); break;
                                 default:
                                 {
                                     const auto target = root (chordAfter (b)) + 12;
