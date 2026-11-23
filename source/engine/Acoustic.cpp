@@ -1077,8 +1077,8 @@ namespace pr7s
                         {
                             const auto o = b * bpb;
                             const auto shape = full (o);
-                            strum (main, o, shape, 0.84f, true, 4 * s16, 25.0);
-                            strum (main, o + 4 * s16, shape, 0.8f, true, 3 * s16, 25.0);
+                            strum (main, o, shape, 0.84f, true, 4 * s16, 22.0);
+                            strum (main, o + 4 * s16, shape, 0.8f, true, 3 * s16, 22.0);
                             for (const auto k : { 7, 8, 9, 10, 12, 14, 15 })
                             {
                                 const auto up = k == 7 || k == 9 || k == 15;

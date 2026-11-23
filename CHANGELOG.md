@@ -2,6 +2,36 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.217.0
+
+Round eight's shared options for ARCHITECT, from your 67 songs (shapes only, our names, all 4/4). Shared options work under any section type: they sit after the type's own options in a lane's style menu and in MORE OPTIONS (the group FROM YOUR SONGS).
+
+**46 guitar parts**, among them:
+- ROOT HELD, SEVEN-NOTE RUN DOWN
+- OPEN ROOT SIXTEENTHS BETWEEN TWO SHAPES
+- TRIADS UP THE SCALE IN QUARTERS
+- A LINE AND ITS ECHO A BEAT LATER
+- CHANGE ON TWO-A
+- SIXTEENTH CHAIN, CHANGES ON THE E'S
+- TWO CHORDS EVERY THREE SIXTEENTHS
+- CHROMATIC POWER CHORDS ROUND THE ROOT IN SIXTEENTHS
+- WHOLE-STEP-UNDER BRACKET CHORDS
+- DYADS STRUCK THREE TIMES, STEPPING DOWN
+
+Riff shapes, clean picking, high lines over the riff and chord strums make up the rest. Each one follows the section's chords and key. A bass on DOUBLES THE GUITAR and kicks on the guitar's hits follow whichever guitar part you choose.
+
+**Ten acoustic guitar styles** for the ACOUSTIC GUITAR lane:
+- Low open pedal under moving shapes
+- One-a strum, the change drops four-and
+- Two strum bursts a bar
+- Full strum every six, third dyads between
+- Bass note, then a syncopated upper strum
+- Open strum on 1, 2, 2-and, 3-and, 4
+- Drone strum, top slid in
+- Alternating-bass boom-chick
+- Rolled strum, change on three, a walking bar
+- Downstrokes on one and two, light sixteenths after
+
 ## 0.216.0
 
 Two intro types and fifteen transitions for ARCHITECT from your 67 songs (shapes only, our names, all 4/4), and a place for your own notes of which songs inspired each style.
