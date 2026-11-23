@@ -1,6 +1,7 @@
 #include "Studio.h"
 #include "ChordRoll.h"
 #include "GuitarTones.h"
+#include "engine/SynthPatches.h"
 #include "Pr7dLink.h"
 #include "SectionTypes.h"
 #include "Controllers.h"
@@ -11872,6 +11873,38 @@ namespace pr7s
         return true;
     }
 
+    bool Studio::patchTrack (int trackId, const LineIdea& idea, bool replaceExisting, juce::String* error)
+    {
+        const auto fail = [error] (const juce::String& why)
+        {
+            if (error != nullptr)
+                *error = why;
+            return false;
+        };
+        const auto option = cyberpunkOptionOfStyle (idea.style);
+        const auto* patch = option ? cyberpunkPatchFor (*option) : nullptr;
+        if (patch == nullptr)
+            return fail ("Only the keys lane's CYBERPUNK parts have PR7-K patches");
+        auto* instrument = engine.getInstrument (trackId);
+        if (instrument == nullptr || ! isPr7k (instrument->getPluginDescription()))
+            return fail ("The track doesn't play PR7-K");
+        juce::MemoryBlock before;
+        instrument->getStateInformation (before);
+        auto settingsXml = readPr7gSettings (before);   // (PR7-K keeps its settings in PR7-G's form)
+        if (settingsXml == nullptr)
+            return fail ("PR7-K's settings couldn't be read");
+        if (! replaceExisting && ! mayReplaceSynthPatch (*settingsXml))
+            return fail ("PR7-K plays your own sound (" + synthPatchNameOf (*settingsXml) + "): left as it is");
+        applySynthPatch (*settingsXml, *patch);
+        const auto after = writePr7gSettings (*settingsXml, before);
+        instrument->setStateInformation (after.getData(), (int) after.getSize());
+        notePluginChanged (instrument);
+        const auto* track = project.findTrack (trackId);
+        SessionLog::note ("Synth patch: " + patch->name + " on " + (track != nullptr ? track->name : juce::String (trackId)));
+        lastPatch = patch->name;
+        return true;
+    }
+
     //==========================================================================
     // (0.205.0) The tones change with the sections.
     bool Studio::getSectionTones() const
@@ -12545,6 +12578,12 @@ namespace pr7s
                 && writeSectionTones (trackId, nullptr, false))
                 ++sectionTonesWritten;
         }
+        // (0.220.0) The keys lane's CYBERPUNK parts: their PR7-K patch (over a fresh sound or one of ours only).
+        std::set<int> patched;
+        for (const auto& [trackId, idea] : plan)
+            if (idea->part == LineIdea::Part::chords && cyberpunkOptionOfStyle (idea->style) && patched.insert (trackId).second
+                && patchTrack (trackId, *idea, false))
+                lastTones.addIfNotAlreadyThere ("KEYS: " + lastPatch + " ON PR7-K");
         if (sectionTonesWritten > 0)
             changed();
         return used;

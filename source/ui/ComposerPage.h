@@ -120,6 +120,7 @@ public:
     bool putToneOnLane (pr7s::ComposerLayer);
     // (0.205.0) The lane's tracks' PR7-G knobs written block by block over the SECTIONS row (Studio::writeSectionTones).
     bool writeSectionTonesOnLane (pr7s::ComposerLayer);
+    bool putPatchOnLane (pr7s::ComposerLayer);   // (0.220.0) the keys lane's CYBERPUNK part's PR7-K patch on its tracks
     juce::String trackText (pr7s::ComposerLayer) const;   // "TRACK: BASS", "TRACKS: GUITAR L + GUITAR R"
     // Each lane's idea once per track it plays on (the copies after the first a little looser), with those tracks and lanes.
     struct Placed { std::vector<pr7s::LineIdea> ideas; std::vector<int> onto, layers; };

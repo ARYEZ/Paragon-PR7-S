@@ -451,6 +451,12 @@ namespace pr7s
         juce::String getLastTone() const { return lastTone; }
         // What the last buildSection put on ("LEAD: SOARING LEAD ON PR7-G", ...).
         juce::StringArray getLastTones() const { return lastTones; }
+        // (0.220.0) The keys lane's CYBERPUNK parts' PR7-K patches (SynthPatches.h): written into the PR7-K playing the
+        // track (`replaceExisting` false: only over a fresh sound (Init, none) or one of ours, never the owner's own).
+        // False (with `error`): not a cyberpunk part, no PR7-K on the track, or the owner's own sound kept.
+        // `getLastPatch`: the patch last written (its name).
+        bool patchTrack (int trackId, const LineIdea&, bool replaceExisting, juce::String* error = nullptr);
+        juce::String getLastPatch() const { return lastPatch; }
         // (tests) Makes the PR7-G instance toneTrack adds (none set: the host's PR7-G).
         std::function<std::unique_ptr<juce::AudioPluginInstance>()> makePr7gForTests;
         // (0.205.0, step 2 of the owner's PR7-G idea) THE TONES CHANGE WITH THE SECTIONS (GuitarTones.h's table): on,
@@ -2091,6 +2097,7 @@ namespace pr7s
         std::array<ToneChoice, 3> toneChoicesHere {};   // (0.204.0; lead, clean, acoustic, without a settings file)
         std::array<ToneChoice, 3> readToneChoices() const;
         juce::String lastTone;
+        juce::String lastPatch;
         juce::StringArray lastTones;
         std::array<float, 8> laneLevelsHere { -5.5f, 0.0f, 0.0f, -11.5f, -9.5f, 0.0f, 0.0f, 0.0f };   // (0.201.0; without a settings file)
         juce::StringArray grooveFavouritesHere;   // (0.178.0; without a settings file)

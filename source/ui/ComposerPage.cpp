@@ -3339,6 +3339,34 @@ bool ComposerPage::putToneOnLane (ComposerLayer l)
     return any;
 }
 
+bool ComposerPage::putPatchOnLane (ComposerLayer l)
+{
+    const auto& idea = ideas[(size_t) l];
+    std::vector<int> tracks;
+    for (const auto id : tracksFor (l, false))
+        if (studio.canTakeMidi (id))
+            tracks.push_back (id);
+    if (tracks.empty() || idea.notes.empty())
+    {
+        status = "Build the " + pr7s::composerLayerName (l).toLowerCase() + " lane onto a track first";
+        repaint();
+        return false;
+    }
+    auto any = false;
+    juce::String problem;
+    for (const auto id : tracks)
+    {
+        juce::String error;
+        if (studio.patchTrack (id, idea, true, &error))
+            any = true;
+        else
+            problem = error;
+    }
+    status = any ? pr7s::composerLayerName (l).toUpperCase() + ": " + studio.getLastPatch() + " ON PR7-K" : problem;
+    repaint();
+    return any;
+}
+
 bool ComposerPage::writeSectionTonesOnLane (ComposerLayer l)
 {
     auto written = 0;
@@ -3386,6 +3414,12 @@ void ComposerPage::showLaneMenu (ComposerLayer l)
         menu.addItem (20, "Put the Suggested Tone on Its Track (PR7-G)", ! ideas[(size_t) l].notes.empty());
         menu.addItem (21, "Write the Tone's Section Changes (PR7-G)", ! studio.getSongSections().blocks.empty());
     }
+    // (0.220.0) The keys lane's CYBERPUNK parts: their PR7-K patch.
+    if (l == ComposerLayer::chords && state.lane (l).world == (int) pr7s::LaneWorld::cyberpunk)
+    {
+        menu.addSeparator();
+        menu.addItem (22, "Put the Matching Patch on Its Track (PR7-K)", ! ideas[(size_t) l].notes.empty());
+    }
     menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<ComposerPage> (this), l] (int chosen)
     {
         if (safe == nullptr)
@@ -3405,6 +3439,7 @@ void ComposerPage::showLaneMenu (ComposerLayer l)
             case 15: safe->clearBarSelection (l); break;
             case 20: safe->putToneOnLane (l); break;
             case 21: safe->writeSectionTonesOnLane (l); break;
+            case 22: safe->putPatchOnLane (l); break;
             default: break;
         }
     });

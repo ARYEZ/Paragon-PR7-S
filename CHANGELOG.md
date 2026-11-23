@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.220.0
+
+**A PR7-K sound for each CYBERPUNK part.** When the keys lane is in the CYBERPUNK world and its track plays PR7-K, BUILD now writes a matching sound into that PR7-K, as the guitar lanes already get a PR7-G tone. The status line says which one went on ("KEYS: CYBER PUMP PAD ON PR7-K"). Thirteen sounds, one for each part, our own (made from PR7-K's own saws, pulses, sines, unison, filter, envelopes, DELAY and REVERB; not copied from its presets):
+
+- FILTER-OPENING ARPEGGIO: **CYBER PLUCK ARP**: bright detuned saws and a pulse an octave up, a resonant filter snapping shut, ping-pong echoes.
+- GATED STABS IN 3+3+2: **CYBER GATED STAB**: wide saws over a saw an octave down, short, a plate around them.
+- PULSING OCTAVE BASS: **CYBER PULSE BASS**: a saw, a pulse an octave down and a sine sub through a driven filter.
+- PUMPING PADS ON THE KICK: **CYBER PUMP PAD**: very wide saws, slow and soft, whose level follows the part's pumping.
+- OCTAVE LEAD HOOK: **CYBER OCTAVE LEAD**: a narrow pulse with vibrato growing in over a saw an octave down, echoed.
+- RISER: **CYBER RISER**: detuned saws and noise through a resonant filter, sixteenth echoes into a hall.
+- GLITCH STUTTER: **CYBER GLITCH**: a thin crushed pulse, short digital blips.
+- DARK PAD: **CYBER DARK PAD**: wide saws, a triangle under and a quiet pulse over, a slow cathedral.
+- SUB DROPS, STABS ON THE CHUGS: **CYBER SUB DROP**: a sine with a sub for the drops, saws an octave up for the stabs.
+- SIXTEENTH SEQUENCE: **CYBER SEQUENCE**: a saw and a detuned narrow pulse through a resonant filter.
+- CHORD ON EVERY KICK: **CYBER KICK CHORD**: wide saws snapping open and dying fast.
+- BELL MOTIF WITH ECHOES: **CYBER BELL**: sines an octave apart with a quiet triangle on top, ringing away.
+- ARPEGGIO FADING OUT: **CYBER FADE ARP**: soft saws and a triangle, long ping-pong echoes and a hall.
+
+**Your own PR7-K sound is safe.** BUILD only writes over a fresh PR7-K (Init) or one of these sounds. If you've picked your own sound on that track, BUILD leaves it alone. To use the patch anyway, right-click the keys lane in ARCHITECT and choose **Put the Matching Patch on Its Track (PR7-K)**.
+
+**The filter and pumping moves now reach PR7-K.** The parts write the filter as CC 74 and the pumping as CC 11. A patch links CC 74 to PR7-K's FILTER CUTOFF through its MIDI LEARN; your own MIDI LEARN links are kept. CYBER PUMP PAD also routes PR7-K's EXPRESSION (CC 11) to its AMP VOLUME, so it plays at full level until the part starts dipping.
+
+A patch starts from a clean slate: every PR7-K switch off, the oscillators, filter, amp and play knobs it uses back to PR7-K's defaults, any loaded wavetable, SFZ instrument or drawing let go, and the modulation matrix replaced. PR7-K's OUTPUT and its other knobs are left as they were. The settings are tested (the right values land in PR7-K's saved state); the sounds haven't been heard here, so tell me which ones need work.
+
 ## 0.219.0
 
 **A lane's WORLD, and CYBERPUNK keys.** You can now keep a metal song's guitar, bass and drums on their section types and give the keys a cyberpunk feel. Open the keys lane's style menu in ARCHITECT and choose a WORLD at the top: ROCK / METAL (THE SECTION'S) is how it always was, CYBERPUNK swaps the keys' options for synth parts. Only the keys lane changes; the rest of the band carries on with the section type. The lane's header shows CYBERPUNK WORLD, the choice is saved with the song and in a built section's recipe, and choosing the first world again puts the keys back.
