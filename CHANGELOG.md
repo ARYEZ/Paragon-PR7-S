@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.214.0
+
+Ten new chorus types for ARCHITECT, from your 67 songs (shapes only, our names, all 4/4). Each type has two guitar parts, its own bass part (then ROOTS HELD and LOCKED WITH THE KICK), the keys' SILENT and HELD PADS, and two drum parts.
+
+- **SIX-HIT CHORD BAR OVER THE ROOTS:** wide chords and the bass on 1, 2, its and, the and of 3, 4 and its and.
+- **SIXTEENTH OCTAVES ON THE FLAT SEVEN OVER A ROOT RIFF:** the key's flat seventh, then its sixth, in octaves, over a root riff and a four-kick burst.
+- **OCTAVES CLIMB A STEP A BAR:** octaves and the bass climbing the key's scale a step a bar, with the kick on every eighth.
+- **HALF-STEP SHOVE ON FOUR-AND:** every second bar's last eighth shoved a half step up and held.
+- **CHORDS ON ONE, THREE, FOUR, FOUR-AND:** high chords over a half-time kit, with the bass coming in after them.
+- **AND-OF-ONE UNISON PUSHES:** the guitar and the kick together, with nothing on 1.
+- **UNISON PUSH RIFF, PAIRED-SNARE BAR EVERY FOURTH:** a push riff, every fourth bar busier.
+- **TWO HITS, THEN AIR:** power chords on 1 and 2, the back half empty.
+- **HALF-STEP POWER CHORDS EACH HALF BAR, BASS ROOT-FIFTH-OCTAVE-FIFTH.**
+- **UNISON HITS, THE KICK ITS OWN WAY:** seven syncopated hits, with the kick on a pattern of its own.
+
 ## 0.213.0
 
 Fifteen new verse types for ARCHITECT, from the 67 songs you uploaded on 23 November. The songs were read for their shapes only: rhythms, which chord tones, how the lanes lock together. Nothing was copied and the names are ours. Each type has two guitar parts, its own bass part (then ROOTS HELD and LOCKED WITH THE KICK), the keys' SILENT and HELD PADS, and two drum parts. Everything is in 4/4.

@@ -393,7 +393,18 @@ namespace pr7s
                          { "HIT, THEN EIGHTHS OFF TWO-AND", "A chord on 1 rung three eighths, then power-chord eighths from the and of 2; every fourth bar straight eighths", r, {}, c },
                          { "IN ON TWO, ANSWERS ON THE ANDS", "A bar of eighths coming in on beat 2, answered by a full bar; the others stab the ands of 3 and 4; half time", r, {}, c },
                          { "ONE, TWO, THEN TWO PUSHES", "Every lane on 1 and 2, then two pushes on the a of 3 and the and of 4; the kit opens up for the second half", r, {}, c },
-                         { "HALF TIME, KICK ON TWO, HELD PAIRS", "A power chord held and a short chord a minor third up in turn, then off-beat eighths; the kick on 2 and the a of 4, the snare on 3", r, {}, c } };
+                         { "HALF TIME, KICK ON TWO, HELD PAIRS", "A power chord held and a short chord a minor third up in turn, then off-beat eighths; the kick on 2 and the a of 4, the snare on 3", r, {}, c },
+                         // (0.214.0) Round eight (the owner's 67 songs; shapes only, our names).
+                         { "SIX-HIT CHORD BAR OVER THE ROOTS", "Wide chords and the bass's roots on six hits a bar, the ride on the eighths from the and of 1", r, {}, c },
+                         { "SIXTEENTH OCTAVES ON THE FLAT SEVEN OVER A ROOT RIFF", "The key's flat seventh, then its sixth, in octaves, eighths then sixteenths, over a root-and-seventh riff and a four-kick burst", r, {}, c },
+                         { "OCTAVES CLIMB A STEP A BAR", "Octaves in eighths climbing the key's scale a step a bar with the bass, power chords under, the kick on every eighth", r, {}, c },
+                         { "HALF-STEP SHOVE ON FOUR-AND", "Power-chord eighths, every second bar's last eighth shoved a half step up and held, the kick and bass with it", r, {}, c },
+                         { "CHORDS ON ONE, THREE, FOUR, FOUR-AND", "High chords on 1, 3, 4 and its and, the next bar filling in, the bass after them, a half-time kit", r, {}, c },
+                         { "AND-OF-ONE UNISON PUSHES", "The guitar, the bass and the kick together on the and of 1, the and of 2, 3, its and and the and of 4: nothing on 1", r, {}, c },
+                         { "UNISON PUSH RIFF, PAIRED-SNARE BAR EVERY FOURTH", "A unison push riff on the bar's chord, every fourth bar busier with the snare in pairs and a splash", r, {}, c },
+                         { "TWO HITS, THEN AIR", "Power chords on 1 and 2 only, the back half empty, the kick on 1, 2 and 4 and the snare on 3 and its answer", r, {}, c },
+                         { "HALF-STEP POWER CHORDS EACH HALF BAR, BASS ROOT-FIFTH-OCTAVE-FIFTH", "Power-chord eighths a half bar each stepping a half step down and back, the bass on root, fifth, octave, fifth", r, {}, c },
+                         { "UNISON HITS, THE KICK ITS OWN WAY", "The guitar and the bass on seven syncopated hits, the last held, the kick on its own pattern against them", r, {}, c } };
             }
             case 3:
             {
@@ -1607,6 +1618,27 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "KICK GALLOP, SNARE ON TWO-AND, CRASH EIGHTHS", "KICK GALLOP, BACKBEAT, RIDE" }, {} },
                 { "CALL BAR, BASS ANSWER BAR", { "CHORD RUNG, THREE STABS, A BAR OFF", "CHORD RUNG, THREE STABS, EVERY BAR" }, { "ANSWERS IN THE EMPTY BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "HITS WITH THE CALL, GROOVE IN THE ANSWER", "HALF TIME UNDER THE CALL" }, {} },
+                // (0.214.0) Round eight's choruses.
+                { "SIX-HIT CHORD BAR OVER THE ROOTS", { "WIDE CHORDS ON SIX HITS", "POWER CHORDS ON SIX HITS" }, { "ROOTS ON THE SIX HITS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "RIDE EIGHTHS FROM ONE-AND, KICK ONE AND THREE", "CRASH EVERY OTHER BAR, CLOSED HAT EIGHTHS" }, {} },
+                { "SIXTEENTH OCTAVES ON THE FLAT SEVEN OVER A ROOT RIFF", { "OCTAVES ON THE SEVENTH OVER THE ROOT RIFF", "OCTAVES ON THE SEVENTH ALONE" }, { "THE ROOT GROOVE, SEVENTH AND SIXTH TAILS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "FOUR-KICK BURST, HAT EIGHTHS, CRASH EVERY TWO", "FOUR-KICK BURST, RIDE QUARTERS" }, {} },
+                { "OCTAVES CLIMB A STEP A BAR", { "POWER CHORD EIGHTHS, THE OCTAVES CLIMBING OVER", "THE OCTAVES CLIMBING ALONE" }, { "THE CLIMB IN OCTAVES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK EIGHTHS, SNARE QUARTERS, CRASH EVERY BAR", "KICK EIGHTHS, BACKBEAT, HAT QUARTERS" }, {} },
+                { "HALF-STEP SHOVE ON FOUR-AND", { "EIGHTHS, A HALF-STEP SHOVE ON FOUR-AND", "EIGHTHS, THE SHOVE AND A BROKEN SECOND GUITAR" }, { "ROOT EIGHTHS, THE SHOVE ON FOUR-AND", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK WITH THE SHOVE, CRASH QUARTERS", "KICK WITH THE SHOVE, OPEN HAT QUARTERS" }, {} },
+                { "CHORDS ON ONE, THREE, FOUR, FOUR-AND", { "HIGH CHORDS ON ONE, THREE, FOUR, FOUR-AND", "POWER CHORDS ON ONE, THREE, FOUR, FOUR-AND" }, { "ROOT ON ONE, THEN AFTER THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, KICK ON FOUR-AND, RIDE EIGHTHS", "HALF TIME, KICK ON FOUR-AND, QUARTER HATS" }, {} },
+                { "AND-OF-ONE UNISON PUSHES", { "UNISON PUSHES OFF THE ONE", "UNISON PUSHES, THE ONE STRUCK EVERY FOURTH BAR" }, { "ROOT EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ON THE PUSHES, OPEN HATS ON TWO, THREE AND FOUR", "KICK ON THE PUSHES, RIDE EIGHTHS" }, {} },
+                { "UNISON PUSH RIFF, PAIRED-SNARE BAR EVERY FOURTH", { "THE PUSH RIFF, A BUSIER FOURTH BAR", "THE PUSH RIFF EVERY BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK WITH THE RIFF, PAIRED SNARES EVERY FOURTH", "KICK WITH THE RIFF, PLAIN BACKBEAT" }, {} },
+                { "TWO HITS, THEN AIR", { "POWER CHORDS ON ONE AND TWO, HIGH QUARTERS OVER", "POWER CHORDS ON ONE AND TWO ALONE" }, { "ON ONE AND TWO", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ONE, TWO AND FOUR, SNARE THREE AND FOUR-AND", "KICK ONE, TWO AND FOUR, PLAIN SNARE" }, {} },
+                { "HALF-STEP POWER CHORDS EACH HALF BAR, BASS ROOT-FIFTH-OCTAVE-FIFTH", { "HALF-STEP POWER CHORDS EACH HALF BAR", "HALF-STEP POWER CHORDS EACH BAR" }, { "ROOT, FIFTH, OCTAVE, FIFTH EACH HALF BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE ON TWO, TWO-A AND FOUR, OPEN QUARTERS", "SNARE ON TWO, TWO-A AND FOUR, CRASH QUARTERS" }, {} },
+                { "UNISON HITS, THE KICK ITS OWN WAY", { "UNISON HITS, THE LAST HELD", "UNISON HITS, A CHORD EACH HALF BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "THE KICK ITS OWN WAY, OPEN HATS ON TWO, THREE AND FOUR", "THE KICK ITS OWN WAY, CLOSED HAT EIGHTHS" }, {} },
                 // (0.213.0) Round eight's verses.
                 { "ROOT PAIRS IN THREES, TOP NOTE TURNS", { "ROOT PAIRS, THE TOP TURNING", "ROOT PAIRS, THE OCTAVE ONLY" }, { "UNDER THE PAIRS", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "OPEN HAT QUARTERS, KICK ROUND THE PAIRS", "CLOSED HATS, KICK ROUND THE PAIRS" }, {} },
