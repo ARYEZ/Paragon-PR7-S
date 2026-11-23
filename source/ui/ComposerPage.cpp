@@ -1,3 +1,4 @@
+#include "engine/LaneWorlds.h"
 #include "ui/ComposerPage.h"
 #include "engine/SectionTypes.h"
 #include "engine/ChordRoll.h"
@@ -649,6 +650,23 @@ void ComposerPage::setOwnStyles (ComposerLayer l, bool own)
     state.lane (l).ownStyles = own;
     taken[(size_t) l].reset();
     status = pr7s::composerLayerName (l) + (own ? ": ITS OWN STYLES" : ": FOLLOWS THE SECTION TYPE");
+    refresh();
+}
+
+void ComposerPage::setWorld (ComposerLayer l, int world)
+{
+    if (! hasWorlds (l))
+        return;
+    auto& lane = state.lane (l);
+    world = juce::jlimit (0, pr7s::laneWorldNames().size() - 1, world);
+    if (lane.world == world)
+        return;
+    lane.world = world;
+    lane.approach = -1;      // (the other world's list: AUTOMATIC picks for the section)
+    lane.ownStyles = false;
+    lane.on = true;
+    taken[(size_t) l].reset();
+    status = pr7s::composerLayerName (l) + ": " + pr7s::laneWorldNames()[world] + " WORLD";
     refresh();
 }
 
@@ -2186,6 +2204,15 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
     juce::PopupMenu menu;
     // (0.97.1) A lane the section type writes: its options are the type's approaches, each a different part.
     const auto typeWrites = pr7s::sectionTypeWritesLane (l, state, context);
+    // (0.219.0) The lane's WORLD first: the section's own, or another genre's parts.
+    const auto inWorld = hasWorlds (l) && state.lane (l).world != 0;
+    if (hasWorlds (l))
+    {
+        menu.addSectionHeader ("WORLD");
+        for (int w = 0; w < pr7s::laneWorldNames().size(); ++w)
+            menu.addItem (worldItems + w, pr7s::laneWorldNames()[w], true, state.lane (l).world == w);
+        menu.addSeparator();
+    }
     // (0.156.0, the owner's mock-up D) The short list: Automatic, the type's own options, favourites and recent;
     // everything else behind MORE OPTIONS... (the option browser, with the feel filters).
     const auto options = laneOptions (l, false);   // (0.179.0: the grooves' names: none of their parts is shown here)
@@ -2233,10 +2260,11 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
     }
     else if (! approaches.isEmpty())
     {
-        menu.addSectionHeader (state.sectionType.isNotEmpty() ? state.sectionType : juce::String ("DRONING"));
+        menu.addSectionHeader (inWorld ? pr7s::laneWorldNames()[state.lane (l).world]
+                                       : state.sectionType.isNotEmpty() ? state.sectionType : juce::String ("DRONING"));
         menu.addItem (approachItems, typeWrites ? "Automatic (the take chooses)" : "Automatic (the style and the take choose)", true, state.lane (l).approach < 0);
     }
-    addGroup (typeOwnGroup, "THIS TYPE'S OWN");
+    addGroup (typeOwnGroup, inWorld ? juce::String ("ITS PARTS") : juce::String ("THIS TYPE'S OWN"));
     addGroup (stylesGroup, "STYLES");
     // Favourites, then the recent, of what isn't shown already.
     {
@@ -2266,7 +2294,7 @@ juce::PopupMenu ComposerPage::makeStyleMenu (ComposerLayer l)
                                                 : "MORE OPTIONS... (all " + juce::String ((int) options.size()) + ", with search and feel filters)"));
     }
     // (0.126.0) A lane the section type writes can play its own styles instead, and come back.
-    if (typeWrites)
+    if (typeWrites && ! inWorld)
     {
         menu.addSeparator();
         menu.addItem (ownStylesItem, "Play Its Own Styles (not the section type's part)");
@@ -2432,6 +2460,8 @@ void ComposerPage::styleMenuChosen (ComposerLayer l, int chosen)
                                                   : std::optional<ComposerLayer> ((ComposerLayer) (chosen - syncToItems - 1)));
     else if (chosen == ownStylesItem)
         setOwnStyles (l, ! isPlayingOwnStyles (l));
+    else if (chosen >= worldItems && chosen < worldItems + 10)
+        setWorld (l, chosen - worldItems);
     else if (chosen == doubleSyncItem)
         setDoubleSync (l, ! isDoublingSync (l));
     else if (chosen == myRiffItem)
@@ -3940,7 +3970,16 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
             for (const auto other : pr7s::composerLayers())
                 if (other != l && state.followsOwnLeader (other) && state.lane (other).syncTo == (int) l)
                     sync = l;
-        if (! s.locked && ! sync.has_value() && (s.ownStyles ? typeWouldWrite (l) : pr7s::sectionTypeWritesLane (l, state, context)))
+        if (! s.locked && hasWorlds (l) && s.world != 0)
+        {
+            // (0.219.0) The lane's own WORLD.
+            g.setFont (ParagonLookAndFeel::titleFont (11.0f));
+            const auto words = pr7s::laneWorldNames()[s.world] + " WORLD";
+            const auto wordsArea = lane.header.reduced (18, 6).removeFromTop (24).withTrimmedRight (200);
+            ParagonColours::setTextFill (g, ParagonColours::accent, words, wordsArea, juce::Justification::centredRight);
+            g.drawText (words, wordsArea, juce::Justification::centredRight, false);
+        }
+        else if (! s.locked && ! sync.has_value() && (s.ownStyles ? typeWouldWrite (l) : pr7s::sectionTypeWritesLane (l, state, context)))
         {
             // (0.126.0) Whether the section type writes this lane, or it plays its own styles.
             g.setFont (ParagonLookAndFeel::titleFont (11.0f));

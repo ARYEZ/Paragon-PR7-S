@@ -56,6 +56,18 @@ namespace pr7s
         Key key;
     };
 
+    // (0.219.0) A controller move an idea carries beside its notes: a synth's filter sweep (CC 74) or a pumping level
+    // (CC 11), written into the part as it is (Studio::partFromIdea). `beat` from the first span's start, as the notes;
+    // `ramp` glides from the move before of the same number.
+    struct LineControl
+    {
+        int number = 74;
+        double beat = 0.0;
+        int value = 0;
+        bool ramp = true;
+        bool operator== (const LineControl&) const = default;
+    };
+
     struct LineIdea
     {
         // (0.19.0: piano chords; guitar rhythm and lead.)
@@ -63,6 +75,7 @@ namespace pr7s
         Part part = Part::bass;
         juce::String style, description;
         std::vector<LineNote> notes;   // beats from the first span's start
+        std::vector<LineControl> controls;   // (0.219.0) the LANE WORLD's synth parts' filter and level moves
     };
 
     // The six bass ideas and the six melody ideas for these chords (in order: the styles below).

@@ -47,6 +47,7 @@ add_library(PR7SCore STATIC
     source/engine/SongSections.cpp
     source/engine/SectionTypes.cpp
     source/engine/InspiredBy.cpp
+    source/engine/LaneWorlds.cpp
     source/engine/EditHistory.cpp
     source/engine/MidiExport.cpp
     source/engine/TempoDetect.cpp

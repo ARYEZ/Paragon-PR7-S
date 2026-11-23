@@ -83,6 +83,9 @@ namespace pr7s
         juce::uint64 lockedBars = 0;
         std::vector<LineNote> keptNotes;
         juce::String fill;
+        // (0.219.0, the owner: cyberpunk keys in a metal song) WORLD: where this lane's parts come from (engine/
+        // LaneWorlds.h's LaneWorld; 0 the section's own, as always). Saved as the lane's 17th field.
+        int world = 0;
         bool hasBarLocks() const noexcept { return lockedBars != 0; }
         bool operator== (const ComposerLane&) const = default;
     };

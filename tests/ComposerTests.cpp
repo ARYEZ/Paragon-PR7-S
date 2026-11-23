@@ -380,6 +380,12 @@ TEST_CASE ("Snapshot: the composer (0.58.0)", "[.][snapshot-composer]")
             page.lockBars (L::bass, 0x3f);
             page.selectBars (L::melody, 1, 3);
         }
+        // (0.219.0) PARAGON_SNAPSHOT_WORLD=1: the keys lane in the CYBERPUNK world (its pumping pads).
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_WORLD", {}) == "1")
+        {
+            page.setWorld (L::chords, 1);
+            page.styleMenuChosen (L::chords, ComposerPage::approachItems + 1 + 3);
+        }
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };

@@ -243,6 +243,11 @@ public:
     static inline const juce::String typeOwnGroup = "THIS TYPE'S OWN", songsGroup = "FROM YOUR SONGS", stylesGroup = "STYLES";
     // (0.126.0) OWN STYLES: a lane the section type writes plays its own styles instead (and back).
     void setOwnStyles (pr7s::ComposerLayer, bool own);
+    // (0.219.0) A lane's WORLD (engine/LaneWorlds.h; only the keys lane has worlds yet): its parts from another genre,
+    // the rest of the band staying on the section type.
+    void setWorld (pr7s::ComposerLayer, int world);
+    int getWorld (pr7s::ComposerLayer l) const { return state.lane (l).world; }
+    static bool hasWorlds (pr7s::ComposerLayer l) { return l == pr7s::ComposerLayer::chords; }
     // (0.126.0) SYNC TO: this lane alone follows another lane's rhythm (none: not on its own).
     void setSyncTo (pr7s::ComposerLayer, std::optional<pr7s::ComposerLayer> leader);
     std::optional<pr7s::ComposerLayer> getSyncTo (pr7s::ComposerLayer l) const
@@ -342,6 +347,7 @@ private:
     static constexpr int flavourItems = 6000, writtenRiffsItem = 6100;   // (0.85.0) the guitar's style menu
     static constexpr int doubleSyncItem = 6200;   // (0.86.0) the bass's and drums' style menus
     static constexpr int ownStylesItem = 6290;
+    static constexpr int worldItems = 6400;       // (0.219.0) the keys lane's WORLD: 6400 + engine/LaneWorlds.h's LaneWorld
     static constexpr int syncToItems = 6260;      // (0.126.0) SYNC TO: 6260 none, 6261 + layer    // (0.126.0) the type's lanes: Play Its Own Styles / Follow Again
     // (0.157.0) HEAR in a browser: what to put back (the list it was tried from) unless USE IT.
     struct Trial { bool active = false; juce::String list; std::function<void()> restore; bool wasHearing = false; };

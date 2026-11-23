@@ -108,6 +108,7 @@ add_executable(ParagonPR7STests
     ChordRollTests.cpp
     InsertSilenceTests.cpp
     ComposerOctaveTests.cpp
+    LaneWorldTests.cpp
     OptionBrowserTests.cpp
     ChordGuideTests.cpp
     LibraryDrumsTests.cpp

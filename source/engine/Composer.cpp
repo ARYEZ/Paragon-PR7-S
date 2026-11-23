@@ -1,3 +1,4 @@
+#include "engine/LaneWorlds.h"
 #include "engine/Composer.h"
 #include "engine/SectionTypes.h"
 
@@ -139,7 +140,8 @@ namespace pr7s
                            + "," + juce::String (l.busy, 2) + "," + juce::String (l.lowString ? 1 : 0) + "," + juce::String (l.onlyString)
                            + "," + juce::String (l.doubleSync ? 1 : 0) + "," + juce::String (l.approach) + "," + juce::String (l.octave)
                            + "," + juce::String (l.ownStyles ? 1 : 0) + "," + juce::String (l.syncTo) + "," + juce::String (l.second)
-                           + "," + barLocksToText (l));   // (0.202.0: the bar locks, three more fields)
+                           + "," + barLocksToText (l)   // (0.202.0: the bar locks, three more fields)
+                           + "," + juce::String (l.world));   // (0.219.0: the lane's WORLD)
         return juce::String (keyIndex) + "|" + genre + "|" + mood + "|" + juce::String (bars) + "|" + progression + "|"
              + (fromChordTrack ? "1" : "0") + "|" + (toChordTrack ? "1" : "0") + "|" + lanesText.joinIntoString (";")
              + "|" + juce::String (riffFlavour) + "," + (writtenRiffs ? "1" : "0") + "," + juce::String (syncLane)
@@ -197,6 +199,8 @@ namespace pr7s
                 l.second = juce::jlimit (0, secondAcousticParts().size() - 1, v[12].getIntValue());   // (0.193.0)
             if (v.size() >= 16)
                 barLocksFromText (l, v[13], v[14], v[15]);   // (0.202.0; older text: no bar locks)
+            if (v.size() >= 17)
+                l.world = juce::jlimit (0, laneWorldNames().size() - 1, v[16].getIntValue());   // (0.219.0)
         }
         if (parts.size() >= 9)
         {
@@ -29235,8 +29239,50 @@ namespace pr7s
         LineIdea syncedLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c);
 
         // A lane as SYNC has it (0.86.0): the sync lane itself and every lane with SYNC off as before.
+        // (0.219.0) Where the section is, for a world's AUTOMATIC: the type's band says pre-chorus; else the drums lane's
+        // section (engine/DrumGenerator.h's order: intro, verse, chorus, bridge, breakdown, ending, solo).
+        WorldSection worldSectionOf (const ComposerState& s)
+        {
+            if (sectionBand (s) == SectionType::Band::preChorus)
+                return WorldSection::preChorus;
+            switch (juce::jlimit (0, 6, s.lane (ComposerLayer::drums).style))
+            {
+                case 0: return WorldSection::intro;
+                case 2: return WorldSection::chorus;
+                case 3: return WorldSection::bridge;
+                case 4: return WorldSection::breakdown;
+                case 5: return WorldSection::outro;
+                case 6: return WorldSection::solo;
+                default: return WorldSection::verse;
+            }
+        }
+
+        std::optional<LineIdea> worldLayer (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
+        {
+            if (l != ComposerLayer::chords || spans.empty() || s.lane (l).world != (int) LaneWorld::cyberpunk)
+                return std::nullopt;
+            const auto& lane = s.lane (l);
+            CyberpunkRequest request;
+            request.section = worldSectionOf (s);
+            request.beatsPerBar = c.beatsPerBar;
+            request.variation = lane.variation;
+            request.busy = lane.busy;
+            request.nextChord = c.nextChord;
+            // The kicks and the guitar's hits, when those lanes play and don't follow the keys (no loop back here).
+            if (s.lane (ComposerLayer::drums).on && s.leaderOf (ComposerLayer::drums) != std::optional<ComposerLayer> (ComposerLayer::chords))
+                request.kicks = kickHits (syncedLayer (ComposerLayer::drums, s, spans, c));
+            if (s.lane (ComposerLayer::guitar).on && s.leaderOf (ComposerLayer::guitar) != std::optional<ComposerLayer> (ComposerLayer::chords))
+                request.guitarHits = riffHits (unsyncedGuitar (s, spans, c));
+            const auto option = lane.approach >= 0 ? lane.approach % cyberpunkKeysOptions().size()
+                                                   : cyberpunkKeysAutomatic (request.section, lane.variation);
+            return cyberpunkKeys (option, spans, request);
+        }
+
         LineIdea syncedLayerOwn (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
         {
+            // (0.219.0) A lane in another WORLD plays that world's parts, whatever the type or SYNC says.
+            if (auto world = worldLayer (l, s, spans, c))
+                return std::move (*world);
             const auto leaderLayer = s.leaderOf (l);   // (0.126.0: a lane's own SYNC TO first)
             // (0.97.2, the owner: "the bass always needs the locked in with the kick option in every riff") a type that
             // writes the bass has LOCKED WITH THE KICK last: the chords' roots on every kick of that type's drums.
@@ -29544,6 +29590,8 @@ namespace pr7s
 
     bool sectionTypeWritesLane (ComposerLayer l, const ComposerState& s, const ComposerContext& c)
     {
+        if (l == ComposerLayer::chords && s.lane (l).world == (int) LaneWorld::cyberpunk)   // (0.219.0: the world's parts)
+            return true;
         if (s.leaderOf (l).has_value() || s.lane (l).ownStyles)
             return false;
         if (droningBand (s, c) || drivingBand (s, c) || syncopatedBand (s, c) || mutedBand (s, c))

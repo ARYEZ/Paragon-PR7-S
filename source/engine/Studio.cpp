@@ -11488,6 +11488,16 @@ namespace pr7s
         for (const auto& n : notes)
             part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
         part.controllers = effectControllers (notes, range, project.bpmAt (start));
+        // (0.219.0) The idea's own controller moves (a synth part's filter sweeps and pumping level).
+        if (! idea.controls.empty())
+        {
+            for (const auto& k : idea.controls)
+                if (k.beat >= -1.0e-9 && k.beat < length + 1.0e-6)
+                    part.controllers.push_back ({ Controller::Type::cc, juce::jlimit (0, 127, k.number), juce::jmax (0.0, k.beat),
+                                                  juce::jlimit (0, 127, k.value), k.ramp });
+            std::stable_sort (part.controllers.begin(), part.controllers.end(),
+                              [] (const Controller& a, const Controller& b) { return a.start < b.start; });
+        }
         return part;
     }
 

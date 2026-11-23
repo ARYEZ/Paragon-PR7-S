@@ -1,6 +1,7 @@
 #include "engine/SectionTypes.h"
 
 #include "engine/SongSections.h"
+#include "engine/LaneWorlds.h"
 #include <map>
 #include <mutex>
 
@@ -2042,6 +2043,9 @@ namespace pr7s
 
     juce::StringArray baseSectionApproaches (const ComposerState& s, ComposerLayer layer)
     {
+        // (0.219.0) A lane in another WORLD lists that world's parts, whatever the type.
+        if (layer == ComposerLayer::chords && s.lane (layer).world == (int) LaneWorld::cyberpunk)
+            return cyberpunkKeysOptions();
         auto names = ownSectionApproaches (s, layer);
         if (names.isEmpty())
             return names;
@@ -2197,6 +2201,8 @@ namespace pr7s
 
     juce::StringArray sectionApproaches (const ComposerState& s, ComposerLayer layer)
     {
+        if (layer == ComposerLayer::chords && s.lane (layer).world == (int) LaneWorld::cyberpunk)   // (0.219.0)
+            return cyberpunkKeysOptions();
         auto names = baseSectionApproaches (s, layer);
         if (names.isEmpty() || ! sectionTypeCalled (s.sectionType).has_value())
             return names;
