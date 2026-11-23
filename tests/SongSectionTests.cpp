@@ -2337,7 +2337,7 @@ namespace
 TEST_CASE ("0.104.0: transitions: the last bar written for each, the melody untouched", "[sections][transitions]")
 {
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 14 + 21 + 27 + 6 + 15 + 10);   // (0.199.0: ten more; 0.186.0: fifteen more; 0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
+    REQUIRE (list.size() == 14 + 21 + 27 + 6 + 15 + 10 + 15);   // (0.199.0: ten more; 0.186.0: fifteen more; 0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
     CHECK (list.front().name == noTransition);
     CHECK_FALSE (sectionTransitionNamed ("NONE").has_value());
     CHECK_FALSE (sectionTransitionNamed ("").has_value());
@@ -5026,7 +5026,7 @@ TEST_CASE ("0.154.0: round four's 27 transitions", "[sections][transitions][tran
                                             "TOM RUMBLE BARS", "HALF-STEP BURST BAR", "RIFF ALONE, TWO BARS", "UNISON SIXTEENTHS BAR",
                                             "SIXTEENTH SWELL, CUT SHORT", "SIX-SIXTEENTH TURNAROUND", "DROP TO KEYS AND LEAD", "CUT AT THE HALF BAR" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 35 + names.size() + 6 + 15 + 10);   // (0.172.0: six more; 0.186.0: fifteen more; 0.199.0: ten more)
+    REQUIRE (list.size() == 35 + names.size() + 6 + 15 + 10 + 15);   // (0.172.0: six more; 0.186.0: fifteen more; 0.199.0: ten more)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (list[35 + i].name == names[i]);
     const auto plain = withTransition (noTransition);
@@ -7463,7 +7463,7 @@ TEST_CASE ("0.186.0: round six's transitions", "[sections][trans186]")
                             "CHORD RUNG A BAR, LAST-16TH KICK PICKUP", "UNISON HITS, THEN HELD SILENCE", "BAND HIT HELD TWO AND A HALF BEATS, RIDE PICKUP",
                             "SNARE SIXTEENTHS ON THREE INTO THE CHANGE" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 68 + std::size (names) + 10);   // (0.199.0: ten more)
+    REQUIRE (list.size() == 68 + std::size (names) + 10 + 15);   // (0.199.0: ten more)
     for (size_t i = 0; i < std::size (names); ++i)
         CHECK (list[68 + i].name == names[i]);
     const auto none = withTransition ({});
