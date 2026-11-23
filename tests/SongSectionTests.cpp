@@ -8724,7 +8724,7 @@ TEST_CASE ("0.198.0: round seven's intro and outro types, every lane's options a
     std::vector<std::pair<juce::String, juce::String>> all;   // (section, type)
     for (size_t i = 0; i < intros.size(); ++i)
     {
-        CHECK (intro[intro.size() - 2 - intros.size() + i].name == intros[i]);   // (before DRONING, OPEN CHORDS)
+        CHECK (intro[intro.size() - 2 - 2 - intros.size() + i].name == intros[i]);   // (before 0.216.0's two, DRONING, OPEN CHORDS)
         all.push_back ({ "Intro", intros[i] });
     }
     for (size_t i = 0; i < outros.size(); ++i)

@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.216.0
+
+Two intro types and fifteen transitions for ARCHITECT from your 67 songs (shapes only, our names, all 4/4), and a place for your own notes of which songs inspired each style.
+
+Intros (after HELD TRIADS STEPPING DOWN, TAMBOURINE):
+- **ROOT-AND-THIRD EIGHTHS ALONE, THE KIT IN STAGES:** one guitar rocking from the low root to the key's third, then hats, then the kick, then kick eighths, then everyone.
+- **BASS FLICKS UNDER A KEYS RUN:** the bass alone with three-sixteenth flicks on 1 and 3, then an eight-note keys run over it.
+
+Transitions (INTO THE NEXT, in the last two bars):
+- ROOT HELD, HALF-STEP NEIGHBOURS ON FOUR
+- SNARE AND TOMS TRADING SIXTEENTHS
+- BLUES WALK DOWN IN THREES
+- TWO QUARTER HITS AND AIR
+- FOURTH DYADS CLIMBING ON THE DOTTED GRID
+- TWO CHORDS IN THREE EIGHTHS, BASS ON THE ANDS
+- HELD CHORD, THREE STEPS UP ON TOP
+- CHROMATIC BASS FALL INTO THE NEXT
+- A BAR OF HITS, HALF A BAR OF AIR, EIGHTHS
+- OFF-BEAT STABS BAR, KICK AND CRASH WITH THEM
+- SIXTEENTH PAIRS ON EVERY BEAT
+- A BAR OF DYAD TREMOLO, THEN THE CHORD HELD
+- ALL-LANE SIXTEENTH CELL, KICK AND OPEN HAT QUARTERS
+- EIGHTHS TO BEAT THREE, THEN SILENCE
+- THREE EVEN STRUMS FALLING
+
+**Your own "inspired by" notes.** The options window (MORE OPTIONS, the TYPE and SOLO browsers) shows "Inspired by: ..." under an option's description when your own file names it. The file lives only on your computer: Documents/Paragon PR7-S/Inspired By.txt, one line per style, `STYLE NAME | what inspired it`, lines starting with # ignored. Edit it in any text editor; the studio reads it again when it changes. Without the file nothing is shown. It is never part of the studio or its releases.
+
 ## 0.215.0
 
 Sixteen new section types for ARCHITECT from your 67 songs (shapes only, our names, all 4/4). Each type has two guitar parts, its own bass part (then ROOTS HELD and LOCKED WITH THE KICK), the keys' SILENT and HELD PADS, and two drum parts.
