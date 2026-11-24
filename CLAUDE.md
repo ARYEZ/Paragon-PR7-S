@@ -30,6 +30,8 @@
 
 Be honest about scale: Cubase took a large team decades. Say where it stands.
 
+**Next, agreed and waiting for the owner's files:** the CYBERPUNK world learned from their MediaBay folders: `docs/plans/cyberpunk-library.md`.
+
 ## Colours (the owner's rule, 0.5.1)
 
 Only the family's colours: anything along the **red / pink / orange** gradient, **pearl white** and **pearl onyx** (the dark panels and greys). **Since 0.9.12 track and note colours are exactly the gradient's three: `pr7s::FamilyColours::red` `#D42E2A`, `pink` `#DE0639`, `orange` `#CD6619` (Project.h; `Finish::neonGradient` uses them).** No blue, green, violet, aqua or yellow anywhere (track colours included: `trackColour`, tested). PR7-G's signal-chain colours were removed from `ParagonColours`. The shared `LedDisplay` still has the plugins' green "in tune" for a tuner, which PR7-S never shows.
