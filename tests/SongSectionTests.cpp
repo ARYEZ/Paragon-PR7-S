@@ -9895,3 +9895,51 @@ TEST_CASE ("0.218.0: round eight's shared drum, bass and keys options", "[sectio
         }
     }
 }
+
+TEST_CASE ("0.221.0: a block's chords changed on the chord track are what ARCHITECT composes over", "[sections][blockchords]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    studio.appendSongSection ("Verse", 4);
+    studio.appendSongSection ("Solo", 4);
+
+    ComposerPage page (studio);
+    page.setSize (1700, 940);
+    page.targetSection (studio.getSongSections().blocks[1].id);
+    // No chords on the chord track yet: the library's progression, as before.
+    CHECK_FALSE (page.getState().fromChordTrack);
+    REQUIRE_FALSE (page.getSpans().empty());
+
+    // The solo's chords set in the block editor (the owner's report): ARCHITECT reads them.
+    const std::vector<Studio::SectionChord> solo { { Chord { 2, Chord::Type::minor }, 8.0 }, { Chord { 10, Chord::Type::major }, 8.0 } };
+    REQUIRE (studio.setSectionChords (1, solo));
+    page.refreshForTests();
+    CHECK (page.getState().fromChordTrack);
+    REQUIRE (page.getSpans().size() == 2);
+    CHECK (page.getSpans()[0].chord == solo[0].chord);
+    CHECK (page.getSpans()[1].chord == solo[1].chord);
+    CHECK (page.getSpans()[0].start == Catch::Approx (16.0));
+
+    // LIBRARY chosen afterwards stays chosen while those chords don't change...
+    page.setFromChordTrack (false);
+    page.refreshForTests();
+    CHECK_FALSE (page.getState().fromChordTrack);
+
+    // ...and changing them again reads them again.
+    auto changed = solo;
+    changed[1].chord = Chord { 7, Chord::Type::major };
+    REQUIRE (studio.setSectionChords (1, changed));
+    page.refreshForTests();
+    CHECK (page.getState().fromChordTrack);
+    REQUIRE (page.getSpans().size() == 2);
+    CHECK (page.getSpans()[1].chord == changed[1].chord);
+
+    // Aiming at a block that has chords reads them too.
+    const std::vector<Studio::SectionChord> verse { { Chord { 9, Chord::Type::minor }, 16.0 } };
+    REQUIRE (studio.setSectionChords (0, verse));
+    page.setFromChordTrack (false);
+    page.targetSection (studio.getSongSections().blocks[0].id);
+    CHECK (page.getState().fromChordTrack);
+    REQUIRE (page.getSpans().size() == 1);
+    CHECK (page.getSpans()[0].chord == verse[0].chord);
+}

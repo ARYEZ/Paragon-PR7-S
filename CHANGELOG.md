@@ -2,7 +2,13 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.220.0
+## 0.221.0
+
+**ARCHITECT now composes over the chords you gave a section.** You changed a SECTIONS block's chords (in the block editor, or by moving chords on the chord track) and opened ARCHITECT on it, but it still played the original chords. The reason: with CHORDS FROM set to LIBRARY, ARCHITECT composed a block over the library progression and never looked at that block's chords on the chord track. A song keeps ARCHITECT's settings (since 0.206.0), so a song that started on LIBRARY stayed on it.
+
+Now, when ARCHITECT works on a block and that block's chords on the chord track are new to it, it switches CHORDS FROM to CHORD TRACK and uses them. "New" means you aimed it at another block that has chords, or the chords inside the block changed. Your own choice still counts: pick LIBRARY afterwards and it stays on LIBRARY until those chords change again. A block with no chords on the chord track composes from the library, as before.
+
+
 
 **A PR7-K sound for each CYBERPUNK part.** When the keys lane is in the CYBERPUNK world and its track plays PR7-K, BUILD now writes a matching sound into that PR7-K, as the guitar lanes already get a PR7-G tone. The status line says which one went on ("KEYS: CYBER PUMP PAD ON PR7-K"). Thirteen sounds, one for each part, our own (made from PR7-K's own saws, pulses, sines, unison, filter, envelopes, DELAY and REVERB; not copied from its presets):
 

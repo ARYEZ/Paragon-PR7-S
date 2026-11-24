@@ -326,6 +326,10 @@ public:
 private:
     std::unique_ptr<OptionBrowserWindow> browserWindow;
     int targetBlock = 0;   // (0.90.0) the SECTIONS row's block composed (its id; 0: none)
+    // (0.221.0) The targeted block's chords on the chord track as last seen: when they change (the block editor, the
+    // chord track) or another block is aimed at, ARCHITECT reads them (CHORDS FROM: CHORD TRACK).
+    int seenChordsBlock = 0;
+    std::vector<pr7s::Studio::SectionChord> seenBlockChords;
     struct Lane
     {
         juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, bars { "LOCK BARS" }, style, track, busy, low { "ANY STRING" }, octave { "OCTAVE 0" },
@@ -356,6 +360,7 @@ private:
     Trial trial;
     void showTypeMenu();
     void applyBlockType();   // the target block's type onto the state (when it differs)
+    void followBlockChords();   // (0.221.0) the target block's chords changed: read them from the chord track
     static constexpr int popularItems = 10000;   // (0.208.0) the PROGRESSION menu's POPULAR IN <KEY>
     static constexpr int myRiffItem = 4900;   // (0.75.0) the guitar's style menu: My Riff   // (0.70.0) the lead's style menu: Solo Style items
     void showTrackMenu (pr7s::ComposerLayer);

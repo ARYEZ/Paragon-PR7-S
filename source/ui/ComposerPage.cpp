@@ -364,6 +364,7 @@ void ComposerPage::refresh (bool rehear)
     if (fromRiff && ! riff.has_value())
         fromRiff = false;
     const auto target = getTargetPlace();
+    followBlockChords();
     {   // (0.104.0) The block's transition (none outside the SECTIONS row).
         const auto& sections = studio.getSongSections();
         const auto index = sections.indexOf (targetBlock);
@@ -1472,6 +1473,31 @@ void ComposerPage::refreshVolumes()
 }
 
 //==============================================================================
+// (0.221.0, the owner: "i changed the chord progression for the solo ... when i open architect it is still using the
+// original chords") A block whose chords on the chord track are new to us (another block aimed at, or its chords
+// changed in the block editor or on the chord track) is composed from them: CHORDS FROM: CHORD TRACK. Choosing
+// LIBRARY afterwards still works: nothing changes it back until those chords change again.
+void ComposerPage::followBlockChords()
+{
+    const auto index = studio.getSongSections().indexOf (targetBlock);
+    if (index < 0)
+    {
+        seenChordsBlock = 0;
+        seenBlockChords.clear();
+        return;
+    }
+    auto now = studio.getSectionChords (index);
+    if (targetBlock == seenChordsBlock && now == seenBlockChords)
+        return;
+    seenChordsBlock = targetBlock;
+    seenBlockChords = std::move (now);
+    if (seenBlockChords.empty() || state.fromChordTrack)
+        return;
+    state.fromChordTrack = true;
+    fromRiff = false;
+    chordOverrides.clear();
+}
+
 // (0.75.0) The key locked, chords per section, your own riff.
 bool ComposerPage::isKeyLocked() const
 {
