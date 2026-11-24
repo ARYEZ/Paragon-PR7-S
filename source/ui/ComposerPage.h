@@ -301,6 +301,12 @@ public:
     // (and its linked copies'); + MY RIFF puts a new one on it, and blockRiffChosen gives it one of the song's
     // riffs (an id from Studio::getSongRiffs; -1: none, its lanes write their own).
     bool chooseBlockRiff (int riffId);
+    // (0.226.0) Chords already on the chord track where a riff is pasted are kept (the band follows them; BUILD
+    // doesn't write the riff's over them); where the riff's own chords disagree the status line says so; FIT MY
+    // RIFF TO THE CHORDS moves its notes onto them (off: played exactly as you played it).
+    void setFitRiff (bool);
+    bool isFittingRiff() const noexcept { return fitRiff; }
+    juce::String riffClashText() const;   // "" when they agree (or no riff, or the chords are the riff's)
     juce::String blockRiffText() const;   // "VERSE RIFF: <name>" / "NO RIFF" ("" with no block chosen)
     std::function<std::vector<int>()> getSelectedParts;          // (MainView: the arrangement's selection)
     // (0.76.0, the owner: instruments too loud while composing) Each lane's VOLUME is the fader of the track it's
@@ -435,7 +441,8 @@ private:
     juce::Rectangle<int> songArea;
     std::array<std::optional<pr7s::LineIdea>, pr7s::composerLayerCount> taken;
     std::vector<pr7s::ChordSpan> lastSpans;   // (taken ideas forgotten when the chords change)
-    bool fromRiff = false, useMyRiff = false;
+    bool fromRiff = false, useMyRiff = false, fitRiff = false;
+    bool chordTrackHasChordsAt (double start, double end) const;
     std::optional<pr7s::ComposerRiff> seenRiff;   // (0.226.0) the riff in hand last looked at
     void followRiffInHand();                      // the chosen block's riff in hand; its lanes set for it when it changes
     void riffLanesFor (pr7s::ComposerLayer onto); // the riff's lane on and locked, the others following it

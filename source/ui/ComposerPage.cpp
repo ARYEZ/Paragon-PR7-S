@@ -46,6 +46,7 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     studio.setComposerRiffBlock (0);   // (0.226.0: no block chosen yet: the song's loose riff)
     useMyRiff = studio.getComposerRiff().has_value() && studio.isComposerRiffPlayed();
     fromRiff = studio.getComposerRiff().has_value() && studio.areComposerChordsFromRiff();
+    fitRiff = studio.isComposerRiffFitted();
     seenRiff = studio.getComposerRiff();
     ++quietWrites;
 
@@ -274,6 +275,7 @@ void ComposerPage::startOverForSong()
     studio.setComposerRiffBlock (0);
     useMyRiff = studio.getComposerRiff().has_value() && studio.isComposerRiffPlayed();
     fromRiff = studio.getComposerRiff().has_value() && studio.areComposerChordsFromRiff();
+    fitRiff = studio.isComposerRiffFitted();
     seenRiff = studio.getComposerRiff();
     taken = {};
     chordOverrides.clear();
@@ -413,7 +415,11 @@ void ComposerPage::refresh (bool rehear)
         chordNames.add (i < steps.size() && chordOverrides.count ((int) i) == 0 ? steps[i].name (state.key) : spans[i].chord.name (spans[i].key));
     context.myRiff.reset();
     if (riff.has_value() && useMyRiff && ! spans.empty())
+    {
         context.myRiff = pr7s::tileRiff (*riff, spans.back().end - spans.front().start, context.beatsPerBar);
+        if (fitRiff && ! fromRiff)   // (0.226.0: its notes moved onto the chords the band plays)
+            context.myRiff = pr7s::fitRiffToChords (*context.myRiff, *riff, spans, context.beatsPerBar);
+    }
     // (0.74.0) Ideas taken from IDEAS stay in their lanes while the chords are the same.
     const auto sameChords = [] (const std::vector<pr7s::ChordSpan>& a, const std::vector<pr7s::ChordSpan>& b)
     {
@@ -467,6 +473,7 @@ void ComposerPage::refresh (bool rehear)
             ideas[(size_t) l] = *taken[(size_t) l];
     studio.setComposerState (state.toString(), quietWrites == 0);
     studio.setComposerRiffUse (useMyRiff, fromRiff, quietWrites == 0);   // (0.206.0: kept with the song's riff)
+    studio.setComposerRiffFit (fitRiff, quietWrites == 0);
 
     // The keys.
     const auto& keys = pr7s::Key::all();
@@ -1667,8 +1674,14 @@ bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff, int lane)
         keyText = "in the song's key, " + ChordUi::spokenKey (state.key) + " (locked)";
     if (bars > state.bars)
         state.bars = bars <= 8 ? 8 : 16;
-    fromRiff = true;
-    state.fromChordTrack = false;
+    // (0.226.0, the owner: a progression set for the verse, then a riff of their own used on it) Chords already
+    // on the chord track where the riff goes win: the band follows them and BUILD leaves them; none there: the
+    // riff's own chords, written onto the chord track as before.
+    const auto start = buildStart();
+    const auto end = getTargetPlace().has_value() ? getTargetPlace()->end : start + state.bars * juce::jmax (0.25, context.beatsPerBar);
+    const auto keepChords = chordTrackHasChordsAt (start, end);
+    fromRiff = ! keepChords;
+    state.fromChordTrack = keepChords;
     useMyRiff = true;
     chordOverrides.clear();
     // (0.114.0, the owner: "imported without being changed at all ... select what composer lane it goes to. The
@@ -1692,8 +1705,54 @@ bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff, int lane)
                 on.add (pr7s::sectionLabel (blocks, i));
         status += ".  On " + on.joinIntoString (", ");
     }
+    if (keepChords)
+    {
+        refresh();
+        const auto clashes = riffClashText();
+        status += clashes.isNotEmpty() ? ".  " + clashes : juce::String (".  The chord track's chords kept; the riff agrees with them");
+    }
     repaint();
     return true;
+}
+
+bool ComposerPage::chordTrackHasChordsAt (double start, double end) const
+{
+    for (const auto& span : const_cast<pr7s::Studio&> (studio).getLineChords ({}, false))
+        if (span.end > start + 1.0e-6 && span.start < end - 1.0e-6)
+            return true;
+    return false;
+}
+
+void ComposerPage::setFitRiff (bool on)
+{
+    fitRiff = on && studio.getComposerRiff().has_value();
+    taken[(size_t) state.riffLayer()].reset();
+    status = fitRiff ? juce::String ("My riff fitted to the chords: its notes moved onto the chord under them (rhythm and shape kept)")
+                     : juce::String ("My riff played exactly as you played it");
+    refresh();
+}
+
+juce::String ComposerPage::riffClashText() const
+{
+    const auto& riff = studio.getComposerRiff();
+    if (! riff.has_value() || fromRiff || spans.empty())
+        return {};
+    const auto clashes = pr7s::riffClashes (*riff, spans, context.beatsPerBar);
+    if (clashes.empty())
+        return {};
+    const auto& sig = studio.getProject().signatures();
+    juce::StringArray parts;
+    for (size_t i = 0; i < clashes.size() && i < 3; ++i)
+    {
+        const auto& c = clashes[i];
+        const auto key = spans.front().key;
+        parts.add ("bar " + juce::String (sig.barAt (spans.front().start + c.beat) + 1) + ": the riff says " + c.riff.name (key)
+                   + ", the track " + c.track.name (key));
+    }
+    if (clashes.size() > 3)
+        parts.add ("and " + juce::String ((int) clashes.size() - 3) + " more");
+    return "The riff's chords and the chord track's disagree (" + parts.joinIntoString ("; ") + ")"
+         + (fitRiff ? juce::String ("; fitted to the track's") : juce::String ("; FIT MY RIFF TO THE CHORDS in + MY RIFF moves its notes onto them"));
 }
 
 void ComposerPage::riffLanesFor (ComposerLayer onto)
@@ -1726,6 +1785,7 @@ void ComposerPage::followRiffInHand()
     seenRiff = riff;
     useMyRiff = riff.has_value() && studio.isComposerRiffPlayed();
     fromRiff = riff.has_value() && studio.areComposerChordsFromRiff();
+    fitRiff = riff.has_value() && studio.isComposerRiffFitted();
     chordOverrides.clear();
     if (useMyRiff)
         riffLanesFor (state.riffLayer());
@@ -1955,6 +2015,7 @@ void ComposerPage::showPasteMenu()
             lanes.addItem (100 + (int) l, pr7s::composerLayerName (l), true, l == state.riffLayer());
         menu.addSubMenu ("My Riff Plays on the...", lanes);
         menu.addItem (4, "The Chords from My Riff", true, fromRiff);
+        menu.addItem (9, "Fit My Riff to the Chords (its notes moved onto them)", ! fromRiff, fitRiff && ! fromRiff);   // (0.226.0)
         menu.addItem (5, blockIndex >= 0 ? "Take " + riff->name + " off " + pr7s::sectionLabel (studio.getSongSections().blocks, blockIndex)
                                          : "Forget My Riff (" + riff->name + ")");
     }
@@ -2025,6 +2086,8 @@ void ComposerPage::showPasteMenu()
                                 safe->setPlayMyRiff (! safe->useMyRiff);
                             else if (chosen == 4)
                                 safe->setFromRiff (! safe->fromRiff);
+                            else if (chosen == 9)
+                                safe->setFitRiff (! safe->fitRiff);
                             else if (chosen == 5)
                                 safe->forgetRiff();
                         });

@@ -709,6 +709,8 @@ namespace pr7s
                     r->setAttribute ("name", riff.name);
                     r->setAttribute ("played", riff.played);
                     r->setAttribute ("chordsFrom", riff.chordsFrom);
+                    if (riff.fit)
+                        r->setAttribute ("fit", true);
                     r->setAttribute ("notes", riff.notes);
                 }
             if (architectState.isNotEmpty())
@@ -721,6 +723,8 @@ namespace pr7s
                 r->setAttribute ("name", architectRiff->name);
                 r->setAttribute ("played", architectRiff->played);
                 r->setAttribute ("chordsFrom", architectRiff->chordsFrom);
+                if (architectRiff->fit)
+                    r->setAttribute ("fit", true);
                 r->setAttribute ("notes", architectRiff->notes);
             }
         }
@@ -1073,6 +1077,7 @@ namespace pr7s
                 riff.name = r->getStringAttribute ("name");
                 riff.played = r->getBoolAttribute ("played");
                 riff.chordsFrom = r->getBoolAttribute ("chordsFrom");
+                riff.fit = r->getBoolAttribute ("fit");
                 riff.notes = r->getStringAttribute ("notes");
                 if (riff.id > 0 && project.findArchitectRiff (riff.id) == nullptr)
                     project.architectRiffs.push_back (riff);
@@ -1085,6 +1090,7 @@ namespace pr7s
                 riff.name = r->getStringAttribute ("name");
                 riff.played = r->getBoolAttribute ("played");
                 riff.chordsFrom = r->getBoolAttribute ("chordsFrom");
+                riff.fit = r->getBoolAttribute ("fit");
                 riff.notes = r->getStringAttribute ("notes");
                 project.architectRiff = riff;
             }

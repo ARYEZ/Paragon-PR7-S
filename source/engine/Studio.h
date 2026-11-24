@@ -529,6 +529,8 @@ namespace pr7s
         bool isComposerRiffPlayed() const noexcept { const auto* r = riffInHand(); return r != nullptr && r->played; }
         bool areComposerChordsFromRiff() const noexcept { const auto* r = riffInHand(); return r != nullptr && r->chordsFrom; }
         void setComposerRiffUse (bool played, bool chordsFrom, bool marksModified = true);
+        bool isComposerRiffFitted() const noexcept { const auto* r = riffInHand(); return r != nullptr && r->fit; }
+        void setComposerRiffFit (bool fit, bool marksModified = true);   // (0.226.0) FIT MY RIFF TO THE CHORDS
         void setComposerRiffBlock (int blockId);
         int getComposerRiffBlock() const noexcept { return composerRiffBlock; }
         bool isComposerRiffOnBlock() const noexcept { return project.songSections.indexOf (composerRiffBlock) >= 0; }

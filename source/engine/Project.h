@@ -550,6 +550,7 @@ namespace pr7s
             int bars = 1, section = 1;          // (DrumSection's number)
             juce::String name;
             bool played = false, chordsFrom = false;   // the guitar lane plays it; the chords read from it
+            bool fit = false;                   // (0.226.0) FIT MY RIFF TO THE CHORDS: its notes moved onto the chords under it
             bool operator== (const ArchitectRiff&) const = default;
         };
         juce::String architectState;

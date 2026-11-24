@@ -12477,6 +12477,16 @@ namespace pr7s
             modified = true;
     }
 
+    void Studio::setComposerRiffFit (bool fit, bool marksModified)
+    {
+        auto* r = riffInHand();
+        if (r == nullptr || r->fit == fit)
+            return;
+        r->fit = fit;
+        if (marksModified)
+            modified = true;
+    }
+
     void Studio::loadComposerRiff()
     {
         composerRiff.reset();
@@ -16260,7 +16270,11 @@ namespace pr7s
             // (0.226.0) The block's own riff, played as it was when built (before: none, so a rebuild wrote the
             // riff's lane afresh).
             if (const auto riff = getSongSectionRiff (index); riff.has_value() && isSongSectionRiffPlayed (index) && ! spans.empty())
+            {
                 context.myRiff = tileRiff (*riff, spans.back().end - spans.front().start, context.beatsPerBar);
+                if (const auto* saved = project.findArchitectRiff (block.riff); saved != nullptr && saved->fit && ! saved->chordsFrom)
+                    context.myRiff = fitRiffToChords (*context.myRiff, *riff, spans, context.beatsPerBar);   // (its notes onto the new chords)
+            }
             // (0.175.0) Each lane made only when one of its tracks is still as built (not every lane, lead and
             // solo included, before finding out none was).
             std::map<int, LineIdea> layers;

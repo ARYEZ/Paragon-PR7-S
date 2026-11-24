@@ -231,3 +231,68 @@ TEST_CASE ("0.226.0: a song from before keeps its riff on the blocks of the riff
     CHECK (studio.getComposerRiff().has_value());
     file.deleteFile();
 }
+
+TEST_CASE ("0.226.0: a riff on a block with chords keeps them; disagreements said; FIT moves its notes onto them", "[composer][riff][blockriff][fitriff]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    studio.appendSongSection ("Verse", 4);
+    ComposerPage page (studio);
+    page.setSize (1700, 940);
+    page.setRandomSeed (4);
+    // The verse's progression set first: D minor, then F.
+    const std::vector<Studio::SectionChord> chords { { Chord { 2, Chord::Type::minor }, 8.0 }, { Chord { 5, Chord::Type::major }, 8.0 } };
+    REQUIRE (studio.setSectionChords (0, chords));
+    page.targetSection (studio.getSongSections().blocks[0].id);
+    REQUIRE (page.getState().fromChordTrack);
+
+    // A riff on A (A and E): its own chord is A, not the track's.
+    const auto riff = riffOn (45, "A riff", DrumSection::verse);
+    REQUIRE (page.pasteRiff (riff, (int) L::guitar));
+    CHECK (page.getState().fromChordTrack);   // (the track's chords kept)
+    CHECK_FALSE (page.isFromRiff());
+    CHECK (page.riffClashText().contains ("bar 1"));
+    CHECK (page.getStatus().contains ("disagree"));
+    // Played as written while not fitted.
+    CHECK (playsRiff (page, *studio.getComposerRiff()));
+
+    // BUILD leaves the chord track's chords as they were.
+    const auto before = studio.getProject().chordTrack.events;
+    REQUIRE_FALSE (page.buildSection().empty());
+    CHECK (studio.getProject().chordTrack.events == before);
+
+    // FIT: the notes moved onto D minor, then F; the rhythm kept.
+    page.targetSection (studio.getSongSections().blocks[0].id);
+    page.setFitRiff (true);
+    CHECK (page.isFittingRiff());
+    const auto& fitted = page.getIdea (L::guitar).notes;
+    const auto plain = tileRiff (*studio.getComposerRiff(), 16.0, 4.0).notes;
+    REQUIRE (fitted.size() == plain.size());
+    for (size_t i = 0; i < fitted.size(); ++i)
+    {
+        CHECK (std::abs (fitted[i].beat - plain[i].beat) < 1.0e-9);
+        const auto pc = ((fitted[i].pitch % 12) + 12) % 12;
+        if (fitted[i].beat < 8.0)
+            CHECK ((pc == 2 || pc == 9));    // (D minor's root and fifth)
+        else
+            CHECK ((pc == 5 || pc == 0));    // (F's root and fifth)
+    }
+    // Kept with the block's riff.
+    CHECK (studio.isComposerRiffFitted());
+    page.setFitRiff (false);
+    CHECK (playsRiff (page, *studio.getComposerRiff()));
+}
+
+TEST_CASE ("0.226.0: a riff where the chord track is empty gives its own chords, as before", "[composer][riff][blockriff][fitriff]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Studio studio (false);
+    studio.appendSongSection ("Verse", 4);
+    ComposerPage page (studio);
+    page.setSize (1700, 940);
+    page.targetSection (studio.getSongSections().blocks[0].id);
+    REQUIRE (page.pasteRiff (riffOn (45, "A riff", DrumSection::verse), (int) L::guitar));
+    CHECK (page.isFromRiff());
+    CHECK_FALSE (page.getState().fromChordTrack);
+    CHECK (page.riffClashText().isEmpty());
+}

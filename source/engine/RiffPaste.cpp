@@ -1,4 +1,5 @@
 #include "engine/RiffPaste.h"
+#include "engine/FollowChords.h"
 
 namespace pr7s
 {
@@ -192,6 +193,80 @@ namespace pr7s
                 else
                     out.push_back ({ start + a, start + b, c.chord, key });
             }
+        return out;
+    }
+
+    namespace
+    {
+        // The riff's own chord at an idea beat (it repeats every riff's length), and the span's there.
+        const Chord* riffChordAt (const std::vector<RiffChord>& chords, double riffBeats, double beat)
+        {
+            if (chords.empty() || riffBeats <= 0.0)
+                return nullptr;
+            const auto t = std::fmod (juce::jmax (0.0, beat), riffBeats);
+            const Chord* found = &chords.front().chord;
+            for (const auto& c : chords)
+                if (c.start <= t + 1.0e-9)
+                    found = &c.chord;
+            return found;
+        }
+
+        const ChordSpan* spanAtIdeaBeat (const std::vector<ChordSpan>& spans, double beat)
+        {
+            if (spans.empty())
+                return nullptr;
+            const auto at = spans.front().start + beat;
+            for (const auto& s : spans)
+                if (at >= s.start - 1.0e-9 && at < s.end - 1.0e-9)
+                    return &s;
+            return at < spans.front().start ? &spans.front() : &spans.back();
+        }
+
+        bool sameChord (const Chord& a, const Chord& b) { return a.root == b.root && a.type == b.type; }
+    }
+
+    LineIdea fitRiffToChords (const LineIdea& tiled, const ComposerRiff& riff, const std::vector<ChordSpan>& spans, double beatsPerBar)
+    {
+        auto out = tiled;
+        const auto riffBeats = riff.bars * beatsPerBar;
+        if (spans.empty() || riff.notes.empty() || riffBeats <= 0.0)
+            return out;
+        const auto key = guessKey (riff.notes);
+        const auto chords = riffChords (riff, key, beatsPerBar);
+        for (auto& n : out.notes)
+        {
+            if (n.keyswitch)
+                continue;
+            const auto* from = riffChordAt (chords, riffBeats, n.beat);
+            const auto* to = spanAtIdeaBeat (spans, n.beat);
+            if (from == nullptr || to == nullptr || (sameChord (*from, to->chord) && key == to->key))
+                continue;
+            n.pitch = juce::jlimit (0, 127, followPitch (n.pitch, FollowMode::chordsAndScales, *from, key, to->chord, to->key));
+        }
+        out.style = "My riff (fitted to the chords)";
+        return out;
+    }
+
+    std::vector<RiffClash> riffClashes (const ComposerRiff& riff, const std::vector<ChordSpan>& spans, double beatsPerBar)
+    {
+        std::vector<RiffClash> out;
+        const auto riffBeats = riff.bars * beatsPerBar;
+        if (spans.empty() || riff.notes.empty() || riffBeats <= 0.0)
+            return out;
+        const auto key = guessKey (riff.notes);
+        const auto chords = riffChords (riff, key, beatsPerBar);
+        const auto total = spans.back().end - spans.front().start;
+        const auto step = juce::jmax (0.25, beatsPerBar * 0.5);
+        auto inClash = false;
+        for (double t = 0.0; t < total - 1.0e-6; t += step)
+        {
+            const auto* from = riffChordAt (chords, riffBeats, t);
+            const auto* to = spanAtIdeaBeat (spans, t);
+            const auto clash = from != nullptr && to != nullptr && ! sameChord (*from, to->chord);
+            if (clash && (! inClash || ! sameChord (out.back().riff, *from) || ! sameChord (out.back().track, to->chord)))
+                out.push_back ({ t, *from, to->chord });
+            inClash = clash;
+        }
         return out;
     }
 }
