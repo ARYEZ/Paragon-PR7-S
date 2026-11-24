@@ -265,14 +265,20 @@ namespace pr7s
     // (0.202.0) The drums lane's FILLS (offered while it has bar locks): one-bar fills from the library's fill files
     // (the section's, the favourite folders' first), the beat maker's own four kinds over one and two beats, and the
     // learned drummer's fills for the section. `id` is what ComposerLane::fill keeps.
-    struct ComposerFill { juce::String id, name, group, description; };   // (group: "FILLS")
-    std::vector<ComposerFill> composerFills (const ComposerState&, const ComposerContext&);
+    // (0.223.0, the owner: "make the FILLS list follow the groove too") With the chords given and the drums lane on a
+    // library groove, the fills nearest that groove (composerLibraryFills: its own song's, then its pack's, Toontrack's
+    // first) come first, in the group "FILLS FOR THIS GROOVE"; then the section's other library fills, the beat
+    // maker's and the drummer's, in "FILLS". Without the chords: as 0.202.0.
+    struct ComposerFill { juce::String id, name, group, description; };   // (group: "FILLS", "FILLS FOR THIS GROOVE")
+    inline const juce::String grooveFillsGroup = "FILLS FOR THIS GROOVE";
+    std::vector<ComposerFill> composerFills (const ComposerState&, const ComposerContext&, const std::vector<ChordSpan>* spans = nullptr);
     // A fill's notes (beats from its start) and its length in beats (empty: unknown, or the file can't be read).
     std::vector<LineNote> composerFillNotes (const juce::String& id, const ComposerState&, const ComposerContext&, double& length);
     // ROLL on a drums lane with bar locks: another fill in every open bar (0.203.0: each bar its own, random, never the
     // one that bar had and, with three fills or more, never the one the open bar before it now has). False: no fills.
     // `barCount`: the section's bars (0: as in 0.202.0, one fill for them all).
-    bool rollFill (ComposerState&, const ComposerContext&, juce::Random&, int barCount = 0);
+    // (0.223.0) With the chords given: drawn from the fills for the playing groove when there are two or more.
+    bool rollFill (ComposerState&, const ComposerContext&, juce::Random&, int barCount = 0, const std::vector<ChordSpan>* spans = nullptr);
 
     // (0.85.0) The guitar's riff generator recipe for the state (its section, flavour, BUSY, the take's seed), and
     // that riff's fingerprint (empty with written riffs or your riff): the composer tells repeats apart by it.

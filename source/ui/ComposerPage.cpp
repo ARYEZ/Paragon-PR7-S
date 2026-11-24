@@ -449,7 +449,7 @@ void ComposerPage::refresh (bool rehear)
     // (0.203.0) The fills' names, for the open bars' labels.
     fillsShown.clear();
     if (state.lane (ComposerLayer::drums).hasBarLocks() && state.lane (ComposerLayer::drums).fill.isNotEmpty())
-        fillsShown = pr7s::composerFills (state, context);
+        fillsShown = pr7s::composerFills (state, context, &spans);
     if (chordsChanged && std::any_of (taken.begin(), taken.end(), [] (const auto& t) { return t.has_value(); }))
     {
         for (auto& t : taken)
@@ -751,7 +751,7 @@ void ComposerPage::generate()
     if (! state.lane (ComposerLayer::drums).locked)
     {
         if (state.lane (ComposerLayer::drums).hasBarLocks())
-            pr7s::rollFill (state, context, random, barCount());   // (0.203.0: a new fill in each bar not locked)
+            pr7s::rollFill (state, context, random, barCount(), &spans);   // (0.203.0: a new fill in each bar not locked)
         else
             pr7s::rollLibraryGroove (state, placedSpans(), context, random);   // (0.137.0: the next of the section's 100)
     }
@@ -766,10 +766,10 @@ void ComposerPage::roll (ComposerLayer l)
     if (l == ComposerLayer::drums && state.lane (l).hasBarLocks())
     {
         taken[(size_t) l].reset();
-        if (pr7s::rollFill (state, context, random, barCount()))
+        if (pr7s::rollFill (state, context, random, barCount(), &spans))
         {
             // (0.203.0, the owner: "make each open bar get its own fill") Each open bar a fill of its own.
-            const auto fills = pr7s::composerFills (state, context);
+            const auto fills = pr7s::composerFills (state, context, &spans);
             juce::StringArray names;
             for (const auto& [bar, id] : pr7s::barFills (state.lane (l), barCount()))
                 for (int i = 0; i < (int) fills.size(); ++i)
@@ -2602,7 +2602,7 @@ std::vector<OptionBrowser::Option> ComposerPage::fillOptions() const
     std::vector<OptionBrowser::Option> out;
     if (! state.lane (ComposerLayer::drums).hasBarLocks() || spans.empty())
         return out;
-    const auto fills = pr7s::composerFills (state, context);
+    const auto fills = pr7s::composerFills (state, context, &spans);
     for (int i = 0; i < (int) fills.size(); ++i)
     {
         const auto& f = fills[(size_t) i];
@@ -2610,7 +2610,7 @@ std::vector<OptionBrowser::Option> ComposerPage::fillOptions() const
         o.id = fillId + i;
         o.name = f.name;
         o.description = f.description + " (the bars not locked filled with it; a crash and a kick where it lands)";
-        o.group = fillsGroup;
+        o.group = f.group == pr7s::grooveFillsGroup ? pr7s::grooveFillsGroup : fillsGroup;   // (0.223.0)
         o.drums = true;
         auto each = state;
         each.lane (ComposerLayer::drums).fill = f.id;
@@ -2698,7 +2698,7 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
     std::vector<pr7s::ComposerFill> fills;
     if (withFills)
     {
-        fills = pr7s::composerFills (state, context);
+        fills = pr7s::composerFills (state, context, &spans);
         // (0.203.0) The fill of the first open bar chosen (else the first open bar).
         const auto now = pr7s::barFills (lane, barCount());
         juce::String shown;
@@ -2719,8 +2719,9 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
     browser->setAutoHear (true);   // (0.180.0, the owner: a highlighted option plays at once, in time with the song)
     if (withFills && ! fills.empty())
     {
-        browser->setGroupOrder ({ fillsGroup, favouriteFoldersGroup, toontrackGroup, otherPacksGroup });
-        browser->setGroup (fillsGroup);
+        browser->setGroupOrder ({ pr7s::grooveFillsGroup, fillsGroup, favouriteFoldersGroup, toontrackGroup, otherPacksGroup });
+        browser->setGroup (std::any_of (fills.begin(), fills.end(), [] (const pr7s::ComposerFill& f) { return f.group == pr7s::grooveFillsGroup; })
+                               ? pr7s::grooveFillsGroup : fillsGroup);
     }
     if (grooves)
     {
@@ -2845,7 +2846,7 @@ void ComposerPage::useOption (ComposerLayer l, int id)
     if (id >= fillId)
     {
         // (0.202.0) A fill for the bars not locked: kept on the drums.
-        const auto fills = pr7s::composerFills (state, context);
+        const auto fills = pr7s::composerFills (state, context, &spans);
         const auto i = id - fillId;
         if (! juce::isPositiveAndBelow (i, (int) fills.size()))
             return;
@@ -2897,7 +2898,7 @@ void ComposerPage::tryOption (ComposerLayer l, int id)
 {
     if (id >= fillId)
     {
-        const auto fills = pr7s::composerFills (state, context);
+        const auto fills = pr7s::composerFills (state, context, &spans);
         const auto i = id - fillId;
         if (! juce::isPositiveAndBelow (i, (int) fills.size()))
             return;

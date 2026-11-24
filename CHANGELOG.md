@@ -2,7 +2,13 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.222.0
+## 0.223.0
+
+**The FILLS list follows the groove too.** When you lock bars on the drums lane, the FILLS list (in the drums lane's menu and its options window) now starts with the fills that belong to the groove playing. These are the same ones the drums lane uses on its own since 0.222.0: that groove's own song folder first, then its pack, with Toontrack's before other packs'. They have a group of their own at the top, FILLS FOR THIS GROOVE, and the window opens on it. The rest of the section's fills, the beat maker's fills and a learned drummer's fills follow under FILLS, as before, with nothing listed twice.
+
+ROLL on locked bars now draws each open bar's fill from the groove's own fills, as long as it has two or more. If it has fewer, ROLL picks from the whole list, as before.
+
+
 
 **More fills, and fills that belong to the groove.** You heard about ten fills over and over across hundreds of library grooves, and they weren't Toontrack's. Three things caused it:
 

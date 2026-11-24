@@ -32469,11 +32469,22 @@ namespace pr7s
         idea.notes = std::move (out);
     }
 
-    std::vector<ComposerFill> composerFills (const ComposerState& s, const ComposerContext& c)
+    std::vector<ComposerFill> composerFills (const ComposerState& s, const ComposerContext& c, const std::vector<ChordSpan>* spans)
     {
         std::vector<ComposerFill> out;
         const auto section = juce::jlimit (0, (int) drumSections().size() - 1, s.lane (ComposerLayer::drums).style);
         const auto bpb = c.beatsPerBar;
+        std::vector<juce::String> listed;
+        // (0.223.0) The playing groove's own fills first (as the drums lane picks them).
+        if (spans != nullptr && ! spans->empty() && s.libraryDrums && ! c.libraryGrooves.empty())
+            if (const auto groove = composerLibraryGroove (s, *spans, c))
+                for (const auto& f : composerLibraryFills (*groove, section, c, 24))
+                {
+                    const auto path = f.file.getFullPathName();
+                    listed.push_back (path);
+                    out.push_back ({ "lib:" + path, f.name + " (" + f.folder + ")", grooveFillsGroup,
+                                     "A fill from " + f.folder + ", near the groove playing (" + groove->name + ")  -  " + path });
+                }
         // The library's fill files for the section (the favourite folders' first, as the drums lane's own fills).
         if (! c.libraryGrooves.empty())
         {
@@ -32484,6 +32495,8 @@ namespace pr7s
             for (const auto& f : fills)
             {
                 const auto path = f.file.getFullPathName();
+                if (std::find (listed.begin(), listed.end(), path) != listed.end())
+                    continue;
                 out.push_back ({ "lib:" + path, f.name + " (" + f.folder + ")", "FILLS",
                                  "A fill from " + f.folder + (f.favourite ? " (a favourite folder)" : juce::String()) + "  -  " + path });
             }
@@ -32615,11 +32628,17 @@ namespace pr7s
         setBarFills (lane, fills);
     }
 
-    bool rollFill (ComposerState& s, const ComposerContext& c, juce::Random& random, int barCount)
+    bool rollFill (ComposerState& s, const ComposerContext& c, juce::Random& random, int barCount, const std::vector<ChordSpan>* spans)
     {
-        const auto fills = composerFills (s, c);
+        auto fills = composerFills (s, c, spans);
         if (fills.empty())
             return false;
+        // (0.223.0) The playing groove's own fills, when it has two or more.
+        {
+            const auto own = (size_t) std::count_if (fills.begin(), fills.end(), [] (const ComposerFill& f) { return f.group == grooveFillsGroup; });
+            if (own >= 2)
+                fills.resize (own);   // (they come first)
+        }
         auto& lane = s.lane (ComposerLayer::drums);
         if (barCount <= 0)
         {

@@ -302,3 +302,62 @@ TEST_CASE ("0.222.0: the drums lane's fills: the groove's own song's first, Toon
     for (const auto p : heard)
         CHECK (p < 60);   // (no other pack's fill)
 }
+
+TEST_CASE ("0.223.0: the FILLS list follows the groove: its own song's fills first, ROLL among them", "[composer][library][fills223]")
+{
+    juce::TemporaryFile folder;
+    const auto root = folder.getFile();
+    root.createDirectory();
+    std::vector<std::pair<double, int>> beat;
+    for (int i = 0; i < 8; ++i)
+        beat.push_back ({ i * 0.5, 42 });
+    beat.push_back ({ 0.0, 36 });
+    beat.push_back ({ 1.0, 38 });
+    std::vector<LibraryGroove> grooves;
+    const auto add = [&] (const juce::String& path, const std::vector<std::pair<double, int>>& hits, bool fill)
+    {
+        const auto file = writeGroove (root.getChildFile (path), hits);
+        LibraryGroove g { file, file.getFileNameWithoutExtension(), file.getParentDirectory().getFileName(), 120.0, fill ? 1 : 4 };
+        g.bars = 4;
+        classifyGroove (g);
+        grooves.push_back (g);
+    };
+    add ("Toontrack/Metal Pack/Song A/Verse.mid", beat, false);
+    for (int i = 0; i < 5; ++i)   // (four or more: the other pack's fills stay out of the groove's own)
+        add ("Toontrack/Metal Pack/Song A/Fill " + juce::String (i + 1) + ".mid", { { 3.0, 41 + i } }, true);
+    for (int i = 0; i < 10; ++i)
+        add ("Another Pack/Song C/Fill " + juce::String (i + 1) + ".mid", { { 3.0, 60 + i } }, true);
+
+    ComposerContext c;
+    c.libraryGrooves = grooves;
+    std::vector<ChordSpan> spans;
+    for (int bar = 0; bar < 8; ++bar)
+        spans.push_back ({ bar * 4.0, bar * 4.0 + 4.0, Chord { 9, Chord::Type::minor }, Key {} });
+    ComposerState s;
+    s.fitKicks = false;
+    s.libraryGroove = grooves[0].file.getFullPathName();
+
+    // With the chords: Song A's five first, in their own group; the other pack's after, each once.
+    const auto fills = composerFills (s, c, &spans);
+    REQUIRE (fills.size() >= 15);
+    for (int i = 0; i < 5; ++i)
+    {
+        CHECK (fills[(size_t) i].group == grooveFillsGroup);
+        CHECK (fills[(size_t) i].id.contains ("Song A"));
+    }
+    CHECK (fills[5].group == "FILLS");
+    std::set<juce::String> ids;
+    for (const auto& f : fills)
+        CHECK (ids.insert (f.id).second);
+    // Without them: as before (no groove group).
+    for (const auto& f : composerFills (s, c))
+        CHECK (f.group != grooveFillsGroup);
+
+    // ROLL draws only the groove's own fills.
+    juce::Random random (7);
+    for (int i = 0; i < 20; ++i)
+    {
+        REQUIRE (rollFill (s, c, random, 0, &spans));
+        CHECK (s.lane (ComposerLayer::drums).fill.contains ("Song A"));
+    }
+}
