@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.226.0
+
+**A riff for each part of the song.** You asked to use one riff for the chorus and a different one for the verse. Until now a song held one riff, and every section ARCHITECT built used it.
+
+- **Each SECTIONS block has its own riff:** with a block chosen in ARCHITECT, + MY RIFF puts the riff on that block (and its linked copies). It only asks which lane the riff plays on; the block already says what part it is.
+- **Moving between blocks:** click a verse and the guitar plays the verse riff, the band following it; click the chorus and it plays the chorus riff. A block without a riff has its lanes write their own parts, and the lane the riff was on is let go.
+- **No block chosen:** "This riff is my chorus" puts it on every Chorus block that has no riff yet, and the first of them is chosen.
+- **New blocks:** a new Chorus of its own (not a linked copy) starts on the riff your other Chorus has. Blocks with other names start with none.
+- **Choosing a riff by hand:** the + MY RIFF menu lists the chosen block's choices: every riff in the song, with the blocks using it, and No Riff. So a bridge can play the verse riff.
+- **Taking a riff off:** "Take <riff> off <block>" takes it off that block only.
+- **On the row:** a block with a riff says RIFF after its bar count.
+- **Undo** takes back giving a block a riff or taking it off.
+- **Fixed:** a built block whose chords or type changed was built again without your riff, so the riff's lane got new music. It now plays the block's riff.
+- **Older songs:** a song's one riff goes onto the blocks of the riff's section when it opens (a chorus riff onto the Chorus blocks). Without a SECTIONS row nothing changes: one riff, as before.
+
 ## 0.225.0
 
 **The MediaBay guesses tags from file and folder names.** You sent three of your sample-pack files after 0.224.0 still showed no tags. None of them carry any tags inside: two hold nothing but the sound, the third only the program that saved it. So there was nothing to read, and the filter columns stayed empty.
