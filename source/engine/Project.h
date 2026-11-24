@@ -545,6 +545,7 @@ namespace pr7s
         // them): another song, a new one or a template brings its own.
         struct ArchitectRiff
         {
+            int id = 0;                         // (0.226.0) in architectRiffs: what SongSection::riff names (the loose one: 0)
             juce::String notes;
             int bars = 1, section = 1;          // (DrumSection's number)
             juce::String name;
@@ -553,6 +554,13 @@ namespace pr7s
         };
         juce::String architectState;
         std::optional<ArchitectRiff> architectRiff;
+        // (0.226.0) The SECTIONS row's riffs: a block names one by its id (SongSection::riff). architectRiff above is
+        // the riff ARCHITECT uses with no block chosen (a song without the row, as before). Written only while a
+        // block names it.
+        std::vector<ArchitectRiff> architectRiffs;
+        const ArchitectRiff* findArchitectRiff (int id) const noexcept;
+        ArchitectRiff* findArchitectRiff (int id) noexcept;
+        int nextArchitectRiffId() const noexcept;
         AutoFades autoFades;                    // (0.52.0) the song's Auto Fades settings
         AutoColour autoColour;                  // (0.79.0) COLOUR IN ORDER (saved; not an undo step)
         bool autoColourTakes (const Track&) const noexcept;

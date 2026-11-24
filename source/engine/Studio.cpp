@@ -316,6 +316,7 @@ namespace pr7s
         const auto partsOnly = std::exchange (partsOnlyAsked, false);   // (0.174.0: taken at once, never left behind)
         if (mirroring)
             return;   // (a linked change: the change it came from does all this once, after)
+        followRiffInHand();   // (0.226.0: the chosen block gone, or its riff changed)
         // (0.76.0, the owner: the composer's instruments too loud, the mixer couldn't be used while hearing them)
         // While the composer is heard, a change (a fader, pan, an insert, a mute) is played in its copy and the
         // hearing goes on; it ends only when its tracks can no longer play it.
@@ -557,6 +558,7 @@ namespace pr7s
         project.markerTrack.markers = state.markerTrack.markers;   // (0.49.0: marker edits are undo steps;
         project.markerTrack.shown = state.markerTrack.shown;       //  the lock and the window's settings aren't)
         project.songSections = state.songSections;                 // (0.90.0: the blocks and their order are undo steps)
+        followRiffInHand();                                        // (0.226.0: a block's riff came back with them)
         project.loopOn = state.loopOn;
         project.loopStart = state.loopStart;
         project.loopEnd = state.loopEnd;
@@ -9016,6 +9018,7 @@ namespace pr7s
         engine.stop();
         unloadSongTracks();
         project = {};
+        composerRiffBlock = 0;
         loadComposerRiff();   // (0.206.0: ARCHITECT's state and riff are the song's: none in a new one)
         ++songGeneration;
         padsChanged();
@@ -10581,6 +10584,8 @@ namespace pr7s
         engine.stop();
         unloadSongTracks();
         project = std::move (*loaded);
+        composerRiffBlock = 0;
+        giveOldRiffToBlocks();   // (0.226.0)
         loadComposerRiff();   // (0.206.0: the song's own ARCHITECT state and riff)
         ++songGeneration;
         for (const auto& track : project.tracks)   // (never a new track with an old one's number)
@@ -12379,8 +12384,70 @@ namespace pr7s
             modified = true;
     }
 
+    namespace
+    {
+        ComposerRiff riffFromSaved (const Project::ArchitectRiff& saved)
+        {
+            ComposerRiff r;
+            r.notes = lineNotesFromText (saved.notes);
+            r.bars = saved.bars;
+            const auto& sections = drumSections();
+            r.section = juce::isPositiveAndBelow (saved.section, (int) sections.size()) ? (DrumSection) saved.section : DrumSection::verse;
+            r.name = saved.name;
+            return r;
+        }
+
+        void saveRiffInto (Project::ArchitectRiff& saved, const ComposerRiff& r)
+        {
+            saved.notes = lineNotesToText (r.notes);
+            saved.bars = r.bars;
+            saved.section = (int) r.section;
+            saved.name = r.name;
+        }
+    }
+
+    const Project::ArchitectRiff* Studio::riffInHand() const noexcept
+    {
+        return const_cast<Studio*> (this)->riffInHand();
+    }
+
+    Project::ArchitectRiff* Studio::riffInHand() noexcept
+    {
+        if (const auto index = project.songSections.indexOf (composerRiffBlock); index >= 0)
+            return project.findArchitectRiff (project.songSections.blocks[(size_t) index].riff);
+        return project.architectRiff.has_value() ? &*project.architectRiff : nullptr;
+    }
+
+    void Studio::setComposerRiffBlock (int blockId)
+    {
+        if (blockId == composerRiffBlock)
+            return;
+        composerRiffBlock = juce::jmax (0, blockId);
+        loadComposerRiff();
+    }
+
     void Studio::setComposerRiff (std::optional<ComposerRiff> r)
     {
+        if (const auto index = project.songSections.indexOf (composerRiffBlock); index >= 0)
+        {
+            // (0.226.0) The chosen block's own riff (and its linked copies'): a new one in the song's list (other
+            // blocks keep the riff they had), or none.
+            if (! r.has_value())
+            {
+                setSongSectionRiff (index, -1);
+                return;
+            }
+            if (r == composerRiff)
+                return;
+            Project::ArchitectRiff saved;
+            if (const auto* before = riffInHand())
+                saved = *before;   // (whether it plays and the chords come from it: kept)
+            saved.id = project.nextArchitectRiffId();
+            saveRiffInto (saved, *r);
+            project.architectRiffs.push_back (saved);
+            setSongSectionRiff (index, saved.id);
+            return;
+        }
         if (r == composerRiff)
             return;
         composerRiff = std::move (r);
@@ -12389,10 +12456,8 @@ namespace pr7s
         else
         {
             auto saved = project.architectRiff.value_or (Project::ArchitectRiff {});
-            saved.notes = lineNotesToText (composerRiff->notes);
-            saved.bars = composerRiff->bars;
-            saved.section = (int) composerRiff->section;
-            saved.name = composerRiff->name;
+            saved.id = 0;
+            saveRiffInto (saved, *composerRiff);
             project.architectRiff = saved;
         }
         modified = true;
@@ -12400,10 +12465,11 @@ namespace pr7s
 
     void Studio::setComposerRiffUse (bool played, bool chordsFrom, bool marksModified)
     {
-        if (! project.architectRiff.has_value() || (project.architectRiff->played == played && project.architectRiff->chordsFrom == chordsFrom))
+        auto* r = riffInHand();
+        if (r == nullptr || (r->played == played && r->chordsFrom == chordsFrom))
             return;
-        project.architectRiff->played = played;
-        project.architectRiff->chordsFrom = chordsFrom;
+        r->played = played;
+        r->chordsFrom = chordsFrom;
         if (marksModified)
             modified = true;
     }
@@ -12411,16 +12477,119 @@ namespace pr7s
     void Studio::loadComposerRiff()
     {
         composerRiff.reset();
-        if (! project.architectRiff.has_value())
+        const auto* saved = riffInHand();
+        if (saved != nullptr)
+            composerRiff = riffFromSaved (*saved);
+        loadedRiffFrom = { project.songSections.indexOf (composerRiffBlock) >= 0, saved != nullptr ? saved->id : -1 };
+    }
+
+    void Studio::followRiffInHand()
+    {
+        // (0.226.0) An undo, a block gone or its riff changed: the riff in hand read again.
+        const auto* saved = riffInHand();
+        const std::pair<bool, int> now { project.songSections.indexOf (composerRiffBlock) >= 0, saved != nullptr ? saved->id : -1 };
+        if (now != loadedRiffFrom)
+            loadComposerRiff();
+    }
+
+    void Studio::giveOldRiffToBlocks()
+    {
+        // (0.226.0) A song from before 0.226.0 has its one riff and no block riffs: the blocks of the riff's section
+        // (by name: composerSectionFor) take it, so ARCHITECT goes on building them around it.
+        if (! project.architectRiff.has_value() || ! project.architectRiffs.empty())
             return;
-        ComposerRiff r;
-        r.notes = lineNotesFromText (project.architectRiff->notes);
-        r.bars = project.architectRiff->bars;
-        const auto& sections = drumSections();
-        r.section = juce::isPositiveAndBelow (project.architectRiff->section, (int) sections.size())
-                      ? (DrumSection) project.architectRiff->section : DrumSection::verse;
-        r.name = project.architectRiff->name;
-        composerRiff = r;
+        auto saved = *project.architectRiff;
+        saved.id = project.nextArchitectRiffId();
+        auto given = false;
+        for (auto& b : project.songSections.blocks)
+            if (b.riff == 0 && composerSectionFor (b.name) == saved.section)
+            {
+                b.riff = saved.id;
+                given = true;
+            }
+        if (given)
+            project.architectRiffs.push_back (saved);
+    }
+
+    std::vector<Studio::SongRiff> Studio::getSongRiffs() const
+    {
+        std::vector<SongRiff> out;
+        const auto& blocks = project.songSections.blocks;
+        for (const auto& r : project.architectRiffs)
+        {
+            SongRiff riff { r.id, r.name, r.bars, {} };
+            for (int i = 0; i < (int) blocks.size(); ++i)
+                if (blocks[(size_t) i].riff == r.id)
+                    riff.blocks.add (sectionLabel (blocks, i));
+            if (! riff.blocks.isEmpty())
+                out.push_back (riff);
+        }
+        if (project.architectRiff.has_value())
+            out.push_back ({ 0, project.architectRiff->name, project.architectRiff->bars, {} });
+        return out;
+    }
+
+    bool Studio::setSongSectionRiff (int index, int riffId)
+    {
+        return setSongSectionRiff (std::vector<int> { index }, riffId);
+    }
+
+    bool Studio::setSongSectionRiff (const std::vector<int>& indices, int riffId)
+    {
+        auto& sections = project.songSections;
+        for (const auto index : indices)
+            if (! juce::isPositiveAndBelow (index, (int) sections.blocks.size()))
+                return false;
+        if (indices.empty())
+            return false;
+        auto id = 0;
+        if (riffId == 0)
+        {
+            // The loose riff, copied into the song's list for the block.
+            if (! project.architectRiff.has_value())
+                return false;
+            auto saved = *project.architectRiff;
+            saved.id = project.nextArchitectRiffId();
+            project.architectRiffs.push_back (saved);
+            id = saved.id;
+        }
+        else if (riffId > 0)
+        {
+            if (project.findArchitectRiff (riffId) == nullptr)
+                return false;
+            id = riffId;
+        }
+        auto any = false;
+        for (const auto index : indices)
+            for (const auto i : sections.linkedWith (index))
+                if (sections.blocks[(size_t) i].riff != id)
+                {
+                    sections.blocks[(size_t) i].riff = id;
+                    any = true;
+                }
+        if (any)
+            changed();   // (one undo step: undo takes the block's riff back with the row)
+        loadComposerRiff();
+        return true;
+    }
+
+    std::optional<ComposerRiff> Studio::getSongSectionRiff (int index) const
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return std::nullopt;
+        if (const auto* saved = project.findArchitectRiff (blocks[(size_t) index].riff))
+            return riffFromSaved (*saved);
+        return std::nullopt;
+    }
+
+    bool Studio::isSongSectionRiffPlayed (int index) const
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        const auto* saved = project.findArchitectRiff (blocks[(size_t) index].riff);
+        return saved != nullptr && saved->played;
     }
 
     std::optional<Project> Studio::composerAuditionCopy() const
@@ -15039,6 +15208,12 @@ namespace pr7s
         return -1;
     }
 
+    int Studio::riffOfName (const juce::String& name) const
+    {
+        const auto same = linkedCopyOf (name);
+        return same >= 0 ? project.songSections.blocks[(size_t) same].riff : 0;
+    }
+
     int Studio::appendSongSection (const juce::String& name, int bars, bool linked)
     {
         if (linked && linkedCopyOf (name) >= 0)
@@ -15049,6 +15224,7 @@ namespace pr7s
         b.id = sections.nextId();
         b.name = sectionNameOrVerse (name);
         b.bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+        b.riff = riffOfName (name);   // (0.226.0: the riff a block of that name has)
         sections.blocks.push_back (b);
         sections.shown = true;
         changed();
@@ -15096,6 +15272,7 @@ namespace pr7s
                 b.id = project.songSections.nextId();
                 b.name = sectionNameOrVerse (name);
                 b.bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+                b.riff = riffOfName (name);   // (0.226.0: the riff a block of that name has)
                 moves.push_back ({ -1, b });
             }
             moves.push_back ({ i, blocks[(size_t) i] });
@@ -15106,6 +15283,7 @@ namespace pr7s
             b.id = project.songSections.nextId();
             b.name = sectionNameOrVerse (name);
             b.bars = juce::jlimit (leastSectionBars, mostSectionBars, bars);
+            b.riff = riffOfName (name);   // (0.226.0: the riff a block of that name has)
             moves.push_back ({ -1, b });
         }
         return relayoutSections (moves);
@@ -16075,7 +16253,11 @@ namespace pr7s
             // the drums' stay as kept. Bars past the block's end are let go.
             dropPitchedBarLocks (state);
             trimBarLocks (state, block.bars, getProject().signatures().barLengthAt (place.start));
-            const auto context = getComposerContext (place.start);
+            auto context = getComposerContext (place.start);
+            // (0.226.0) The block's own riff, played as it was when built (before: none, so a rebuild wrote the
+            // riff's lane afresh).
+            if (const auto riff = getSongSectionRiff (index); riff.has_value() && isSongSectionRiffPlayed (index) && ! spans.empty())
+                context.myRiff = tileRiff (*riff, spans.back().end - spans.front().start, context.beatsPerBar);
             // (0.175.0) Each lane made only when one of its tracks is still as built (not every lane, lead and
             // solo included, before finding out none was).
             std::map<int, LineIdea> layers;

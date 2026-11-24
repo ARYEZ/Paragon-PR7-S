@@ -41,6 +41,10 @@ namespace pr7s
         // (0.114.0) Its own key (an index into Key::all()) when the song's sections aren't all in one key; -1: the
         // song's key.
         int key = -1;
+        // (0.226.0, the owner: "a different riff per part ... a my riff for the chorus and a different riff for the
+        // verse") The riff ARCHITECT builds this block around: an id in Project::architectRiffs (0: none: the lanes
+        // write their own). Linked copies share it.
+        int riff = 0;
         struct Lane { int layer = 0, track = 0; juce::int64 mark = 0; bool operator== (const Lane&) const = default; };
         std::vector<Lane> lanes;
         bool operator== (const SongSection&) const = default;

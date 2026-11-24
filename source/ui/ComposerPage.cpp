@@ -43,8 +43,10 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     // (0.206.0) The song's own state and riff.
     seenGeneration = studio.getSongGeneration();
     state = pr7s::ComposerState::fromString (studio.getComposerState());
+    studio.setComposerRiffBlock (0);   // (0.226.0: no block chosen yet: the song's loose riff)
     useMyRiff = studio.getComposerRiff().has_value() && studio.isComposerRiffPlayed();
     fromRiff = studio.getComposerRiff().has_value() && studio.areComposerChordsFromRiff();
+    seenRiff = studio.getComposerRiff();
     ++quietWrites;
 
     // Header keys.
@@ -269,8 +271,10 @@ void ComposerPage::startOverForSong()
     chooser.reset();
     // The new song's state and riff; everything worked out for the old one forgotten.
     state = pr7s::ComposerState::fromString (studio.getComposerState());
+    studio.setComposerRiffBlock (0);
     useMyRiff = studio.getComposerRiff().has_value() && studio.isComposerRiffPlayed();
     fromRiff = studio.getComposerRiff().has_value() && studio.areComposerChordsFromRiff();
+    seenRiff = studio.getComposerRiff();
     taken = {};
     chordOverrides.clear();
     lastSpans.clear();
@@ -358,6 +362,7 @@ juce::String ComposerPage::composeFingerprint() const
 void ComposerPage::refresh (bool rehear)
 {
     // The chords.
+    followRiffInHand();   // (0.226.0: the chosen block's own riff)
     const auto at = hearing ? hearingStart : placeStart();
     context = studio.getComposerContext (at);
     const auto& riff = studio.getComposerRiff();
@@ -564,6 +569,8 @@ void ComposerPage::targetSection (int blockId)
     {
         status = "Composing " + pr7s::sectionLabel (blocks, index) + " (bars " + juce::String (place->firstBar + 1) + " to "
                + juce::String (place->firstBar + place->bars) + "): HEAR plays it there, BUILD writes into it";
+        if (const auto riff = studio.getSongSectionRiff (index); riff.has_value())   // (0.226.0)
+            status += ". " + blockRiffText();
     }
     repaint();
 }
@@ -1630,7 +1637,26 @@ bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff, int lane)
     stop();
     const auto bars = riff.bars;
     const auto section = riff.section;
+    // (0.226.0) With the SECTIONS row and no block chosen: the riff goes on the blocks of its section (by name)
+    // that have none yet, the first of them chosen. A block chosen: onto it (and its linked copies).
+    std::vector<int> alsoOn;
+    if (usesSectionsRow() && ! getTargetPlace().has_value())
+    {
+        const auto& blocks = studio.getSongSections().blocks;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            if (blocks[(size_t) i].riff == 0 && pr7s::composerSectionFor (blocks[(size_t) i].name) == (int) section)
+                alsoOn.push_back (i);
+        if (! alsoOn.empty())
+        {
+            targetBlock = blocks[(size_t) alsoOn.front()].id;
+            studio.setComposerRiffBlock (targetBlock);
+        }
+    }
     studio.setComposerRiff (riff);
+    if (alsoOn.size() > 1)
+        if (const auto index = studio.getSongSections().indexOf (targetBlock); index >= 0)
+            studio.setSongSectionRiff (alsoOn, studio.getSongSections().blocks[(size_t) index].riff);
+    seenRiff = studio.getComposerRiff();
     juce::String keyText;
     if (! isKeyLocked())
     {
@@ -1649,6 +1675,32 @@ bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff, int lane)
     // other composer lanes then have their initial riffs based off of it") Played unchanged on its lane, locked;
     // every other lane follows its rhythm (SYNC on it), the bass doubling it.
     const auto onto = juce::isPositiveAndBelow (lane, pr7s::composerLayerCount) ? (ComposerLayer) lane : state.riffLayer();
+    riffLanesFor (onto);
+    // The section's beat, and the riff's settings back to as written.
+    studio.setRiffSettings ({});
+    setSection (section);
+    status = "Your riff (" + juce::String (bars) + (bars == 1 ? " bar" : " bars") + ") as the " + pr7s::sectionWord (section).toLowerCase()
+           + " on the " + pr7s::composerLayerName (onto).toLowerCase() + " lane, the others following it; " + keyText;
+    if (const auto index = studio.getSongSections().indexOf (targetBlock); index >= 0 && getTargetPlace().has_value())
+    {
+        // Which blocks have it now.
+        const auto& blocks = studio.getSongSections().blocks;
+        const auto id = blocks[(size_t) index].riff;
+        juce::StringArray on;
+        for (int i = 0; i < (int) blocks.size(); ++i)
+            if (id > 0 && blocks[(size_t) i].riff == id)
+                on.add (pr7s::sectionLabel (blocks, i));
+        status += ".  On " + on.joinIntoString (", ");
+    }
+    repaint();
+    return true;
+}
+
+void ComposerPage::riffLanesFor (ComposerLayer onto)
+{
+    // (0.114.0, the owner: "imported without being changed at all ... select what composer lane it goes to. The
+    // other composer lanes then have their initial riffs based off of it") Played unchanged on its lane, locked;
+    // every other lane follows its rhythm (SYNC on it), the bass doubling it.
     if (state.riffLayer() != onto)
         state.lane (state.riffLayer()).locked = false;
     state.riffLane = (int) onto;
@@ -1659,13 +1711,60 @@ bool ComposerPage::pasteRiff (pr7s::ComposerRiff riff, int lane)
     state.syncLane = (int) onto;
     if (onto != ComposerLayer::bass)
         state.lane (ComposerLayer::bass).doubleSync = true;
-    // The section's beat, and the riff's settings back to as written.
-    studio.setRiffSettings ({});
-    setSection (section);
-    status = "Your riff (" + juce::String (bars) + (bars == 1 ? " bar" : " bars") + ") as the " + pr7s::sectionWord (section).toLowerCase()
-           + " on the " + pr7s::composerLayerName (onto).toLowerCase() + " lane, the others following it; " + keyText;
-    repaint();
+}
+
+void ComposerPage::followRiffInHand()
+{
+    // (0.226.0) The riff in hand is the chosen block's (none: none), or the song's loose one with no block chosen.
+    // When it changes (another block, its riff changed or taken off), the riff's lanes are set for it: on it, the
+    // riff's lane locked with the others following; off it, that lane writes its own again.
+    studio.setComposerRiffBlock (getTargetPlace().has_value() ? targetBlock : 0);
+    const auto& riff = studio.getComposerRiff();
+    if (riff == seenRiff)
+        return;
+    const auto had = seenRiff.has_value();
+    seenRiff = riff;
+    useMyRiff = riff.has_value() && studio.isComposerRiffPlayed();
+    fromRiff = riff.has_value() && studio.areComposerChordsFromRiff();
+    chordOverrides.clear();
+    if (useMyRiff)
+        riffLanesFor (state.riffLayer());
+    else if (had && ! riff.has_value())
+    {
+        state.lane (state.riffLayer()).locked = false;
+        if (state.syncLane == state.riffLane)
+            state.syncLane = -1;
+        taken[(size_t) state.riffLayer()].reset();
+    }
+}
+
+bool ComposerPage::chooseBlockRiff (int riffId)
+{
+    const auto index = studio.getSongSections().indexOf (targetBlock);
+    if (index < 0 || ! getTargetPlace().has_value())
+        return false;
+    stop();
+    if (! studio.setSongSectionRiff (index, riffId))
+        return false;
+    if (riffId >= 0)
+        studio.setComposerRiffUse (true, studio.areComposerChordsFromRiff());   // (a riff chosen for it: played)
+    // Its lanes set for the riff now in hand (none: the riff's lane let go, as followRiffInHand does).
+    if (studio.getComposerRiff().has_value())
+        seenRiff.reset();
+    followRiffInHand();
+    status = pr7s::sectionLabel (studio.getSongSections().blocks, index) + ": " + blockRiffText();
+    refresh();
     return true;
+}
+
+juce::String ComposerPage::blockRiffText() const
+{
+    const auto index = studio.getSongSections().indexOf (targetBlock);
+    if (index < 0 || ! getTargetPlace().has_value())
+        return {};
+    if (const auto riff = studio.getSongSectionRiff (index))
+        return "RIFF: " + riff->name.toUpperCase();
+    return "NO RIFF (ITS LANES WRITE THEIR OWN)";
 }
 
 bool ComposerPage::pasteRiffFromPart (int partId, pr7s::DrumSection section, int lane)
@@ -1780,12 +1879,15 @@ void ComposerPage::askSection (std::function<void (pr7s::DrumSection)> then, juc
 
 void ComposerPage::askSectionAndLane (std::function<void (pr7s::DrumSection, int)> then, juce::Component* target)
 {
-    askSection ([safe = juce::Component::SafePointer<ComposerPage> (this), then, target] (pr7s::DrumSection sec)
+    const auto askLane = [safe = juce::Component::SafePointer<ComposerPage> (this), then, target] (pr7s::DrumSection sec)
     {
         if (safe == nullptr)
             return;
         juce::PopupMenu menu;
-        menu.addSectionHeader ("IT PLAYS ON THE... (AS YOU PLAYED IT)");
+        if (const auto index = safe->studio.getSongSections().indexOf (safe->targetBlock); index >= 0 && safe->getTargetPlace().has_value())
+            menu.addSectionHeader ("FOR " + pr7s::sectionLabel (safe->studio.getSongSections().blocks, index).toUpperCase() + ": IT PLAYS ON THE...");
+        else
+            menu.addSectionHeader ("IT PLAYS ON THE... (AS YOU PLAYED IT)");
         for (const auto l : pr7s::composerLayers())
             menu.addItem (100 + (int) l, pr7s::composerLayerName (l) + " lane", true, l == safe->state.riffLayer());
         auto options = juce::PopupMenu::Options();
@@ -1796,7 +1898,14 @@ void ComposerPage::askSectionAndLane (std::function<void (pr7s::DrumSection, int
                                 if (chosen >= 100 && chosen < 100 + pr7s::composerLayerCount)
                                     then (sec, chosen - 100);
                             });
-    }, target);
+    };
+    // (0.226.0) A block chosen: the riff is that block's (its section), so only the lane is asked.
+    if (const auto index = studio.getSongSections().indexOf (targetBlock); index >= 0 && getTargetPlace().has_value())
+    {
+        askLane (pr7s::drumSections()[(size_t) pr7s::composerSectionFor (studio.getSongSections().blocks[(size_t) index].name)]);
+        return;
+    }
+    askSection (askLane, target);
 }
 
 void ComposerPage::showPasteMenu()
@@ -1820,6 +1929,23 @@ void ComposerPage::showPasteMenu()
     menu.addSectionHeader ("ONLY LOAD MY RIFF (BUILD LATER)");
     menu.addItem (1, partId != 0 ? "From the Selected Part (" + partName + ")" : juce::String ("From the Selected Part (select a MIDI part first)"), partId != 0);
     menu.addItem (2, "From a MIDI File...");
+    // (0.226.0) The chosen block's riff: one of the song's, or none.
+    const auto songRiffs = studio.getSongRiffs();
+    const auto blockIndex = getTargetPlace().has_value() ? studio.getSongSections().indexOf (targetBlock) : -1;
+    if (blockIndex >= 0)
+    {
+        const auto& blocks = studio.getSongSections().blocks;
+        const auto mine = blocks[(size_t) blockIndex].riff;
+        menu.addSectionHeader (pr7s::sectionLabel (blocks, blockIndex).toUpperCase() + "'S RIFF");
+        for (size_t i = 0; i < songRiffs.size() && i < 90; ++i)
+        {
+            const auto& r = songRiffs[i];
+            const auto where = r.id == 0 ? juce::String ("the riff with no block") : r.blocks.joinIntoString (", ");
+            menu.addItem (300 + (int) i, r.name + "  (" + juce::String (r.bars) + (r.bars == 1 ? " bar" : " bars") + ", " + where + ")",
+                          true, r.id > 0 && r.id == mine);
+        }
+        menu.addItem (299, "No Riff: Its Lanes Write Their Own", true, mine == 0);
+    }
     if (riff.has_value())
     {
         menu.addSeparator();
@@ -1829,15 +1955,26 @@ void ComposerPage::showPasteMenu()
             lanes.addItem (100 + (int) l, pr7s::composerLayerName (l), true, l == state.riffLayer());
         menu.addSubMenu ("My Riff Plays on the...", lanes);
         menu.addItem (4, "The Chords from My Riff", true, fromRiff);
-        menu.addItem (5, "Forget My Riff (" + riff->name + ")");
+        menu.addItem (5, blockIndex >= 0 ? "Take " + riff->name + " off " + pr7s::sectionLabel (studio.getSongSections().blocks, blockIndex)
+                                         : "Forget My Riff (" + riff->name + ")");
     }
     menu.addSeparator();
     menu.addItem (6, "Learn My Band: Read Our Record...", onLearnMyBand != nullptr);   // (0.82.0)
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (pasteKey),
-                        [safe = juce::Component::SafePointer<ComposerPage> (this), partId] (int chosen)
+                        [safe = juce::Component::SafePointer<ComposerPage> (this), partId, songRiffs] (int chosen)
                         {
                             if (safe == nullptr || chosen == 0)
                                 return;
+                            if (chosen == 299)
+                            {
+                                safe->chooseBlockRiff (-1);
+                                return;
+                            }
+                            if (chosen >= 300 && chosen < 300 + (int) songRiffs.size())
+                            {
+                                safe->chooseBlockRiff (songRiffs[(size_t) chosen - 300].id);
+                                return;
+                            }
                             if (chosen == 6)
                             {
                                 if (safe->onLearnMyBand)

@@ -521,11 +521,26 @@ namespace pr7s
         void clearBuiltSections() { builtSections.clear(); }
         // (0.75.0) Your own riff in the composer (engine/RiffPaste.h; forgotten with the song, as the sections).
         // (0.206.0) Saved in the song (Project::architectRiff), with whether the guitar plays it and the chords come from it.
+        // (0.226.0) With a SECTIONS block chosen (setComposerRiffBlock: ARCHITECT's target), the riff in hand is that
+        // block's (SongSection::riff; none: none), and setting it gives the block (and its linked copies) a riff of
+        // its own; with none chosen (0, or a block gone) it's the song's loose riff, as before.
         const std::optional<ComposerRiff>& getComposerRiff() const noexcept { return composerRiff; }
         void setComposerRiff (std::optional<ComposerRiff>);
-        bool isComposerRiffPlayed() const noexcept { return project.architectRiff.has_value() && project.architectRiff->played; }
-        bool areComposerChordsFromRiff() const noexcept { return project.architectRiff.has_value() && project.architectRiff->chordsFrom; }
+        bool isComposerRiffPlayed() const noexcept { const auto* r = riffInHand(); return r != nullptr && r->played; }
+        bool areComposerChordsFromRiff() const noexcept { const auto* r = riffInHand(); return r != nullptr && r->chordsFrom; }
         void setComposerRiffUse (bool played, bool chordsFrom, bool marksModified = true);
+        void setComposerRiffBlock (int blockId);
+        int getComposerRiffBlock() const noexcept { return composerRiffBlock; }
+        bool isComposerRiffOnBlock() const noexcept { return project.songSections.indexOf (composerRiffBlock) >= 0; }
+        // The song's riffs a block can be given: every one a block names, and the loose riff (id 0) when there is one.
+        struct SongRiff { int id = 0; juce::String name; int bars = 1; juce::StringArray blocks; };
+        std::vector<SongRiff> getSongRiffs() const;
+        // A block's riff (and its linked copies'): an id from getSongRiffs (0: the loose riff, copied for the
+        // block), or -1: none. One undo step.
+        bool setSongSectionRiff (int index, int riffId);
+        bool setSongSectionRiff (const std::vector<int>& indices, int riffId);   // several blocks, one undo step
+        std::optional<ComposerRiff> getSongSectionRiff (int index) const;   // (parsed; none: none)
+        bool isSongSectionRiffPlayed (int index) const;
         // The chords for the section after `from`, as long as `spans`: the chord track's there when it
         // has a chord starting in that stretch; else `spans` again from `from`, written onto the
         // chord track (one undo step) so the song keeps its chords.
@@ -1919,6 +1934,13 @@ namespace pr7s
         std::optional<Project> composerAuditionCopy() const;
         std::optional<ComposerAudition> composerAudition;   // (0.58.0)
         juce::uint64 songGeneration = 0;                    // (0.206.0)
+        const Project::ArchitectRiff* riffInHand() const noexcept;   // (0.226.0) the chosen block's, else the loose one
+        Project::ArchitectRiff* riffInHand() noexcept;
+        int riffOfName (const juce::String& name) const;   // the riff of the last block of that name (0: none)
+        int composerRiffBlock = 0;
+        std::pair<bool, int> loadedRiffFrom { false, -1 };
+        void followRiffInHand();
+        void giveOldRiffToBlocks();
         void loadComposerRiff();                            // (0.206.0) composerRiff from the song's
         bool levelEmptyTrack (int trackId, LineIdea::Part); // (0.206.0) an empty found track: the lane's Hub level
         void hearLaneLevels();                              // (0.206.0) the hearing's copy's mix again after a lane level

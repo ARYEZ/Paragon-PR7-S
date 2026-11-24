@@ -160,7 +160,8 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
         // (0.114.0) Its own key, when the song's sections aren't all in one key.
         const auto ownKey = ! studio.isOneKey() && juce::isPositiveAndBelow (b.key, (int) pr7s::Key::all().size())
                               ? " - " + ChordUi::spokenKey (pr7s::Key::all()[(size_t) b.key]).toUpperCase() : juce::String();
-        const auto bars = juce::String (b.bars) + (b.bars == 1 ? " BAR" : " BARS") + ownKey + (b.transition.isNotEmpty() ? " - " + b.transition : juce::String());
+        const auto bars = juce::String (b.bars) + (b.bars == 1 ? " BAR" : " BARS") + ownKey + (b.riff > 0 ? juce::String (" - RIFF") : juce::String())   // (0.226.0: built around its own riff)
+                        + (b.transition.isNotEmpty() ? " - " + b.transition : juce::String());
         const auto barsWidth = juce::GlyphArrangement::getStringWidth (juce::Font (ParagonLookAndFeel::titleFont (12.0f)), bars) + 6.0f;
         if (text.getWidth() > barsWidth * 2.5f)
         {

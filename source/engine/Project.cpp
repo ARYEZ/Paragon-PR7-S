@@ -280,6 +280,27 @@ namespace pr7s
         return const_cast<Project*> (this)->findTrack (id);
     }
 
+    Project::ArchitectRiff* Project::findArchitectRiff (int id) noexcept
+    {
+        for (auto& r : architectRiffs)
+            if (id > 0 && r.id == id)
+                return &r;
+        return nullptr;
+    }
+
+    const Project::ArchitectRiff* Project::findArchitectRiff (int id) const noexcept
+    {
+        return const_cast<Project*> (this)->findArchitectRiff (id);
+    }
+
+    int Project::nextArchitectRiffId() const noexcept
+    {
+        int id = 1;
+        for (const auto& r : architectRiffs)
+            id = juce::jmax (id, r.id + 1);
+        return id;
+    }
+
     bool Project::reaches (int from, int to) const
     {
         // Down every output and send from `from` (a walk with a guard: no song has more steps than tracks).
@@ -665,9 +686,31 @@ namespace pr7s
         }
         if (markerTrack.shown || ! markerTrack.isEmpty())
             xml->addChildElement (markerTrack.toXml().release());   // (0.49.0)
-        if (architectState.isNotEmpty() || architectRiff.has_value())   // (0.206.0)
+        const auto riffNamed = [this] (int id)
+        {
+            for (const auto& b : songSections.blocks)
+                if (b.riff == id)
+                    return true;
+            return false;
+        };
+        auto blockRiffs = false;
+        for (const auto& r : architectRiffs)
+            blockRiffs = blockRiffs || riffNamed (r.id);
+        if (architectState.isNotEmpty() || architectRiff.has_value() || blockRiffs)   // (0.206.0)
         {
             auto* a = xml->createNewChildElement ("Architect");
+            for (const auto& riff : architectRiffs)   // (0.226.0: the blocks' riffs)
+                if (riffNamed (riff.id))
+                {
+                    auto* r = a->createNewChildElement ("BlockRiff");
+                    r->setAttribute ("id", riff.id);
+                    r->setAttribute ("bars", riff.bars);
+                    r->setAttribute ("section", riff.section);
+                    r->setAttribute ("name", riff.name);
+                    r->setAttribute ("played", riff.played);
+                    r->setAttribute ("chordsFrom", riff.chordsFrom);
+                    r->setAttribute ("notes", riff.notes);
+                }
             if (architectState.isNotEmpty())
                 a->setAttribute ("state", architectState);
             if (architectRiff.has_value())
@@ -1021,6 +1064,19 @@ namespace pr7s
         if (const auto* a = xml.getChildByName ("Architect"))   // (0.206.0)
         {
             project.architectState = a->getStringAttribute ("state");
+            for (auto* r : a->getChildWithTagNameIterator ("BlockRiff"))   // (0.226.0)
+            {
+                Project::ArchitectRiff riff;
+                riff.id = r->getIntAttribute ("id", 0);
+                riff.bars = juce::jlimit (1, 64, r->getIntAttribute ("bars", 1));
+                riff.section = juce::jmax (0, r->getIntAttribute ("section", 1));
+                riff.name = r->getStringAttribute ("name");
+                riff.played = r->getBoolAttribute ("played");
+                riff.chordsFrom = r->getBoolAttribute ("chordsFrom");
+                riff.notes = r->getStringAttribute ("notes");
+                if (riff.id > 0 && project.findArchitectRiff (riff.id) == nullptr)
+                    project.architectRiffs.push_back (riff);
+            }
             if (const auto* r = a->getChildByName ("Riff"))
             {
                 Project::ArchitectRiff riff;
@@ -1035,6 +1091,9 @@ namespace pr7s
         }
         if (const auto* sections = xml.getChildByName ("SongSections"))
             project.songSections = SongSections::fromXml (*sections);   // (0.90.0)
+        for (auto& b : project.songSections.blocks)   // (0.226.0: a riff the song doesn't hold: none)
+            if (b.riff > 0 && project.findArchitectRiff (b.riff) == nullptr)
+                b.riff = 0;
         if (const auto* signature = xml.getChildByName ("Signatures"))
         {
             project.signatureTrackShown = signature->getBoolAttribute ("shown");

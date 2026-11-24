@@ -99,6 +99,7 @@ add_executable(ParagonPR7STests
     GuitarToneTests.cpp
     SectionToneTests.cpp
     MyRiffLaneTests.cpp
+    BlockRiffTests.cpp
     SongKeyTests.cpp
     BlueprintTests.cpp
     Tweaks0853Tests.cpp
