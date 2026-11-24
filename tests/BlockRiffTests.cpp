@@ -33,10 +33,22 @@ namespace
         return out;
     }
 
+    // The same notes (places and pitches exact, lengths and velocities as the song's text keeps them).
+    bool sameNotes (const std::vector<LineNote>& a, const std::vector<LineNote>& b)
+    {
+        if (a.size() != b.size())
+            return false;
+        for (size_t i = 0; i < a.size(); ++i)
+            if (a[i].pitch != b[i].pitch || std::abs (a[i].beat - b[i].beat) > 1.0e-3 || std::abs (a[i].length - b[i].length) > 1.0e-3
+                || std::abs (a[i].velocity - b[i].velocity) > 1.0f / 127.0f)
+                return false;
+        return true;
+    }
+
     bool playsRiff (const ComposerPage& page, const ComposerRiff& riff)
     {
         const auto total = page.getSpans().back().end - page.getSpans().front().start;
-        return page.getIdea (L::guitar).notes == tileRiff (riff, total, 4.0).notes;
+        return sameNotes (page.getIdea (L::guitar).notes, tileRiff (riff, total, 4.0).notes);
     }
 }
 
@@ -123,7 +135,7 @@ TEST_CASE ("0.226.0: a riff per block: the verse's and the chorus's apart, each 
     CHECK (opened.getSongSectionRiff (0)->name == "Verse riff");
     CHECK (opened.getSongSectionRiff (1)->name == "Verse riff");
     CHECK (opened.getSongSectionRiff (2)->name == "Chorus riff");
-    CHECK (opened.getSongSectionRiff (2)->notes == chorusRiff.notes);
+    CHECK (sameNotes (opened.getSongSectionRiff (2)->notes, chorusRiff.notes));
     file.deleteFile();
 }
 
