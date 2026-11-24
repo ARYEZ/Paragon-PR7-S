@@ -15,6 +15,9 @@ Each version's notes appear on its GitHub Release page.
 - **On the row:** a block with a riff says RIFF after its bar count.
 - **Undo** takes back giving a block a riff or taking it off.
 - **Fixed:** a built block whose chords or type changed was built again without your riff, so the riff's lane got new music. It now plays the block's riff.
+- **Your chords stay:** a riff pasted where the chord track already has chords (you set the verse's progression first) keeps them. The band follows your progression and BUILD doesn't write the riff's chords over it. Where the chord track is empty, the riff's own chords are used and written there, as before.
+- **Where they disagree:** the status line says which bars the riff's own chords and the chord track's differ ("bar 3: the riff says A, the track D minor").
+- **Fit My Riff to the Chords** (in + MY RIFF): moves each note of your riff onto the chord under it, as Follow Chord Track does, with the same rhythm, lengths and shape. Off, the riff plays exactly as you played it. It's kept with the block's riff, and a rebuild after a chord change fits it to the new chords.
 - **Older songs:** a song's one riff goes onto the blocks of the riff's section when it opens (a chorus riff onto the Chorus blocks). Without a SECTIONS row nothing changes: one riff, as before.
 
 ## 0.225.0
