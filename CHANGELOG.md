@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.227.0
+
+**Find a riff in the MediaBay.** You asked whether ARCHITECT could look through your MediaBay for riffs in the song's key that would suit the part. ARCHITECT's + MY RIFF menu now has **Find a Riff in the MediaBay (in the Song's Key)...**
+
+- **What it reads:** every MIDI file the MediaBay scans, on a thread of its own so the studio keeps working. The status line counts the files as they're read.
+- **What it leaves out:** drum files (a drum word such as drums, kit, groove, beat, fill or snare in the name or folders, the DRUMS category, or only channel-10 notes), audio files, files longer than 16 bars (songs, not riffs), and files with fewer than three notes.
+- **Moved into the song's key:** a riff's key comes from the MediaBay (your tag, the name's or the file's), else it's guessed from its notes. The riff is moved into the song's key the short way (E minor to A minor goes up 5). A major riff going into a minor key goes to that key's relative major (the same notes), so it keeps its sound: a C major riff in an A minor song isn't moved at all. It then moves by whole octaves to sit in a guitar's range (A0 to E5).
+- **Scored, the best first:** how much of it is in the key after moving (this counts the most), how much a guitar can play, its tempo against the song's (twice or half as fast counts, but less), the section's word in its name or folders (another section's word counts against it), and words such as riff, guitar, chug.
+- **The list:** the riffs open in the option browser, grouped IN THE SONG'S KEY, MOSTLY IN KEY and MOVED INTO KEY. Each says its fit and why ("in key 100%, MOVED +5 (from E minor), 2 bars, 120 BPM, says verse"), and its first bars are drawn.
+- **HEAR:** choosing a riff plays it on the riff's lane with the rest of the band. Nothing is kept until USE IT.
+- **USE IT:** loads the riff as MY RIFF (moved into the key) for the chosen block or section, the other lanes following it as with any riff you paste. BUILD then builds the section on it.
+- **Limits:** MIDI files only for now. The score can't hear whether a riff is any good: it only measures how well it fits. Up to 4,000 files are read, the likeliest by name and tempo first, and the best 100 shown.
+
 ## 0.226.0
 
 **A riff for each part of the song.** You asked to use one riff for the chorus and a different one for the verse. Until now a song held one riff, and every section ARCHITECT built used it.

@@ -311,6 +311,12 @@ void ComposerPage::startOverForSong()
 
 ComposerPage::~ComposerPage()
 {
+    if (riffSearch != nullptr)
+    {
+        riffSearch->stop = true;
+        if (riffSearch->thread.joinable())
+            riffSearch->thread.join();
+    }
     if (browserWindow != nullptr)
     {
         browserWindow->getBrowser().onClosed = nullptr;   // (no trial put back into a page that's going)
@@ -2020,6 +2026,8 @@ void ComposerPage::showPasteMenu()
                                          : "Forget My Riff (" + riff->name + ")");
     }
     menu.addSeparator();
+    menu.addItem (10, isFindingRiffs() ? juce::String ("Finding Riffs in the MediaBay...") : juce::String ("Find a Riff in the MediaBay (in the Song's Key)..."),
+                  ! isFindingRiffs());   // (0.227.0)
     menu.addItem (6, "Learn My Band: Read Our Record...", onLearnMyBand != nullptr);   // (0.82.0)
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (pasteKey),
                         [safe = juce::Component::SafePointer<ComposerPage> (this), partId, songRiffs] (int chosen)
@@ -2034,6 +2042,11 @@ void ComposerPage::showPasteMenu()
                             if (chosen >= 300 && chosen < 300 + (int) songRiffs.size())
                             {
                                 safe->chooseBlockRiff (songRiffs[(size_t) chosen - 300].id);
+                                return;
+                            }
+                            if (chosen == 10)
+                            {
+                                safe->findRiffsInMediaBay();
                                 return;
                             }
                             if (chosen == 6)
@@ -3959,6 +3972,20 @@ juce::File ComposerPage::dragLaneOut (ComposerLayer l)
 
 void ComposerPage::timerCallback()
 {
+    if (riffSearch != nullptr)
+    {
+        if (riffSearch->done)
+            finishRiffSearch();
+        else if (riffSearch->total > 0)
+        {
+            const auto text = "Finding riffs in the MediaBay: " + juce::String (riffSearch->read.load()) + " of " + juce::String (riffSearch->total) + " files read";
+            if (status != text)
+            {
+                status = text;
+                repaint();
+            }
+        }
+    }
     // Heard no longer (Space, the song changed): the keys say so.
     if (hearing && ! studio.isComposerAuditioning())
     {
@@ -4640,4 +4667,173 @@ void ComposerWindow::closeButtonPressed()
     suite->getIdeas().stop();
     if (onClose)
         onClose();
+}
+
+//==============================================================================
+// (0.227.0) FIND A RIFF IN THE MEDIABAY
+pr7s::RiffFindRequest ComposerPage::riffRequest() const
+{
+    pr7s::RiffFindRequest request;
+    request.key = state.key;
+    request.bpm = context.bpm;
+    request.beatsPerBar = context.beatsPerBar;
+    request.section = getSection();
+    return request;
+}
+
+namespace
+{
+    // The MediaBay's MIDI files that could be riffs (the cheap checks), copied for the search's thread.
+    std::vector<pr7s::MediaItem> riffCandidates (pr7s::Studio& studio, const pr7s::RiffFindRequest& request)
+    {
+        std::vector<pr7s::MediaItem> items;
+        const auto bpb = juce::jmax (0.25, request.beatsPerBar);
+        for (const auto& item : studio.getMediaBay().getItems())
+            if (item.type == pr7s::MediaType::midi && item.notes >= 3 && (item.beats <= 0.0 || item.beats <= 17.0 * bpb + 1.0)
+                && ! pr7s::looksLikeDrums (item))
+                items.push_back (item);
+        return items;
+    }
+}
+
+std::vector<pr7s::RiffFind> ComposerPage::findRiffsNow()
+{
+    const auto request = riffRequest();
+    return pr7s::findRiffs (riffCandidates (studio, request), request);
+}
+
+void ComposerPage::findRiffsInMediaBay()
+{
+    if (riffSearch != nullptr)
+        return;
+    const auto request = riffRequest();
+    auto items = riffCandidates (studio, request);
+    if (items.empty())
+    {
+        status = "No MIDI files in the MediaBay that could be riffs (F5: add a folder with your riffs to its locations)";
+        repaint();
+        return;
+    }
+    riffSearch = std::make_unique<RiffSearch>();
+    riffSearch->total = juce::jmin ((int) items.size(), request.mostRead);
+    status = "Finding riffs in the MediaBay: " + juce::String (riffSearch->total) + " files to read";
+    repaint();
+    auto* search = riffSearch.get();
+    search->thread = std::thread ([search, request, items = std::move (items)]
+    {
+        search->found = pr7s::findRiffs (items, request, [search] { return search->stop.load(); }, &search->read);
+        search->done = true;
+    });
+}
+
+void ComposerPage::waitForRiffsForTests()
+{
+    if (riffSearch == nullptr)
+        return;
+    if (riffSearch->thread.joinable())
+        riffSearch->thread.join();
+    finishRiffSearch();
+}
+
+void ComposerPage::finishRiffSearch()
+{
+    if (riffSearch == nullptr)
+        return;
+    if (riffSearch->thread.joinable())
+        riffSearch->thread.join();
+    auto found = std::move (riffSearch->found);
+    riffSearch.reset();
+    if (found.empty())
+    {
+        status = "No riffs found in the MediaBay's MIDI files (none 1-16 bars long with notes but drums)";
+        repaint();
+        return;
+    }
+    status = juce::String ((int) found.size()) + " riffs found for the " + pr7s::sectionWord (getSection()).toLowerCase() + " in "
+           + ChordUi::spokenKey (state.key) + ", the best first";
+    repaint();
+    openBrowserWindow (makeRiffBrowser (std::move (found)));
+}
+
+std::unique_ptr<OptionBrowser> ComposerPage::makeRiffBrowser (std::vector<pr7s::RiffFind> found)
+{
+    riffsShown = std::move (found);
+    std::vector<OptionBrowser::Option> options;
+    const auto bpb = juce::jmax (0.25, context.beatsPerBar);
+    const auto layer = state.riffLayer();
+    for (int i = 0; i < (int) riffsShown.size(); ++i)
+    {
+        const auto& f = riffsShown[(size_t) i];
+        OptionBrowser::Option o;
+        o.id = i;
+        o.name = f.name + "  (" + f.folder + ")";
+        o.description = juce::String (juce::roundToInt (f.score * 100.0)) + "% fit: " + f.reason + ".  " + f.file.getFullPathName();
+        o.group = f.shift == 0 && f.inKey >= 0.95 ? "IN THE SONG'S KEY" : f.shift == 0 ? "MOSTLY IN KEY" : "MOVED INTO KEY";
+        o.idea = pr7s::tileRiff (f.riff, f.riff.bars * bpb, bpb);
+        o.idea.part = pr7s::composerPartOf (layer);
+        options.push_back (std::move (o));
+    }
+    auto browser = std::make_unique<OptionBrowser> ("RIFFS FROM THE MEDIABAY", std::move (options), 0, studio.getOptionMemory(), riffListKey);
+    browser->setAutoHear (true);
+    browser->setGroupOrder ({ "IN THE SONG'S KEY", "MOSTLY IN KEY", "MOVED INTO KEY" });
+    juce::Component::SafePointer<ComposerPage> safe (this);
+    browser->onHear = [safe] (int id)
+    {
+        if (safe != nullptr && juce::isPositiveAndBelow (id, (int) safe->riffsShown.size()))
+            safe->hearFoundRiff (safe->riffsShown[(size_t) id]);
+    };
+    browser->onUse = [safe] (int id)
+    {
+        if (safe == nullptr || ! juce::isPositiveAndBelow (id, (int) safe->riffsShown.size()))
+            return;
+        const auto riff = safe->riffsShown[(size_t) id];
+        safe->endTrial (false);
+        safe->useFoundRiff (riff);
+    };
+    browser->onFavourite = [safe] (const juce::String& name, bool on) { if (safe != nullptr) safe->studio.setOptionFavourite (riffListKey, name, on); };
+    browser->onClosed = [safe] { if (safe != nullptr) safe->endTrial (false); };
+    return browser;
+}
+
+bool ComposerPage::hearFoundRiff (const pr7s::RiffFind& found)
+{
+    const auto layer = state.riffLayer();
+    const auto lane = state.lane (layer);
+    const auto was = taken[(size_t) layer];
+    beginTrial (riffListKey, [this, layer, lane, was]
+    {
+        state.lane (layer) = lane;
+        taken[(size_t) layer] = was;
+        refresh();
+    });
+    const auto bpb = juce::jmax (0.25, context.beatsPerBar);
+    auto idea = pr7s::tileRiff (found.riff, juce::jmax (1, state.bars) * bpb, bpb);
+    idea.part = pr7s::composerPartOf (layer);
+    taken[(size_t) layer] = idea;
+    state.lane (layer).on = true;
+    state.lane (layer).locked = true;
+    status = "Hearing \"" + found.name + "\" on the " + pr7s::composerLayerName (layer).toLowerCase() + " lane: " + found.reason
+           + " (USE IT to keep it as MY RIFF)";
+    refresh();
+    if (! hearing)
+        hear();
+    return true;
+}
+
+bool ComposerPage::useFoundRiff (const pr7s::RiffFind& found)
+{
+    auto riff = found.riff;
+    riff.section = getSection();
+    studio.noteOptionUsed (riffListKey, found.name + "  (" + found.folder + ")");
+    const auto key = state.key;
+    if (! pasteRiff (riff))
+        return false;
+    if (! isKeyLocked() && state.key != key)
+    {
+        state.key = key;   // moved into this key already: the guess (maybe its relative key) not taken
+        refresh();
+    }
+    status = "From the MediaBay: " + found.name + " (" + found.reason + ").  " + status;
+    repaint();
+    return true;
 }

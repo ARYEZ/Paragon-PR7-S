@@ -9,6 +9,10 @@
 #include "ui/PartDropTarget.h"
 #include "ui/OptionBrowser.h"
 #include "ui/DiceKey.h"
+#include "engine/RiffFinder.h"
+
+#include <atomic>
+#include <thread>
 
 // THE COMPOSER (0.58.0, the owner asked: "a combined page, all layers stacked, each with a lock and a
 // re-roll, and one generate button"). engine/Composer.h says how the layers are chosen.
@@ -237,7 +241,7 @@ public:
     bool canTryType() const;   // HEAR can try a type (not on a block already built: that would rebuild the song)
     void useType (const juce::String& name);
     void useSoloStyle (pr7s::SoloStyle);
-    static inline const juce::String typeListKey = "type", soloListKey = "solo";
+    static inline const juce::String typeListKey = "type", soloListKey = "solo", riffListKey = "riff";
     static constexpr int moreTypesItem = 4801, moreSolosItem = 4802;
     static constexpr int moreOptionsItem = 4800;
     static constexpr int worldItems = 6400;       // (0.219.0) the keys lane's WORLD: 6400 + engine/LaneWorlds.h's LaneWorld
@@ -282,6 +286,17 @@ public:
     bool pasteRiff (pr7s::ComposerRiff, int lane = -1);          // the riff in: its key guessed (not once locked), its chords
     bool pasteRiffFromPart (int partId, pr7s::DrumSection, int lane = -1);
     bool pasteRiffFromFile (const juce::File&, pr7s::DrumSection, int lane = -1);
+    // (0.227.0) FIND A RIFF IN THE MEDIABAY: its MIDI files read on a thread of their own, scored against the song
+    // (engine/RiffFinder.h), the best shown in the option browser (HEAR plays one on the riff's lane with the band,
+    // USE IT loads it as MY RIFF, moved into the song's key).
+    void findRiffsInMediaBay();
+    std::vector<pr7s::RiffFind> findRiffsNow();                 // (tests: at once)
+    std::unique_ptr<OptionBrowser> makeRiffBrowser (std::vector<pr7s::RiffFind>);
+    bool useFoundRiff (const pr7s::RiffFind&);
+    bool hearFoundRiff (const pr7s::RiffFind&);
+    pr7s::RiffFindRequest riffRequest() const;
+    bool isFindingRiffs() const noexcept { return riffSearch != nullptr; }
+    void waitForRiffsForTests();                                // the search finished and its browser made
     // (0.83.4, the owner: drag a MIDI part or file in and it builds that part) Your riff taken, then the section
     // built around it (the lanes on, the guitar playing the riff): the tracks written, none if nothing was.
     std::vector<int> buildFromPart (int partId, pr7s::DrumSection, int lane = -1);
@@ -336,6 +351,18 @@ public:
 
 private:
     std::unique_ptr<OptionBrowserWindow> browserWindow;
+    // (0.227.0) A MediaBay riff search under way (its own thread; the timer opens the browser when it's done).
+    struct RiffSearch
+    {
+        std::atomic<bool> stop { false }, done { false };
+        std::atomic<int> read { 0 };
+        int total = 0;
+        std::vector<pr7s::RiffFind> found;
+        std::thread thread;
+    };
+    std::unique_ptr<RiffSearch> riffSearch;
+    std::vector<pr7s::RiffFind> riffsShown;   // what the riff browser lists (its ids are indices into it)
+    void finishRiffSearch();
     int targetBlock = 0;   // (0.90.0) the SECTIONS row's block composed (its id; 0: none)
     // (0.221.0) The targeted block's chords on the chord track as last seen: when they change (the block editor, the
     // chord track) or another block is aimed at, ARCHITECT reads them (CHORDS FROM: CHORD TRACK).
