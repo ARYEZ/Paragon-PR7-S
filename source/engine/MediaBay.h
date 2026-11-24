@@ -89,7 +89,7 @@ namespace pr7s
         juce::String presetClass, presetPlugin;
         bool presetInstrument = false;
         int readVersion = currentReadVersion;
-        static constexpr int currentReadVersion = 4;   // (older items are read again: 0.22.2 and 0.224.0 read more)
+        static constexpr int currentReadVersion = 5;   // (older items are read again: 0.22.2, 0.224.0 and 0.225.0 read more)
         double tempo() const noexcept { return tags.bpm > 0.0 ? tags.bpm : bpm; }   // your tempo, else the name's or file's
         juce::String keyName() const { return tags.key.isNotEmpty() ? tags.key : key; }
         juce::String searchText() const;   // what a text search looks in (lower case; the tags too)
@@ -217,6 +217,10 @@ namespace pr7s
         // Apple Loops' tags (an AIFF's "cate" chunk, as JUCE gives them: "Rock/Blues;Guitars;Electric..."):
         // the genre as the style, the instrument as the category, the descriptors as character sides.
         static MediaTags tagsFromAppleLoop (const juce::String& appleTags, juce::StringArray* searchable = nullptr);
+        // 0.225.0: tags guessed from the words of a file's name and of the folders it's in (most
+        // sample packs write none into their files: "Ghosthack-T2_Kit_40_Lead_Synth_FMaj" is SYNTH /
+        // LEAD). The name's words first, then the nearest folders'; our own word lists.
+        static MediaTags tagsFromWords (const juce::File& file);
         static juce::String readIXml (const juce::File& wav);     // a WAV's iXML chunk ("" if none)
         // A .vstpreset's header and Info (0.24.0): the class id, and the Info's attributes
         // (the VST3 SDK's preset keys: PlugInName, PlugInCategory, MusicalInstrument, MusicalStyle,

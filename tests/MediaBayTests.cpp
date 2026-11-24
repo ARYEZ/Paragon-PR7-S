@@ -136,6 +136,11 @@ TEST_CASE ("MediaBay names: tempo and key read from a file's name (0.21.0)", "[m
     CHECK (MediaDatabase::keyFromName ("kick a 808") == "");        // (a lower-case "a" isn't a key)
     CHECK (MediaDatabase::keyFromName ("Drop A Chug Loop 140bpm") == "");   // (a guitar's tuning, not the key)
     CHECK (MediaDatabase::keyFromName ("Riff Drop C Em") == "Em");
+    // 0.225.0: a bare letter earlier in the name gives way to a part that says more.
+    CHECK (MediaDatabase::keyFromName ("Ghosthack-A_Kit 01_Chug Guitar_Am 70BPM (Wet)") == "Am");
+    CHECK (MediaDatabase::keyFromName ("Ghosthack-A_Kit 01_Crash Cymbals_AM 70BPM") == "Am");
+    CHECK (MediaDatabase::keyFromName ("Pack-B_Kit 02_Lead_F# 120") == "F#");
+    CHECK (MediaDatabase::keyFromName ("Loop D 90") == "D");
 }
 
 TEST_CASE ("MediaBay database: a scanned folder's files, their attributes, filters, ratings, kept (0.21.0)", "[mediabay]")
@@ -620,7 +625,8 @@ TEST_CASE ("The MediaBay window's attribute inspector and filter: several files 
     CHECK (page.getFilterColumn (0) == AttributeId { A::category, {} });
     CHECK (page.getFilterColumn (3) == AttributeId { A::character, {} });
     using Counts = std::vector<std::pair<juce::String, int>>;
-    CHECK (page.getFilterValues (0) == Counts { { "Drums", 2 } });
+    // (0.225.0: "Bass Line 95bpm.mid" has BASS guessed from its name.)
+    CHECK (page.getFilterValues (0) == Counts { { "Bass", 1 }, { "Drums", 2 } });
     page.clickFilterValue (0, "Drums", false);
     CHECK (page.getNumResults() == 2);
     page.clickFilterValue (1, "Kick", false);
@@ -712,10 +718,11 @@ TEST_CASE ("The Media rack: home tiles, pages, search, types, filter, favorites,
     rack.setFiltersShown (true);
     CHECK (rack.getFilterColumn (0) == AttributeId { A::category, {} });
     using Counts = std::vector<std::pair<juce::String, int>>;
-    CHECK (rack.getFilterValues (0) == Counts { { "Drums", 1 } });
+    // (0.225.0: "Kick 808" is DRUMS and "Bass Line" BASS, guessed from their names.)
+    CHECK (rack.getFilterValues (0) == Counts { { "Bass", 1 }, { "Drums", 2 } });
     rack.clickFilterValue (0, "Drums", false);
     CHECK (rack.isAttributeFilterSet());
-    CHECK (rack.getNumRows() == 1);
+    CHECK (rack.getNumRows() == 2);
     rack.resetAttributeFilter();
     CHECK (rack.getNumRows() == 3);
 
@@ -1141,6 +1148,36 @@ TEST_CASE ("MediaBay 0.224.0: the other DAW's tags by the names it writes, Apple
     CHECK (apple.character.joinIntoString (",") == "Electric,Distorted");
     CHECK (more.contains ("Ensemble"));
     CHECK (more.contains ("Grooving"));
+}
+
+TEST_CASE ("MediaBay 0.225.0: tags guessed from the file's name and folders", "[mediabay][filetags]")
+{
+    const juce::File root ("/Samples/Ghosthack/Anomaly");
+    const auto tags = [&] (const char* name) { return MediaDatabase::tagsFromWords (root.getChildFile (name)); };
+    auto t = tags ("Ghosthack-A_Kit 01_Chug Guitar_Am 70BPM (Wet).wav");
+    CHECK (t.category == "Guitar");
+    CHECK (t.subCategory == "Chug");
+    CHECK (t.character.contains ("Processed"));
+    t = tags ("Ghosthack-T2_Kit_40_Lead_Synth_FMaj_120BPM_WET.wav");
+    CHECK (t.category == "Synth");
+    CHECK (t.subCategory == "Lead");
+    t = tags ("Ghosthack-HS3_Viper_Lead_Guitar_110bpm.wav");
+    CHECK (t.category == "Guitar");
+    CHECK (t.subCategory == "Lead");
+    t = tags ("Ghosthack-T2_Kit_49_Cello_2_Cm_70BPM_WET.wav");
+    CHECK (t.category == "Strings");
+    CHECK (t.subCategory == "Solo");
+    CHECK (tags ("Ghosthack-A_Kit 01_Crash Cymbals_AM 70BPM.wav").subCategory == "Cymbal");
+    CHECK (tags ("Ghosthack-A_Kit 01_Gritty Bass Guitar_AM 70BPM.wav").category == "Bass");
+    CHECK (tags ("Ghosthack-A_Kit 01_Dark Drone FX_AM 70BPM.wav").category == "Ambience");
+    CHECK (tags ("Ghosthack-A_Kit 01_Granular Glass FX_AM 70BPM.wav").category == "Sound FX");
+    CHECK (tags ("Ghosthack-A_Kit 01_Hats_AM 70BPM (Dry).wav").subCategory == "Hi-Hat");
+    CHECK (tags ("Ghosthack-A_Kit 01_Distant Bells_AM 70BPM.wav").category.isEmpty());
+    // A folder speaks when the name doesn't; a folder's "SFX" says nothing.
+    const juce::File drums ("/Samples/SFX/Abstract Drums 2/Loops/Loop 07.wav");
+    CHECK (MediaDatabase::tagsFromWords (drums).category == "Drums");
+    CHECK (MediaDatabase::tagsFromWords (juce::File ("/Samples/SFX/Pack/Loop 07.wav")).category.isEmpty());
+    CHECK (MediaDatabase::tagsFromWords (juce::File ("/Samples/Afro House Essentials/Loop 07.wav")).subStyle == "House");
 }
 
 TEST_CASE ("The MediaBay window opens where it was left: the open folders and the chosen one (0.22.2)", "[mediabay][ui]")

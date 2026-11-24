@@ -345,6 +345,7 @@ namespace pr7s
         juce::StringArray parts;
         parts.addTokens (name, " _-.()[]", "");
         parts.removeEmptyStrings();
+        juce::String bare;
         for (int i = 0; i < parts.size(); ++i)
         {
             const auto& part = parts[i];
@@ -368,12 +369,22 @@ namespace pr7s
                 }
             }
             const auto lower = rest.toLowerCase();
-            if (lower.isEmpty() || lower == "maj" || lower == "major")
+            // A bare letter ("Ghosthack-A_Kit") is the weakest sign: kept only if no part says
+            // more ("Am", "F#", "C maj"); a later part that does wins (0.225.0).
+            if (lower.isEmpty())
+            {
+                if (accidental.isNotEmpty())
+                    return juce::String::charToString (letter) + accidental;
+                if (bare.isEmpty())
+                    bare = juce::String::charToString (letter);
+                continue;
+            }
+            if (lower == "maj" || lower == "major")
                 return juce::String::charToString (letter) + accidental;
             if (lower == "m" || lower == "min" || lower == "minor")
                 return juce::String::charToString (letter) + accidental + "m";
         }
-        return {};
+        return bare;
     }
 
     juce::String MediaDatabase::keyFromRootNote (int midiNote, int mode)
@@ -741,7 +752,174 @@ namespace pr7s
                 item.seconds = item.beats * 60.0 / juce::jmax (1.0, midi->bpm);
             }
         }
+        // What the file doesn't say, guessed from its name and folders (0.225.0).
+        if (item.type == MediaType::audio || item.type == MediaType::midi)
+        {
+            const auto guessed = tagsFromWords (file);
+            auto& t = item.fileTags;
+            if (t.category.isEmpty())
+            {
+                t.category = guessed.category;
+                t.subCategory = guessed.subCategory;
+            }
+            if (t.style.isEmpty())
+            {
+                t.style = guessed.style;
+                t.subStyle = guessed.subStyle;
+            }
+            if (t.character.isEmpty())
+                t.character = guessed.character;
+        }
         return item;
+    }
+
+    MediaTags MediaDatabase::tagsFromWords (const juce::File& file)
+    {
+        // The words of a name, lower case: letters and digits only ("Hi-Hat" -> "hi", "hat").
+        const auto wordsOf = [] (const juce::String& text)
+        {
+            juce::StringArray words;
+            juce::String word;
+            for (auto c : text)
+            {
+                if (juce::CharacterFunctions::isLetterOrDigit (c))
+                    word += juce::CharacterFunctions::toLowerCase (c);
+                else if (word.isNotEmpty())
+                {
+                    words.add (word);
+                    word.clear();
+                }
+            }
+            if (word.isNotEmpty())
+                words.add (word);
+            return words;
+        };
+        struct Rule { const char* words; const char* category; const char* sub; };
+        // In order: the first rule whose words are all there wins ("bass guitar" before "guitar",
+        // "bass drum" before "bass", instruments before roles such as "lead" or "pad").
+        static const Rule rules[] {
+            { "bass drum", "Drums", "Kick" }, { "kick", "Drums", "Kick" }, { "kicks", "Drums", "Kick" },
+            { "bass guitar", "Bass", "Electric" }, { "upright bass", "Bass", "Upright" }, { "double bass", "Bass", "Upright" },
+            { "synth bass", "Bass", "Synth" }, { "sub bass", "Bass", "Sub" }, { "808", "Bass", "Sub" },
+            { "snare", "Drums", "Snare" }, { "snares", "Drums", "Snare" }, { "rimshot", "Drums", "Snare" },
+            { "hihat", "Drums", "Hi-Hat" }, { "hihats", "Drums", "Hi-Hat" }, { "hi hat", "Drums", "Hi-Hat" }, { "hat", "Drums", "Hi-Hat" }, { "hats", "Drums", "Hi-Hat" },
+            { "cymbal", "Drums", "Cymbal" }, { "cymbals", "Drums", "Cymbal" }, { "crash", "Drums", "Cymbal" }, { "ride", "Drums", "Cymbal" }, { "china", "Drums", "Cymbal" },
+            { "tom", "Drums", "Tom" }, { "toms", "Drums", "Tom" },
+            { "fill", "Drums", "Fill" }, { "fills", "Drums", "Fill" },
+            { "clap", "Drums", "Percussion" }, { "claps", "Drums", "Percussion" }, { "perc", "Drums", "Percussion" }, { "percs", "Drums", "Percussion" },
+            { "percussion", "Drums", "Percussion" }, { "percussions", "Drums", "Percussion" }, { "shaker", "Drums", "Percussion" },
+            { "tambourine", "Drums", "Percussion" }, { "conga", "Drums", "Percussion" }, { "bongo", "Drums", "Percussion" }, { "snap", "Drums", "Percussion" },
+            { "guitar", "Guitar", nullptr }, { "guitars", "Guitar", nullptr }, { "gtr", "Guitar", nullptr },
+            { "bass", "Bass", nullptr }, { "bassline", "Bass", nullptr }, { "sub", "Bass", "Sub" },
+            { "electric piano", "Keys", "Electric Piano" }, { "rhodes", "Keys", "Electric Piano" }, { "epiano", "Keys", "Electric Piano" }, { "wurli", "Keys", "Electric Piano" },
+            { "piano", "Keys", "Piano" }, { "organ", "Keys", "Organ" }, { "clav", "Keys", "Clav" }, { "keys", "Keys", nullptr },
+            { "cello", "Strings", "Solo" }, { "violin", "Strings", "Solo" }, { "viola", "Strings", "Solo" }, { "pizzicato", "Strings", "Pizzicato" }, { "pizz", "Strings", "Pizzicato" },
+            { "strings", "Strings", "Ensemble" }, { "string", "Strings", nullptr },
+            { "trumpet", "Brass and Winds", "Brass" }, { "trombone", "Brass and Winds", "Brass" }, { "horn", "Brass and Winds", "Brass" }, { "horns", "Brass and Winds", "Brass" }, { "brass", "Brass and Winds", "Brass" },
+            { "flute", "Brass and Winds", "Woodwinds" }, { "sax", "Brass and Winds", "Woodwinds" }, { "saxophone", "Brass and Winds", "Woodwinds" }, { "clarinet", "Brass and Winds", "Woodwinds" },
+            { "choir", "Vocals", "Choir" }, { "chop", "Vocals", "Chop" }, { "vocal", "Vocals", nullptr }, { "vocals", "Vocals", nullptr }, { "vox", "Vocals", nullptr }, { "voice", "Vocals", nullptr }, { "chant", "Vocals", nullptr },
+            { "drone", "Ambience", "Drone" }, { "drones", "Ambience", "Drone" }, { "texture", "Ambience", "Texture" }, { "textures", "Ambience", "Texture" },
+            { "soundscape", "Ambience", "Texture" }, { "soundscapes", "Ambience", "Texture" }, { "atmosphere", "Ambience", "Texture" }, { "atmos", "Ambience", "Texture" },
+            { "riser", "Sound FX", "Riser" }, { "uplifter", "Sound FX", "Riser" }, { "impact", "Sound FX", "Impact" }, { "sweep", "Sound FX", "Sweep" },
+            { "downlifter", "Sound FX", "Sweep" }, { "whoosh", "Sound FX", "Sweep" }, { "reverse", "Sound FX", "Reverse" }, { "glitch", "Sound FX", "Glitch" },
+            { "fx", "Sound FX", nullptr }, { "sfx", "Sound FX", nullptr },
+            { "pad", "Synth", "Pad" }, { "pads", "Synth", "Pad" }, { "arp", "Synth", "Arp" }, { "arpeggio", "Synth", "Arp" }, { "pluck", "Synth", "Pluck" }, { "plucks", "Synth", "Pluck" },
+            { "sequence", "Synth", "Sequence" }, { "seq", "Synth", "Sequence" }, { "lead", "Synth", "Lead" }, { "leads", "Synth", "Lead" }, { "synth", "Synth", nullptr },
+            { "drum", "Drums", nullptr }, { "drums", "Drums", nullptr }, { "beat", "Drums", nullptr }, { "beats", "Drums", nullptr }, { "break", "Drums", nullptr }, { "breaks", "Drums", nullptr },
+        };
+        // A guitar's or a synth's part ("Lead Guitar" is GUITAR / LEAD).
+        static const std::pair<const char*, const char*> guitarSubs[] {
+            { "lead", "Lead" }, { "rhythm", "Rhythm" }, { "riff", "Riff" }, { "chug", "Chug" }, { "clean", "Clean" }, { "acoustic", "Acoustic" }, { "noise", "Noise" } };
+        static const std::pair<const char*, const char*> styles[] {
+            { "djent", "Metal|Djent" }, { "metalcore", "Metal|Metalcore" }, { "thrash", "Metal|Thrash" }, { "deathcore", "Metal|Death" }, { "death metal", "Metal|Death" },
+            { "doom", "Metal|Doom" }, { "nu metal", "Metal|Nu Metal" }, { "numetal", "Metal|Nu Metal" }, { "metal", "Metal|" },
+            { "punk", "Rock|Punk" }, { "post rock", "Rock|Post-Rock" }, { "hard rock", "Rock|Hard Rock" }, { "rock", "Rock|" },
+            { "synthwave", "Electronic|Synthwave" }, { "dubstep", "Electronic|Dubstep" }, { "riddim", "Electronic|Dubstep" }, { "techno", "Electronic|Techno" },
+            { "house", "Electronic|House" }, { "dnb", "Electronic|Drum and Bass" }, { "drum and bass", "Electronic|Drum and Bass" }, { "edm", "Electronic|" },
+            { "trap", "Hip-Hop|Trap" }, { "drill", "Hip-Hop|Trap" }, { "boom bap", "Hip-Hop|Boom Bap" }, { "boombap", "Hip-Hop|Boom Bap" },
+            { "lofi", "Hip-Hop|Lo-Fi" }, { "lo fi", "Hip-Hop|Lo-Fi" }, { "hip hop", "Hip-Hop|" }, { "hiphop", "Hip-Hop|" },
+            { "trailer", "Cinematic|Trailer" }, { "cinematic", "Cinematic|" }, { "blues", "Blues|" }, { "jazz", "Jazz|" }, { "disco", "Funk|Disco" }, { "funk", "Funk|" },
+            { "pop", "Pop|" },
+        };
+        static const std::pair<const char*, const char*> characters[] {
+            { "wet", "Processed" }, { "processed", "Processed" }, { "dry", "Dry" }, { "clean", "Clean" }, { "distorted", "Distorted" }, { "dist", "Distorted" },
+            { "gritty", "Distorted" }, { "dirty", "Distorted" }, { "overdrive", "Distorted" }, { "dark", "Dark" }, { "bright", "Bright" }, { "soft", "Soft" },
+            { "hard", "Hard" }, { "acoustic", "Acoustic" }, { "electric", "Electric" }, { "aggressive", "Aggressive" }, { "calm", "Calm" }, { "tight", "Tight" },
+        };
+
+        const auto has = [] (const juce::StringArray& words, const char* phrase)
+        {
+            const auto want = juce::StringArray::fromTokens (phrase, " ", "");
+            for (int i = 0; i + want.size() <= words.size(); ++i)
+            {
+                bool all = true;
+                for (int k = 0; k < want.size() && all; ++k)
+                    all = words[i + k] == want[k];
+                if (all)
+                    return true;
+            }
+            return false;
+        };
+
+        // The name first, then up to three folders up (not the drive). A folder's "fx" / "sfx" /
+        // "kit" / "loops" says nothing about the file (libraries keep everything under "SFX").
+        std::vector<juce::StringArray> places;
+        places.push_back (wordsOf (file.getFileNameWithoutExtension()));
+        auto folder = file.getParentDirectory();
+        for (int up = 0; up < 3 && folder.getParentDirectory() != folder; ++up, folder = folder.getParentDirectory())
+        {
+            auto words = wordsOf (folder.getFileName());
+            for (auto skip : { "fx", "sfx", "kit", "kits", "loops", "loop", "samples", "one", "shots", "oneshots" })
+                words.removeString (skip);
+            places.push_back (words);
+        }
+
+        MediaTags t;
+        for (const auto& words : places)
+        {
+            for (const auto& r : rules)
+                if (has (words, r.words))
+                {
+                    t.category = r.category;
+                    t.subCategory = r.sub != nullptr ? r.sub : "";
+                    if (t.category == "Guitar")
+                        for (const auto& [w, sub] : guitarSubs)
+                            if (has (words, w))
+                            {
+                                t.subCategory = sub;
+                                break;
+                            }
+                    break;
+                }
+            if (t.category.isNotEmpty())
+                break;
+        }
+        for (const auto& words : places)
+        {
+            for (const auto& [w, both] : styles)
+                if (has (words, w))
+                {
+                    const juce::String value (both);
+                    t.style = value.upToFirstOccurrenceOf ("|", false, false);
+                    t.subStyle = value.fromFirstOccurrenceOf ("|", false, false);
+                    break;
+                }
+            if (t.style.isNotEmpty())
+                break;
+        }
+        // Character from the name only (a folder's "Dark" is rarely every file's).
+        for (const auto& [w, side] : characters)
+            if (has (places.front(), w))
+            {
+                // One side of a pair at most.
+                bool taken = false;
+                for (const auto& pair : characterPairs())
+                    if ((pair.left == side || pair.right == side) && (t.character.contains (pair.left) || t.character.contains (pair.right)))
+                        taken = true;
+                if (! taken)
+                    t.character.add (side);
+            }
+        return t;
     }
 
     //==========================================================================

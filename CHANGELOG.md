@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.225.0
+
+**The MediaBay guesses tags from file and folder names.** You sent three of your sample-pack files after 0.224.0 still showed no tags. None of them carry any tags inside: two hold nothing but the sound, the third only the program that saved it. So there was nothing to read, and the filter columns stayed empty.
+
+- **Tags from the names:** a file whose own tags don't say gets a category, style and character guessed from the words in its name, then from up to three folders above it.
+  - "Chug Guitar" is GUITAR / CHUG, "Lead Synth" SYNTH / LEAD, "Lead Guitar" GUITAR / LEAD, "Cello" STRINGS / SOLO.
+  - "Crash Cymbals" is DRUMS / CYMBAL, "Gritty Bass Guitar" BASS, "Dark Drone FX" AMBIENCE / DRONE, "Hats" DRUMS / HI-HAT.
+  - Styles come from words like djent, metalcore, trap, house or lo-fi, so "Afro House Essentials" gives ELECTRONIC / HOUSE.
+  - Character comes from the name only: WET is PROCESSED, DRY is DRY, DARK is DARK, GRITTY is DISTORTED.
+- **Folders:** a folder's words count only when the file's name says nothing. A folder called SFX, Kit or Loops says nothing about its files, so everything under your SFX folder isn't sound effects.
+- **Your own tags win:** a tag the file carries comes first, and any tag you set in the MediaBay comes before both.
+- **The key:** "Ghosthack-A_Kit 01_Chug Guitar_Am" was read as A. The bare "A" early in the name won over the "Am" later on. A single letter now gives way to a later part that says more, so it reads Am.
+- **One rescan:** your locations are read again once on the next scan. With your library that takes a while.
+- **Our word lists:** these are guesses from words, so some will be wrong or left blank, for example "Distant Bells". Change any of them in the Inspector, and the change is kept.
+
 ## 0.224.0
 
 **The MediaBay reads audio files' tags as the other DAW writes them.** You reported that loops showing their category, style and character in the other DAW came in here with every attribute empty, so the filter columns had nothing to list.
