@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.224.0
+
+**The MediaBay reads audio files' tags as the other DAW writes them.** You reported that loops showing their category, style and character in the other DAW came in here with every attribute empty, so the filter columns had nothing to list.
+
+- **The cause:** the other DAW keeps its MediaBay tags inside a WAV (its iXML chunk) under names we weren't looking for. The category and sub-category are one value, "Drum&Perc|Kick", called MusicalInstrument; the style is "Style|Sub" in MusicalStyle. Our reader looked only for names containing "category", so it found nothing, and where it did find a value it kept only the part after the bar.
+- **Read now:** MusicalInstrument (or MusicalCategory) gives CATEGORY and SUB CATEGORY, and MusicalStyle gives STYLE and SUB STYLE. MusicalCharacter's words become the CHARACTER sides, and MusicalTempo the tempo. MediaComment is read as the comment, and MediaGenre is the style when there's no MusicalStyle. MediaCategoryPost is the category when there's no MusicalInstrument.
+- **Searchable:** the library name, album, artist, title, company and keywords can be found by the search box.
+- **Apple Loops (AIFF):** their tags are read too. The genre becomes the style, the instrument the category, and descriptors such as Electric, Distorted, Clean, Dry or Dark become CHARACTER sides. The rest can be searched.
+- **A WAV's INFO genre** is the style when nothing else gives one.
+- **Every file is read once more:** your locations are read again on the next scan to pick these up. Tags you set yourself are kept: a file's own tags are used only where you haven't tagged it.
+- **Not read:** MP3 files' ID3 tags, and whatever the other DAW keeps only in its own database rather than in the files.
+- **A guess:** the other DAW's tag names aren't published. These are the ones sound libraries and tag editors write.
+
 ## 0.223.0
 
 **The FILLS list follows the groove too.** When you lock bars on the drums lane, the FILLS list (in the drums lane's menu and its options window) now starts with the fills that belong to the groove playing. These are the same ones the drums lane uses on its own since 0.222.0: that groove's own song folder first, then its pack, with Toontrack's before other packs'. They have a group of their own at the top, FILLS FOR THIS GROOVE, and the window opens on it. The rest of the section's fills, the beat maker's fills and a learned drummer's fills follow under FILLS, as before, with nothing listed twice.

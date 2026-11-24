@@ -1061,6 +1061,88 @@ TEST_CASE ("MediaBay reads what files say about themselves: ACID loops, INFO, th
     CHECK (MediaDatabase::keyFromRootNote (63, -1) == "Eb");
 }
 
+TEST_CASE ("MediaBay 0.224.0: the other DAW's tags by the names it writes, Apple Loops' tags, and the filters list them", "[mediabay][filetags]")
+{
+    auto root = juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("pr7s-filetags-" + juce::String (juce::Random::getSystemRandom().nextInt()));
+    root.createDirectory();
+    writeTaggedWav (root.getChildFile ("Kick 01.wav"), {});
+    appendIXml (root.getChildFile ("Kick 01.wav"),
+                "<?xml version=\"1.0\"?><BWFXML><STEINBERG><ATTR_LIST>"
+                "<ATTR><NAME>MusicalInstrument</NAME><TYPE>string</TYPE><VALUE>Drum&amp;Perc|Kick</VALUE></ATTR>"
+                "<ATTR><NAME>MusicalStyle</NAME><TYPE>string</TYPE><VALUE>Rock/Metal|Metalcore</VALUE></ATTR>"
+                "<ATTR><NAME>MusicalCharacter</NAME><TYPE>string</TYPE><VALUE>Hard Dark</VALUE></ATTR>"
+                "<ATTR><NAME>MusicalTempo</NAME><TYPE>string</TYPE><VALUE>170</VALUE></ATTR>"
+                "<ATTR><NAME>MediaLibraryName</NAME><TYPE>string</TYPE><VALUE>Heavy Pack</VALUE></ATTR>"
+                "<ATTR><NAME>MediaComment</NAME><TYPE>string</TYPE><VALUE>tight</VALUE></ATTR>"
+                "</ATTR_LIST></STEINBERG></BWFXML>");
+    writeTaggedWav (root.getChildFile ("Snare 01.wav"), {});
+    appendIXml (root.getChildFile ("Snare 01.wav"),
+                "<?xml version=\"1.0\"?><BWFXML><STEINBERG><ATTR_LIST>"
+                "<ATTR><NAME>MediaCategoryPost</NAME><TYPE>string</TYPE><VALUE>Drum&amp;Perc|Snare</VALUE></ATTR>"
+                "<ATTR><NAME>MediaGenre</NAME><TYPE>string</TYPE><VALUE>Rock/Metal</VALUE></ATTR>"
+                "</ATTR_LIST></STEINBERG></BWFXML>");
+    juce::StringPairArray info;
+    info.set (juce::WavAudioFormat::riffInfoGenre, "Djent");
+    writeTaggedWav (root.getChildFile ("Riff.wav"), info);
+
+    const auto store = juce::File::createTempFile ("pr7s-filetags.xml");
+    {
+        MediaDatabase db (store);
+        db.addLocation (root);
+        db.scanNow();
+        const auto kick = db.getTags (root.getChildFile ("Kick 01.wav"));
+        CHECK (kick.category == "Drum&Perc");
+        CHECK (kick.subCategory == "Kick");
+        CHECK (kick.style == "Rock/Metal");
+        CHECK (kick.subStyle == "Metalcore");
+        CHECK (kick.character.joinIntoString (",") == "Hard,Dark");
+        CHECK (kick.comment == "tight");
+        const auto snare = db.getTags (root.getChildFile ("Snare 01.wav"));
+        CHECK (snare.category == "Drum&Perc");
+        CHECK (snare.subCategory == "Snare");
+        CHECK (snare.style == "Rock/Metal");
+        CHECK (db.getTags (root.getChildFile ("Riff.wav")).style == "Djent");
+        for (const auto& i : db.getItems())
+            if (i.name == "Kick 01")
+                CHECK (i.tempo() == 170.0);
+        MediaQuery search;
+        search.text = "heavy pack";
+        CHECK (db.find (search).size() == 1);
+
+        // The filter columns list them, with their counts.
+        const auto categories = db.valueCounts ({}, { MediaAttribute::category, {} });
+        bool found = false;
+        for (const auto& [value, count] : categories)
+            if (value == "Drum&Perc")
+            {
+                found = true;
+                CHECK (count == 2);
+            }
+        CHECK (found);
+        const auto styles = db.valueCounts ({}, { MediaAttribute::style, {} });
+        int rockMetal = 0, djent = 0;
+        for (const auto& [value, count] : styles)
+        {
+            if (value == "Rock/Metal") rockMetal = count;
+            if (value == "Djent") djent = count;
+        }
+        CHECK (rockMetal == 2);
+        CHECK (djent == 1);
+    }
+    store.deleteFile();
+    root.deleteRecursively();
+
+    // Apple Loops (an AIFF's tags, as JUCE reads them).
+    juce::StringArray more;
+    const auto apple = MediaDatabase::tagsFromAppleLoop ("Rock/Blues;Guitars;Electric Guitar;Electric;Distorted;Ensemble;Grooving", &more);
+    CHECK (apple.style == "Rock/Blues");
+    CHECK (apple.category == "Guitars");
+    CHECK (apple.subCategory == "Electric Guitar");
+    CHECK (apple.character.joinIntoString (",") == "Electric,Distorted");
+    CHECK (more.contains ("Ensemble"));
+    CHECK (more.contains ("Grooving"));
+}
+
 TEST_CASE ("The MediaBay window opens where it was left: the open folders and the chosen one (0.22.2)", "[mediabay][ui]")
 {
     Finish::set (Finish::Type::pearlWhite, false);

@@ -89,7 +89,7 @@ namespace pr7s
         juce::String presetClass, presetPlugin;
         bool presetInstrument = false;
         int readVersion = currentReadVersion;
-        static constexpr int currentReadVersion = 3;   // (older items are read again: 0.22.2 reads more)
+        static constexpr int currentReadVersion = 4;   // (older items are read again: 0.22.2 and 0.224.0 read more)
         double tempo() const noexcept { return tags.bpm > 0.0 ? tags.bpm : bpm; }   // your tempo, else the name's or file's
         juce::String keyName() const { return tags.key.isNotEmpty() ? tags.key : key; }
         juce::String searchText() const;   // what a text search looks in (lower case; the tags too)
@@ -210,7 +210,13 @@ namespace pr7s
         static MediaItem read (const juce::File&, juce::AudioFormatManager&);
         static double bpmFromName (const juce::String&);          // "Beat 120bpm", "loop_95_bpm": 0 if none
         static juce::String keyFromRootNote (int midiNote, int mode);   // mode 1 minor, 0 major, -1 unknown (a plain letter)
-        static MediaTags tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key);   // the other DAW's iXML attributes
+        // The other DAW's iXML attributes (0.224.0: by the names it writes: MusicalInstrument
+        // "Category|Sub", MusicalStyle "Style|Sub", MusicalCharacter, MusicalTempo, MediaComment,
+        // MediaGenre; the library, album, artist and title into `searchable`).
+        static MediaTags tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key, juce::StringArray* searchable = nullptr);
+        // Apple Loops' tags (an AIFF's "cate" chunk, as JUCE gives them: "Rock/Blues;Guitars;Electric..."):
+        // the genre as the style, the instrument as the category, the descriptors as character sides.
+        static MediaTags tagsFromAppleLoop (const juce::String& appleTags, juce::StringArray* searchable = nullptr);
         static juce::String readIXml (const juce::File& wav);     // a WAV's iXML chunk ("" if none)
         // A .vstpreset's header and Info (0.24.0): the class id, and the Info's attributes
         // (the VST3 SDK's preset keys: PlugInName, PlugInCategory, MusicalInstrument, MusicalStyle,

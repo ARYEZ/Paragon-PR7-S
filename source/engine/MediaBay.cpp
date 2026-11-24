@@ -417,37 +417,76 @@ namespace pr7s
         return {};
     }
 
-    MediaTags MediaDatabase::tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key)
+    namespace
     {
-        // <BWFXML><STEINBERG><ATTR_LIST><ATTR><TYPE/><NAME/><VALUE/></ATTR>... The names aren't
-        // published: they're matched by what they hold (our best reading of them).
+        // "Drum&Perc | Kick" -> "Drum&Perc", "Kick" (no bar: all of it, no sub).
+        void splitPair (const juce::String& value, juce::String& first, juce::String& second)
+        {
+            first = value.upToFirstOccurrenceOf ("|", false, false).trim();
+            second = value.contains ("|") ? value.fromFirstOccurrenceOf ("|", false, false).trim() : juce::String();
+        }
+
+        void addCharacter (MediaTags& t, const juce::String& value)
+        {
+            for (auto word : juce::StringArray::fromTokens (value, ",|;/ ", ""))
+                for (const auto& pair : characterPairs())
+                    for (const auto& side : { pair.left, pair.right })
+                        if (word.trim().equalsIgnoreCase (side))
+                            t.character.addIfNotAlreadyThere (side);
+        }
+    }
+
+    MediaTags MediaDatabase::tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key, juce::StringArray* searchable)
+    {
+        // <BWFXML><STEINBERG><ATTR_LIST><ATTR><NAME/><TYPE/><VALUE/></ATTR>... The names aren't
+        // published by its maker: the ones read first are those sound libraries and tag editors
+        // write (MusicalInstrument "Category|Sub", MusicalStyle "Style|Sub", ...); anything else
+        // is matched by what its name holds.
         MediaTags t;
         const auto xml = juce::parseXML (ixml);
-        const auto* steinberg = xml != nullptr ? xml->getChildByName ("STEINBERG") : nullptr;
+        const auto* steinberg = xml != nullptr ? (xml->hasTagName ("STEINBERG") ? xml.get() : xml->getChildByName ("STEINBERG")) : nullptr;
         const auto* list = steinberg != nullptr ? steinberg->getChildByName ("ATTR_LIST") : nullptr;
         if (list == nullptr)
             return t;
-        // ("Drum&Perc | Kick": the part after the bar.)
-        const auto lastPart = [] (const juce::String& v) { return v.fromLastOccurrenceOf ("|", false, false).trim(); };
+        juce::String genre, postCategory;
         for (const auto* attr : list->getChildWithTagNameIterator ("ATTR"))
         {
-            const auto name = attr->getChildElementAllSubText ("NAME", {}).toLowerCase();
+            const auto exact = attr->getChildElementAllSubText ("NAME", {}).trim();
+            const auto name = exact.toLowerCase();
             const auto value = attr->getChildElementAllSubText ("VALUE", {}).trim();
             if (value.isEmpty())
                 continue;
             const auto sub = name.contains ("sub");
-            if (name.contains ("category"))
-                (sub ? t.subCategory : t.category) = lastPart (value);
-            else if (name.contains ("style"))
-                (sub ? t.subStyle : t.style) = lastPart (value);
-            else if (name.contains ("character"))
+            juce::String first, second;
+            splitPair (value, first, second);
+            if (name == "musicalinstrument" || name == "musicalcategory" || (name.contains ("category") && ! name.contains ("post") && ! name.contains ("template")))
             {
-                for (auto word : juce::StringArray::fromTokens (value, ",|;", ""))
-                    for (const auto& pair : characterPairs())
-                        for (const auto& side : { pair.left, pair.right })
-                            if (word.trim().equalsIgnoreCase (side))
-                                t.character.addIfNotAlreadyThere (side);
+                if (sub)
+                    t.subCategory = second.isNotEmpty() ? second : first;
+                else
+                {
+                    t.category = first;
+                    if (second.isNotEmpty())
+                        t.subCategory = second;
+                }
             }
+            else if (name == "mediacategorypost")
+                postCategory = value;
+            else if (name.contains ("style"))
+            {
+                if (sub)
+                    t.subStyle = second.isNotEmpty() ? second : first;
+                else
+                {
+                    t.style = first;
+                    if (second.isNotEmpty())
+                        t.subStyle = second;
+                }
+            }
+            else if (name.contains ("genre"))
+                genre = value;
+            else if (name.contains ("character"))
+                addCharacter (t, value);
             else if (name.contains ("comment"))
                 t.comment = value;
             else if (name.contains ("tempo") || name.contains ("bpm"))
@@ -463,6 +502,55 @@ namespace pr7s
                 if (const auto k = keyFromName (spoken.removeCharacters (" ")); k.isNotEmpty())
                     key = k;
             }
+            else if (searchable != nullptr
+                     && (name.contains ("library") || name.contains ("album") || name.contains ("artist")
+                         || name.contains ("title") || name.contains ("company") || name.contains ("keyword")
+                         || name.contains ("cdname") || name.contains ("description")))
+                searchable->addIfNotAlreadyThere (value);
+        }
+        if (t.category.isEmpty() && postCategory.isNotEmpty())
+            splitPair (postCategory, t.category, t.subCategory);
+        else if (searchable != nullptr && postCategory.isNotEmpty())
+            searchable->addIfNotAlreadyThere (postCategory);
+        if (t.style.isEmpty() && genre.isNotEmpty())
+            splitPair (genre, t.style, t.subStyle);
+        return t;
+    }
+
+    MediaTags MediaDatabase::tagsFromAppleLoop (const juce::String& appleTags, juce::StringArray* searchable)
+    {
+        static const juce::StringArray genres { "Rock/Blues", "Electronic/Dance", "Jazz", "Urban", "World/Ethnic",
+                                                "Cinematic/New Age", "Orchestral", "Country/Folk", "Experimental", "Other Genre" };
+        // Apple's descriptors: those that are one of our character sides become one; the rest
+        // (Single, Ensemble, Part, Fill, Grooving, Arrhythmic, Melodic, Dissonant, Cheerful,
+        // Relaxed, Intense...) are searched.
+        static const juce::StringArray descriptors { "Single", "Ensemble", "Part", "Fill", "Acoustic", "Electric",
+                                                     "Dry", "Processed", "Clean", "Distorted", "Cheerful", "Dark",
+                                                     "Relaxed", "Intense", "Grooving", "Arrhythmic", "Melodic", "Dissonant" };
+        MediaTags t;
+        for (auto tag : juce::StringArray::fromTokens (appleTags, ";", ""))
+        {
+            tag = tag.trim();
+            if (tag.isEmpty())
+                continue;
+            if (genres.contains (tag))
+            {
+                if (t.style.isEmpty())
+                    t.style = tag;
+            }
+            else if (descriptors.contains (tag))
+            {
+                const auto before = t.character.size();
+                addCharacter (t, tag);
+                if (t.character.size() == before && searchable != nullptr)
+                    searchable->addIfNotAlreadyThere (tag);
+            }
+            else if (t.category.isEmpty())
+                t.category = tag;
+            else if (t.subCategory.isEmpty())
+                t.subCategory = tag;
+            else if (searchable != nullptr)
+                searchable->addIfNotAlreadyThere (tag);
         }
         return t;
     }
@@ -578,6 +666,12 @@ namespace pr7s
                                        juce::WavAudioFormat::riffInfoComments, juce::WavAudioFormat::riffInfoKeywords, juce::WavAudioFormat::riffInfoSubject })
                     if (const auto v = m.getValue (k, {}).trim(); v.isNotEmpty())
                         info.addIfNotAlreadyThere (v);
+                // Apple Loops' tags (0.224.0): genre, instrument, descriptors.
+                if (const auto apple = m.getValue (juce::AiffAudioFormat::appleTag, {}); apple.isNotEmpty())
+                    item.fileTags = tagsFromAppleLoop (apple, &info);
+                // A RIFF INFO genre is the style when nothing else gives one (0.224.0).
+                if (const auto genre = m.getValue (juce::WavAudioFormat::riffInfoGenre, {}).trim(); genre.isNotEmpty() && item.fileTags.style.isEmpty())
+                    item.fileTags.style = genre;
                 item.info = info.joinIntoString (" ").substring (0, 400);
             }
             // The other DAW's MediaBay tags, in the WAV's iXML.
@@ -586,11 +680,21 @@ namespace pr7s
                 {
                     double bpm = 0.0;
                     juce::String key;
-                    item.fileTags = tagsFromIXml (ixml, bpm, key);
+                    juce::StringArray more;
+                    auto fromIXml = tagsFromIXml (ixml, bpm, key, &more);
+                    // (the iXML's word wins; what it doesn't say is kept from INFO / ACID)
+                    if (fromIXml.style.isEmpty())
+                    {
+                        fromIXml.style = item.fileTags.style;
+                        fromIXml.subStyle = item.fileTags.subStyle;
+                    }
+                    item.fileTags = fromIXml;
                     if (bpm > 0.0 && item.bpm <= 0.0)
                         item.bpm = bpm;
                     if (key.isNotEmpty() && item.key.isEmpty())
                         item.key = key;
+                    if (! more.isEmpty())
+                        item.info = (item.info + " " + more.joinIntoString (" ")).trim().substring (0, 600);
                 }
         }
         else if (item.type == MediaType::pluginPreset)
