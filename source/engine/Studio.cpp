@@ -12460,6 +12460,9 @@ namespace pr7s
             saveRiffInto (saved, *composerRiff);
             project.architectRiff = saved;
         }
+        // (the riff kept exactly as given: followRiffInHand mustn't read it back from the song's text, which
+        // rounds its lengths and velocities a hair)
+        loadedRiffFrom = { false, composerRiff.has_value() ? 0 : -1 };
         modified = true;
     }
 
