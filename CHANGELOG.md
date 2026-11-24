@@ -2,7 +2,23 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.221.0
+## 0.222.0
+
+**More fills, and fills that belong to the groove.** You heard about ten fills over and over across hundreds of library grooves, and they weren't Toontrack's. Three things caused it:
+
+- For each part of a song (verse, chorus...), the drums lane picked its fill from only the top four fills. Fills that scored the same (most of them) were ranked by their file names, so the same four came up every time.
+- Fills from your favourite groove folders went ahead of everything else, including Toontrack's.
+- The one fill chosen played at every fill spot in the section, whatever groove was playing.
+
+Now the fills come from where the groove is:
+
+- **The groove's own song first.** Packs ship fills alongside each song's grooves, so the fills from the playing groove's own song folder come first, then fills from the same pack.
+- **Toontrack's before anyone else's.** A Toontrack groove only gets other packs' fills when Toontrack has fewer than four to offer. A groove from another pack keeps its own song's fills first, then Toontrack's.
+- **A different fill at each fill spot.** The drums lane picks from up to 12 fills, shuffled by the take, so ROLL gives a new set and fills don't repeat back to back.
+
+The description on the drums lane says which fills it used. Fills in a folder you've left out (electronic, brushes and the rest) are still never used. The FILLS list for locked bars (0.202.0) is unchanged.
+
+
 
 **ARCHITECT now composes over the chords you gave a section.** You changed a SECTIONS block's chords (in the block editor, or by moving chords on the chord track) and opened ARCHITECT on it, but it still played the original chords. The reason: with CHORDS FROM set to LIBRARY, ARCHITECT composed a block over the library progression and never looked at that block's chords on the chord track. A song keeps ARCHITECT's settings (since 0.206.0), so a song that started on LIBRARY stayed on it.
 

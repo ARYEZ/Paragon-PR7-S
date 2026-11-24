@@ -310,6 +310,11 @@ namespace pr7s
     // section and riff (kept).
     std::vector<LibraryGroove> composerGroovePool (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&, size_t size = 200);
     std::optional<LibraryGroove> composerLibraryGroove (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+    // (0.222.0, the owner: "it looks like there's about 10 different fills for those 200 drum riffs") The fills for a
+    // groove, best first: the fill files nearest it on disk (its own song's folder, then its pack's), Toontrack's
+    // before the others (a groove outside Toontrack keeps only the fills in its own folder ahead of Toontrack's), the
+    // section's words and the library's score after that; none from a left-out folder. At most `count`.
+    std::vector<LibraryGroove> composerLibraryFills (const LibraryGroove& groove, int section, const ComposerContext&, size_t count = 16);
     // The guitar's rhythm the drums fit to: your riff's lane when you pasted one, else the guitar lane (off: nothing).
     SyncRhythm composerDrumRiff (const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
     // (0.190.0) composeLayer(s) remember the lanes made while they run (the guitar was made again by every writer that
