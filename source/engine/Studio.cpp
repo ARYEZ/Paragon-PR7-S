@@ -11642,6 +11642,50 @@ namespace pr7s
             settings->setValue ("composerLooseCopies", on);
     }
 
+    int Studio::getRiffQualityLevel() const
+    {
+        return juce::jlimit (0, 2, settings != nullptr ? settings->getIntValue ("riffQuality", 1) : riffQualityHere);
+    }
+
+    void Studio::setRiffQualityLevel (int level)
+    {
+        riffQualityHere = juce::jlimit (0, 2, level);
+        if (settings != nullptr)
+            settings->setValue ("riffQuality", riffQualityHere);
+    }
+
+    std::vector<juce::String> Studio::getHiddenRiffs() const
+    {
+        juce::StringArray lines;
+        if (settings != nullptr)
+            lines.addLines (settings->getValue ("riffHidden"));
+        else
+            lines = hiddenRiffsHere;
+        lines.removeEmptyStrings();
+        std::vector<juce::String> paths (lines.begin(), lines.end());
+        std::sort (paths.begin(), paths.end());
+        paths.erase (std::unique (paths.begin(), paths.end()), paths.end());
+        return paths;
+    }
+
+    void Studio::hideRiff (const juce::File& file)
+    {
+        juce::StringArray lines;
+        for (const auto& p : getHiddenRiffs())
+            lines.add (p);
+        lines.addIfNotAlreadyThere (file.getFullPathName());
+        hiddenRiffsHere = lines;
+        if (settings != nullptr)
+            settings->setValue ("riffHidden", lines.joinIntoString ("\n"));
+    }
+
+    void Studio::clearHiddenRiffs()
+    {
+        hiddenRiffsHere.clear();
+        if (settings != nullptr)
+            settings->setValue ("riffHidden", juce::String());
+    }
+
     float Studio::defaultLaneLevel (int lane)
     {
         // (0.201.0, the owner's) bass, guitar, lead, chords, melody, drums, clean, acoustic

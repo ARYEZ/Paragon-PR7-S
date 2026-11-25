@@ -35,7 +35,34 @@ namespace pr7s
         // and anything inside PR7-D's linked groove folders.
         std::vector<juce::String> drumFiles;
         std::vector<juce::File> drumFolders;
+        // (0.228.0) Riffs whose quality (`riffQuality`) is under this are left out (0 keeps them all), and files
+        // you've hidden (full paths, sorted).
+        double leastQuality = 0.55;
+        std::vector<juce::String> hidden;
     };
+
+    // (0.228.0) How much a MIDI file is like a guitar riff, from its notes (ours, the owner: "half the riffs don't
+    // translate to guitar ... there's not much to them"). Each part 0-1:
+    //   - hits: how many places a bar something starts (a riff 4-16; a bar or two of pads 1-2);
+    //   - rhythm: how many different places in the bar it plays across its bars (a riff has a rhythm of its own);
+    //   - held: how little of it is long held notes (pads and chord beds hold for bars);
+    //   - stacks: how little of it is chords of four notes or more (a guitar plays single notes, power chords
+    //     and triads, not five-note pads spread over three octaves);
+    //   - leaps: how little it jumps over an octave between quick notes (arpeggiators jumping round the keyboard);
+    //   - repeats: how much its bars repeat each other's rhythm (riffs repeat; random noodling doesn't);
+    //   - filled: how few of its bars are empty;
+    //   - low: how much sits on a guitar's riffing strings once moved (under E4) rather than up the neck.
+    // The score is their weighted mix, pulled down by the worst of hits, held, stacks and leaps; `problems` names the weak ones ("mostly held notes", "big stacked chords").
+    struct RiffQuality
+    {
+        double score = 0.0;
+        double hits = 0.0, rhythm = 0.0, held = 0.0, stacks = 0.0, leaps = 0.0, repeats = 0.0, filled = 0.0, low = 0.0;
+        double hitsPerBar = 0.0;
+        juce::StringArray problems;
+    };
+    RiffQuality riffQuality (const std::vector<LineNote>& notes, int bars, double beatsPerBar);
+    // The quality choices: STRICT 0.7, NORMAL 0.55, EVERYTHING 0.
+    double riffQualityThreshold (int level);
 
     struct RiffFind
     {
@@ -49,6 +76,7 @@ namespace pr7s
         double playable = 0.0;            // 0-1: in a guitar's range
         double tempo = 0.0;               // 0: not known
         double score = 0.0;               // 0-1
+        double quality = 0.0;             // (0.228.0) `riffQuality`'s score
         juce::String reason;              // "in key 96%, MOVED +3, 2 bars, 120 BPM, says verse"
     };
 

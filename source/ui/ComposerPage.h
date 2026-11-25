@@ -292,6 +292,9 @@ public:
     void findRiffsInMediaBay();
     std::vector<pr7s::RiffFind> findRiffsNow();                 // (tests: at once)
     std::unique_ptr<OptionBrowser> makeRiffBrowser (std::vector<pr7s::RiffFind>);
+    // (0.228.0) The found riffs as the browser lists them (the hidden ones left out); hides one and lists them again.
+    std::vector<OptionBrowser::Option> riffOptions() const;
+    void hideFoundRiff (int id, OptionBrowser*);
     bool useFoundRiff (const pr7s::RiffFind&);
     bool hearFoundRiff (const pr7s::RiffFind&);
     pr7s::RiffFindRequest riffRequest() const;

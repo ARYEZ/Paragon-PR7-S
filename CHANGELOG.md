@@ -2,6 +2,31 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.228.0
+
+Find a Riff checks how much each MIDI file is like a guitar riff, and leaves out the ones that aren't.
+
+- **A riff score for every file.** It's worked out from the notes alone:
+  - how many hits a bar;
+  - how much rhythm there is (how many different places in the bar it plays);
+  - how much of it is long held notes;
+  - how much is chords of four notes or more;
+  - whether it jumps round the keyboard between quick notes;
+  - whether its bars repeat each other's shape;
+  - how many of its bars are empty;
+  - whether it sits low enough for riffing.
+
+  A file that fails badly on hits, held notes, stacked chords or leaps is pulled right down, whatever else it does well. A one-note pad or a five-note chord bed doesn't make a riff, however in key it is.
+- **The score leads the order:** riff quality first, then how much is in the key, then a guitar's range, the tempo and the section's name. Each riff's description starts with its riff score and names what's weak ("mostly held notes", "big stacked chords", "only 1.5 hits a bar", "jumps round the keyboard").
+- **+ MY RIFF > Riff Quality:**
+  - **Strict:** only clear riffs.
+  - **Normal:** the new default.
+  - **Everything:** the old way, with no quality filter.
+- **Hide a riff:** right-click a riff in the list for **Hide This Riff**, and that file is never listed again. **Riff Quality > Show the Hidden Riffs Again** brings them all back.
+- **Synth lines come down to the low strings:** of the octaves that fit a guitar about as well, the one that puts the line's middle note between C1 and C3 is chosen, where a guitar riffs. Before, a synth lead could stay up the neck.
+
+The score can't hear. It judges the shape of the notes, so a file it passes can still sound like nothing on your guitar sound. Hiding it is the answer there.
+
 ## 0.227.2
 
 Find a Riff now finds synth MIDI. You use it as guitar MIDI once it's moved into a guitar's range, and the finder already moves every riff by octaves to fit.

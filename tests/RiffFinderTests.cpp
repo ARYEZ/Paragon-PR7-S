@@ -302,3 +302,136 @@ TEST_CASE ("0.227.2: synth MIDI in packs called \"... Kit\" or \"... Beats\" is 
     CHECK (named (found, "Idea 3") != nullptr);
     CHECK (named (found, "Reese Bass Line") != nullptr);
 }
+
+namespace
+{
+    // A MIDI file of the given notes (beat, length, pitch), on channel 1.
+    juce::File writeNotes (const juce::File& dir, const juce::String& name, const std::vector<std::array<double, 3>>& notes)
+    {
+        juce::MidiMessageSequence seq;
+        seq.addEvent (juce::MidiMessage::tempoMetaEvent (500000), 0.0);
+        for (const auto& n : notes)
+        {
+            seq.addEvent (juce::MidiMessage::noteOn (1, (int) n[2], (juce::uint8) 100), n[0] * 480.0);
+            seq.addEvent (juce::MidiMessage::noteOff (1, (int) n[2]), (n[0] + n[1]) * 480.0 - 1.0);
+        }
+        seq.updateMatchedPairs();
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote (480);
+        file.addTrack (seq);
+        auto out = dir.getChildFile (name + ".mid");
+        juce::FileOutputStream stream (out);
+        file.writeTo (stream);
+        return out;
+    }
+
+    std::vector<LineNote> lineNotes (const std::vector<std::array<double, 3>>& notes)
+    {
+        std::vector<LineNote> out;
+        for (const auto& n : notes)
+        {
+            LineNote l;
+            l.beat = n[0];
+            l.length = n[1];
+            l.pitch = (int) n[2];
+            out.push_back (l);
+        }
+        return out;
+    }
+}
+
+TEST_CASE ("0.228.0: riff quality: pads, single held notes and noodling left out, riffs kept; synth lines brought down", "[composer][riff][riffinder]")
+{
+    Folder folder;
+    const auto aMinor = *keyFromText ("Am");
+
+    // A chug riff: palm-muted eighths with an accent pattern, two bars that repeat.
+    std::vector<std::array<double, 3>> chug;
+    for (int bar = 0; bar < 2; ++bar)
+        for (const auto [b, p] : std::vector<std::pair<double, int>> { { 0, 33 }, { 0.5, 33 }, { 0.75, 33 }, { 1.5, 36 }, { 2, 33 },
+                                                                       { 2.5, 33 }, { 3, 39 }, { 3.5, 38 } })
+            chug.push_back ({ bar * 4 + b, 0.2, (double) p });
+    // A pad: five-note chords held a bar each.
+    std::vector<std::array<double, 3>> pad;
+    for (int bar = 0; bar < 4; ++bar)
+        for (const auto p : { 45, 52, 57, 60, 64 })
+            pad.push_back ({ bar * 4.0, 4.0, (double) (p + (bar % 2) * 3) });
+    // One long note a bar.
+    std::vector<std::array<double, 3>> held;
+    for (int bar = 0; bar < 4; ++bar)
+        held.push_back ({ bar * 4.0, 3.5, 57.0 + (bar % 2) * 2 });
+    // Noodling: random-feeling notes jumping round the keyboard, no bar like another.
+    std::vector<std::array<double, 3>> noodle;
+    juce::Random random (17);
+    for (int i = 0; i < 24; ++i)
+        noodle.push_back ({ i * 0.333 + random.nextFloat() * 0.1, 0.2, (double) (40 + random.nextInt (40)) });
+    // A synth arpeggio line up the keyboard: sixteenths, the same shape each bar.
+    std::vector<std::array<double, 3>> synth;
+    for (int bar = 0; bar < 2; ++bar)
+        for (int s = 0; s < 16; ++s)
+            synth.push_back ({ bar * 4 + s * 0.25, 0.2, (double) std::vector<int> { 81, 84, 88, 84, 81, 79, 76, 79 }[(size_t) s % 8] });
+
+    // The measures alone.
+    const auto chugQ = riffQuality (lineNotes (chug), 2, 4.0);
+    const auto padQ = riffQuality (lineNotes (pad), 4, 4.0);
+    const auto heldQ = riffQuality (lineNotes (held), 4, 4.0);
+    const auto noodleQ = riffQuality (lineNotes (noodle), 2, 4.0);
+    CHECK (chugQ.score > 0.85);
+    CHECK (chugQ.problems.isEmpty());
+    CHECK (padQ.score < 0.4);
+    CHECK (padQ.problems.contains ("big stacked chords"));
+    CHECK (padQ.problems.contains ("mostly held notes"));
+    CHECK (heldQ.score < 0.5);
+    CHECK (heldQ.problems.contains ("mostly held notes"));
+    CHECK (noodleQ.score < 0.7);
+    CHECK (noodleQ.problems.contains ("jumps round the keyboard"));
+    CHECK (riffQualityThreshold (0) == 0.0);
+    CHECK (riffQualityThreshold (1) < riffQualityThreshold (2));
+
+    std::vector<MediaItem> items { itemOf (writeNotes (folder.dir, "Chug", chug), "Am", 2),
+                                   itemOf (writeNotes (folder.dir, "Pad chords", pad), "Am", 4),
+                                   itemOf (writeNotes (folder.dir, "Held", held), "Am", 4),
+                                   itemOf (writeNotes (folder.dir, "Noodle", noodle), "Am", 2),
+                                   itemOf (writeNotes (folder.dir, "Synth arp", synth), "Am", 2) };
+    for (auto& item : items)
+        item.notes = 8;
+
+    RiffFindRequest request;
+    request.key = aMinor;
+    const auto normal = findRiffs (items, request);
+    CHECK (named (normal, "Chug") != nullptr);
+    CHECK (named (normal, "Pad chords") == nullptr);
+    CHECK (named (normal, "Held") == nullptr);
+    const auto* arp = named (normal, "Synth arp");
+    REQUIRE (arp != nullptr);
+    // Brought down from A5 to the riffing strings (its middle note under C3).
+    std::vector<int> pitches;
+    for (const auto& n : arp->riff.notes)
+        pitches.push_back (n.pitch);
+    std::sort (pitches.begin(), pitches.end());
+    CHECK (pitches[pitches.size() / 2] <= 60);
+    CHECK (pitches.front() >= 33);
+    CHECK (named (normal, "Chug")->reason.startsWith ("riff "));
+
+    // EVERYTHING lists them all; STRICT keeps the chug.
+    request.leastQuality = riffQualityThreshold (0);
+    CHECK (findRiffs (items, request).size() == 5);
+    request.leastQuality = riffQualityThreshold (2);
+    CHECK (named (findRiffs (items, request), "Chug") != nullptr);
+
+    // A hidden file isn't read.
+    request.leastQuality = 0.0;
+    request.hidden = { items[0].file.getFullPathName() };
+    CHECK (named (findRiffs (items, request), "Chug") == nullptr);
+
+    // The studio keeps the choice and the hidden files.
+    Studio studio (false);
+    CHECK (studio.getRiffQualityLevel() == 1);
+    studio.setRiffQualityLevel (2);
+    CHECK (studio.getRiffQualityLevel() == 2);
+    studio.hideRiff (items[1].file);
+    studio.hideRiff (items[1].file);
+    CHECK (studio.getHiddenRiffs().size() == 1);
+    studio.clearHiddenRiffs();
+    CHECK (studio.getHiddenRiffs().empty());
+}

@@ -419,6 +419,13 @@ namespace pr7s
         void resetComposerTracks();
         bool getLooseCopies() const;
         void setLooseCopies (bool);
+        // (0.228.0) FIND A RIFF's quality choice (0 EVERYTHING, 1 NORMAL, 2 STRICT; settings "riffQuality") and the
+        // files you've hidden from it (full paths, sorted; settings "riffHidden", a path a line).
+        int getRiffQualityLevel() const;
+        void setRiffQualityLevel (int);
+        std::vector<juce::String> getHiddenRiffs() const;
+        void hideRiff (const juce::File&);
+        void clearHiddenRiffs();
         // (0.201.0, the owner's levels) The fader level a track ARCHITECT itself makes for a lane starts at (by lane,
         // composerTrackPart's order; defaults chords -11.5, melody -9.5, bass -5.5 dB, the rest 0). Tracks found by
         // name keep their own fader. Settings "composerLaneLevels" (dB a line; in memory without a settings file),
@@ -2116,6 +2123,8 @@ namespace pr7s
         std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;
         std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)
         bool looseCopiesHere = true;
+        int riffQualityHere = 1;
+        juce::StringArray hiddenRiffsHere;
         bool sectionTonesHere = true;   // (0.205.0, without a settings file)
         int sectionToneBlocks = 0;
         std::array<ToneChoice, 3> toneChoicesHere {};   // (0.204.0; lead, clean, acoustic, without a settings file)

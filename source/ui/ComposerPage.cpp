@@ -2028,6 +2028,18 @@ void ComposerPage::showPasteMenu()
     menu.addSeparator();
     menu.addItem (10, isFindingRiffs() ? juce::String ("Finding Riffs in the MediaBay...") : juce::String ("Find a Riff in the MediaBay (in the Song's Key)..."),
                   ! isFindingRiffs());   // (0.227.0)
+    {
+        // (0.228.0) How good a riff has to be to be listed; the files you've hidden.
+        juce::PopupMenu quality;
+        const auto level = studio.getRiffQualityLevel();
+        quality.addItem (22, "Strict (only clear riffs)", true, level == 2);
+        quality.addItem (21, "Normal", true, level == 1);
+        quality.addItem (20, "Everything (no quality filter)", true, level == 0);
+        const auto hiddenCount = (int) studio.getHiddenRiffs().size();
+        quality.addSeparator();
+        quality.addItem (23, "Show the " + juce::String (hiddenCount) + " Hidden Riffs Again", hiddenCount > 0);
+        menu.addSubMenu ("Riff Quality", quality);
+    }
     menu.addItem (6, "Learn My Band: Read Our Record...", onLearnMyBand != nullptr);   // (0.82.0)
     menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (pasteKey),
                         [safe = juce::Component::SafePointer<ComposerPage> (this), partId, songRiffs] (int chosen)
@@ -2047,6 +2059,16 @@ void ComposerPage::showPasteMenu()
                             if (chosen == 10)
                             {
                                 safe->findRiffsInMediaBay();
+                                return;
+                            }
+                            if (chosen >= 20 && chosen <= 22)
+                            {
+                                safe->studio.setRiffQualityLevel (chosen - 20);
+                                return;
+                            }
+                            if (chosen == 23)
+                            {
+                                safe->studio.clearHiddenRiffs();
                                 return;
                             }
                             if (chosen == 6)
@@ -4687,6 +4709,8 @@ pr7s::RiffFindRequest ComposerPage::riffRequest() const
     for (const auto& g : context.libraryGrooves)
         request.drumFiles.push_back (g.file.getFullPathName());
     std::sort (request.drumFiles.begin(), request.drumFiles.end());
+    request.leastQuality = pr7s::riffQualityThreshold (studio.getRiffQualityLevel());   // (0.228.0)
+    request.hidden = studio.getHiddenRiffs();
     return request;
 }
 
@@ -4699,7 +4723,8 @@ namespace
         const auto bpb = juce::jmax (0.25, request.beatsPerBar);
         for (const auto& item : studio.getMediaBay().getItems())
             if (item.type == pr7s::MediaType::midi && item.notes >= 3 && (item.beats <= 0.0 || item.beats <= 17.0 * bpb + 1.0)
-                && ! pr7s::looksLikeDrums (item) && ! pr7s::isKnownDrumFile (item.file, request))
+                && ! pr7s::looksLikeDrums (item) && ! pr7s::isKnownDrumFile (item.file, request)
+                && ! std::binary_search (request.hidden.begin(), request.hidden.end(), item.file.getFullPathName()))
                 items.push_back (item);
         return items;
     }
@@ -4754,7 +4779,10 @@ void ComposerPage::finishRiffSearch()
     riffSearch.reset();
     if (found.empty())
     {
-        status = "No riffs found in the MediaBay's MIDI files (none 1-16 bars long with notes but drums)";
+        const auto level = studio.getRiffQualityLevel();
+        status = level > 0 ? juce::String ("No riffs found in the MediaBay's MIDI files good enough for ") + (level == 2 ? "STRICT" : "NORMAL")
+                                 + " (+ MY RIFF > Riff Quality > Everything lists them all)"
+                           : juce::String ("No riffs found in the MediaBay's MIDI files (none 1-16 bars long with notes but drums)");
         repaint();
         return;
     }
@@ -4767,22 +4795,7 @@ void ComposerPage::finishRiffSearch()
 std::unique_ptr<OptionBrowser> ComposerPage::makeRiffBrowser (std::vector<pr7s::RiffFind> found)
 {
     riffsShown = std::move (found);
-    std::vector<OptionBrowser::Option> options;
-    const auto bpb = juce::jmax (0.25, context.beatsPerBar);
-    const auto layer = state.riffLayer();
-    for (int i = 0; i < (int) riffsShown.size(); ++i)
-    {
-        const auto& f = riffsShown[(size_t) i];
-        OptionBrowser::Option o;
-        o.id = i;
-        o.name = f.name + "  (" + f.folder + ")";
-        o.description = juce::String (juce::roundToInt (f.score * 100.0)) + "% fit: " + f.reason + ".  " + f.file.getFullPathName();
-        o.group = f.shift == 0 && f.inKey >= 0.95 ? "IN THE SONG'S KEY" : f.shift == 0 ? "MOSTLY IN KEY" : "MOVED INTO KEY";
-        o.idea = pr7s::tileRiff (f.riff, f.riff.bars * bpb, bpb);
-        o.idea.part = pr7s::composerPartOf (layer);
-        options.push_back (std::move (o));
-    }
-    auto browser = std::make_unique<OptionBrowser> ("RIFFS FROM THE MEDIABAY", std::move (options), 0, studio.getOptionMemory(), riffListKey);
+    auto browser = std::make_unique<OptionBrowser> ("RIFFS FROM THE MEDIABAY", riffOptions(), 0, studio.getOptionMemory(), riffListKey);
     browser->setAutoHear (true);
     browser->setGroupOrder ({ "IN THE SONG'S KEY", "MOSTLY IN KEY", "MOVED INTO KEY" });
     juce::Component::SafePointer<ComposerPage> safe (this);
@@ -4801,7 +4814,57 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeRiffBrowser (std::vector<pr7s::
     };
     browser->onFavourite = [safe] (const juce::String& name, bool on) { if (safe != nullptr) safe->studio.setOptionFavourite (riffListKey, name, on); };
     browser->onClosed = [safe] { if (safe != nullptr) safe->endTrial (false); };
+    // (0.228.0) Right-click: never list that file again.
+    juce::Component::SafePointer<OptionBrowser> shown (browser.get());
+    browser->onRightClick = [safe, shown] (int id, juce::Point<int> screen)
+    {
+        if (safe == nullptr || ! juce::isPositiveAndBelow (id, (int) safe->riffsShown.size()))
+            return;
+        juce::PopupMenu menu;
+        menu.addItem (1, "Hide This Riff (never list " + safe->riffsShown[(size_t) id].name + " again)");
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetScreenArea ({ screen.x, screen.y, 1, 1 }),
+                            [safe, shown, id] (int chosen)
+                            {
+                                if (chosen == 1 && safe != nullptr)
+                                    safe->hideFoundRiff (id, shown.getComponent());
+                            });
+    };
     return browser;
+}
+
+std::vector<OptionBrowser::Option> ComposerPage::riffOptions() const
+{
+    std::vector<OptionBrowser::Option> options;
+    const auto bpb = juce::jmax (0.25, context.beatsPerBar);
+    const auto layer = state.riffLayer();
+    const auto hidden = studio.getHiddenRiffs();
+    for (int i = 0; i < (int) riffsShown.size(); ++i)
+    {
+        const auto& f = riffsShown[(size_t) i];
+        if (std::binary_search (hidden.begin(), hidden.end(), f.file.getFullPathName()))
+            continue;
+        OptionBrowser::Option o;
+        o.id = i;
+        o.name = f.name + "  (" + f.folder + ")";
+        o.description = juce::String (juce::roundToInt (f.score * 100.0)) + "% fit: " + f.reason + ".  " + f.file.getFullPathName();
+        o.group = f.shift == 0 && f.inKey >= 0.95 ? "IN THE SONG'S KEY" : f.shift == 0 ? "MOSTLY IN KEY" : "MOVED INTO KEY";
+        o.idea = pr7s::tileRiff (f.riff, f.riff.bars * bpb, bpb);
+        o.idea.part = pr7s::composerPartOf (layer);
+        options.push_back (std::move (o));
+    }
+    return options;
+}
+
+void ComposerPage::hideFoundRiff (int id, OptionBrowser* browser)
+{
+    if (! juce::isPositiveAndBelow (id, (int) riffsShown.size()))
+        return;
+    const auto& f = riffsShown[(size_t) id];
+    studio.hideRiff (f.file);
+    status = "Hidden: " + f.name + " (+ MY RIFF > Riff Quality > Show the Hidden Riffs Again brings it back)";
+    repaint();
+    if (browser != nullptr)
+        browser->setOptions (riffOptions());
 }
 
 bool ComposerPage::hearFoundRiff (const pr7s::RiffFind& found)
