@@ -191,3 +191,72 @@ TEST_CASE ("0.227.0: ARCHITECT finds riffs, hears one on the riff's lane and kee
     CHECK_FALSE (page.isFindingRiffs());
     browser.reset();
 }
+
+TEST_CASE ("0.227.1: drum grooves left out wherever they are: Toontrack's folders, drum notes on channel 1, the groove library", "[composer][riff][riffinder]")
+{
+    Folder folder;
+    const auto aMinor = *keyFromText ("Am");
+
+    // The owner's layout: G:\Paragon MIDI\Toontrack\000329@21st_Century_Metal\520@Straight_7#4\200-S125@Bridge\Variation_01.mid
+    // (the "Toontrack" folder put four up from the file, past where the name check looked).
+    auto deep = folder.dir.getChildFile ("Paragon MIDI").getChildFile ("Packs").getChildFile ("000329@21st_Century_Metal")
+                          .getChildFile ("520@Straight_7#4").getChildFile ("200-S125@Bridge");
+    deep.createDirectory();
+    const auto coded = writeRiff (deep, "Variation_01", { 40, 43, 45 }, 2);
+    auto toontrack = folder.dir.getChildFile ("Toontrack").getChildFile ("A").getChildFile ("B").getChildFile ("C");
+    toontrack.createDirectory();
+    const auto byName = writeRiff (toontrack, "Variation_02", { 40, 43, 45 }, 2);
+
+    // A drum groove on channel 1 named like a riff: kick and hat together, snare on the backbeat.
+    juce::File grooveLike;
+    {
+        juce::MidiMessageSequence seq;
+        for (int i = 0; i < 16; ++i)
+        {
+            const auto t = i * 240.0;
+            seq.addEvent (juce::MidiMessage::noteOn (1, 42, (juce::uint8) 90), t);
+            seq.addEvent (juce::MidiMessage::noteOff (1, 42), t + 60);
+            if (i % 4 == 0)
+            {
+                seq.addEvent (juce::MidiMessage::noteOn (1, 36, (juce::uint8) 110), t);
+                seq.addEvent (juce::MidiMessage::noteOff (1, 36), t + 60);
+            }
+            if (i % 4 == 2)
+            {
+                seq.addEvent (juce::MidiMessage::noteOn (1, 38, (juce::uint8) 110), t);
+                seq.addEvent (juce::MidiMessage::noteOff (1, 38), t + 60);
+            }
+        }
+        seq.updateMatchedPairs();
+        juce::MidiFile file;
+        file.setTicksPerQuarterNote (480);
+        file.addTrack (seq);
+        grooveLike = folder.dir.getChildFile ("Heavy idea.mid");
+        juce::FileOutputStream stream (grooveLike);
+        file.writeTo (stream);
+    }
+    const auto inLibrary = writeRiff (folder.dir, "Library thing", { 40, 43, 45 }, 2);
+    const auto riff = writeRiff (folder.dir, "Chug verse riff", { 40, 43, 45, 47, 50, 40 }, 2);
+    // A drop-A tritone riff (A1, D#2, the C2 / D2 / F#2 around it) must not read as drums.
+    const auto tritone = writeRiff (folder.dir, "Tritone riff", { 33, 39, 36, 42, 38, 33 }, 2);
+
+    std::vector<MediaItem> items { itemOf (coded, "", 2), itemOf (byName, "", 2), itemOf (grooveLike, "", 4),
+                                   itemOf (inLibrary, "", 2), itemOf (riff, "Em", 2), itemOf (tritone, "", 2) };
+    CHECK (looksLikeDrums (items[0]));
+    CHECK (looksLikeDrums (items[1]));
+    CHECK_FALSE (looksLikeDrums (items[2]));   // its name says nothing: its notes do
+
+    RiffFindRequest request;
+    request.key = aMinor;
+    request.drumFiles = { inLibrary.getFullPathName() };
+    CHECK (isKnownDrumFile (inLibrary, request));
+    const auto found = findRiffs (items, request);
+    REQUIRE (found.size() == 2);
+    CHECK (named (found, "Chug verse riff") != nullptr);
+    CHECK (named (found, "Tritone riff") != nullptr);
+
+    // A file inside one of PR7-D's linked groove folders.
+    request.drumFiles.clear();
+    request.drumFolders = { folder.dir };
+    CHECK (findRiffs (items, request).empty());
+}

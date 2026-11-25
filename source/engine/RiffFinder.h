@@ -31,6 +31,10 @@ namespace pr7s
         DrumSection section = DrumSection::verse;
         int most = 100;                   // how many come back (the best)
         int mostRead = 4000;              // how many files are read at most (the likeliest by name and tempo first)
+        // (0.227.1) Known drum grooves left out: PR7-D's library and ARCHITECT's drum grooves (full paths, sorted),
+        // and anything inside PR7-D's linked groove folders.
+        std::vector<juce::String> drumFiles;
+        std::vector<juce::File> drumFolders;
     };
 
     struct RiffFind
@@ -48,8 +52,14 @@ namespace pr7s
         juce::String reason;              // "in key 96%, MOVED +3, 2 bars, 120 BPM, says verse"
     };
 
-    // A drum file by its name, folders or category (the notes are checked as it's read).
+    // A drum file by its name, any of its folders (a drum word, a drum library's name such as Toontrack, EZX or SDX,
+    // or Toontrack's "NNN@Name" folders) or its category (the notes are checked as it's read).
     bool looksLikeDrums (const MediaItem&);
+    // (0.227.1) Notes that read as a drum kit: a kick, a snare and a hi-hat or cymbal note of the General MIDI /
+    // Toontrack layouts all played, most notes on kit notes, and kicks struck together with a hat or cymbal.
+    bool notesLookLikeDrums (const std::vector<Note>&);
+    // A file the request says is a drum groove (its lists or folders).
+    bool isKnownDrumFile (const juce::File&, const RiffFindRequest&);
     // A key written as the MediaBay writes it ("Am", "F#", "Bbm"); none when empty or not one.
     std::optional<Key> keyFromText (const juce::String&);
     // One file's notes as a found riff (none: no notes left once the drums are out, or longer than 16 bars).

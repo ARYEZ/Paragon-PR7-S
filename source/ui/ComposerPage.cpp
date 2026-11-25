@@ -4678,6 +4678,15 @@ pr7s::RiffFindRequest ComposerPage::riffRequest() const
     request.bpm = context.bpm;
     request.beatsPerBar = context.beatsPerBar;
     request.section = getSection();
+    // (0.227.1) Your drum grooves left out by where they are, whatever their notes or names say.
+    const auto& library = studio.getPr7dLibrary();
+    request.drumFolders = library.linkedFolders;
+    request.drumFiles.reserve (library.grooves.size() + context.libraryGrooves.size());
+    for (const auto& g : library.grooves)
+        request.drumFiles.push_back (g.file.getFullPathName());
+    for (const auto& g : context.libraryGrooves)
+        request.drumFiles.push_back (g.file.getFullPathName());
+    std::sort (request.drumFiles.begin(), request.drumFiles.end());
     return request;
 }
 
@@ -4690,7 +4699,7 @@ namespace
         const auto bpb = juce::jmax (0.25, request.beatsPerBar);
         for (const auto& item : studio.getMediaBay().getItems())
             if (item.type == pr7s::MediaType::midi && item.notes >= 3 && (item.beats <= 0.0 || item.beats <= 17.0 * bpb + 1.0)
-                && ! pr7s::looksLikeDrums (item))
+                && ! pr7s::looksLikeDrums (item) && ! pr7s::isKnownDrumFile (item.file, request))
                 items.push_back (item);
         return items;
     }

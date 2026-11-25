@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.227.1
+
+**Find a Riff no longer lists drum grooves.** You found it offering your Toontrack drum MIDI as riffs ("Variation_01 (200-S125@Bridge)"). Those files sit in folders like G:\Paragon MIDI\Toontrack\000329@21st_Century_Metal\520@Straight_7#4\200-S125@Bridge: none of the nearest three folder names says "drums", the word "Toontrack" was four folders up (the check only looked three), and their notes are on channel 1, so they passed as riffs. Now a file is left out as drums when any of these is true:
+
+- **Where it is:** it's in PR7-D's groove library or inside a folder PR7-D links, or it's one of the drum grooves ARCHITECT's drums lane uses.
+- **Its path:** any folder along the whole path says drums, kit, groove, fill, snare and the like, or names a drum library (Toontrack, EZX, SDX, EZdrummer, Superior, BFD), or has Toontrack's numbered "NNN@Name" folders.
+- **Its notes:** it plays a kick, a snare and hats or cymbals on the drum kit's notes, with the kick struck together with a hat or cymbal: a drum groove whatever its name. A guitar riff low in drop A (A1, C2, D2, F#2...) isn't caught by this: tested.
+
 ## 0.227.0
 
 **Find a riff in the MediaBay.** You asked whether ARCHITECT could look through your MediaBay for riffs in the song's key that would suit the part. ARCHITECT's + MY RIFF menu now has **Find a Riff in the MediaBay (in the Song's Key)...**

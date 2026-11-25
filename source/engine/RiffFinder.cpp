@@ -108,8 +108,74 @@ namespace pr7s
         if (item.tags.category.containsIgnoreCase ("drum") || item.tags.category.containsIgnoreCase ("percussion")
             || item.fileTags.category.containsIgnoreCase ("drum"))
             return true;
-        return says (wordsOf (item.file), { "drum", "drums", "kit", "groove", "grooves", "beat", "beats", "perc", "percussion",
-                                            "fill", "fills", "kick", "snare", "hat", "hats", "cymbal", "toms" });
+        // Every folder of its path, not only the nearest three: drum packs nest deep (Toontrack/pack/style/part/file).
+        juce::StringArray words;
+        juce::String word;
+        bool toontrackCode = false;
+        for (auto folder = item.file.getParentDirectory(); folder.getFileName().isNotEmpty() && folder != folder.getParentDirectory();
+             folder = folder.getParentDirectory())
+        {
+            const auto name = folder.getFileName();
+            // Toontrack's folders are numbered "000329@21st_Century_Metal", "200-S125@Bridge".
+            if (const auto at = name.indexOfChar ('@'); at > 0 && name.substring (0, at).containsOnly ("0123456789-SsTt"))
+                toontrackCode = true;
+        }
+        if (toontrackCode)
+            return true;
+        for (auto c : item.file.getFullPathName().toLowerCase() + " ")
+        {
+            if (juce::CharacterFunctions::isLetterOrDigit (c))
+                word += juce::String::charToString (c);
+            else if (word.isNotEmpty())
+            {
+                words.add (word);
+                word.clear();
+            }
+        }
+        return says (words, { "drum", "drums", "kit", "groove", "grooves", "beat", "beats", "perc", "percussion",
+                              "fill", "fills", "kick", "snare", "hat", "hats", "cymbal", "toms", "toontrack", "ezx", "sdx",
+                              "ezdrummer", "superior", "drummer", "bfd" });
+    }
+
+    bool notesLookLikeDrums (const std::vector<Note>& notes)
+    {
+        if (notes.size() < 8)
+            return false;
+        // The kit notes of General MIDI and Toontrack's layout: kicks, snares, hats, toms, cymbals.
+        const auto kit = [] (int p) { return p >= 21 && p <= 59; };
+        const auto isKick = [] (int p) { return p == 35 || p == 36; };   // (not 33/34: a drop-A guitar's low notes)
+        const auto isSnare = [] (int p) { return p == 38 || p == 40 || p == 37 || p == 39; };
+        const auto isTop = [] (int p) { return p == 42 || p == 44 || p == 46 || (p >= 21 && p <= 26) || p == 49 || p == 51
+                                             || p == 52 || p == 53 || p == 55 || p == 57 || p == 59; };
+        int onKit = 0, kicks = 0, snares = 0, tops = 0, kicksWithTop = 0;
+        for (const auto& n : notes)
+        {
+            onKit += kit (n.pitch) ? 1 : 0;
+            snares += isSnare (n.pitch) ? 1 : 0;
+            tops += isTop (n.pitch) ? 1 : 0;
+            if (isKick (n.pitch))
+            {
+                ++kicks;
+                for (const auto& m : notes)
+                    if (isTop (m.pitch) && std::abs (m.start - n.start) < 0.02)
+                    {
+                        ++kicksWithTop;
+                        break;
+                    }
+            }
+        }
+        return kicks > 0 && snares > 0 && tops * 5 >= (int) notes.size() && onKit >= (int) notes.size() * 3 / 4 && kicksWithTop * 4 >= kicks;
+    }
+
+    bool isKnownDrumFile (const juce::File& file, const RiffFindRequest& request)
+    {
+        const auto path = file.getFullPathName();
+        if (std::binary_search (request.drumFiles.begin(), request.drumFiles.end(), path))
+            return true;
+        for (const auto& folder : request.drumFolders)
+            if (file.isAChildOf (folder))
+                return true;
+        return false;
     }
 
     std::optional<Key> keyFromText (const juce::String& text)
@@ -150,6 +216,8 @@ namespace pr7s
         if (notes.size() < 3)
             return std::nullopt;
         std::sort (notes.begin(), notes.end(), [] (const Note& a, const Note& b) { return a.start < b.start; });
+        if (notesLookLikeDrums (notes))
+            return std::nullopt;   // a drum groove written on channel 1 (most packs' are)
         const auto bpb = juce::jmax (0.25, request.beatsPerBar);
         const auto firstBar = std::floor (notes.front().start / bpb + 1e-6) * bpb;
         double last = 0.0;
@@ -252,7 +320,7 @@ namespace pr7s
         std::vector<std::pair<double, const MediaItem*>> likely;
         for (const auto& item : items)
         {
-            if (item.type != MediaType::midi || item.notes < 3 || looksLikeDrums (item))
+            if (item.type != MediaType::midi || item.notes < 3 || looksLikeDrums (item) || isKnownDrumFile (item.file, request))
                 continue;
             if (item.beats > 0.0 && item.beats > 17.0 * bpb + 1.0)
                 continue;   // longer than 16 bars (and the bar the first note may start in)
