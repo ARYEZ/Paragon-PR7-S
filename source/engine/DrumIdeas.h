@@ -131,4 +131,16 @@ namespace pr7s
     // The notes of a library file's last bar, from its first note in that bar (beats from that note's quarter; one bar
     // at most). Empty if the file can't be read. Files are read once and kept (by path and date).
     std::vector<LineNote> libraryFillBar (const LibraryGroove&, double beatsPerBar);
+
+    // (0.232.0, the owner: "Toontrack keeps all its isolated fills in 'fills' folders NOT IN SECTION MATCHING
+    // FOLDERS") The nearest folder on a file's path whose name starts with the word FILL or FILLS (kind 0) or
+    // TRANSITION(S) (kind 1), and the folder holding it (`owner`: the song folder those fills belong to). None: kind -1.
+    struct FillFolder { int kind = -1; juce::File owner; };
+    FillFolder fillFolderOf (const juce::File&);
+    // (0.232.0, the owner: "2 bars must be the max allowed for fills and the whole fill plays") A fill file whole:
+    // from its first note's quarter to its end (the file's bars when known, else its notes' last bar; a lone crash on
+    // the next bar line is the landing, left out). `length` its length in beats. Empty when it can't be read or runs
+    // over two bars.
+    std::vector<LineNote> libraryFillNotes (const LibraryGroove&, double beatsPerBar, double& length);
+    inline constexpr int mostFillBars = 2;
 }

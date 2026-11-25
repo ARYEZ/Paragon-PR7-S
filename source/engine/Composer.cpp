@@ -515,16 +515,25 @@ namespace pr7s
             // riffs") The fills nearest the groove on disk (its own song's, then its pack's), Toontrack's first, and a
             // different one at each fill place: before, the section's best four (by name order among equals, the
             // favourite folders' ahead) were all it chose from, the same one at every place, whatever the groove.
-            const auto fills = composerLibraryFills (*groove, lane.style, c, 12);
+            std::vector<int> groups;
+            const auto fills = composerLibraryFills (*groove, lane.style, c, 12, &groups);
             if (! fills.empty() && bars >= 1)
             {
-                // The order the fills come in: shuffled by the take (ROLL gives another), the nearest ones ahead.
+                // The order the fills come in: shuffled by the take (ROLL gives another) within each group, the
+                // nearest group first (0.232.0: the song folder's fills, then its transitions, then the favourites'...).
                 std::vector<size_t> order (fills.size());
                 for (size_t i = 0; i < order.size(); ++i)
                     order[i] = i;
                 juce::Random random ((juce::int64) lane.variation * 7919 + 4211);
-                for (size_t i = order.size(); i > 1; --i)
-                    std::swap (order[i - 1], order[(size_t) random.nextInt ((int) i)]);
+                for (size_t from = 0; from < order.size();)
+                {
+                    auto to = from + 1;
+                    while (to < order.size() && groups[to] == groups[from])
+                        ++to;
+                    for (size_t i = to - from; i > 1; --i)
+                        std::swap (order[from + i - 1], order[from + (size_t) random.nextInt ((int) i)]);
+                    from = to;
+                }
                 const auto every = c.drums.fillEvery;
                 std::vector<juce::String> used;
                 size_t next = 0;
@@ -533,22 +542,24 @@ namespace pr7s
                     const auto last = bar == bars - 1;
                     if (! last && (every <= 0 || (bar + 1) % every != 0))
                         continue;
-                    // The next fill in the order with notes (a file that won't read is passed over).
+                    // The next fill in the order with notes (a file that won't read, or longer than the room, is
+                    // passed over). (0.232.0) The whole fill, two bars at most, ending on the fill place's bar line;
+                    // the room: back to the last fill place (or the section's start).
+                    const auto end = juce::jmin (length, (bar + 1) * bpb);
+                    const auto room = juce::jmin (end, (double) (every > 0 ? every : bars) * bpb);
                     std::vector<LineNote> notes;
                     const LibraryGroove* fill = nullptr;
+                    auto fillLength = 0.0;
                     for (size_t tries = 0; tries < order.size() && notes.empty(); ++tries)
                     {
                         fill = &fills[order[next % order.size()]];
                         ++next;
-                        notes = libraryFillBar (*fill, bpb);
+                        notes = libraryFillNotes (*fill, bpb, fillLength);
+                        if (fillLength > room + 1.0e-6)
+                            notes.clear();
                     }
                     if (notes.empty() || fill == nullptr)
                         break;
-                    auto fillLength = 0.0;
-                    for (const auto& n : notes)
-                        fillLength = juce::jmax (fillLength, n.beat);
-                    fillLength = juce::jlimit (bpb / 4.0, bpb, std::ceil ((fillLength + 1.0e-6) / (bpb / 4.0)) * (bpb / 4.0));
-                    const auto end = juce::jmin (length, (bar + 1) * bpb);
                     const auto from = end - fillLength;
                     idea->notes.erase (std::remove_if (idea->notes.begin(), idea->notes.end(), [&] (const LineNote& n)
                                        { return n.beat >= from - 1.0e-6 && n.beat < end - 1.0e-6; }), idea->notes.end());
@@ -31851,6 +31862,10 @@ namespace pr7s
             std::vector<juce::String> folders;  // each fill's folder, as a path
             std::vector<std::string> lowered;   // (0.229.0) the same, lower case, for foldersInCommon by bytes
             std::vector<bool> toontrack;        // in the Toontrack folder
+            // (0.232.0) Its kind (0 in a FILLS folder, 1 in a TRANSITIONS folder, 2 a fill by its name) and the song
+            // folder it belongs to (the folder holding that FILLS / TRANSITIONS folder, else its own), lower case.
+            std::vector<int> kind;
+            std::vector<std::string> owner;
             std::unordered_map<std::string, size_t> byPath;   // (0.229.0) every groove's full path -> its index
         };
 
@@ -31884,8 +31899,11 @@ namespace pr7s
                     classifyGroove (worked);
                     g = &worked;
                 }
-                if (! g->fill || g->excluded)
+                if (! g->fill || g->excluded || g->bars > mostFillBars)   // (0.232.0: two bars at most)
                     continue;
+                const auto where = fillFolderOf (list[i].file);
+                index->kind.push_back (where.kind < 0 ? 2 : where.kind);
+                index->owner.push_back (lowerBytes ((where.kind < 0 ? list[i].file.getParentDirectory() : where.owner).getFullPathName()));
                 index->fills.push_back (i);
                 index->folders.push_back (list[i].file.getParentDirectory().getFullPathName());
                 index->lowered.push_back (lowerBytes (index->folders.back()));
@@ -31923,62 +31941,80 @@ namespace pr7s
         }
     }
 
-    std::vector<LibraryGroove> composerLibraryFills (const LibraryGroove& groove, int section, const ComposerContext& c, size_t count)
+    std::vector<LibraryGroove> composerLibraryFills (const LibraryGroove& groove, int section, const ComposerContext& c, size_t count,
+                                                     std::vector<int>* groups)
     {
+        if (groups != nullptr)
+            groups->clear();
         if (c.libraryGrooves.empty() || count == 0)
             return {};
         const auto& index = fillIndexOf (c);
         const auto& list = c.libraryGrooves.get();
         const auto sections = (int) drumSections().size();   // (the bits of sectionMask)
         section = juce::jlimit (0, sections - 1, section);
-        const auto home = groove.file.getParentDirectory().getFullPathName();
-        const auto homeLowered = lowerBytes (home);
-        const auto grooveToontrack = groove.toontrack || home.containsIgnoreCase ("toontrack");
-        struct Ranked { int tier, near, words, score; size_t at; };
+        const auto homeLowered = lowerBytes (groove.file.getParentDirectory().getFullPathName());
+        // (0.232.0, the owner's order) The groove's song folder: walking up from its folder, the first that holds
+        // fills (a FILLS / TRANSITIONS folder, or fills of its own).
+        const auto holds = [&] (const std::string& owner)
+        {
+            return homeLowered.size() >= owner.size() && homeLowered.compare (0, owner.size(), owner) == 0
+                && (homeLowered.size() == owner.size() || homeLowered[owner.size()] == '/' || homeLowered[owner.size()] == '\\');
+        };
+        size_t song = 0;
+        bool found = false;
+        for (size_t k = 0; k < index.fills.size(); ++k)
+            if (index.owner[k].size() > song && holds (index.owner[k]))
+            {
+                song = index.owner[k].size();
+                found = true;
+            }
+        // Tiers: 3 the song folder's, 2 a favourite folder's, 1 another pack's (not Toontrack's); other Toontrack
+        // songs' fills never. Within a tier, fills before transitions.
+        struct Ranked { int tier, kind, near, words, score; size_t at; };
         std::vector<Ranked> ranked;
         ranked.reserve (index.fills.size());
         for (size_t k = 0; k < index.fills.size(); ++k)
         {
             const auto& f = list[index.fills[k]];
-            const bool toontrack = index.toontrack[k];
-            const auto near = foldersInCommon (homeLowered, index.lowered[k]);
-            const auto sameFolder = homeLowered == index.lowered[k];
-            // Toontrack's fills first; a groove of another pack keeps its own folder's fills ahead of them.
-            const auto tier = toontrack ? (grooveToontrack || ! sameFolder ? 1 : 2) : (sameFolder && ! grooveToontrack ? 2 : 0);
+            int tier = 0;
+            if (found && index.owner[k].size() == song && holds (index.owner[k]))
+                tier = 3;
+            else if (isInFavouriteFolder (f.file, c.favouriteFolders))
+                tier = 2;
+            else if (! index.toontrack[k])
+                tier = 1;
+            if (tier == 0)
+                continue;
             auto w = 0;
             const auto mask = f.sectionMask;
             if (mask > 0)
                 for (int s = 0; s < sections; ++s)
                     if ((mask & (1 << s)) != 0)
                         w += s == section ? 6 : -3;
-            ranked.push_back ({ tier, near, w, f.score, index.fills[k] });
+            ranked.push_back ({ tier, index.kind[k] == 1 ? 1 : 0, foldersInCommon (homeLowered, index.lowered[k]), w, f.score, index.fills[k] });
         }
         const auto better = [] (const Ranked& a, const Ranked& b)
         {
             if (a.tier != b.tier) return a.tier > b.tier;
+            if (a.kind != b.kind) return a.kind < b.kind;
             if (a.near != b.near) return a.near > b.near;
             if (a.words != b.words) return a.words > b.words;
             if (a.score != b.score) return a.score > b.score;
             return a.at < b.at;
         };
+        // Topped up: the song folder's first, then the next tiers' to make up `count`.
         const auto wanted = juce::jmin (count, ranked.size());
         std::partial_sort (ranked.begin(), ranked.begin() + (std::ptrdiff_t) wanted, ranked.end(), better);
-        // Other packs' fills only when Toontrack (and the groove's own folder) give fewer than four.
-        auto kept = wanted;
-        size_t ahead = 0;
-        for (size_t i = 0; i < wanted; ++i)
-            if (ranked[i].tier > 0)
-                ++ahead;
-        if (ahead >= 4)
-            kept = ahead;
         std::vector<LibraryGroove> out;
-        out.reserve (kept);
-        for (size_t i = 0; i < kept; ++i)
+        out.reserve (wanted);
+        for (size_t i = 0; i < wanted; ++i)
         {
             out.push_back (list[ranked[i].at]);
             if (out.back().sectionMask < 0)
                 classifyGroove (out.back());
             out.back().favourite = isInFavouriteFolder (out.back().file, c.favouriteFolders);
+            if (groups != nullptr)
+                groups->push_back (ranked[i].tier * 2 - ranked[i].kind);   // (higher: nearer)
         }
         return out;
     }
@@ -32399,14 +32435,19 @@ namespace pr7s
             if (bar < 0 || bar >= barCount || barLocked (mask, bar, barCount) || barFill.notes.empty())
                 continue;
             const auto* fill = &barFill.notes;
-            const auto fl = juce::jlimit (0.05, bpb, barFill.length > 0.0 ? barFill.length : bpb);
+            // (0.232.0) A two-bar fill takes the bar before too when that one's open and has no fill of its own;
+            // else its last bar's part plays.
+            const auto wide = bar > 0 && ! barLocked (mask, bar - 1, barCount) && fills.count (bar - 1) == 0;
+            const auto whole = barFill.length > 0.0 ? barFill.length : bpb;
+            const auto fl = juce::jlimit (0.05, wide ? 2.0 * bpb : bpb, whole);
             {
                 const auto end = juce::jmin (length, (bar + 1) * bpb);
-                const auto from = juce::jmax (bar * bpb, end - fl);
+                const auto from = end - fl;
+                const auto shift = whole - fl;   // (the part of the fill cut off at its front)
                 out.erase (std::remove_if (out.begin(), out.end(), [&] (const LineNote& n)
                            { return ! n.keyswitch && n.beat >= from - 1.0e-6 && n.beat < end - 1.0e-6; }), out.end());
                 for (const auto& n : *fill)
-                    if (const auto at = from + n.beat; at < end - 1.0e-6 && at >= from - 1.0e-6)
+                    if (const auto at = from + n.beat - shift; at < end - 1.0e-6 && at >= from - 1.0e-6)
                     {
                         auto placed = n;
                         placed.beat = at;
@@ -32496,13 +32537,22 @@ namespace pr7s
         // (0.223.0) The playing groove's own fills first (as the drums lane picks them).
         if (spans != nullptr && ! spans->empty() && s.libraryDrums && ! c.libraryGrooves.empty())
             if (const auto groove = composerLibraryGroove (s, *spans, c))
-                for (const auto& f : composerLibraryFills (*groove, section, c, 24))
+            {
+                std::vector<int> groups;
+                const auto fills = composerLibraryFills (*groove, section, c, 24, &groups);
+                for (size_t i = 0; i < fills.size(); ++i)
                 {
+                    const auto& f = fills[i];
                     const auto path = f.file.getFullPathName();
                     listed.push_back (path);
+                    const auto tier = (groups[i] + 1) / 2;
+                    const auto where = tier == 3 ? "the playing groove's song folder (" + groove->name + ")"
+                                     : tier == 2 ? juce::String ("a favourite folder") : juce::String ("another pack");
+                    const auto kind = groups[i] % 2 == 1 ? "A transition" : "A fill";
                     out.push_back ({ "lib:" + path, f.name + " (" + f.folder + ")", grooveFillsGroup,
-                                     "A fill from " + f.folder + ", near the groove playing (" + groove->name + ")  -  " + path });
+                                     juce::String (kind) + " from " + where + "  -  " + path });
                 }
+            }
         // The library's fill files for the section (the favourite folders' first, as the drums lane's own fills).
         if (! c.libraryGrooves.empty())
         {
@@ -32513,7 +32563,7 @@ namespace pr7s
             for (const auto& f : fills)
             {
                 const auto path = f.file.getFullPathName();
-                if (std::find (listed.begin(), listed.end(), path) != listed.end())
+                if (std::find (listed.begin(), listed.end(), path) != listed.end() || f.bars > mostFillBars)
                     continue;
                 out.push_back ({ "lib:" + path, f.name + " (" + f.folder + ")", "FILLS",
                                  "A fill from " + f.folder + (f.favourite ? " (a favourite folder)" : juce::String()) + "  -  " + path });
@@ -32593,14 +32643,7 @@ namespace pr7s
             }
             if (! groove.has_value())
                 return {};
-            auto notes = libraryFillBar (*groove, bpb);
-            if (notes.empty())
-                return {};
-            auto last = 0.0;
-            for (const auto& n : notes)
-                last = juce::jmax (last, n.beat);
-            length = juce::jlimit (bpb / 4.0, bpb, std::ceil ((last + 1.0e-6) / (bpb / 4.0)) * (bpb / 4.0));
-            return notes;
+            return libraryFillNotes (*groove, bpb, length);   // (0.232.0: the whole fill, two bars at most)
         }
         return {};
     }
@@ -32659,7 +32702,7 @@ namespace pr7s
         {
             const auto own = (size_t) std::count_if (fills.begin(), fills.end(), [] (const ComposerFill& f) { return f.group == grooveFillsGroup; });
             if (own >= 2)
-                fills.resize (own);   // (they come first)
+                fills.resize (juce::jmin (own, (size_t) 12));   // (they come first; 0.232.0: the nearest 12)
         }
         auto& lane = s.lane (ComposerLayer::drums);
         if (barCount <= 0)

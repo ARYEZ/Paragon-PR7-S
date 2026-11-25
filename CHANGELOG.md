@@ -2,6 +2,28 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.232.0
+
+ARCHITECT's library fills now come from where you keep them. Toontrack keeps a song's fills in a FILLS folder of its own, not in folders named after the sections, so the old rule (fills ranked by section words) kept missing them.
+
+**Where the drums lane's fills come from, in this order:**
+
+1. **The groove's own song folder.** From the playing groove's folder, ARCHITECT walks up to the first folder holding a FILLS folder. For CHORUS 02 in High Energy Grooves / Chemical Metal, that's Chemical Metal, so its FILLS folder comes first. If that's not enough, its TRANSITIONS folder comes next.
+2. **Your favourite folders' fills** (the Hub's GROOVE FOLDERS).
+3. **Other packs that aren't Toontrack.**
+
+Fills from other Toontrack songs are never used, unless they're inside a favourite folder.
+
+**Topped up:** the song folder's fills always come first. When there are fewer than 12, the next groups join behind them. Each fill place plays the next fill in turn, shuffled within each group (ROLL gives another order).
+
+**Two bars at most, played whole.** A fill file plays from its first note to its end, so a two-bar fill takes the last two bars before the fill place. A one-bar file whose only note in its second bar is the crash on the bar line counts as one bar. Fills longer than two bars are never used.
+
+**The FILLS list** (bar locks) still opens on FILLS FOR THIS GROOVE, now in this order, each marked with where it comes from. ROLL there draws from the nearest 12. With a bar locked before an open bar, a two-bar fill plays only its last bar.
+
+A file counts as a fill when it's in a folder named FILL / FILLS or TRANSITION / TRANSITIONS (any case, "Fills 1" too), or, as before, when "fill" is in its name or path. BREAKS folders don't count.
+
+Not checked here: your real Toontrack folders. The test library is laid out as you described.
+
 ## 0.231.0
 
 **FIND A RIFF can strum a pad's chords.** In 0.230.0 a pad's chords always came back as ringing power chords. Now there's a choice in + MY RIFF > Riff Quality > PADS PLAYED AS:
