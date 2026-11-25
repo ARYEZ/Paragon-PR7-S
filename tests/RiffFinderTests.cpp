@@ -260,3 +260,45 @@ TEST_CASE ("0.227.1: drum grooves left out wherever they are: Toontrack's folder
     request.drumFolders = { folder.dir };
     CHECK (findRiffs (items, request).empty());
 }
+
+TEST_CASE ("0.227.2: synth MIDI in packs called \"... Kit\" or \"... Beats\" is found, moved down into a guitar's range", "[composer][riff][riffinder]")
+{
+    Folder folder;
+    auto kit = folder.dir.getChildFile ("Cyberpunk Kit").getChildFile ("MIDI");
+    kit.createDirectory();
+    auto dnb = folder.dir.getChildFile ("Drum & Bass Beats");
+    dnb.createDirectory();
+    auto drums = folder.dir.getChildFile ("Cyberpunk Kit").getChildFile ("Drums");
+    drums.createDirectory();
+
+    // A synth line two octaves above a guitar's middle, in a sample pack's MIDI folder.
+    const auto synth = writeRiff (kit, "Synth Lead 01 Am", { 81, 84, 88, 86, 84, 81 }, 2);
+    const auto loose = writeRiff (kit, "Idea 3", { 69, 72, 76, 74 }, 2);
+    const auto bassLine = writeRiff (dnb, "Reese Bass Line", { 45, 48, 52 }, 2);
+    const auto drumOne = writeRiff (drums, "Loop 1", { 45, 48, 52 }, 2);
+    const auto bassDrum = writeRiff (kit, "Bass Drum", { 45, 48, 52 }, 2);
+    const auto beat = writeRiff (kit, "Beat 2", { 45, 48, 52 }, 2);
+
+    std::vector<MediaItem> items { itemOf (synth, "Am", 2), itemOf (loose, "", 2), itemOf (bassLine, "", 2),
+                                   itemOf (drumOne, "", 2), itemOf (bassDrum, "", 2), itemOf (beat, "", 2) };
+    CHECK_FALSE (looksLikeDrums (items[0]));   // "Kit" in a folder isn't drums any more
+    CHECK_FALSE (looksLikeDrums (items[1]));
+    CHECK_FALSE (looksLikeDrums (items[2]));   // its own name says bass: "Drum & Bass" in the folder doesn't count
+    CHECK (looksLikeDrums (items[3]));         // a "Drums" folder still does
+    CHECK (looksLikeDrums (items[4]));         // "Bass Drum" is a drum
+    CHECK (looksLikeDrums (items[5]));         // a file called Beat
+
+    RiffFindRequest request;
+    request.key = *keyFromText ("Am");
+    const auto found = findRiffs (items, request);
+    REQUIRE (found.size() == 3);
+    const auto* lead = named (found, "Synth Lead 01 Am");
+    REQUIRE (lead != nullptr);
+    CHECK (lead->playable == 1.0);
+    int highest = 0;
+    for (const auto& n : lead->riff.notes)
+        highest = std::max (highest, n.pitch);
+    CHECK (highest <= 88);   // brought down by octaves into a guitar's range
+    CHECK (named (found, "Idea 3") != nullptr);
+    CHECK (named (found, "Reese Bass Line") != nullptr);
+}

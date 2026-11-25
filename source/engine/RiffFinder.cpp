@@ -122,19 +122,43 @@ namespace pr7s
         }
         if (toontrackCode)
             return true;
-        for (auto c : item.file.getFullPathName().toLowerCase() + " ")
+        const auto wordsIn = [] (const juce::String& text)
         {
-            if (juce::CharacterFunctions::isLetterOrDigit (c))
-                word += juce::String::charToString (c);
-            else if (word.isNotEmpty())
+            juce::StringArray found;
+            juce::String w;
+            for (auto c : text.toLowerCase() + " ")
             {
-                words.add (word);
-                word.clear();
+                if (juce::CharacterFunctions::isLetterOrDigit (c))
+                    w += juce::String::charToString (c);
+                else if (w.isNotEmpty())
+                {
+                    found.add (w);
+                    w.clear();
+                }
             }
-        }
-        return says (words, { "drum", "drums", "kit", "groove", "grooves", "beat", "beats", "perc", "percussion",
-                              "fill", "fills", "kick", "snare", "hat", "hats", "cymbal", "toms", "toontrack", "ezx", "sdx",
-                              "ezdrummer", "superior", "drummer", "bfd" });
+            return found;
+        };
+        const auto own = wordsIn (item.file.getFileNameWithoutExtension());
+        // Drum words in the file's own name, all of them.
+        const auto drumNames = [] (const juce::StringArray& w)
+        {
+            return says (w, { "drum", "drums", "perc", "percussion", "kick", "snare", "hat", "hats", "hihat", "cymbal", "toms",
+                              "toontrack", "ezx", "sdx", "ezdrummer", "superior", "drummer", "bfd" });
+        };
+        if (drumNames (own))   // "Bass Drum.mid": a drum, whatever else it says
+            return true;
+        // (0.227.2) A file whose own name says it's a melodic part (the owner's synth MIDI, played as guitar once it's
+        // moved by octaves) is never left out by its folders: "Drum & Bass Kit/Bass Line.mid", "Synthwave Beats/Lead.mid".
+        // Its notes are still checked as it's read.
+        if (says (own, { "synth", "lead", "leads", "bass", "bassline", "sub", "chord", "chords", "arp", "arps", "pad", "pads",
+                         "pluck", "plucks", "keys", "piano", "melody", "melodies", "riff", "riffs", "guitar", "gtr",
+                         "line", "hook", "seq", "sequence", "stab", "stabs", "bell", "bells", "string", "strings", "brass" }))
+            return false;
+        if (says (own, { "kit", "groove", "grooves", "beat", "beats", "fill", "fills" }))
+            return true;
+        // In the folders only the words that name drums outright: sample packs call themselves "... Kit" or
+        // "... Beats" and hold synth MIDI beside their drums.
+        return drumNames (wordsIn (item.file.getParentDirectory().getFullPathName()));
     }
 
     bool notesLookLikeDrums (const std::vector<Note>& notes)

@@ -2,6 +2,14 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.227.2
+
+Find a Riff now finds synth MIDI. You use it as guitar MIDI once it's moved into a guitar's range, and the finder already moves every riff by octaves to fit.
+
+- **Pack names don't count as drums.** 0.227.1 left out any file with a word like "kit", "beat" or "groove" anywhere in its path. Sample packs are often called "... Kit" or "... Beats" and keep their synth MIDI beside the drums, so those files were left out too. Now "kit", "beat", "groove" and "fill" only count in the file's own name. A folder only counts as drums when its name says drums outright (drums, percussion, kick, snare, hats, cymbals, toms, or a drum library's name).
+- **A file named as a melodic part is kept.** Names saying synth, lead, bass, chords, arp, pad, pluck, keys, melody, riff, guitar, line, hook, sequence or stab win over the folders around them. So "Drum & Bass Beats/Reese Bass Line.mid" is found. "Bass Drum.mid" is still a drum.
+- **The notes are still checked** for every file. A drum groove in a folder of synth MIDI is left out by what it plays.
+
 ## 0.227.1
 
 **Find a Riff no longer lists drum grooves.** You found it offering your Toontrack drum MIDI as riffs ("Variation_01 (200-S125@Bridge)"). Those files sit in folders like G:\Paragon MIDI\Toontrack\000329@21st_Century_Metal\520@Straight_7#4\200-S125@Bridge: none of the nearest three folder names says "drums", the word "Toontrack" was four folders up (the check only looked three), and their notes are on channel 1, so they passed as riffs. Now a file is left out as drums when any of these is true:
