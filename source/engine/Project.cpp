@@ -128,6 +128,8 @@ namespace pr7s
                                            (float) juce::jlimit (-1.0, 1.0, p->getDoubleAttribute ("curve")), false });
                 std::stable_sort (lane.trim.begin(), lane.trim.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
                 std::stable_sort (lane.points.begin(), lane.points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+                AutomationLane::collapseStacks (lane.points);   // (0.230.0: songs written before kept their stacks)
+                AutomationLane::collapseStacks (lane.trim);
                 lanes.push_back (std::move (lane));
             }
             return lanes;
@@ -183,6 +185,35 @@ namespace pr7s
         const auto span = next->beat - before.beat;
         const auto along = span > 0.0 ? (float) ((beat - before.beat) / span) : 1.0f;
         return before.value + (next->value - before.value) * curveShape (along, next->curve);
+    }
+
+    int AutomationLane::collapseStacks (std::vector<AutomationPoint>& points)
+    {
+        constexpr auto same = 1.0e-9;
+        std::vector<AutomationPoint> kept;
+        kept.reserve (points.size());
+        for (size_t i = 0; i < points.size();)
+        {
+            auto j = i;
+            auto terminator = false;
+            while (j < points.size() && std::abs (points[j].beat - points[i].beat) < same)
+                terminator = terminator || points[j++].terminator;
+            auto first = points[i];
+            first.terminator = false;
+            kept.push_back (first);
+            if (j - i > 1 && std::abs (points[j - 1].value - points[i].value) > 1.0e-6f)
+            {
+                auto last = points[j - 1];   // a jump: where it lands
+                last.terminator = false;
+                kept.push_back (last);
+            }
+            kept.back().terminator = terminator;   // (a terminator in the run: the run's last kept point ends it)
+            i = j;
+        }
+        const auto removed = (int) (points.size() - kept.size());
+        if (removed > 0)
+            points = std::move (kept);
+        return removed;
     }
 
     std::optional<float> AutomationLane::valueAt (double beat) const noexcept

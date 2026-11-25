@@ -284,6 +284,9 @@ namespace pr7s
         static constexpr float trimRange = 12.0f;   // our choice
         bool canTrim() const noexcept { return target == Target::volume || target == Target::send; }
 
+        // (0.230.0, the owner: "10 or 20 on top of the exact same spot") Points on the same beat cut down to the
+        // first and the last (a jump stays a jump); the same value twice: one. Sorted points.
+        static int collapseStacks (std::vector<AutomationPoint>& points);
         bool isStep() const noexcept { return target == Target::mute; }
         bool sameControl (const AutomationLane& other) const noexcept
         {

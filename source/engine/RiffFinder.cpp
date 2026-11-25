@@ -2,6 +2,7 @@
 
 #include <set>
 
+#include "engine/ChordDetect.h"
 #include "engine/KeyCheck.h"
 #include "engine/MidiImport.h"
 
@@ -370,6 +371,109 @@ namespace pr7s
         return q;
     }
 
+    bool looksLikePad (const std::vector<LineNote>& all, double beatsPerBar)
+    {
+        std::vector<LineNote> notes;
+        for (const auto& n : all)
+            if (! n.keyswitch)
+                notes.push_back (n);
+        if (notes.size() < 3)
+            return false;
+        std::stable_sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        struct Hit { double beat, longest; int count; };
+        std::vector<Hit> hits;
+        for (const auto& n : notes)
+            if (! hits.empty() && n.beat - hits.back().beat < 0.04)
+            {
+                hits.back().longest = juce::jmax (hits.back().longest, n.length);
+                ++hits.back().count;
+            }
+            else
+                hits.push_back ({ n.beat, n.length, 1 });
+        double padTime = 0.0, allTime = 0.0;
+        for (const auto& h : hits)
+        {
+            allTime += h.longest;
+            if (h.count >= 3 && h.longest >= 1.0)
+                padTime += h.longest;
+        }
+        const auto bpb = juce::jmax (0.25, beatsPerBar);
+        const auto span = juce::jmax (bpb, notes.back().beat + notes.back().length - std::floor (notes.front().beat / bpb) * bpb);
+        const auto perBar = hits.size() / juce::jmax (1.0, span / bpb);
+        return allTime > 0.0 && padTime / allTime >= 0.6 && perBar <= 4.0;
+    }
+
+    std::vector<LineNote> padAsGuitar (const std::vector<LineNote>& all, double beatsPerBar, double totalBeats, double* readShare)
+    {
+        std::vector<LineNote> notes;
+        for (const auto& n : all)
+            if (! n.keyswitch)
+                notes.push_back (n);
+        std::stable_sort (notes.begin(), notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        const auto bpb = juce::jmax (0.25, beatsPerBar);
+
+        // Each change: the notes starting together, and those still sounding from before.
+        struct Change { double beat; int root; bool diminished; float velocity; bool read; };
+        std::vector<Change> changes;
+        for (size_t i = 0; i < notes.size();)
+        {
+            auto j = i;
+            std::vector<int> pitches;
+            float velocity = 0.0f;
+            while (j < notes.size() && notes[j].beat - notes[i].beat < 0.04)
+            {
+                pitches.push_back (notes[j].pitch);
+                velocity = juce::jmax (velocity, notes[j].velocity);
+                ++j;
+            }
+            for (size_t k = 0; k < i; ++k)
+                if (notes[k].beat + notes[k].length > notes[i].beat + 0.1)
+                    pitches.push_back (notes[k].pitch);
+            const auto chord = chordOfNotes (pitches, true);
+            const auto lowest = *std::min_element (pitches.begin(), pitches.end());
+            Change c { notes[i].beat, chord.has_value() ? chord->root : ((lowest % 12) + 12) % 12,
+                       chord.has_value() && chord->type == Chord::Type::diminished, velocity, chord.has_value() };
+            if (changes.empty() || changes.back().root != c.root || changes.back().diminished != c.diminished)
+                changes.push_back (c);
+            i = j;
+        }
+        int read = 0;
+        for (const auto& c : changes)
+            read += c.read ? 1 : 0;
+        if (readShare != nullptr)
+            *readShare = changes.empty() ? 0.0 : (double) read / (double) changes.size();
+
+        std::vector<LineNote> out;
+        const auto end = juce::jmax (totalBeats, notes.empty() ? 0.0 : notes.back().beat + notes.back().length);
+        for (size_t c = 0; c < changes.size(); ++c)
+        {
+            const auto from = changes[c].beat;
+            const auto to = c + 1 < changes.size() ? changes[c + 1].beat : end;
+            const auto root = 33 + ((changes[c].root - 9) % 12 + 12) % 12;   // A1 (33) up to G#2
+            const auto velocity = juce::jlimit (0.6f, 0.86f, 0.55f + 0.35f * changes[c].velocity);
+            // Struck at the change, then on every half bar line while it holds.
+            std::vector<double> strikes { from };
+            const auto half = bpb / 2.0;
+            for (auto b = (std::floor (from / half + 1e-6) + 1.0) * half; b < to - 0.25; b += half)
+                strikes.push_back (b);
+            for (size_t s = 0; s < strikes.size(); ++s)
+            {
+                const auto next = s + 1 < strikes.size() ? strikes[s + 1] : to;
+                const auto length = juce::jmax (0.1, (next - strikes[s]) * 0.96);
+                for (const auto offset : { 0, changes[c].diminished ? 6 : 7, 12 })
+                {
+                    LineNote n;
+                    n.beat = strikes[s];
+                    n.length = length;
+                    n.pitch = root + offset;
+                    n.velocity = s == 0 ? velocity : velocity * 0.92f;
+                    out.push_back (n);
+                }
+            }
+        }
+        return out;
+    }
+
     std::optional<RiffFind> scoreRiff (const MediaItem& item, const MidiImport& midi, const RiffFindRequest& request)
     {
         std::vector<Note> notes;
@@ -397,6 +501,7 @@ namespace pr7s
         found.riff = riffFromNotes (notes, 0.0, bpb, found.name, request.section);
         if (found.riff.notes.empty())
             return std::nullopt;
+        found.pad = looksLikePad (found.riff.notes, bpb);
 
         if (const auto known = keyFromText (item.keyName()); known.has_value())
         {
@@ -416,6 +521,10 @@ namespace pr7s
         for (auto& n : found.riff.notes)
             if (! n.keyswitch)
                 n.pitch = movePitchToKey (n.pitch, found.from, target);
+        // (0.230.0) A pad: its chords (read in the song's key) as a guitar's ringing power chords.
+        double padRead = 0.0;
+        if (found.pad)
+            found.riff.notes = padAsGuitar (found.riff.notes, bpb, found.riff.bars * bpb, &padRead);
         const auto inRange = [&] (int octaves)
         {
             double in = 0.0, all = 0.0;
@@ -473,7 +582,16 @@ namespace pr7s
         found.tempo = item.tempo();
         const auto tempo = tempoFit (found.tempo, request.bpm);
         const auto section = wordFit (words, (int) request.section);
-        const auto quality = riffQuality (found.riff.notes, found.riff.bars, bpb);
+        auto quality = riffQuality (found.riff.notes, found.riff.bars, bpb);
+        if (found.pad)
+        {
+            // Held chords would never pass as a riff: judged by how well its chords could be read instead.
+            quality.score = 0.55 + 0.3 * padRead;
+            quality.problems.clear();
+            quality.problems.add ("PAD: played as chords");
+            if (padRead < 0.7)
+                quality.problems.add ("some chords a best guess");
+        }
         found.quality = quality.score;
         found.score = 0.35 * quality.score + 0.3 * found.inKey + 0.1 * found.playable + 0.1 * tempo + 0.1 * section
                     + (riffWords (words) ? 0.05 : 0.0);

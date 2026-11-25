@@ -1885,6 +1885,7 @@ namespace pr7s
             int cycleCount = 0;      // the engine's when it began: the cycle coming round ends it
             float before = 0.0f;
             std::vector<AutomationPoint> points;
+            size_t pinned = 0;       // (0.230.0) points not to be replaced by a later move on their beat (a retouch's held value)
             bool released = false;   // let go (an on/off switch latches on until stop; Auto-Latch, Cross-Over: every control)
             bool retouched = false;  // Cross-Over: touched again after letting go (crossing the old curve punches out)
             std::optional<bool> aboveOld;   // Cross-Over: which side of the old curve the hand was on

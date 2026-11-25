@@ -4137,6 +4137,9 @@ void ArrangeView::automationDrag (const juce::MouseEvent& event)
             const pr7s::AutomationPoint p { juce::jmax (0.0, timeline.beatForX (event.position.x)), valueForY (area, event.position.y) };
             const auto startBeat = juce::jmax (0.0, timeline.beatForX (pointDownAt.x));
             const auto from = juce::jmin (startBeat, p.beat), to = juce::jmax (startBeat, p.beat);
+            // (0.230.0) The mouse again on the same beat (it moved up or down only): that point moves, no new one.
+            if (! drawn.empty() && std::abs (drawn.back().beat - p.beat) < 1.0e-9)
+                drawn.pop_back();
             std::vector<pr7s::AutomationPoint> kept;
             for (const auto& q : workingPoints)
                 if (q.beat < from || q.beat > to || std::find (drawn.begin(), drawn.end(), q) != drawn.end())

@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.230.0
+
+**Automation points no longer pile up.** While you moved a fader (or a plug-in knob) with W on, the studio only knows where the playhead is once per audio block (about 46 ms at a 2048 buffer). Every movement inside one block was written onto the same spot, so 10 or 20 points sat on top of each other. And the tidying-up that thins a pass's points measures each point against its neighbours, which it can't do for points on the exact same spot, so all of them were kept.
+- Now each block writes one point, the latest value. Where a pass starts (or a latched control is touched again) the jump there is kept. Before the pass is thinned, any spot still holding several points is cut to where its jump starts and where it lands.
+- Drawing a line with DRAW never leaves two points on one spot.
+- A song saved with stacked points has them cut down when it opens (any terminator point is kept).
+
+**FIND A RIFF takes pads now.** Pad MIDI (held, stacked chords) was left out as "no riff". Now it's found and marked "PAD: played as chords", in its own group, PADS AS CHORDS. When you hear it or use it, it's rewritten as a guitar would play it:
+- Each chord change is read as a chord (the same way Detect Chords reads them), in the song's key.
+- It's played as a power chord (root, fifth, octave) on the low strings (root between A1 and G#2), struck at each change and on every half bar while the chord holds, and left ringing to the next strike.
+- With a Shreddage profile on the lane, those groups go through the power-chord keyswitch as any power chord does.
+
+What to know:
+- It's our own rule. Pads with only two notes, or with colourful chords (sus, added notes, slash chords), are read as their nearest plain chord or by their lowest note. Those say "some chords a best guess".
+- It isn't checked here by ear.
+
 ## 0.229.0
 
 The SECTIONS row's blocks are numbered and can be moved by number, as the track list's tracks are. This release also has another speed round, and it fixes a level that jumped while ARCHITECT played.

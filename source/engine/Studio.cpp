@@ -5433,7 +5433,10 @@ namespace pr7s
             {
                 pass.retouched = pass.released;   // touched again (latched: Cross-Over watches for the old curve)
                 if (pass.released && ! pass.points.empty())
+                {
                     pass.points.push_back ({ engine.getPosition(), pass.points.back().value });   // (held flat while let go)
+                    pass.pinned = pass.points.size();
+                }
                 pass.released = false;
                 pass.aboveOld.reset();
                 return;
@@ -5501,7 +5504,13 @@ namespace pr7s
                 pass.aboveOld = above;
             }
             pass.lastBeat = beat;
-            pass.points.push_back ({ beat, juce::jlimit (0.0f, 1.0f, value) });
+            // (0.230.0) The playhead moves a block at a time (46 ms at 2048): every movement of the fader within one
+            // block landed on the same beat, 10 or 20 points stacked there, none of them thinned. One a block: the
+            // latest value (a retouch's held value, where its jump starts, is kept).
+            if (pass.points.size() > pass.pinned && std::abs (pass.points.back().beat - beat) < 1.0e-9)
+                pass.points.back().value = juce::jlimit (0.0f, 1.0f, value);
+            else
+                pass.points.push_back ({ beat, juce::jlimit (0.0f, 1.0f, value) });
             return true;
         }
         return false;
@@ -5870,6 +5879,9 @@ namespace pr7s
         if (pass.control.isStep() || written.back().beat < endBeat)
             written.push_back ({ endBeat, written.back().value });   // held to the end (a latched control, or a still hand)
 
+        // (0.230.0) Points on one beat cut to the first and last first: the thinning below measures each point
+        // against the line between its neighbours, and points on the same beat have none, so they all stayed.
+        AutomationLane::collapseStacks (written);
         // Thinned (the Reduction Level: 0% only repeats; up to 100% smoother).
         const auto tolerance = 0.0002f + 0.02f * (float) as.reductionLevel / 100.0f;
         std::vector<AutomationPoint> thin;

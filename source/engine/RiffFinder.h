@@ -61,6 +61,14 @@ namespace pr7s
         juce::StringArray problems;
     };
     RiffQuality riffQuality (const std::vector<LineNote>& notes, int bars, double beatsPerBar);
+    // (0.230.0) Held stacked chords (a pad): most of the time in hits of three notes or more held a beat or longer,
+    // four hits a bar at most.
+    bool looksLikePad (const std::vector<LineNote>&, double beatsPerBar);
+    // A pad's chords as a guitar plays them: each change read as a chord (chordOfNotes, plain chords; none: its
+    // lowest note as the root), the same chord twice in a row joined, then a power chord (root, fifth, octave; a
+    // diminished chord's flat fifth) on the low strings (root in A1-G#2) struck at each change and every half bar
+    // while it holds, rung to the next strike. `readShare`: the changes read as a chord (0-1).
+    std::vector<LineNote> padAsGuitar (const std::vector<LineNote>&, double beatsPerBar, double totalBeats, double* readShare = nullptr);
     // The quality choices: STRICT 0.7, NORMAL 0.55, EVERYTHING 0.
     double riffQualityThreshold (int level);
 
@@ -77,6 +85,7 @@ namespace pr7s
         double tempo = 0.0;               // 0: not known
         double score = 0.0;               // 0-1
         double quality = 0.0;             // (0.228.0) `riffQuality`'s score
+        bool pad = false;                 // (0.230.0) a pad's held chords, played as a guitar's ringing power chords
         juce::String reason;              // "in key 96%, MOVED +3, 2 bars, 120 BPM, says verse"
     };
 

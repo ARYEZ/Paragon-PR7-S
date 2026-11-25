@@ -4858,7 +4858,7 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeRiffBrowser (std::vector<pr7s::
     riffsShown = std::move (found);
     auto browser = std::make_unique<OptionBrowser> ("RIFFS FROM THE MEDIABAY", riffOptions(), 0, studio.getOptionMemory(), riffListKey);
     browser->setAutoHear (true);
-    browser->setGroupOrder ({ "IN THE SONG'S KEY", "MOSTLY IN KEY", "MOVED INTO KEY" });
+    browser->setGroupOrder ({ "IN THE SONG'S KEY", "MOSTLY IN KEY", "MOVED INTO KEY", "PADS AS CHORDS" });
     juce::Component::SafePointer<ComposerPage> safe (this);
     browser->onHear = [safe] (int id)
     {
@@ -4908,7 +4908,7 @@ std::vector<OptionBrowser::Option> ComposerPage::riffOptions() const
         o.id = i;
         o.name = f.name + "  (" + f.folder + ")";
         o.description = juce::String (juce::roundToInt (f.score * 100.0)) + "% fit: " + f.reason + ".  " + f.file.getFullPathName();
-        o.group = f.shift == 0 && f.inKey >= 0.95 ? "IN THE SONG'S KEY" : f.shift == 0 ? "MOSTLY IN KEY" : "MOVED INTO KEY";
+        o.group = f.pad ? "PADS AS CHORDS" : f.shift == 0 && f.inKey >= 0.95 ? "IN THE SONG'S KEY" : f.shift == 0 ? "MOSTLY IN KEY" : "MOVED INTO KEY";
         o.idea = pr7s::tileRiff (f.riff, f.riff.bars * bpb, bpb);
         o.idea.part = pr7s::composerPartOf (layer);
         options.push_back (std::move (o));

@@ -400,7 +400,9 @@ TEST_CASE ("0.228.0: riff quality: pads, single held notes and noodling left out
     request.key = aMinor;
     const auto normal = findRiffs (items, request);
     CHECK (named (normal, "Chug") != nullptr);
-    CHECK (named (normal, "Pad chords") == nullptr);
+    // (0.230.0) A pad is no longer left out: it's found as chords for a guitar.
+    REQUIRE (named (normal, "Pad chords") != nullptr);
+    CHECK (named (normal, "Pad chords")->pad);
     CHECK (named (normal, "Held") == nullptr);
     const auto* arp = named (normal, "Synth arp");
     REQUIRE (arp != nullptr);
@@ -434,4 +436,53 @@ TEST_CASE ("0.228.0: riff quality: pads, single held notes and noodling left out
     CHECK (studio.getHiddenRiffs().size() == 1);
     studio.clearHiddenRiffs();
     CHECK (studio.getHiddenRiffs().empty());
+}
+
+TEST_CASE ("0.230.0: a pad's held chords found and played as a guitar's ringing power chords", "[composer][riff][riffinder][pads]")
+{
+    Folder folder;
+    const auto aMinor = *keyFromText ("Am");
+    // Am, F, C, G held a bar each, voiced up the keyboard (five notes).
+    const std::vector<std::vector<int>> chords { { 57, 64, 69, 72, 76 }, { 53, 60, 65, 69, 72 }, { 48, 55, 60, 64, 67 }, { 55, 62, 67, 71, 74 } };
+    std::vector<std::array<double, 3>> pad;
+    for (int bar = 0; bar < 4; ++bar)
+        for (const auto p : chords[(size_t) bar])
+            pad.push_back ({ bar * 4.0, 4.0, (double) p });
+
+    CHECK (looksLikePad (lineNotes (pad), 4.0));
+    std::vector<std::array<double, 3>> chug;
+    for (int i = 0; i < 16; ++i)
+        chug.push_back ({ i * 0.5, 0.2, 33.0 });
+    CHECK_FALSE (looksLikePad (lineNotes (chug), 4.0));
+
+    double read = 0.0;
+    const auto guitar = padAsGuitar (lineNotes (pad), 4.0, 16.0, &read);
+    CHECK (read == 1.0);
+    // Two strikes a bar (the change and the half bar), three notes each: root, fifth, octave on the low strings.
+    REQUIRE (guitar.size() == 4 * 2 * 3);
+    const int roots[] { 9, 5, 0, 7 };
+    for (size_t i = 0; i < guitar.size(); i += 3)
+    {
+        const auto bar = (int) (guitar[i].beat / 4.0);
+        CHECK (guitar[i].pitch % 12 == roots[bar]);
+        CHECK (guitar[i].pitch >= 33);
+        CHECK (guitar[i].pitch <= 44);
+        CHECK (guitar[i + 1].pitch == guitar[i].pitch + 7);
+        CHECK (guitar[i + 2].pitch == guitar[i].pitch + 12);
+        CHECK (guitar[i].length > 1.8);   // rung to the next strike
+        CHECK (guitar[i].length < 2.0);
+    }
+
+    // Found in the MediaBay as a pad, and passes NORMAL and STRICT.
+    std::vector<MediaItem> items { itemOf (writeNotes (folder.dir, "Soft pad", pad), "Am", 4) };
+    items[0].notes = 20;
+    RiffFindRequest request;
+    request.key = aMinor;
+    request.leastQuality = riffQualityThreshold (2);
+    const auto found = findRiffs (items, request);
+    const auto* f = named (found, "Soft pad");
+    REQUIRE (f != nullptr);
+    CHECK (f->pad);
+    CHECK (f->reason.contains ("PAD: played as chords"));
+    CHECK (f->riff.notes.size() == guitar.size());
 }
