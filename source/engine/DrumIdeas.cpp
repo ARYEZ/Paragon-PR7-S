@@ -685,8 +685,10 @@ namespace pr7s
         for (auto dir = file.getParentDirectory(); dir.getParentDirectory() != dir; dir = dir.getParentDirectory())
         {
             // The name's first word (letters only, any case).
+            // (the name kept in a local: a pointer into a temporary's text dangles past the loop's first part)
+            const auto name = dir.getFileName().toLowerCase();
             juce::String word;
-            for (auto t = dir.getFileName().toLowerCase().getCharPointer(); ! t.isEmpty() && juce::CharacterFunctions::isLetter (*t); ++t)
+            for (auto t = name.getCharPointer(); ! t.isEmpty() && juce::CharacterFunctions::isLetter (*t); ++t)
                 word << juce::String::charToString (*t);
             if (word == "fill" || word == "fills")
                 return { 0, dir.getParentDirectory() };
