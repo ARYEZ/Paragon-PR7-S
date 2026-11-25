@@ -23,6 +23,9 @@
 // The score is a guide: it can't hear whether a riff is any good.
 namespace pr7s
 {
+    // (0.231.0) How FIND A RIFF plays a pad's chords on the guitar.
+    enum class PadStyle { powerChords, strummed };
+
     struct RiffFindRequest
     {
         Key key;                          // the song's (the riff is moved into it)
@@ -39,6 +42,8 @@ namespace pr7s
         // you've hidden (full paths, sorted).
         double leastQuality = 0.55;
         std::vector<juce::String> hidden;
+        // (0.231.0) How a pad's chords are played: ringing power chords, or full chord shapes strummed.
+        PadStyle padStyle = PadStyle::powerChords;
     };
 
     // (0.228.0) How much a MIDI file is like a guitar riff, from its notes (ours, the owner: "half the riffs don't
@@ -68,7 +73,11 @@ namespace pr7s
     // lowest note as the root), the same chord twice in a row joined, then a power chord (root, fifth, octave; a
     // diminished chord's flat fifth) on the low strings (root in A1-G#2) struck at each change and every half bar
     // while it holds, rung to the next strike. `readShare`: the changes read as a chord (0-1).
-    std::vector<LineNote> padAsGuitar (const std::vector<LineNote>&, double beatsPerBar, double totalBeats, double* readShare = nullptr);
+    // (0.231.0) `strummed`: each chord as the full shape a guitar holds (AcousticVoicing::open: five or six notes from
+    // the root's string, E2-E5), strummed down, down-up, up-down-up on the eighths (down strokes low to high over
+    // 0.02 beat, up strokes the top four high to low, softer), a down stroke at every change, each ringing to the next.
+    std::vector<LineNote> padAsGuitar (const std::vector<LineNote>&, double beatsPerBar, double totalBeats, double* readShare = nullptr,
+                                       PadStyle style = PadStyle::powerChords);
     // The quality choices: STRICT 0.7, NORMAL 0.55, EVERYTHING 0.
     double riffQualityThreshold (int level);
 

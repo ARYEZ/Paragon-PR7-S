@@ -11669,6 +11669,18 @@ namespace pr7s
             settings->setValue ("riffQuality", riffQualityHere);
     }
 
+    int Studio::getRiffPadStyle() const
+    {
+        return juce::jlimit (0, 1, settings != nullptr ? settings->getIntValue ("riffPadStyle", 0) : riffPadStyleHere);
+    }
+
+    void Studio::setRiffPadStyle (int style)
+    {
+        riffPadStyleHere = juce::jlimit (0, 1, style);
+        if (settings != nullptr)
+            settings->setValue ("riffPadStyle", riffPadStyleHere);
+    }
+
     std::vector<juce::String> Studio::getHiddenRiffs() const
     {
         juce::StringArray lines;

@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.231.0
+
+**FIND A RIFF can strum a pad's chords.** In 0.230.0 a pad's chords always came back as ringing power chords. Now there's a choice in + MY RIFF > Riff Quality > PADS PLAYED AS:
+- **Ringing Power Chords:** as 0.230.0.
+- **Strummed Chords (new):** each chord is the full shape a guitar holds, five or six notes from the root's string, between E2 and E5. It's strummed on the eighths of each bar in the classic pattern: down, (rest), down, up, (rest), up, down, up.
+  - Down strokes sweep the whole shape low to high.
+  - Up strokes catch the top four strings high to low, a little softer.
+  - Every chord change starts with a down stroke wherever it falls.
+  - Each strum rings until the next one.
+
+The choice is remembered. Riffs already found keep the way they were found: run FIND A RIFF again to hear the other style. Those pads say "PAD: strummed as chords".
+
+What to know:
+- The strumming pattern and the chord shapes are our own.
+- A chord the pad doesn't make clear is still a best guess. Strumming shows a wrong third more than a power chord does, since a power chord has no third.
+- Strumming suits an acoustic or clean guitar better than a distorted one. The pad lands on whichever lane you choose for your riff.
+- Not checked by ear here.
+
 ## 0.230.0
 
 **Automation points no longer pile up.** While you moved a fader (or a plug-in knob) with W on, the studio only knows where the playhead is once per audio block (about 46 ms at a 2048 buffer). Every movement inside one block was written onto the same spot, so 10 or 20 points sat on top of each other. And the tidying-up that thins a pass's points measures each point against its neighbours, which it can't do for points on the exact same spot, so all of them were kept.

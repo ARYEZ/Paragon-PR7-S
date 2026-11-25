@@ -2038,6 +2038,12 @@ void ComposerPage::showPasteMenu()
         const auto hiddenCount = (int) studio.getHiddenRiffs().size();
         quality.addSeparator();
         quality.addItem (23, "Show the " + juce::String (hiddenCount) + " Hidden Riffs Again", hiddenCount > 0);
+        // (0.231.0) How a pad found is played on the guitar.
+        quality.addSeparator();
+        quality.addSectionHeader ("PADS PLAYED AS");
+        const auto padStyle = studio.getRiffPadStyle();
+        quality.addItem (24, "Ringing Power Chords", true, padStyle == 0);
+        quality.addItem (25, "Strummed Chords", true, padStyle == 1);
         menu.addSubMenu ("Riff Quality", quality);
     }
     menu.addItem (6, "Learn My Band: Read Our Record...", onLearnMyBand != nullptr);   // (0.82.0)
@@ -2064,6 +2070,14 @@ void ComposerPage::showPasteMenu()
                             if (chosen >= 20 && chosen <= 22)
                             {
                                 safe->studio.setRiffQualityLevel (chosen - 20);
+                                return;
+                            }
+                            if (chosen == 24 || chosen == 25)
+                            {
+                                safe->studio.setRiffPadStyle (chosen - 24);
+                                safe->status = chosen == 25 ? "Pads will be strummed as chords: FIND A RIFF again to hear them so"
+                                                            : "Pads will ring as power chords: FIND A RIFF again to hear them so";
+                                safe->repaint();
                                 return;
                             }
                             if (chosen == 23)
@@ -4769,6 +4783,7 @@ pr7s::RiffFindRequest ComposerPage::riffRequest() const
         request.drumFiles.push_back (g.file.getFullPathName());
     // (0.229.0) Sorted by the search's own thread: 200,000 paths sorted held the window up before it started.
     request.leastQuality = pr7s::riffQualityThreshold (studio.getRiffQualityLevel());   // (0.228.0)
+    request.padStyle = studio.getRiffPadStyle() == 1 ? pr7s::PadStyle::strummed : pr7s::PadStyle::powerChords;   // (0.231.0)
     request.hidden = studio.getHiddenRiffs();
     return request;
 }

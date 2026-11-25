@@ -2,6 +2,7 @@
 
 #include <set>
 
+#include "engine/Acoustic.h"
 #include "engine/ChordDetect.h"
 #include "engine/KeyCheck.h"
 #include "engine/MidiImport.h"
@@ -403,7 +404,8 @@ namespace pr7s
         return allTime > 0.0 && padTime / allTime >= 0.6 && perBar <= 4.0;
     }
 
-    std::vector<LineNote> padAsGuitar (const std::vector<LineNote>& all, double beatsPerBar, double totalBeats, double* readShare)
+    std::vector<LineNote> padAsGuitar (const std::vector<LineNote>& all, double beatsPerBar, double totalBeats, double* readShare,
+                                       PadStyle style)
     {
         std::vector<LineNote> notes;
         for (const auto& n : all)
@@ -413,7 +415,7 @@ namespace pr7s
         const auto bpb = juce::jmax (0.25, beatsPerBar);
 
         // Each change: the notes starting together, and those still sounding from before.
-        struct Change { double beat; int root; bool diminished; float velocity; bool read; };
+        struct Change { double beat; int root; bool diminished; float velocity; bool read; Chord chord; };
         std::vector<Change> changes;
         for (size_t i = 0; i < notes.size();)
         {
@@ -432,7 +434,14 @@ namespace pr7s
             const auto chord = chordOfNotes (pitches, true);
             const auto lowest = *std::min_element (pitches.begin(), pitches.end());
             Change c { notes[i].beat, chord.has_value() ? chord->root : ((lowest % 12) + 12) % 12,
-                       chord.has_value() && chord->type == Chord::Type::diminished, velocity, chord.has_value() };
+                       chord.has_value() && chord->type == Chord::Type::diminished, velocity, chord.has_value(), {} };
+            if (chord.has_value())
+                c.chord = *chord;
+            else
+            {
+                c.chord.root = c.root;   // not read: a major chord on its lowest note (a best guess)
+                c.chord.type = Chord::Type::major;
+            }
             if (changes.empty() || changes.back().root != c.root || changes.back().diminished != c.diminished)
                 changes.push_back (c);
             i = j;
@@ -451,6 +460,48 @@ namespace pr7s
             const auto to = c + 1 < changes.size() ? changes[c + 1].beat : end;
             const auto root = 33 + ((changes[c].root - 9) % 12 + 12) % 12;   // A1 (33) up to G#2
             const auto velocity = juce::jlimit (0.6f, 0.86f, 0.55f + 0.35f * changes[c].velocity);
+            if (style == PadStyle::strummed)
+            {
+                // The eighths of each bar strummed D . D U . U D U; a down stroke at the change wherever it falls.
+                auto shape = AcousticVoicing::open (changes[c].chord, false);
+                std::sort (shape.begin(), shape.end());
+                if (shape.empty())
+                    continue;
+                constexpr int strokes[] { 1, 0, 1, -1, 0, -1, 1, -1 };   // 1 down, -1 up, 0 none
+                const auto eighth = bpb / 8.0;
+                struct Stroke { double at; bool down; };
+                std::vector<Stroke> plan { { from, true } };
+                for (auto k = std::floor (from / eighth + 1e-6) + 1.0; k * eighth < to - 0.1; k += 1.0)
+                {
+                    const auto at = k * eighth;
+                    const auto inBar = (int) std::llround (std::fmod (at, bpb) / eighth) % 8;
+                    if (strokes[inBar] != 0)
+                        plan.push_back ({ at, strokes[inBar] > 0 });
+                }
+                for (size_t s = 0; s < plan.size(); ++s)
+                {
+                    const auto next = s + 1 < plan.size() ? plan[s + 1].at : to;
+                    const auto length = juce::jmax (0.1, (next - plan[s].at) * 0.96);
+                    std::vector<int> strung = shape;
+                    auto gap = 0.02 / juce::jmax (1.0, (double) shape.size() - 1.0);
+                    if (! plan[s].down)
+                    {
+                        strung.assign (shape.end() - juce::jmin<std::ptrdiff_t> (4, (std::ptrdiff_t) shape.size()), shape.end());
+                        std::reverse (strung.begin(), strung.end());
+                        gap = 0.015 / juce::jmax (1.0, (double) strung.size() - 1.0);
+                    }
+                    for (size_t n = 0; n < strung.size(); ++n)
+                    {
+                        LineNote note;
+                        note.beat = plan[s].at + gap * (double) n;
+                        note.length = juce::jmax (0.05, length - gap * (double) n);
+                        note.pitch = strung[n];
+                        note.velocity = plan[s].down ? (s == 0 ? velocity : velocity * 0.94f) : velocity * 0.8f;
+                        out.push_back (note);
+                    }
+                }
+                continue;
+            }
             // Struck at the change, then on every half bar line while it holds.
             std::vector<double> strikes { from };
             const auto half = bpb / 2.0;
@@ -524,7 +575,7 @@ namespace pr7s
         // (0.230.0) A pad: its chords (read in the song's key) as a guitar's ringing power chords.
         double padRead = 0.0;
         if (found.pad)
-            found.riff.notes = padAsGuitar (found.riff.notes, bpb, found.riff.bars * bpb, &padRead);
+            found.riff.notes = padAsGuitar (found.riff.notes, bpb, found.riff.bars * bpb, &padRead, request.padStyle);
         const auto inRange = [&] (int octaves)
         {
             double in = 0.0, all = 0.0;
@@ -588,7 +639,7 @@ namespace pr7s
             // Held chords would never pass as a riff: judged by how well its chords could be read instead.
             quality.score = 0.55 + 0.3 * padRead;
             quality.problems.clear();
-            quality.problems.add ("PAD: played as chords");
+            quality.problems.add (request.padStyle == PadStyle::strummed ? "PAD: strummed as chords" : "PAD: played as chords");
             if (padRead < 0.7)
                 quality.problems.add ("some chords a best guess");
         }

@@ -486,3 +486,76 @@ TEST_CASE ("0.230.0: a pad's held chords found and played as a guitar's ringing 
     CHECK (f->reason.contains ("PAD: played as chords"));
     CHECK (f->riff.notes.size() == guitar.size());
 }
+
+TEST_CASE ("0.231.0: a pad strummed as full chord shapes: downs and ups on the eighths, a down at every change", "[composer][riff][riffinder][pads]")
+{
+    Folder folder;
+    const auto aMinor = *keyFromText ("Am");
+    const std::vector<std::vector<int>> chords { { 57, 64, 69, 72, 76 }, { 53, 60, 65, 69, 72 }, { 48, 55, 60, 64, 67 }, { 55, 62, 67, 71, 74 } };
+    std::vector<std::array<double, 3>> pad;
+    for (int bar = 0; bar < 4; ++bar)
+        for (const auto p : chords[(size_t) bar])
+            pad.push_back ({ bar * 4.0, 4.0, (double) p });
+
+    double read = 0.0;
+    const auto strum = padAsGuitar (lineNotes (pad), 4.0, 16.0, &read, PadStyle::strummed);
+    CHECK (read == 1.0);
+    const int roots[] { 9, 5, 0, 7 };
+    // Strokes: notes starting within 0.03 beat of one another.
+    struct Stroke { double at; std::vector<int> pitches; };
+    std::vector<Stroke> strokes;
+    for (const auto& n : strum)
+    {
+        CHECK (n.pitch >= 40);
+        CHECK (n.pitch <= 76);
+        if (strokes.empty() || n.beat - strokes.back().at > 0.03)
+            strokes.push_back ({ n.beat, {} });
+        strokes.back().pitches.push_back (n.pitch);
+    }
+    // D . D U . U D U a bar: six strokes, four bars.
+    REQUIRE (strokes.size() == 24);
+    const double places[] { 0.0, 1.0, 1.5, 2.5, 3.0, 3.5 };
+    for (size_t s = 0; s < strokes.size(); ++s)
+    {
+        const auto bar = (int) (s / 6);
+        CHECK (std::abs (strokes[s].at - (bar * 4.0 + places[s % 6])) < 1e-9);
+        const auto down = s % 6 == 0 || s % 6 == 1 || s % 6 == 4;
+        if (down)
+        {
+            CHECK (strokes[s].pitches.size() >= 5);                     // the whole shape, low to high
+            CHECK (std::is_sorted (strokes[s].pitches.begin(), strokes[s].pitches.end()));
+            CHECK (strokes[s].pitches.front() % 12 == roots[bar]);       // the root on the bottom
+        }
+        else
+        {
+            CHECK (strokes[s].pitches.size() == 4);                     // the top four, high to low
+            CHECK (std::is_sorted (strokes[s].pitches.rbegin(), strokes[s].pitches.rend()));
+        }
+        // Every note of the chord (A minor, F, C, G) is one of its chord's.
+        Chord shape;
+        shape.root = roots[bar];
+        shape.type = bar == 0 ? Chord::Type::minor : Chord::Type::major;
+        const auto pcs = shape.pitchClasses();
+        for (const auto p : strokes[s].pitches)
+            CHECK (std::find (pcs.begin(), pcs.end(), p % 12) != pcs.end());
+    }
+
+    // Through FIND A RIFF with the strummed choice.
+    std::vector<MediaItem> items { itemOf (writeNotes (folder.dir, "Soft pad", pad), "Am", 4) };
+    items[0].notes = 20;
+    RiffFindRequest request;
+    request.key = aMinor;
+    request.padStyle = PadStyle::strummed;
+    const auto found = findRiffs (items, request);
+    const auto* f = named (found, "Soft pad");
+    REQUIRE (f != nullptr);
+    CHECK (f->pad);
+    CHECK (f->reason.contains ("PAD: strummed as chords"));
+    CHECK (f->riff.notes.size() == strum.size());
+
+    // The choice is kept.
+    Studio studio (false);
+    CHECK (studio.getRiffPadStyle() == 0);
+    studio.setRiffPadStyle (1);
+    CHECK (studio.getRiffPadStyle() == 1);
+}

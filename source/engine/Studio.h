@@ -423,6 +423,9 @@ namespace pr7s
         // files you've hidden from it (full paths, sorted; settings "riffHidden", a path a line).
         int getRiffQualityLevel() const;
         void setRiffQualityLevel (int);
+        // (0.231.0) How FIND A RIFF plays pads: 0 ringing power chords, 1 strummed chords (settings "riffPadStyle").
+        int getRiffPadStyle() const;
+        void setRiffPadStyle (int);
         std::vector<juce::String> getHiddenRiffs() const;
         void hideRiff (const juce::File&);
         void clearHiddenRiffs();
@@ -2135,6 +2138,7 @@ namespace pr7s
         std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)
         bool looseCopiesHere = true;
         int riffQualityHere = 1;
+        int riffPadStyleHere = 0;
         juce::StringArray hiddenRiffsHere;
         bool sectionTonesHere = true;   // (0.205.0, without a settings file)
         int sectionToneBlocks = 0;
