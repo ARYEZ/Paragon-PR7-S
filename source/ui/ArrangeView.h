@@ -364,6 +364,16 @@ public:
     void showSectionEditor (int index);
     SectionEditor* getSectionEditor() const;
     void showAddSectionMenu (int insertAt, juce::Point<int> where = {});   // insertAt -1: after the last
+    // (0.229.0, the owner: as the track list's numbers) Each block's place, 1 from the left, in a box at its top left.
+    // A double-click on it types a new place: the block moves there (Studio::moveSongSection: its music with it,
+    // one undo step); past the end: last.
+    juce::Rectangle<float> getSectionNumberBox (int index) const;   // empty: the block too small to show it
+    int sectionNumberOf (int index) const;                          // its place in the order drawn, from 1
+    bool moveSectionToNumber (int index, int number);
+    void editSectionNumber (int index);
+    juce::TextEditor* getSectionNumberEditor() const noexcept { return sectionNumberEntry != nullptr && sectionNumberEntry->isVisible() ? sectionNumberEntry.get() : nullptr; }
+    void commitSectionNumber();                                     // the typed number applied, the box closed
+    void closeSectionNumber();
 
     // Folder tracks (0.50.0, the manual's Folder Parts): a folder's row shows its tracks' parts as
     // blocks (where any of them has a part; each track a strip inside). A click on a block selects
@@ -726,6 +736,11 @@ private:
     void sectionUp();
     bool sectionDoubleClick (const juce::MouseEvent&);
     std::vector<int> shownSectionOrder() const;   // the blocks' indices in the order drawn (a drag's on the way)
+    struct SectionPlaceShown { juce::Rectangle<float> bounds; int number = 0; };
+    std::vector<SectionPlaceShown> sectionPlacesShown() const;   // (0.229.0) by block index
+    static juce::Rectangle<float> numberBoxIn (juce::Rectangle<float> bounds, int number);
+    std::unique_ptr<juce::TextEditor> sectionNumberEntry;   // (0.229.0: open while a block's number is typed)
+    int sectionNumberId = 0;
     void paintFolders (juce::Graphics&);
     bool folderDown (const juce::MouseEvent&);
     std::vector<int> folderDragIds;

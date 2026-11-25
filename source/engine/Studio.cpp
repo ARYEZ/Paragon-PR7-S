@@ -360,7 +360,10 @@ namespace pr7s
             // does the full update, so nothing else can be left behind.
             const auto& playing = heardCopy.has_value() ? *heardCopy : project;
             if (mixStepOnly)
-                engine.updateMix (project);
+            {
+                const auto mix = composerAudition.has_value() ? composerMixCopy() : std::nullopt;
+                engine.updateMix (mix.has_value() ? *mix : project);
+            }
             else
                 engine.update (playing);
         }
@@ -11699,14 +11702,21 @@ namespace pr7s
         static_assert (numComposerTrackLanes == 8);
         if (settings == nullptr)
             return laneLevelsHere;
+        // (0.229.0) Parsed once per text: ARCHITECT's timer asks for each lane 30 times a second.
+        const auto text = settings->getValue ("composerLaneLevels");
+        if (laneLevelsRead && text == laneLevelsText)
+            return laneLevelsParsed;
         std::array<float, 8> levels {};
-        const auto lines = juce::StringArray::fromLines (settings->getValue ("composerLaneLevels"));
+        const auto lines = juce::StringArray::fromLines (text);
         for (int i = 0; i < numComposerTrackLanes; ++i)
         {
             const auto line = lines[i].trim();
             levels[(size_t) i] = line.isNotEmpty() && line.containsAnyOf ("0123456789")
                                    ? juce::jlimit (-60.0f, 6.0f, line.getFloatValue()) : defaultLaneLevel (i);
         }
+        laneLevelsText = text;
+        laneLevelsParsed = levels;
+        laneLevelsRead = true;
         return levels;
     }
 
@@ -11737,7 +11747,7 @@ namespace pr7s
     {
         // (0.206.0) Heard at once while ARCHITECT plays: the mix of the hearing's copy again (nothing rebuilt, no undo step).
         if (composerAudition.has_value() && exportJob == nullptr)
-            if (const auto heard = composerAuditionCopy())
+            if (const auto heard = composerMixCopy())   // (0.229.0: the levels only, not every layer's parts again)
                 engine.updateMix (*heard);
     }
 
@@ -12417,13 +12427,21 @@ namespace pr7s
 
     void Studio::setComposerState (const juce::String& text, bool marksModified)
     {
+        // (0.229.0) ARCHITECT writes its state back on every refresh: the same text as last time, nothing to parse.
+        if (text == lastComposerText && project.architectState == lastComposerStored)
+            return;
+        lastComposerText = text;
         // The defaults saved as nothing; the same state (however written) changes nothing.
         const auto parsed = ComposerState::fromString (text);
         const auto stored = parsed == ComposerState {} ? juce::String() : text;
         if (stored == project.architectState)
+        {
+            lastComposerStored = stored;
             return;
+        }
         const auto same = ComposerState::fromString (project.architectState) == parsed;
         project.architectState = stored;
+        lastComposerStored = stored;
         if (marksModified && ! same)
             modified = true;
     }
@@ -12658,13 +12676,38 @@ namespace pr7s
         // (0.83.1: without the plug-ins' saved settings: this runs on every change while the composer
         // plays, a fader step included, and copied every Kontakt-sized state each time.)
         auto heard = copyWithoutPluginStates (false);
+        for (const auto& [trackId, idea] : composerAudition->layers)
+            if (canTakeMidi (trackId) && ! idea.notes.empty())
+                heard.findTrack (trackId)->parts.push_back (partFromIdea (idea, start, end - start, idea.style));
+        if (! hearingMix (heard))
+            return std::nullopt;
+        heard.loopOn = true;
+        heard.loopStart = start;
+        heard.loopEnd = end;
+        return heard;
+    }
+
+    std::optional<Project> Studio::composerMixCopy() const
+    {
+        // (0.229.0) The hearing's levels without its parts: a drag's mix step while ARCHITECT plays. It played the
+        // song's own faders on the lanes' tracks until the drag was let go (and a lane bar's drag made every
+        // layer's parts again on each step).
+        if (! composerAudition.has_value())
+            return std::nullopt;
+        auto mix = copyWithoutPluginStates (false);
+        if (! hearingMix (mix))
+            return std::nullopt;
+        return mix;
+    }
+
+    bool Studio::hearingMix (Project& heard) const
+    {
         std::set<int> playing;
         for (const auto& [trackId, idea] : composerAudition->layers)
         {
             if (! canTakeMidi (trackId) || idea.notes.empty())
                 continue;
             auto* track = heard.findTrack (trackId);
-            track->parts.push_back (partFromIdea (idea, start, end - start, idea.style));
             // (0.206.0, the owner: "the whole reason to set ARCHITECT volume is for hearing the riffs play in ARCHITECT")
             // Each track a lane plays on (the hearing's stand-in too) at the lane's ARCHITECT level, in the copy only:
             // the song's faders are never touched. Its pan, inserts, mute and the mixer's solo as the track's own.
@@ -12673,17 +12716,14 @@ namespace pr7s
             playing.insert (trackId);
         }
         if (playing.empty())
-            return std::nullopt;
+            return false;
         // (0.76.0) Soloed in the mixer among the layers' tracks: only those; muted: not heard. The rest of the
         // song stays silent, as before.
         const auto anySoloed = std::any_of (heard.tracks.begin(), heard.tracks.end(),
                                             [&playing] (const Track& t) { return t.solo && playing.count (t.id) > 0; });
         for (auto& t : heard.tracks)
             t.solo = playing.count (t.id) > 0 && (! anySoloed || t.solo);
-        heard.loopOn = true;
-        heard.loopStart = start;
-        heard.loopEnd = end;
-        return heard;
+        return true;
     }
 
     bool Studio::auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end)
@@ -13080,7 +13120,17 @@ namespace pr7s
                 giveGuitarLaneShreddage (first, getGuitarVelocities());
             return first;
         }
+        // (0.229.0) Parsed once per text: ARCHITECT asks for them on every refresh (an XML parse each time).
+        const auto settled = settings == nullptr || (settings->getBoolValue ("shreddageGuitar0127", false) && settings->getBoolValue ("djinnDropA0822", false));
+        if (settled && profilesRead && *stored == profilesText)
+            return profilesParsed;
         auto profiles = profilesFromText (*stored);
+        if (settled)
+        {
+            profilesText = *stored;
+            profilesParsed = profiles;
+            profilesRead = true;
+        }
         // (0.127.0, the owner: the guitar lane was built for Shreddage, its power chords by C#-1) no profile on the
         // guitar lane: a Shreddage one there, once (the flag), so a lane emptied by hand afterwards stays empty.
         if (settings != nullptr && ! settings->getBoolValue ("shreddageGuitar0127", false))

@@ -3213,23 +3213,36 @@ void ComposerPage::endTrial (bool keep)
 }
 
 //==============================================================================
-std::vector<OptionBrowser::Option> ComposerPage::typeOptions() const
+void ComposerPage::measureType (const pr7s::ComposerState& from, const juce::String& sectionName, const juce::String& type,
+                                OptionBrowser::Option& o) const
+{
+    // Each type measured by the drums it writes (the library's grooves off: they'd be the same under every type).
+    o.drums = true;
+    o.pending = false;
+    if (spans.empty())
+        return;
+    auto each = from;
+    each.libraryDrums = false;
+    each.lane (ComposerLayer::drums).on = true;
+    pr7s::applySectionType (each, sectionName, type);
+    o.idea = pr7s::composeLayer (ComposerLayer::drums, each, spans, context);   // (0.175.0: the drums alone)
+    o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, true);
+}
+
+std::vector<OptionBrowser::Option> ComposerPage::typeOptions (bool withParts) const
 {
     std::vector<OptionBrowser::Option> out;
     const auto name = typeSectionName();
     const auto types = pr7s::sectionTypesFor (name);
-    // Each type measured by the drums it writes (the library's grooves off: they'd be the same under every type).
-    const auto measure = [this, &name] (const juce::String& type, OptionBrowser::Option& o)
+    // (0.229.0) withParts false: names only, each made when the browser comes to it (fillTypeOption): with 90 chorus
+    // types, opening TYPE composed every one first (about a second).
+    const auto measure = [this, &name, withParts] (const juce::String& type, OptionBrowser::Option& o)
     {
-        if (spans.empty())
-            return;
-        auto each = state;
-        each.libraryDrums = false;
-        each.lane (ComposerLayer::drums).on = true;
-        pr7s::applySectionType (each, name, type);
-        o.idea = pr7s::composeLayer (ComposerLayer::drums, each, spans, context);   // (0.175.0: the drums alone)
         o.drums = true;
-        o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, true);
+        if (withParts)
+            measureType (state, name, type, o);
+        else
+            o.pending = ! spans.empty();
     };
     {
         OptionBrowser::Option o;
@@ -3253,7 +3266,7 @@ std::vector<OptionBrowser::Option> ComposerPage::typeOptions() const
     return out;
 }
 
-std::vector<OptionBrowser::Option> ComposerPage::soloOptions() const
+std::vector<OptionBrowser::Option> ComposerPage::soloOptions (bool withParts) const
 {
     std::vector<OptionBrowser::Option> out;
     const auto& profile = context.leadProfile.has_value() ? context.leadProfile : context.guitarProfile;
@@ -3267,7 +3280,9 @@ std::vector<OptionBrowser::Option> ComposerPage::soloOptions() const
         o.name = pr7s::soloStyleName (st);
         o.description = pr7s::soloStyleDescription (st);
         o.group = st == pr7s::SoloStyle::automatic ? juce::String ("BY STYLE") : pr7s::soloGroupOf (st);
-        if (! spans.empty())
+        if (! withParts)
+            o.pending = ! spans.empty();   // (0.229.0: made when the browser comes to it, fillSoloOption)
+        else if (! spans.empty())
         {
             const auto chosen = st == pr7s::SoloStyle::automatic ? pr7s::soloStyleForGuitarStyle ((int) context.style, 0) : st;
             o.idea = pr7s::composeSolo (chosen, spans, context.beatsPerBar, tuning, velocities, 0, shortest, context.bpm);
@@ -3276,6 +3291,22 @@ std::vector<OptionBrowser::Option> ComposerPage::soloOptions() const
         out.push_back (std::move (o));
     }
     return out;
+}
+
+bool ComposerPage::fillSoloOption (OptionBrowser::Option& o) const
+{
+    const auto& profile = context.leadProfile.has_value() ? context.leadProfile : context.guitarProfile;
+    const auto tuning = profile.has_value() ? profile->tuning() : context.tuning;
+    const auto velocities = profile.has_value() && profile->velocities.has_value() ? *profile->velocities : context.velocities;
+    const auto shortest = profile.has_value() ? profile->shortestNote : 0.0;
+    o.pending = false;
+    if (spans.empty())
+        return true;
+    const auto st = (pr7s::SoloStyle) o.id;
+    const auto chosen = st == pr7s::SoloStyle::automatic ? pr7s::soloStyleForGuitarStyle ((int) context.style, 0) : st;
+    o.idea = pr7s::composeSolo (chosen, spans, context.beatsPerBar, tuning, velocities, 0, shortest, context.bpm);
+    o.measure = pr7s::measureOption (o.idea, context.beatsPerBar, false);
+    return true;
 }
 
 bool ComposerPage::canTryType() const
@@ -3371,9 +3402,21 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeTypeBrowser()
     for (int i = 0; i < (int) types.size(); ++i)
         if (types[(size_t) i].name == state.sectionType)
             chosen = i + 1;
-    auto browser = std::make_unique<OptionBrowser> ("TYPE OF " + typeSectionName().toUpperCase(), typeOptions(), chosen,
+    auto browser = std::make_unique<OptionBrowser> ("TYPE OF " + typeSectionName().toUpperCase(), typeOptions (false), chosen,
                                                     studio.getOptionMemory(), typeListKey);
     juce::Component::SafePointer<ComposerPage> safe (this);
+    {
+        // (0.229.0) Each type's drums made a few a frame, from the state as the browser opened (HEAR changes it).
+        const auto from = state;
+        const auto sectionName = typeSectionName();
+        browser->onFill = [safe, from, sectionName, types] (OptionBrowser::Option& o)
+        {
+            if (safe == nullptr)
+                return false;
+            safe->measureType (from, sectionName, o.id <= 0 || o.id > (int) types.size() ? juce::String() : types[(size_t) o.id - 1].name, o);
+            return true;
+        };
+    }
     const auto nameOf = [types] (int id) { return id <= 0 || id > (int) types.size() ? juce::String() : types[(size_t) id - 1].name; };
     browser->setHearable (canTryType());
     {
@@ -3405,7 +3448,11 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeTypeBrowser()
 
 std::unique_ptr<OptionBrowser> ComposerPage::makeSoloBrowser()
 {
-    auto browser = std::make_unique<OptionBrowser> ("SOLO STYLE", soloOptions(), (int) studio.getSoloStyle(), studio.getOptionMemory(), soloListKey);
+    auto browser = std::make_unique<OptionBrowser> ("SOLO STYLE", soloOptions (false), (int) studio.getSoloStyle(), studio.getOptionMemory(), soloListKey);
+    {
+        juce::Component::SafePointer<ComposerPage> filler (this);
+        browser->onFill = [filler] (OptionBrowser::Option& o) { return filler != nullptr && filler->fillSoloOption (o); };   // (0.229.0)
+    }
     browser->setAutoHear (true);   // (0.180.0)
     {
         juce::StringArray order { "BY STYLE" };
@@ -3840,7 +3887,11 @@ bool ComposerPage::openBarsChosen() const
 
 juce::String ComposerPage::fillOfBar (int bar) const
 {
-    const auto now = pr7s::barFills (state.lane (ComposerLayer::drums), barCount());
+    return fillNameOf (pr7s::barFills (state.lane (ComposerLayer::drums), barCount()), bar);
+}
+
+juce::String ComposerPage::fillNameOf (const std::map<int, juce::String>& now, int bar) const
+{
     const auto found = now.find (bar);
     if (found == now.end())
         return {};
@@ -4029,8 +4080,10 @@ void ComposerPage::timerCallback()
             refresh (false);
         else
         {
+            // (0.229.0) A selection alone moves only each lane's "heard on" line: those strips, not the whole page.
             seenChange = studio.getChangeVersion();
-            repaint();
+            for (const auto& lane : lanes)
+                repaint (lane.header.getUnion (lane.note));
         }
     }
     // (0.76.0) The faders moved in the mixer (mix-only changes don't move the change version): the lanes follow.
@@ -4336,10 +4389,16 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
         // (0.202.0) The locked bars shaded (a red line over them), the bars chosen lit.
         const auto bpb = context.beatsPerBar;
         const auto bars = juce::jmin (64, pr7s::composerBarCount (spans, bpb));
+        // (0.229.0) The fills read once per paint (each open bar read the lane's whole fill text again), and only
+        // the bars in the redrawn strip (the hearing's playhead repaints every lane 30 times a second).
+        const auto clip = g.getClipBounds().toFloat();
+        const auto fills = l == ComposerLayer::drums ? pr7s::barFills (s, bars) : std::map<int, juce::String>();
         for (int b = 0; b < bars; ++b)
         {
             const auto x0 = xFor (b * bpb), x1 = xFor (juce::jmin (total, (b + 1) * bpb));
             const auto cell = juce::Rectangle<float> (x0, r.getY(), x1 - x0, r.getHeight());
+            if (x1 < clip.getX() - 1.0f || x0 > clip.getRight() + 1.0f)
+                continue;
             if (((s.lockedBars >> b) & 1u) != 0)
             {
                 g.setColour (juce::Colour (0xfff4eeea).withAlpha (0.07f));
@@ -4354,7 +4413,7 @@ void ComposerPage::paintLane (juce::Graphics& g, ComposerLayer l, const Lane& la
                 }
             }
             else if (l == ComposerLayer::drums && x1 - x0 > 40.0f)
-                if (const auto name = fillOfBar (b); name.isNotEmpty())
+                if (const auto name = fillNameOf (fills, b); name.isNotEmpty())
                 {
                     // (0.203.0) The open bar's own fill named at its foot.
                     g.setColour (ParagonColours::textDim);
@@ -4708,7 +4767,7 @@ pr7s::RiffFindRequest ComposerPage::riffRequest() const
         request.drumFiles.push_back (g.file.getFullPathName());
     for (const auto& g : context.libraryGrooves)
         request.drumFiles.push_back (g.file.getFullPathName());
-    std::sort (request.drumFiles.begin(), request.drumFiles.end());
+    // (0.229.0) Sorted by the search's own thread: 200,000 paths sorted held the window up before it started.
     request.leastQuality = pr7s::riffQualityThreshold (studio.getRiffQualityLevel());   // (0.228.0)
     request.hidden = studio.getHiddenRiffs();
     return request;
@@ -4716,15 +4775,15 @@ pr7s::RiffFindRequest ComposerPage::riffRequest() const
 
 namespace
 {
-    // The MediaBay's MIDI files that could be riffs (the cheap checks), copied for the search's thread.
+    // The MediaBay's MIDI files that could be riffs, copied for the search's thread. (0.229.0) Only the checks that
+    // cost nothing here: findRiffs does the rest (drums by name and folder, your grooves, the ones hidden) on the
+    // thread anyway, and doing them first held the window up a second or two on a 120,000-file MediaBay.
     std::vector<pr7s::MediaItem> riffCandidates (pr7s::Studio& studio, const pr7s::RiffFindRequest& request)
     {
         std::vector<pr7s::MediaItem> items;
         const auto bpb = juce::jmax (0.25, request.beatsPerBar);
         for (const auto& item : studio.getMediaBay().getItems())
-            if (item.type == pr7s::MediaType::midi && item.notes >= 3 && (item.beats <= 0.0 || item.beats <= 17.0 * bpb + 1.0)
-                && ! pr7s::looksLikeDrums (item) && ! pr7s::isKnownDrumFile (item.file, request)
-                && ! std::binary_search (request.hidden.begin(), request.hidden.end(), item.file.getFullPathName()))
+            if (item.type == pr7s::MediaType::midi && item.notes >= 3 && (item.beats <= 0.0 || item.beats <= 17.0 * bpb + 1.0))
                 items.push_back (item);
         return items;
     }
@@ -4732,7 +4791,8 @@ namespace
 
 std::vector<pr7s::RiffFind> ComposerPage::findRiffsNow()
 {
-    const auto request = riffRequest();
+    auto request = riffRequest();
+    std::sort (request.drumFiles.begin(), request.drumFiles.end());
     return pr7s::findRiffs (riffCandidates (studio, request), request);
 }
 
@@ -4740,7 +4800,7 @@ void ComposerPage::findRiffsInMediaBay()
 {
     if (riffSearch != nullptr)
         return;
-    const auto request = riffRequest();
+    auto request = riffRequest();   // (not const: its copy is sorted on the thread)
     auto items = riffCandidates (studio, request);
     if (items.empty())
     {
@@ -4753,8 +4813,9 @@ void ComposerPage::findRiffsInMediaBay()
     status = "Finding riffs in the MediaBay: " + juce::String (riffSearch->total) + " files to read";
     repaint();
     auto* search = riffSearch.get();
-    search->thread = std::thread ([search, request, items = std::move (items)]
+    search->thread = std::thread ([search, request, items = std::move (items)]() mutable
     {
+        std::sort (request.drumFiles.begin(), request.drumFiles.end());
         search->found = pr7s::findRiffs (items, request, [search] { return search->stop.load(); }, &search->read);
         search->done = true;
     });

@@ -2251,7 +2251,9 @@ void KeyEditor::paintBody (juce::Graphics& g)
         // (0.81.0) The cycle range down the notes, faintly (as the arrangement's).
         const auto& project = studio.getProject();
         const auto x1 = xForBeat (project.loopStart), x2 = xForBeat (project.loopEnd);
-        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (project.loopOn ? 0.06f : 0.02f), juce::Rectangle<float> (x1, notesTop(), x2 - x1, (float) getHeight()));
+        // (0.229.0) One colour, as the arrangement's (0.189.0): a gradient blended over the whole height every paint,
+        // where at 2-6 % nobody can see it is one.
+        g.setColour (juce::Colour (pr7s::FamilyColours::red).withAlpha (project.loopOn ? 0.06f : 0.02f));
         g.fillRect (juce::Rectangle<float> (x1, notesTop(), x2 - x1, (float) getHeight()));
     }
     const auto redrawn = g.getClipBounds();   // (0.83.1: the keys and the ruler only when they're redrawn)
@@ -2499,6 +2501,8 @@ void KeyEditor::paintFollowStamp (juce::Graphics& g)
 void KeyEditor::paintPanel (juce::Graphics& g)
 {
     const auto panel = juce::Rectangle<float> (0.0f, 0.0f, (float) sideWidth - 2.0f, (float) getHeight());
+    if (! g.clipRegionIntersects (panel.getSmallestIntegerContainer()))
+        return;   // (0.229.0: the playhead's strips, 60 times a second, never reach it)
     g.setColour (juce::Colour (0xff100c11));
     g.fillRect (panel);
     const auto* part = getPart();
@@ -2519,7 +2523,7 @@ void KeyEditor::paintPanel (juce::Graphics& g)
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.0f, juce::Font::plain));
     if (track != nullptr && part != nullptr)
-        g.drawText (track->name + ", from bar " + juce::String (studio.getProject().signatures().barAt (part->start) + 1),
+        g.drawText (track->name + ", from bar " + juce::String (studio.getSignatureMap().barAt (part->start) + 1),
                     area.removeFromTop (14.0f), juce::Justification::centredLeft, true);
 
 }
@@ -3040,11 +3044,15 @@ void KeyEditor::paintVelocities (juce::Graphics& g)
     juce::Graphics::ScopedSaveState state (g);
     g.reduceClipRegion (area.getSmallestIntegerContainer());
     const auto& list = notes();
+    // (0.229.0) Only the notes in the redrawn strip (a bar's head is at most 12 px wide): a playhead strip drew
+    // every note in view twice.
+    const auto clip = g.getClipBounds().toFloat();
+    const auto fromX = juce::jmax (area.getX() - 4.0f, clip.getX() - 13.0f), toX = juce::jmin (area.getRight(), clip.getRight() + 1.0f);
     for (int i = 0; i < (int) list.size(); ++i)
     {
         const auto& note = list[(size_t) i];
         const auto x = xForBeat (part->start + note.start);
-        if (x < area.getX() - 4.0f || x > area.getRight())
+        if (x < fromX || x > toX)
             continue;
         const auto isSelected = std::binary_search (selected.begin(), selected.end(), i);
         const auto height = inner.getHeight() * note.velocity;

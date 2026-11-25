@@ -2,6 +2,46 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.229.0
+
+The SECTIONS row's blocks are numbered and can be moved by number, as the track list's tracks are. This release also has another speed round, and it fixes a level that jumped while ARCHITECT played.
+
+**Section numbers**
+- **Every block shows its place,** 1, 2, 3 from the left, in a box at its top left.
+- **Double-click the number** and type a new one (Enter, or click elsewhere). The block moves there and the others close up around it. Its music moves with it, as when it's dragged: parts, chords, markers and automation. It's one undo step. A number past the end puts it last.
+- **A double-click on the rest of the block** still opens it in ARCHITECT.
+- **The block editor** (right-click a block) has a POSITION box: choose 1 OF 6, 2 OF 6 and so on.
+- Linked copies stay linked wherever they move.
+
+**Fixed**
+- **A level jumped while ARCHITECT played.** Dragging any fader, pan, EQ or BOOSTER control while ARCHITECT's lanes were heard played the lanes' tracks at the song's own fader levels until the drag was let go, then jumped back to the lanes' levels. Each drag step now keeps the lanes' levels, and a lane bar's drag no longer makes every lane's notes again on each step.
+
+**Speed** (three reviews of the whole studio: the audio engine, the screen, and the work between them; each finding checked in the code)
+- **ARCHITECT's drums with a big groove library:**
+  - **Fills:** the fills to go with a groove are now found with a plain byte compare. Comparing folder paths a letter at a time was slow: on a 100,000-groove library that was 30-300 ms every time the drums were made, a ROLL or GENERATE, or a groove measured in the browser.
+  - **Bar locks:** a locked fill is now found by its path at once. Before, it ranked the whole library first, for every look.
+- **The TYPE and SOLO STYLE browsers open at once.** Each option's drums or solo is made a few at a time as the list shows, as the groove browser's are. Before, all of them were made first: about a second with 90 chorus types.
+- **Find a Riff starts at once.** Sorting your 200,000 groove paths and checking every MIDI file's folders for drums now happens on the search's own thread. Before, the window could hold for a second or two first on a big MediaBay.
+- **ARCHITECT's refreshes:** its state is no longer parsed twice on every refresh when nothing changed. The lane levels are no longer re-read from the settings 240 times a second, or the instrument profiles on every refresh.
+- **The screen:**
+  - **The SECTIONS row:** it works out every block's place once per paint. It walked the row from the start for each block, twice, and with 30 blocks that was 90 walks a frame.
+  - **Lit words:** each word drawn in the family gradient was measured afresh on every paint. Now each one is measured once and remembered.
+  - **The MIDI editor:** the cycle shading is one colour instead of a gradient over the whole height. At 2-6 % you can't see the difference. The side panel and the velocity lane are drawn only where the screen is redrawn; the playhead's strips redrew every velocity bar.
+  - **The option browser:** it no longer looks at the Inspired By file on disk on every paint, and draws only the parts it was asked to redraw.
+  - **The info line** no longer walks every part in the song ten times a second during any drag when no part is chosen.
+  - **ARCHITECT:** a locked bar's fill name is read once per paint, only for the bars redrawn. A track click redraws only the lanes' "heard on" lines, not the whole page.
+- **The audio engine:**
+  - The MediaBay preview no longer looks up its channels for every sample.
+  - PR7-D's link messages get room in advance, so they can't make the audio thread allocate memory.
+
+Not done, and why:
+- **Telling plug-ins their input is silent:** this would need a change inside JUCE's plug-in host, and plug-ins differ in whether they honour it.
+- **Plug-ins that move their own meters, marked as changed for auto-save:** stopping that could miss settings a plug-in changes while it plays.
+- **Lane browsers making each option as it's shown:** this needs ARCHITECT's choices made one at a time.
+- **Linked sections reusing unchanged slices:** listed for the next round.
+
+Nothing here has been heard or timed on your machine. The numbers come from reading the code and the tests here.
+
 ## 0.228.0
 
 Find a Riff checks how much each MIDI file is like a guitar riff, and leaves out the ones that aren't.

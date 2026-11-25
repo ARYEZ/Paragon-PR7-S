@@ -520,6 +520,7 @@ namespace pr7s
         void stopComposerAudition();
         bool isComposerAuditioning() const noexcept { return composerAudition.has_value(); }
         std::optional<Project> getComposerAuditionCopyForTests() const { return composerAuditionCopy(); }   // (0.206.0)
+        std::optional<Project> getComposerMixCopyForTests() const { return composerMixCopy(); }             // (0.229.0)
         double getComposerAuditionStart() const noexcept { return composerAudition.has_value() ? composerAudition->start : 0.0; }
         double getComposerAuditionEnd() const noexcept { return composerAudition.has_value() ? composerAudition->end : 0.0; }
         // The sections built so far in this song (for what comes next; forgotten with the song).
@@ -1924,6 +1925,15 @@ namespace pr7s
         static inline bool guardUndoSharing = false;   // (0.165.0, the tests turn it on)
     private:
         Project copyWithoutPluginStates (bool forUndo) const;   // (0.83.1)
+        std::optional<Project> composerMixCopy() const;   // (0.229.0) the hearing's levels and solos, no layers' parts
+        bool hearingMix (Project&) const;                 // the lanes' levels and the hearing's solos on a copy; false: none play
+        mutable juce::String laneLevelsText;              // (0.229.0) the lane levels as last parsed
+        mutable std::array<float, 8> laneLevelsParsed {};
+        mutable bool laneLevelsRead = false;
+        mutable juce::String profilesText;                // (0.229.0) the instrument profiles as last parsed
+        mutable std::vector<InstrumentProfile> profilesParsed;
+        mutable bool profilesRead = false;
+        juce::String lastComposerText, lastComposerStored;   // (0.229.0) setComposerState's last call
         bool applyAutoColour();   // (0.79.0) the rule's colours onto its tracks; true if any changed
         void restore (const Project&);
         void joinFolderGroup (Track&);    // (0.50.0)

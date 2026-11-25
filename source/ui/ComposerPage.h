@@ -191,7 +191,8 @@ public:
     void rollGroove (pr7s::ComposerLayer);            // ROLL as without bar locks (the drums: a new groove, no fill)
     int barCount() const;
     bool openBarsChosen() const;                      // (0.203.0) a drums bar chosen that isn't locked
-    juce::String fillOfBar (int bar) const;           // (0.203.0) the fill's name in that drums bar (empty: none)
+    juce::String fillOfBar (int bar) const;
+    juce::String fillNameOf (const std::map<int, juce::String>& barFills, int bar) const;   // (0.229.0)           // (0.203.0) the fill's name in that drums bar (empty: none)
     int barAtX (pr7s::ComposerLayer, int x) const;
     juce::Rectangle<int> getBarBounds (pr7s::ComposerLayer, int bar) const;
     juce::TextButton& getBarsKey (pr7s::ComposerLayer l) { return lanes[(size_t) l].bars; }
@@ -232,8 +233,10 @@ public:
     // (0.157.0) TYPE and the solo style: a short menu and the browser (types measured by the drums each writes, the
     // library's grooves left out; solos by the solo each writes). Ids: a type's place in sectionTypesFor + 1 (0:
     // STANDARD); a solo style's number.
-    std::vector<OptionBrowser::Option> typeOptions() const;
-    std::vector<OptionBrowser::Option> soloOptions() const;
+    std::vector<OptionBrowser::Option> typeOptions (bool withParts = true) const;
+    std::vector<OptionBrowser::Option> soloOptions (bool withParts = true) const;
+    void measureType (const pr7s::ComposerState& from, const juce::String& sectionName, const juce::String& type, OptionBrowser::Option&) const;
+    bool fillSoloOption (OptionBrowser::Option&) const;   // (0.229.0) a pending solo style's part made
     juce::PopupMenu makeTypeMenu();
     void typeMenuChosen (int item);
     std::unique_ptr<OptionBrowser> makeTypeBrowser();

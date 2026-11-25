@@ -497,7 +497,9 @@ void OptionBrowser::paint (juce::Graphics& g)
     g.setColour (ParagonColours::textDim);
     g.setFont (heading (18.0f));
     g.drawText ("GROUPS", groupsArea.withHeight (34).reduced (12, 0), juce::Justification::centredLeft);
-    const auto groups = getGroups();
+    // (0.229.0) Each part only when the redrawn area reaches it: while measuring, the timer repaints rows 60 times a
+    // second, and every paint counted every group and read the chosen one's notes again.
+    const auto groups = g.clipRegionIntersects (groupsArea) ? getGroups() : juce::StringArray();
     for (int i = 0; i < groups.size(); ++i)
     {
         const auto row = groupRow (i);
@@ -526,6 +528,7 @@ void OptionBrowser::paint (juce::Graphics& g)
         g.drawText ("ENERGY", energyKeys.front()->getBounds().withX (listArea.getX()).withWidth (62), juce::Justification::centredLeft);
 
     // The list.
+    if (g.clipRegionIntersects (listArea))
     {
         juce::Graphics::ScopedSaveState keep (g);
         g.reduceClipRegion (listArea.reduced (1));
@@ -574,7 +577,7 @@ void OptionBrowser::paint (juce::Graphics& g)
     }
 
     // The chosen one.
-    if (const auto* o = find (chosen))
+    if (const auto* o = g.clipRegionIntersects (detailArea) ? find (chosen) : nullptr)
     {
         auto d = detailArea.reduced (14);
         g.setColour (ParagonColours::textDim);
@@ -594,7 +597,18 @@ void OptionBrowser::paint (juce::Graphics& g)
         d.removeFromTop (6);
         g.setColour (ParagonColours::textDim);
         g.setFont (words (13.0f, juce::Font::plain));
-        g.drawFittedText (shownDescription (*o), d.withBottom (pictureArea.getY() - 6), juce::Justification::topLeft, 9);
+        // (0.229.0) The description (with the owner's inspired-by notes, read from a file) made again only when the
+        // chosen one changes, or a second on: it looked at the file on disk on every paint.
+        const auto now = juce::Time::getMillisecondCounter();
+        if (describedId != o->id || describedName != o->name || describedDescription != o->description || now - describedAt > 1000)
+        {
+            describedId = o->id;
+            describedName = o->name;
+            describedDescription = o->description;
+            describedText = shownDescription (*o);
+            describedAt = now;
+        }
+        g.drawFittedText (describedText, d.withBottom (pictureArea.getY() - 6), juce::Justification::topLeft, 9);
         if (drawn)
             paintPicture (g, *o, pictureArea);
     }
@@ -612,7 +626,7 @@ void OptionBrowser::paintPicture (juce::Graphics& g, const Option& o, juce::Rect
 {
     g.setColour (juce::Colour (0xff080609));
     g.fillRect (area);
-    const auto notes = o.idea.notes;
+    const auto& notes = o.idea.notes;   // (0.229.0: not copied each paint)
     if (o.pending)
     {
         g.setColour (ParagonColours::textDim);

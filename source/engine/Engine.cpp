@@ -326,6 +326,7 @@ namespace pr7s
         // (0.164.0) Room for its busiest block at this block size (at up to 300 BPM; update makes it again when its events change).
         const auto room = midiRoomOf (track.events, (double) maxBlockSize / juce::jmax (1.0, sampleRate) * 5.0);
         track.midi.ensureSize (room);
+        track.midiRoom = juce::jmax (track.midiRoom, room);
         track.effectMidi.ensureSize (room);   // (0.34.5: each track's own: effects may run on several cores at once)
         track.preFaderCopy.setSize (2, maxBlockSize);
         track.left.reset (sampleRate, gainRampSeconds);
@@ -1020,6 +1021,7 @@ namespace pr7s
                 if (p.midiRoom > 0)
                 {
                     track->midi.ensureSize (p.midiRoom);   // (no allocation when the room is there)
+                    track->midiRoom = juce::jmax (track->midiRoom, p.midiRoom);
                     track->effectMidi.ensureSize (p.midiRoom);
                 }
                 if (! p.eventsKept)
@@ -1433,8 +1435,18 @@ namespace pr7s
         auto* track = findTrack (trackId);
         if (track == nullptr)
             return false;
-        const juce::SpinLock::ScopedLockType outbox (track->outboxLock);
-        track->outbox.addEvent (message, 0);
+        size_t waiting = 0;
+        {
+            const juce::SpinLock::ScopedLockType outbox (track->outboxLock);
+            track->outbox.addEvent (message, 0);
+            waiting = (size_t) track->outbox.data.size();
+        }
+        // (0.229.0) The block's MIDI made room for the messages too (PR7-D's file path as SysEx came on top of a busy
+        // block's notes, and the buffer could grow on the audio thread). Under the lock: the audio thread uses it.
+        {
+            const juce::ScopedLock sl (lock);
+            track->midi.ensureSize (track->midiRoom + waiting + 64);
+        }
         return true;
     }
 
@@ -2056,10 +2068,19 @@ namespace pr7s
         {
             const auto length = preview->getNumSamples();
             const auto gain = previewGain.load();
+            // (0.229.0) The channels' pointers taken once (they were looked up for every sample).
+            const auto previewChannels = juce::jmin (2, output.getNumChannels());
+            float* outs[2] {};
+            const float* ins[2] {};
+            for (int channel = 0; channel < previewChannels; ++channel)
+            {
+                outs[channel] = output.getWritePointer (channel);
+                ins[channel] = preview->getReadPointer (juce::jmin (channel, preview->getNumChannels() - 1));
+            }
             const auto addSample = [&] (int i, int at)
             {
-                for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)
-                    output.getWritePointer (channel)[i] += gain * preview->getReadPointer (juce::jmin (channel, preview->getNumChannels() - 1))[at];
+                for (int channel = 0; channel < previewChannels; ++channel)
+                    outs[channel][i] += gain * ins[channel][at];
             };
             const auto wait = previewWait.load();
             const auto lockBeats = previewLockBeats.load();

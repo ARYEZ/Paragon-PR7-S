@@ -9943,3 +9943,54 @@ TEST_CASE ("0.221.0: a block's chords changed on the chord track are what ARCHIT
     REQUIRE (page.getSpans().size() == 1);
     CHECK (page.getSpans()[0].chord == verse[0].chord);
 }
+
+TEST_CASE ("0.229.0: a block's number typed moves it there, its music with it", "[sections][ui][numbers]")
+{
+    Finish::set (Finish::Type::pearlWhite, false);
+    Song song;
+    auto& studio = song.studio;
+    MainView view (studio);
+    view.setSize (1600, 900);
+    studio.dispatchPendingMessages();
+    auto& arrange = view.getArrangeView();
+    // Numbered 1, 2, 3 from the left, a box at each block's top left.
+    for (int i = 0; i < 3; ++i)
+    {
+        CHECK (arrange.sectionNumberOf (i) == i + 1);
+        const auto box = arrange.getSectionNumberBox (i);
+        REQUIRE_FALSE (box.isEmpty());
+        CHECK (arrange.getSectionBounds (i).contains (box));
+        CHECK (arrange.sectionBlockAt (box.getCentre()) == i);
+    }
+    // A double-click on the chorus's number opens the box with its number in it.
+    const auto box = arrange.getSectionNumberBox (2).getCentre();
+    arrange.mouseDown (mouseAt (arrange, box, box));
+    arrange.mouseUp (mouseAt (arrange, box, box));
+    arrange.mouseDoubleClick (mouseAt (arrange, box, box, 2));
+    auto* entry = arrange.getSectionNumberEditor();
+    REQUIRE (entry != nullptr);
+    CHECK (entry->getText() == "3");
+    CHECK (view.getComposerWindow() == nullptr);   // (the number, not the block: the composer isn't opened)
+    // 1 typed: the chorus goes first, its note with it; one undo step.
+    entry->setText ("1", false);
+    arrange.commitSectionNumber();
+    studio.dispatchPendingMessages();
+    CHECK (arrange.getSectionNumberEditor() == nullptr);
+    CHECK (song.names() == juce::StringArray { "Chorus", "Intro", "Verse" });
+    CHECK (song.pitchAt (0.0) == 64);
+    studio.undo();
+    CHECK (song.names() == juce::StringArray { "Intro", "Verse", "Chorus" });
+    // Past the end: last. Its own number or nonsense: nothing.
+    CHECK (arrange.moveSectionToNumber (0, 9));
+    CHECK (song.names() == juce::StringArray { "Verse", "Chorus", "Intro" });
+    CHECK_FALSE (arrange.moveSectionToNumber (2, 3));
+    CHECK_FALSE (arrange.moveSectionToNumber (0, 0));
+    // The block editor's POSITION.
+    SectionEditor editor (studio, studio.getSongSections().blocks[2].id);
+    CHECK (editor.getPositionBox().getNumItems() == 3);
+    CHECK (editor.getPositionBox().getSelectedId() == 3);
+    editor.setPosition (2);
+    CHECK (song.names() == juce::StringArray { "Verse", "Intro", "Chorus" });
+    CHECK (editor.getIndex() == 1);
+    CHECK (editor.getPositionBox().getSelectedId() == 2);
+}

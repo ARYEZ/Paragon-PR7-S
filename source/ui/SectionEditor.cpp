@@ -150,7 +150,7 @@ private:
 //==============================================================================
 SectionEditor::SectionEditor (pr7s::Studio& s, int id) : studio (s), blockId (id), strip (std::make_unique<Strip> (*this))
 {
-    for (auto* l : { &title, &info, &chordsLabel, &hint, &nameLabel, &typeLabel, &lengthLabel, &keyLabel, &transitionLabel })
+    for (auto* l : { &title, &info, &chordsLabel, &hint, &nameLabel, &typeLabel, &lengthLabel, &keyLabel, &transitionLabel, &positionLabel })
     {
         l->setColour (juce::Label::textColourId, ParagonColours::text);
         l->setFont (words (15.0f));
@@ -162,11 +162,13 @@ SectionEditor::SectionEditor (pr7s::Studio& s, int id) : studio (s), blockId (id
     hint.setFont (words (13.0f));
     hint.setText ("CLICK A CHORD TO CHANGE IT, ITS LENGTH OR MOVE IT; DRAG ONE SIDEWAYS TO PUT IT ELSEWHERE", juce::dontSendNotification);
     chordsLabel.setText ("CHORDS FROM THE KEY", juce::dontSendNotification);
-    for (auto* l : { &nameLabel, &typeLabel, &lengthLabel, &keyLabel, &transitionLabel })
+    for (auto* l : { &nameLabel, &typeLabel, &lengthLabel, &keyLabel, &transitionLabel, &positionLabel })
         l->setColour (juce::Label::textColourId, ParagonColours::textDim);
 
-    for (auto* box : { &nameBox, &typeBox, &lengthBox, &keyBox, &transitionBox })
+    for (auto* box : { &nameBox, &typeBox, &lengthBox, &keyBox, &transitionBox, &positionBox })
         addAndMakeVisible (*box);
+    positionBox.setTooltip ("Its place in the song: it moves there, its music with it");
+    positionBox.onChange = [this] { if (! refreshing && positionBox.getSelectedId() > 0) setPosition (positionBox.getSelectedId()); };
     {
         // (0.157.0) Grouped under headings.
         const auto& transitions = pr7s::sectionTransitions();
@@ -309,6 +311,10 @@ void SectionEditor::refresh()
     if (! hasOwn)
         lengthBox.addItem (barsText (b.bars), b.bars);
     lengthBox.setSelectedId (b.bars, juce::dontSendNotification);
+    positionBox.clear (juce::dontSendNotification);
+    for (int i = 1; i <= (int) blocks.size(); ++i)
+        positionBox.addItem (juce::String (i) + " OF " + juce::String ((int) blocks.size()), i);
+    positionBox.setSelectedId (index + 1, juce::dontSendNotification);
     keyLabel.setText (studio.isOneKey() ? "SONG KEY" : "THIS SECTION'S KEY", juce::dontSendNotification);
     const auto key = getKey();
     const auto& keys = pr7s::Key::all();
@@ -323,6 +329,15 @@ void SectionEditor::refresh()
                              + " OF " + barsText (blockBeats() / beatsPerBar()) + ")", juce::dontSendNotification);
     repaint();
     strip->repaint();
+}
+
+void SectionEditor::setPosition (int place)
+{
+    const auto index = getIndex();
+    const auto count = (int) studio.getSongSections().blocks.size();
+    if (index >= 0 && place >= 1)
+        studio.moveSongSection (index, juce::jmin (place, count) - 1);   // (kept by id: still this block)
+    refresh();
 }
 
 void SectionEditor::setName (const juce::String& name)
@@ -499,14 +514,15 @@ void SectionEditor::resized()
     r.removeFromTop (6);
     auto labels = r.removeFromTop (20);
     auto boxes = r.removeFromTop (28);
-    const auto w = (r.getWidth() - 4 * 10) / 5;
-    const std::array<std::pair<juce::Label*, juce::ComboBox*>, 5> pairs { { { &nameLabel, &nameBox }, { &typeLabel, &typeBox },
-                                                                          { &lengthLabel, &lengthBox }, { &keyLabel, &keyBox },
-                                                                          { &transitionLabel, &transitionBox } } };
+    const auto w = (r.getWidth() - 5 * 10 - 110) / 5;
+    const std::array<std::pair<juce::Label*, juce::ComboBox*>, 6> pairs { { { &positionLabel, &positionBox }, { &nameLabel, &nameBox },
+                                                                          { &typeLabel, &typeBox }, { &lengthLabel, &lengthBox },
+                                                                          { &keyLabel, &keyBox }, { &transitionLabel, &transitionBox } } };
     for (auto [label, box] : pairs)
     {
-        label->setBounds (labels.removeFromLeft (w));
-        box->setBounds (boxes.removeFromLeft (w));
+        const auto bw = box == &positionBox ? 110 : w;
+        label->setBounds (labels.removeFromLeft (bw));
+        box->setBounds (boxes.removeFromLeft (bw));
         labels.removeFromLeft (10);
         boxes.removeFromLeft (10);
     }

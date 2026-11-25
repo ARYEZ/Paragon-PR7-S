@@ -5,6 +5,8 @@
 #include "Logo.h"
 
 #include <ParagonFonts.h>
+#include <mutex>
+#include <unordered_map>
 
 //==============================================================================
 namespace ParagonColours
@@ -40,13 +42,37 @@ namespace ParagonColours
             g.setColour (colour);
     }
 
+    float measuredWidth (const juce::Font& font, const juce::String& text)
+    {
+        // (0.229.0) Kept: every lit word's span was laid out afresh on each paint (JUCE's own drawText keeps its
+        // layouts; this didn't), twice per word. Keyed by the typeface it resolves to, its size and the text.
+        struct Key
+        {
+            const void* typeface; float height, scale, kerning; juce::String text;
+            bool operator== (const Key& o) const { return typeface == o.typeface && height == o.height && scale == o.scale && kerning == o.kerning && text == o.text; }
+        };
+        struct Hash { size_t operator() (const Key& k) const { return (size_t) k.text.hashCode64() ^ std::hash<const void*>() (k.typeface) ^ std::hash<float>() (k.height); } };
+        static std::mutex lock;
+        static std::unordered_map<Key, float, Hash> kept;
+        const auto typeface = font.getTypefacePtr();
+        Key key { typeface.get(), font.getHeight(), font.getHorizontalScale(), font.getExtraKerningFactor(), text };
+        const std::lock_guard<std::mutex> hold (lock);
+        if (const auto found = kept.find (key); found != kept.end())
+            return found->second;
+        juce::GlyphArrangement glyphs;
+        glyphs.addLineOfText (font, text, 0.0f, 0.0f);
+        const auto width = glyphs.getBoundingBox (0, -1, true).getWidth();
+        if (kept.size() >= 2048)
+            kept.clear();   // (a long session: started again rather than grown without end)
+        kept.emplace (std::move (key), width);
+        return width;
+    }
+
     juce::Rectangle<float> textSpan (const juce::Font& font, const juce::String& text, juce::Rectangle<float> box, juce::Justification justification)
     {
         if (text.containsChar ('\n'))
             return box;
-        juce::GlyphArrangement glyphs;
-        glyphs.addLineOfText (font, text, 0.0f, 0.0f);
-        const auto width = juce::jmin (box.getWidth(), glyphs.getBoundingBox (0, -1, true).getWidth());
+        const auto width = juce::jmin (box.getWidth(), measuredWidth (font, text));
         if (justification.testFlags (juce::Justification::right))
             return box.withLeft (box.getRight() - width);
         if (justification.testFlags (juce::Justification::horizontallyCentred))

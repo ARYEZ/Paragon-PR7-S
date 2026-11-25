@@ -204,3 +204,28 @@ TEST_CASE ("0.206.0: an empty track found for a lane starts at its level on BUIL
     CHECK (studio.getProject().findTrack (bass)->volumeDb == 0.0f);
     CHECK (studio.getProject().findTrack (bass)->parts.empty());
 }
+
+TEST_CASE ("0.229.0: a mix drag while ARCHITECT plays keeps the lanes at their levels", "[composer][architectsong][architectlevels]")
+{
+    Studio studio (false);
+    const auto bass = studio.addTrack (Instrument {});
+    studio.renameTrack (bass, "Bass");
+    studio.setVolume (bass, 3.0f);
+    const auto other = studio.addTrack (Instrument {});
+    LineIdea idea;
+    idea.part = LineIdea::Part::bass;
+    idea.notes.push_back ({ 0.0, 1.0, 40, 0.8f });
+    REQUIRE (studio.auditionComposer ({ { bass, idea } }, 0.0, 4.0));
+    // A fader drag's step on another track: the mix the engine is given has the lane's level on the bass, not the
+    // song's +3 dB (the jump before), and no layers' parts made for it.
+    studio.setVolume (other, -6.0f, false);
+    const auto mix = studio.getComposerMixCopyForTests();
+    REQUIRE (mix.has_value());
+    CHECK_THAT (mix->findTrack (bass)->volumeDb, WithinAbs (-5.5, 1.0e-4));
+    CHECK_THAT (mix->findTrack (other)->volumeDb, WithinAbs (-6.0, 1.0e-4));
+    CHECK (mix->findTrack (bass)->parts.size() == studio.getProject().findTrack (bass)->parts.size());
+    CHECK (mix->findTrack (bass)->solo);
+    CHECK_FALSE (mix->findTrack (other)->solo);
+    CHECK (studio.getProject().findTrack (bass)->volumeDb == 3.0f);
+    studio.stopComposerAudition();
+}

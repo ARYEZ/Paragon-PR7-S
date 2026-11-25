@@ -1,3 +1,4 @@
+#include <unordered_set>
 #include "InfoLine.h"
 
 #include <unordered_map>
@@ -118,6 +119,9 @@ std::vector<int> InfoLine::partsInOrder() const
 {
     // The earliest first (the manual: "the first item in the selection"), then by the tracks' order.
     auto ids = arrange.getSelectedParts();
+    if (ids.empty())
+        return ids;   // (0.229.0: nothing chosen: no walk of the song, ten times a second during any drag)
+    const std::unordered_set<int> chosen (ids.begin(), ids.end());
     const auto shown = studio.getShownTracks();
     // (0.57.1) Each part's place found once, from one walk of the song (it was searched for twice per
     // comparison: with Ctrl+A on thousands of parts, millions of checks ten times a second).
@@ -126,7 +130,8 @@ std::vector<int> InfoLine::partsInOrder() const
     {
         const auto row = (int) (std::find (shown.begin(), shown.end(), track.id) - shown.begin());
         for (const auto& part : track.parts)
-            keys[part.id] = { part.start, row };
+            if (chosen.count (part.id) > 0)   // (0.229.0: only the chosen ones placed)
+                keys[part.id] = { part.start, row };
     }
     ids.erase (std::remove_if (ids.begin(), ids.end(), [&] (int id) { return keys.find (id) == keys.end(); }), ids.end());
     std::stable_sort (ids.begin(), ids.end(), [&] (int a, int b) { return keys[a] < keys[b]; });

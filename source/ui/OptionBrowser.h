@@ -99,6 +99,9 @@ private:
     pr7s::OptionFeel feel = pr7s::OptionFeel::unknown;
     int energy = 0;
     int chosen = 0;
+    mutable int describedId = -1;                          // (0.229.0) the description last made for the paint
+    mutable juce::String describedName, describedDescription, describedText;
+    mutable juce::uint32 describedAt = 0;
     float scroll = 0.0f;
     bool measured = false, drawn = false, hearable = true;
     juce::StringArray groupOrder;

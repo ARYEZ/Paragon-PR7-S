@@ -7,6 +7,7 @@
 #include <array>
 #include <map>
 #include <mutex>
+#include <unordered_map>
 
 #include "engine/DrumIdeas.h"
 
@@ -31848,8 +31849,17 @@ namespace pr7s
             std::shared_ptr<const void> keep;
             std::vector<size_t> fills;          // indices into the list
             std::vector<juce::String> folders;  // each fill's folder, as a path
+            std::vector<std::string> lowered;   // (0.229.0) the same, lower case, for foldersInCommon by bytes
             std::vector<bool> toontrack;        // in the Toontrack folder
+            std::unordered_map<std::string, size_t> byPath;   // (0.229.0) every groove's full path -> its index
         };
+
+        // (0.229.0) A path in lower case as plain bytes: juce::String's [] walks UTF-8 from the start, so comparing
+        // two paths a character at a time was O(length^2) (30-300 ms over a big library's fills per groove).
+        std::string lowerBytes (const juce::String& path)
+        {
+            return path.toLowerCase().toStdString();
+        }
 
         const FillIndex& fillIndexOf (const ComposerContext& c)
         {
@@ -31878,8 +31888,12 @@ namespace pr7s
                     continue;
                 index->fills.push_back (i);
                 index->folders.push_back (list[i].file.getParentDirectory().getFullPathName());
+                index->lowered.push_back (lowerBytes (index->folders.back()));
                 index->toontrack.push_back (g->toontrack || index->folders.back().containsIgnoreCase ("toontrack"));
             }
+            index->byPath.reserve (list.size());
+            for (size_t i = 0; i < list.size(); ++i)
+                index->byPath.emplace (list[i].file.getFullPathName().toStdString(), i);
             if (kept.size() >= 4)
                 kept.erase (kept.begin());
             kept.push_back (std::move (index));
@@ -31887,21 +31901,24 @@ namespace pr7s
         }
 
         // How many folders two folders' paths have in common from the top (the same folder: one more).
-        int foldersInCommon (const juce::String& a, const juce::String& b)
+        // (0.229.0) Both in lower case already (lowerBytes): the same answer as the old character walk, by bytes.
+        // A multi-byte character compares equal only when every byte does, and '/' and '\\' never occur inside one.
+        int foldersInCommon (const std::string& a, const std::string& b)
         {
-            const auto n = juce::jmin (a.length(), b.length());
-            int common = 0, i = 0;
+            const auto n = juce::jmin (a.size(), b.size());
+            int common = 0;
+            size_t i = 0;
             for (; i < n; ++i)
             {
-                const auto x = juce::CharacterFunctions::toLowerCase (a[i]), y = juce::CharacterFunctions::toLowerCase (b[i]);
-                if (x != y)
+                const auto x = a[i];
+                if (x != b[i])
                     break;
                 if (x == '/' || x == '\\')
                     ++common;
             }
-            if (i == n && (a.length() == b.length() || (i < a.length() && (a[i] == '/' || a[i] == '\\'))
-                           || (i < b.length() && (b[i] == '/' || b[i] == '\\'))))
-                common += a.length() == b.length() ? 2 : 1;
+            if (i == n && (a.size() == b.size() || (i < a.size() && (a[i] == '/' || a[i] == '\\'))
+                           || (i < b.size() && (b[i] == '/' || b[i] == '\\'))))
+                common += a.size() == b.size() ? 2 : 1;
             return common;
         }
     }
@@ -31915,6 +31932,7 @@ namespace pr7s
         const auto sections = (int) drumSections().size();   // (the bits of sectionMask)
         section = juce::jlimit (0, sections - 1, section);
         const auto home = groove.file.getParentDirectory().getFullPathName();
+        const auto homeLowered = lowerBytes (home);
         const auto grooveToontrack = groove.toontrack || home.containsIgnoreCase ("toontrack");
         struct Ranked { int tier, near, words, score; size_t at; };
         std::vector<Ranked> ranked;
@@ -31923,8 +31941,8 @@ namespace pr7s
         {
             const auto& f = list[index.fills[k]];
             const bool toontrack = index.toontrack[k];
-            const auto near = foldersInCommon (home, index.folders[k]);
-            const auto sameFolder = home.equalsIgnoreCase (index.folders[k]);
+            const auto near = foldersInCommon (homeLowered, index.lowered[k]);
+            const auto sameFolder = homeLowered == index.lowered[k];
             // Toontrack's fills first; a groove of another pack keeps its own folder's fills ahead of them.
             const auto tier = toontrack ? (grooveToontrack || ! sameFolder ? 1 : 2) : (sameFolder && ! grooveToontrack ? 2 : 0);
             auto w = 0;
@@ -32561,14 +32579,18 @@ namespace pr7s
         {
             const auto path = id.substring (4);
             std::optional<LibraryGroove> groove;
-            const auto section = juce::jlimit (0, (int) drumSections().size() - 1, s.lane (ComposerLayer::drums).style);
-            for (const auto& f : libraryGroovesFor (c.libraryGrooves, section, true, 24, true))
-                if (f.file.getFullPathName() == path)
-                    groove = f;
-            if (! groove.has_value())
-                for (const auto& f : c.libraryGrooves)
-                    if (f.file.getFullPathName() == path)
-                        groove = f;
+            // (0.229.0) Found by its path in the list's index (it ranked the whole library for every lookup, then
+            // walked it when the fill wasn't in the top 24): the same groove, whatever ranking found it.
+            if (! c.libraryGrooves.empty())
+            {
+                const auto& index = fillIndexOf (c);
+                if (const auto at = index.byPath.find (path.toStdString()); at != index.byPath.end())
+                {
+                    groove = c.libraryGrooves.get()[at->second];
+                    if (groove->sectionMask < 0)
+                        classifyGroove (*groove);
+                }
+            }
             if (! groove.has_value())
                 return {};
             auto notes = libraryFillBar (*groove, bpb);

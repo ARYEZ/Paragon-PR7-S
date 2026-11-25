@@ -389,6 +389,7 @@ namespace pr7s
             // played at the start of the next block; the audio thread only tries the lock.
             juce::SpinLock outboxLock;
             juce::MidiBuffer outbox;
+            size_t midiRoom = 0;   // (0.229.0) the room midi was given (the outbox's messages are added on top)
             juce::AudioBuffer<float> buffer;
             std::array<LevelMeterSource, 3> meters;   // one per reader (2: the Inspector's fader)
             // The mix as set, and the lanes read (those with points and R on).

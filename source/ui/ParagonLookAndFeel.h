@@ -287,6 +287,7 @@ namespace ParagonColours
         setFill (g, c, area.toFloat(), vertical);
     }
     // Where `text` in `font` lands inside `box` with `justification` (one line; clipped to the box).
+    float measuredWidth (const juce::Font&, const juce::String& text);   // (0.229.0) the line's ink width, kept
     juce::Rectangle<float> textSpan (const juce::Font&, const juce::String& text, juce::Rectangle<float> box, juce::Justification);
     // setFill across the letters of `text`, drawn next in the Graphics' current font in `box`.
     void setTextFill (juce::Graphics&, juce::Colour, const juce::String& text, juce::Rectangle<float> box, juce::Justification);
