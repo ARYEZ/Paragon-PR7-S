@@ -565,9 +565,10 @@ void ArrangeView::paintPointHandles (juce::Graphics& g, const Timeline::Row& row
         {
             const auto x = (timeline.xForBeat (editPointsOf (*lane)[(size_t) hoverCurve.point - 1].beat) + timeline.xForBeat (editPointsOf (*lane)[(size_t) hoverCurve.point].beat)) * 0.5f;
             const auto handle = getCurveHandle (row.busId, row.laneIndex, hoverCurve.point);
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> (9.0f, 9.0f).withCentre (handle));
             g.drawEllipse (juce::Rectangle<float> (9.0f, 9.0f).withCentre (handle), 1.5f);
             // The quick scaling handle at the top edge.
+            ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> (x - 8.0f, area.getY(), 16.0f, 3.0f));
             g.fillRect (juce::Rectangle<float> (x - 8.0f, area.getY(), 16.0f, 3.0f));
         }
     }
@@ -584,9 +585,9 @@ void ArrangeView::paintPointHandles (juce::Graphics& g, const Timeline::Row& row
     const auto box = getPointBox();
     if (box.isEmpty())
         return;
-    g.setColour (ParagonColours::accent.withAlpha (0.08f));
+    ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.08f), box);
     g.fillRect (box);
-    g.setColour (ParagonColours::accent.withAlpha (0.8f));
+    ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.8f), box);
     g.drawRect (box, 1.0f);
     for (const auto c : { box.getTopLeft(), juce::Point<float> (box.getCentreX(), box.getY()), box.getTopRight(),
                           juce::Point<float> (box.getRight(), box.getCentreY()), juce::Point<float> (box.getCentreX(), box.getBottom()) })
@@ -594,7 +595,7 @@ void ArrangeView::paintPointHandles (juce::Graphics& g, const Timeline::Row& row
         const auto r = juce::Rectangle<float> (7.0f, 7.0f).withCentre (c);
         g.setColour (juce::Colour (0xff0b090c));
         g.fillRect (r);
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, r);
         g.drawRect (r, 1.2f);
     }
 }

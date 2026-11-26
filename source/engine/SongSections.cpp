@@ -71,6 +71,8 @@ namespace pr7s
                 e->setAttribute ("type", b.type);
             if (b.transition.isNotEmpty())
                 e->setAttribute ("transition", b.transition);
+            if (b.riff > 0)
+                e->setAttribute ("riff", b.riff);   // (0.226.0)
             if (b.recipe.isNotEmpty())
             {
                 e->setAttribute ("recipe", b.recipe);
@@ -104,6 +106,7 @@ namespace pr7s
             b.recipe = e->getStringAttribute ("recipe");
             b.type = e->getStringAttribute ("type");
             b.transition = e->getStringAttribute ("transition");
+            b.riff = juce::jmax (0, e->getIntAttribute ("riff", 0));
             for (auto* lane : e->getChildWithTagNameIterator ("Lane"))
                 b.lanes.push_back ({ lane->getIntAttribute ("layer"), lane->getIntAttribute ("track"),
                                      lane->getStringAttribute ("mark").getLargeIntValue() });

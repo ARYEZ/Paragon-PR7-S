@@ -109,7 +109,7 @@ namespace pr7s
         p.bendRange = juce::jlimit (0, 48, xml.getIntAttribute ("bendRange", 2));
         p.shortestNote = juce::jlimit (0.0, 1.0, xml.getDoubleAttribute ("shortestNote", 0.25));
         p.chugRun = juce::jlimit (0, 16, xml.getIntAttribute ("chugRun", p.kind == Kind::guitar ? 2 : 0));   // (0.62's guitars: 2)
-        p.swellCc = juce::jlimit (0, 127, xml.getIntAttribute ("swellCc", 11));      // (0.180.0: profiles saved before it: 11 and 1)
+        p.swellCc = juce::jlimit (0, 127, xml.getIntAttribute ("swellCc", 11));      // (0.237.0: profiles saved before it: 11 and 1)
         p.vibratoCc = juce::jlimit (0, 127, xml.getIntAttribute ("vibratoCc", 1));
         p.forBass = xml.getBoolAttribute ("forBass");
         p.forGuitar = xml.getBoolAttribute ("forGuitar");

@@ -585,23 +585,45 @@ namespace pr7s
                 else
                     regions.push_back ({ a, b });
             }
+        // (0.190.0) The segment a moment is in, found by halving (asked every 128 samples: walking every
+        // segment each time was most of a long edited take's render). The first segment holding it, as the
+        // walk found: with the starts in order, the first whose end (or any earlier one's) passes the moment.
+        const auto sorted = std::is_sorted (segments.begin(), segments.end(), [] (const VariSegment& x, const VariSegment& y) { return x.start < y.start; });
+        std::vector<double> reach;   // (the furthest end so far)
+        if (sorted)
+            for (const auto& s : segments)
+                reach.push_back (reach.empty() ? s.end : juce::jmax (reach.back(), s.end));
+        const auto segmentAt = [&] (double seconds) -> const VariSegment*
+        {
+            if (! sorted)
+            {
+                for (const auto& s : segments)
+                    if (seconds >= s.start && seconds < s.end)
+                        return &s;
+                return nullptr;
+            }
+            const auto started = (size_t) (std::upper_bound (segments.begin(), segments.end(), seconds,
+                                                             [] (double t, const VariSegment& x) { return t < x.start; }) - segments.begin());
+            const auto first = (size_t) (std::upper_bound (reach.begin(), reach.end(), seconds) - reach.begin());
+            if (first < started && seconds >= segments[first].start && seconds < segments[first].end)
+                return &segments[first];
+            return nullptr;
+        };
         const auto changeAt = [&] (double seconds)
         {
-            for (const auto& s : segments)
-                if (seconds >= s.start && seconds < s.end)
-                    return pitchChangeAt (s, analysis, seconds);
+            if (const auto* s = segmentAt (seconds))
+                return pitchChangeAt (*s, analysis, seconds);
             return 0.0f;
         };
         // (0.35.0) Formants: each segment's shift, easing in and out over 10 ms at its edges.
         const auto anyFormant = std::any_of (segments.begin(), segments.end(), [] (const VariSegment& s) { return std::abs (s.formant) > 1.0e-3f; });
         const auto formantAt = [&] (double seconds)
         {
-            for (const auto& s : segments)
-                if (seconds >= s.start && seconds < s.end)
-                {
-                    const auto ease = (float) juce::jlimit (0.0, 1.0, juce::jmin (seconds - s.start, s.end - seconds) / 0.01);
-                    return formantSemitones (s.formant) * ease;
-                }
+            if (const auto* s = segmentAt (seconds))
+            {
+                const auto ease = (float) juce::jlimit (0.0, 1.0, juce::jmin (seconds - s->start, s->end - seconds) / 0.01);
+                return formantSemitones (s->formant) * ease;
+            }
             return 0.0f;
         };
         for (const auto& [a, b] : regions)

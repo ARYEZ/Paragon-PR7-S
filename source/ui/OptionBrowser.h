@@ -48,9 +48,19 @@ public:
     std::function<bool (Option&)> onFill;
     int countPending() const;
     void fillAllNow();   // (tests)
+    // (0.180.0, the owner: "the groove automatically play when we highlight it" and the arrow keys) Choosing an
+    // option (a click on its row, Up / Down) hears it at once, as HEAR does; Enter is USE IT.
+    void setAutoHear (bool on) { autoHear = on; }
+    bool isAutoHear() const { return autoHear; }
+    void pick (int id);          // as a click on its row: chosen, and heard when auto-hear is on
+    void step (int by);          // the next / previous option shown (Up / Down)
+    bool keyPressed (const juce::KeyPress&) override;
     ~OptionBrowser() override;
 
     static constexpr int width = 1000, height = 560;
+    // (0.216.0) What the chosen option's panel shows: its description, then "Inspired by: ..." from the owner's
+    // private file (pr7s::inspiredBy) when it names the option.
+    static juce::String shownDescription (const Option&);
     static inline const juce::String favouritesGroup = "FAVOURITES", recentGroup = "RECENT", everythingGroup = "EVERYTHING";
 
     // For tests (and what the keys do).
@@ -89,11 +99,26 @@ private:
     pr7s::OptionFeel feel = pr7s::OptionFeel::unknown;
     int energy = 0;
     int chosen = 0;
+    mutable int describedId = -1;                          // (0.229.0) the description last made for the paint
+    mutable juce::String describedName, describedDescription, describedText;
+    mutable juce::uint32 describedAt = 0;
     float scroll = 0.0f;
     bool measured = false, drawn = false, hearable = true;
     juce::StringArray groupOrder;
 
-    juce::TextEditor search;
+    // (0.180.0) Up / Down in the search box move through the list too (a text box keeps them for its caret).
+    struct SearchBox final : public juce::TextEditor
+    {
+        std::function<bool (const juce::KeyPress&)> onListKey;
+        bool keyPressed (const juce::KeyPress& k) override
+        {
+            if ((k.isKeyCode (juce::KeyPress::upKey) || k.isKeyCode (juce::KeyPress::downKey)) && onListKey && onListKey (k))
+                return true;
+            return juce::TextEditor::keyPressed (k);
+        }
+    };
+    SearchBox search;
+    bool autoHear = false;
     std::vector<std::unique_ptr<juce::TextButton>> feelKeys, energyKeys;
     juce::TextButton hearKey { "HEAR" }, useKey { "USE IT" }, favouriteKey { "FAVOURITE" };
 
@@ -103,6 +128,7 @@ private:
     const Option* find (int id) const;
     bool inGroup (const Option&, const juce::String& g) const;
     bool passes (const Option&) const;
+    bool passes (const Option&, const juce::StringArray& words) const;   // (0.191.0) the search's words split once
     void refreshKeys();
     void showChosen();
     juce::Rectangle<int> groupRow (int index) const;

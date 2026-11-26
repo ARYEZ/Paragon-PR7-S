@@ -1,3 +1,4 @@
+#include <unordered_set>
 #include "InfoLine.h"
 
 #include <unordered_map>
@@ -118,6 +119,9 @@ std::vector<int> InfoLine::partsInOrder() const
 {
     // The earliest first (the manual: "the first item in the selection"), then by the tracks' order.
     auto ids = arrange.getSelectedParts();
+    if (ids.empty())
+        return ids;   // (0.229.0: nothing chosen: no walk of the song, ten times a second during any drag)
+    const std::unordered_set<int> chosen (ids.begin(), ids.end());
     const auto shown = studio.getShownTracks();
     // (0.57.1) Each part's place found once, from one walk of the song (it was searched for twice per
     // comparison: with Ctrl+A on thousands of parts, millions of checks ten times a second).
@@ -126,7 +130,8 @@ std::vector<int> InfoLine::partsInOrder() const
     {
         const auto row = (int) (std::find (shown.begin(), shown.end(), track.id) - shown.begin());
         for (const auto& part : track.parts)
-            keys[part.id] = { part.start, row };
+            if (chosen.count (part.id) > 0)   // (0.229.0: only the chosen ones placed)
+                keys[part.id] = { part.start, row };
     }
     ids.erase (std::remove_if (ids.begin(), ids.end(), [&] (int id) { return keys.find (id) == keys.end(); }), ids.end());
     std::stable_sort (ids.begin(), ids.end(), [&] (int a, int b) { return keys[a] < keys[b]; });
@@ -218,8 +223,8 @@ void InfoLine::paint (juce::Graphics& g)
                     getLocalBounds().reduced (12, 0), juce::Justification::centredLeft, true);
         return;
     }
-    // Several: in pink (the manual: "shown in another color"), the first one's values.
-    const auto valueColour = count > 1 ? pr7s::FamilyColours::pink.brighter (0.25f) : ParagonColours::accent;
+    // Several: in pearl white (the manual: "shown in another color"; 0.189.0, the owner: not pink), the first one's values.
+    const auto valueColour = count > 1 ? ParagonColours::pearlWhite : ParagonColours::accent;
     for (const auto& f : fields)
     {
         auto area = f.area;
@@ -230,13 +235,14 @@ void InfoLine::paint (juce::Graphics& g)
         g.drawText (f.name, area.removeFromTop (getHeight() / 2).reduced (8, 0), juce::Justification::bottomLeft, false);
         if (f.name == editing && editor != nullptr)
             continue;
-        g.setColour (f.editable || f.name == "TYPE" || f.name == "FILE" ? valueColour : ParagonColours::textDim);
         g.setFont (ParagonLookAndFeel::textFont (15.0f));
+        ParagonColours::setTextFill (g, f.editable || f.name == "TYPE" || f.name == "FILE" ? valueColour : ParagonColours::textDim,
+                                     f.value.toUpperCase(), area.reduced (8, 0), juce::Justification::topLeft);
         g.drawFittedText (f.value.toUpperCase(), area.reduced (8, 0), juce::Justification::topLeft, 1, 0.8f);
     }
     if (count > 1)
     {
-        g.setColour (pr7s::FamilyColours::pink.brighter (0.25f));
+        g.setColour (ParagonColours::pearlWhite);   // (0.189.0, the owner: white, not pink)
         g.setFont (ParagonLookAndFeel::textFont (13.0f));
         const auto x = fields.back().area.getRight() + 12;
         g.drawText (juce::String (count) + (showingParts ? " PARTS SELECTED" : " POINTS SELECTED") + ": CHANGES MOVE THEM ALL BY THE SAME AMOUNT (CTRL+ENTER: ALL TO THE VALUE)",

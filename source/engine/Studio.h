@@ -11,6 +11,7 @@
 #include "Project.h"
 #include "EditHistory.h"
 #include "Warp.h"
+#include "Sizing.h"
 #include "Align.h"
 #include "VariAudio.h"
 #include "Lines.h"
@@ -31,6 +32,7 @@
 #include "SoloEngine.h"
 #include "Blueprints.h"
 #include "OptionFeel.h"
+#include "Mp3Writer.h"
 
 #include <optional>
 #include <mutex>
@@ -61,6 +63,8 @@ namespace pr7s
         PluginHost& getPluginHost() noexcept { return *host; }
         juce::AudioDeviceManager& getDeviceManager() noexcept { return devices; }
         juce::PropertiesFile* getSettings() noexcept { return settings.get(); }
+        // (0.200.0, tests) A settings file of the test's own (a Studio made without devices has none).
+        void setSettingsForTests (std::unique_ptr<juce::PropertiesFile> file) { settings = std::move (file); }
         // How strongly a file dragged in lights where it will land (0.18.2, the owner asked: a
         // setting in the Hub): 0.1 faint to 1 solid; settings key "dropHighlight", default 0.6.
         float getDropHighlight() const;
@@ -138,6 +142,12 @@ namespace pr7s
         // plug-in that doesn't like being run beside others. The output is the same either way.
         bool getMultiCoreAudio() const;
         void setMultiCoreAudio (bool);
+        // (0.190.0) How many helper threads beside the audio thread while multi-core audio is on: 0 automatic
+        // (a core each but the audio thread's), else that many (at most `AudioWorkers::helpersForThisComputer`).
+        // Settings key `audioHelpers`. Fewer leaves cores free for a plug-in's own threads (Kontakt's multiprocessing).
+        int getAudioHelperChoice() const;
+        void setAudioHelperChoice (int);
+        static int helpersForChoice (int choice);
         // (0.60.0) Drawing the windows with the processor instead of the graphics card (settings key "softwareDrawing",
         // default off): the owner's NEW froze inside the graphics driver; this tells whether the driver is to blame.
         bool getSoftwareDrawing() const;
@@ -371,7 +381,7 @@ namespace pr7s
         // Bass and melody ideas (0.18.0, the owner asked). The chords they follow: the chord
         // track's events given (the selection), else those in the cycle when it's on and
         // holds some, else all; each until the next (the last a bar), with the key there.
-        std::vector<ChordSpan> getLineChords (const std::vector<int>& selectedEvents = {}) const;
+        std::vector<ChordSpan> getLineChords (const std::vector<int>& selectedEvents = {}, bool cycle = true) const;   // (0.212.0: cycle false: every chord, CYCLE on or off)
         // An idea as a part under its chords: onto `ontoTrackId` when it can take MIDI (0.19.0:
         // the selected track, the owner's guitar VST), else onto a new instrument track (the
         // studio's synth) named for the part (Bass, Melody, Piano, Guitar, Lead Guitar). The
@@ -384,8 +394,8 @@ namespace pr7s
         Part partFromIdea (const LineIdea&, double start, double length, const juce::String& name) const;
         static std::vector<Controller> effectControllers (const std::vector<LineNote>&, int bendRange, double bpm = 0.0,
                                                            int swellCc = 11, int vibratoCc = 1);   // (0.116.0: bends rise in about 0.19 s at bpm; 0: a quarter beat)
-        // (0.180.0) `swellCc` / `vibratoCc`: the controllers for swells and vibrato (the instrument profile's; 0: none).
-        // (0.180.0, the owner's report: a riff after one with swells or vibrato played on with the instrument turned
+        // (0.237.0) `swellCc` / `vibratoCc`: the controllers for swells and vibrato (the instrument profile's; 0: none).
+        // (0.237.0, the owner's report: a riff after one with swells or vibrato played on with the instrument turned
         // down) Every controller a part's notes moved, put back at rest just before `length` (the part's end): the
         // swell controller full (127), the vibrato controller 0, pitch bend centred. Nothing carries into what follows.
         static void restControllers (std::vector<Controller>&, double length, int swellCc = 11, int vibratoCc = 1);
@@ -407,7 +417,7 @@ namespace pr7s
         // as two takes would be. Kept in the settings ("composerTracks", "composerLooseCopies"; in memory
         // without a settings file).
         struct ComposerTracks { juce::StringArray names; bool every = false; bool operator== (const ComposerTracks&) const = default; };
-        static constexpr int numComposerTrackLanes = 7;   // (0.114.0: CLEAN GUITAR the seventh)
+        static constexpr int numComposerTrackLanes = 8;   // (0.114.0: CLEAN GUITAR the seventh; 0.193.0: ACOUSTIC GUITAR the eighth)
         static LineIdea::Part composerTrackPart (int lane);   // bass, rhythm, lead, chords, tune, drums
         static int composerTrackLane (LineIdea::Part);        // (-1: not a composer lane's)
         ComposerTracks getComposerTracks (LineIdea::Part) const;
@@ -415,6 +425,73 @@ namespace pr7s
         void resetComposerTracks();
         bool getLooseCopies() const;
         void setLooseCopies (bool);
+        // (0.228.0) FIND A RIFF's quality choice (0 EVERYTHING, 1 NORMAL, 2 STRICT; settings "riffQuality") and the
+        // files you've hidden from it (full paths, sorted; settings "riffHidden", a path a line).
+        int getRiffQualityLevel() const;
+        void setRiffQualityLevel (int);
+        // (0.231.0) How FIND A RIFF plays pads: 0 ringing power chords, 1 strummed chords (settings "riffPadStyle").
+        int getRiffPadStyle() const;
+        void setRiffPadStyle (int);
+        std::vector<juce::String> getHiddenRiffs() const;
+        void hideRiff (const juce::File&);
+        void clearHiddenRiffs();
+        // (0.233.0) The riffs FIND A RIFF showed lately (full paths, sorted; settings "riffRecent", the newest
+        // `recentRiffsKept` a line each): the next search puts them behind the ones you haven't seen.
+        std::vector<juce::String> getRecentRiffs() const;
+        void noteRiffsShown (const std::vector<juce::File>&);
+        static constexpr int recentRiffsKept = 600;
+        // (0.201.0, the owner's levels) The fader level a track ARCHITECT itself makes for a lane starts at (by lane,
+        // composerTrackPart's order; defaults chords -11.5, melody -9.5, bass -5.5 dB, the rest 0). Tracks found by
+        // name keep their own fader. Settings "composerLaneLevels" (dB a line; in memory without a settings file),
+        // -60 to +6. resetLaneLevels: the owner's numbers again (the page's ALL BACK TO THE USUAL key does both).
+        static float defaultLaneLevel (int lane);
+        std::array<float, 8> getLaneLevels() const;
+        float getLaneLevel (LineIdea::Part) const;
+        void setLaneLevel (int lane, float db);
+        void resetLaneLevels();
+        // (0.201.0) A new track for a lane (drums: PR7-D's, on the default map), named newIdeaTrackName and at its
+        // lane's level. Every path ARCHITECT makes a track by goes through it. 0: none made.
+        int addIdeaTrack (LineIdea::Part);
+        // (0.204.0, the owner asked) GUITAR TONES: when BUILD writes a lead, clean or acoustic guitar lane onto a
+        // track, PR7-G goes on its inserts with a tone (GuitarTones.h). Per part a choice: automatic (by the part's
+        // style), off, one of our tones, or one of the owner's PR7-G rigs. Settings "guitarTones" (lines
+        // "lead|auto", "clean|off", "acoustic|tone:ACOUSTIC AIR", "lead|rig:<path>"; in memory without a settings file).
+        struct ToneChoice
+        {
+            enum class Kind { automatic, off, tone, rig } kind = Kind::automatic;
+            juce::String value;   // a tone's name, or a rig file's full path
+            bool operator== (const ToneChoice&) const = default;
+        };
+        ToneChoice getToneChoice (LineIdea::Part) const;
+        void setToneChoice (LineIdea::Part, ToneChoice);
+        static juce::String suggestedToneName (LineIdea::Part, const juce::String& style);
+        // PR7-G on the track (one there already: `replaceExisting` false leaves it alone, the owner's own) with the
+        // part's tone or rig; the owner's amp model and cab IR stay. False (with `error`): off, no PR7-G, or a part
+        // without tones. `getLastTone`: the tone or rig last put on (its name).
+        bool toneTrack (int trackId, const LineIdea&, bool replaceExisting, juce::String* error = nullptr);
+        juce::String getLastTone() const { return lastTone; }
+        // What the last buildSection put on ("LEAD: SOARING LEAD ON PR7-G", ...).
+        juce::StringArray getLastTones() const { return lastTones; }
+        // (0.220.0) The keys lane's CYBERPUNK parts' PR7-K patches (SynthPatches.h): written into the PR7-K playing the
+        // track (`replaceExisting` false: only over a fresh sound (Init, none) or one of ours, never the owner's own).
+        // False (with `error`): not a cyberpunk part, no PR7-K on the track, or the owner's own sound kept.
+        // `getLastPatch`: the patch last written (its name).
+        bool patchTrack (int trackId, const LineIdea&, bool replaceExisting, juce::String* error = nullptr);
+        juce::String getLastPatch() const { return lastPatch; }
+        // (tests) Makes the PR7-G instance toneTrack adds (none set: the host's PR7-G).
+        std::function<std::unique_ptr<juce::AudioPluginInstance>()> makePr7gForTests;
+        // (0.205.0, step 2 of the owner's PR7-G idea) THE TONES CHANGE WITH THE SECTIONS (GuitarTones.h's table): on,
+        // BUILD writes PR7-G's mod mix, delay mix and feedback, reverb mix and size as automation over each block of
+        // the SECTIONS row on the lanes it tones. Settings "sectionTones" (default on; in memory without a settings file).
+        bool getSectionTones() const;
+        void setSectionTones (bool);
+        // The track's PR7-G (the last on its inserts): for every SECTIONS block a point at its start and one a 960th
+        // of a beat before its end on the five knobs' lanes (made when missing, hidden; what was inside the row
+        // replaced, points outside it kept), R on; one undo step. The baseline: the tone named by PR7-G's rig, else its
+        // knobs as they are. False (with `error`): no track, no PR7-G, no SECTIONS blocks, or none of the knobs found.
+        // `announce` false: no changed() (buildSection makes one for all its tracks).
+        bool writeSectionTones (int trackId, juce::String* error = nullptr, bool announce = true);
+        int getSectionToneBlocks() const noexcept { return sectionToneBlocks; }   // blocks the last write covered
         // (0.178.0, the owner) Groove folders marked as favourites (full paths, subfolders included): a quarter of a
         // section's library grooves come from them and AUTOMATIC prefers them. Settings "grooveFavouriteFolders" (a
         // path a line; in memory without a settings file). A change is announced (ARCHITECT composes again).
@@ -424,14 +501,30 @@ namespace pr7s
         bool isGrooveFolderFavourite (const juce::File& folder) const;              // marked itself (not by a folder over it)
         // The folders the library grooves come from (PR7-D's linked folders, else the MediaBay's locations).
         std::vector<juce::File> getGrooveFolderRoots() const;
+        // (0.211.0) Where the groove library comes from, in words for the GROOVE FOLDERS page: PR7-D's library (its
+        // folder, how many grooves, why any were left out), still being read, or the MediaBay standing in and why.
+        juce::String describeGrooveSource() const;
+        // Bumped each time PR7-D's library is read in (pages showing it make their lists again).
+        int getPr7dGeneration() const { getPr7dLibrary(); return pr7dGeneration; }
+        bool isReadingPr7dLibrary() const { return pr7dReading != nullptr && ! pr7dReading->done; }
+        // A folder of grooves added to the MediaBay (scanned again); what the library reads when PR7-D has none.
+        bool addGrooveFolder (const juce::File&);
         juce::String newIdeaTrackName (LineIdea::Part) const;      // the first name (a new track's)
         std::vector<int> findIdeaTracks (LineIdea::Part) const;    // every match when EVERY, else the first (none: empty)
+        std::vector<int> findIdeaTracks (LineIdea::Part, bool every) const;
+        static int trackNameScore (const juce::String& trackName, const juce::StringArray& names);   // (0.192.0) 1000 whole name, n words found, 0 none
         // The `copy`th copy of an idea (0: itself) for another of its tracks: humanized again when LOOSE COPIES.
         LineIdea doubledCopy (const LineIdea&, int copy, double originBeat, int copies = 1) const;   // (0.129.0) copies: how many tracks the lane is on (a twin lead's harmony onto the second)
         // THE COMPOSER (0.58.0): what its layers are made with (IDEAS' settings; the tempo and bar at `atBeat`).
         ComposerContext getComposerContext (double atBeat) const;
-        juce::String getComposerState() const;            // (settings key "composer"; in memory without a settings file)
-        void setComposerState (const juce::String&);
+        // (0.206.0) The song's own (Project::architectState; empty: the defaults): saved with it, a template carries it.
+        // Setting a different one marks the song modified (not an undo step) unless `marksModified` is false (ARCHITECT
+        // writing back what it worked out when it loaded the song). The old settings key "composer" isn't read any more.
+        juce::String getComposerState() const { return project.architectState; }
+        void setComposerState (const juce::String&, bool marksModified = true);
+        // (0.206.0) A counter bumped whenever the song is replaced (new, open, a template, an import as a new song):
+        // ARCHITECT starts over from the new song's state when it sees it move.
+        juce::uint64 getSongGeneration() const noexcept { return songGeneration; }
         // Hearing the composer: its layers played through the song's own tracks (each onto `trackId`), looped over
         // [start, end), those tracks alone (soloed), while the song itself stays as it is (the engine plays a copy,
         // as the comp tool's audition). Called again while it plays: the new layers from where it is. False when
@@ -440,6 +533,8 @@ namespace pr7s
         bool auditionComposer (const std::vector<std::pair<int, LineIdea>>& layers, double start, double end);
         void stopComposerAudition();
         bool isComposerAuditioning() const noexcept { return composerAudition.has_value(); }
+        std::optional<Project> getComposerAuditionCopyForTests() const { return composerAuditionCopy(); }   // (0.206.0)
+        std::optional<Project> getComposerMixCopyForTests() const { return composerMixCopy(); }             // (0.229.0)
         double getComposerAuditionStart() const noexcept { return composerAudition.has_value() ? composerAudition->start : 0.0; }
         double getComposerAuditionEnd() const noexcept { return composerAudition.has_value() ? composerAudition->end : 0.0; }
         // The sections built so far in this song (for what comes next; forgotten with the song).
@@ -447,8 +542,29 @@ namespace pr7s
         void noteBuiltSection (const BuiltSection&);   // (replaces one built over the same stretch)
         void clearBuiltSections() { builtSections.clear(); }
         // (0.75.0) Your own riff in the composer (engine/RiffPaste.h; forgotten with the song, as the sections).
+        // (0.206.0) Saved in the song (Project::architectRiff), with whether the guitar plays it and the chords come from it.
+        // (0.226.0) With a SECTIONS block chosen (setComposerRiffBlock: ARCHITECT's target), the riff in hand is that
+        // block's (SongSection::riff; none: none), and setting it gives the block (and its linked copies) a riff of
+        // its own; with none chosen (0, or a block gone) it's the song's loose riff, as before.
         const std::optional<ComposerRiff>& getComposerRiff() const noexcept { return composerRiff; }
-        void setComposerRiff (std::optional<ComposerRiff> r) { composerRiff = std::move (r); }
+        void setComposerRiff (std::optional<ComposerRiff>);
+        bool isComposerRiffPlayed() const noexcept { const auto* r = riffInHand(); return r != nullptr && r->played; }
+        bool areComposerChordsFromRiff() const noexcept { const auto* r = riffInHand(); return r != nullptr && r->chordsFrom; }
+        void setComposerRiffUse (bool played, bool chordsFrom, bool marksModified = true);
+        bool isComposerRiffFitted() const noexcept { const auto* r = riffInHand(); return r != nullptr && r->fit; }
+        void setComposerRiffFit (bool fit, bool marksModified = true);   // (0.226.0) FIT MY RIFF TO THE CHORDS
+        void setComposerRiffBlock (int blockId);
+        int getComposerRiffBlock() const noexcept { return composerRiffBlock; }
+        bool isComposerRiffOnBlock() const noexcept { return project.songSections.indexOf (composerRiffBlock) >= 0; }
+        // The song's riffs a block can be given: every one a block names, and the loose riff (id 0) when there is one.
+        struct SongRiff { int id = 0; juce::String name; int bars = 1; juce::StringArray blocks; };
+        std::vector<SongRiff> getSongRiffs() const;
+        // A block's riff (and its linked copies'): an id from getSongRiffs (0: the loose riff, copied for the
+        // block), or -1: none. One undo step.
+        bool setSongSectionRiff (int index, int riffId);
+        bool setSongSectionRiff (const std::vector<int>& indices, int riffId);   // several blocks, one undo step
+        std::optional<ComposerRiff> getSongSectionRiff (int index) const;   // (parsed; none: none)
+        bool isSongSectionRiffPlayed (int index) const;
         // The chords for the section after `from`, as long as `spans`: the chord track's there when it
         // has a chord starting in that stretch; else `spans` again from `from`, written onto the
         // chord track (one undo step) so the song keeps its chords.
@@ -601,6 +717,11 @@ namespace pr7s
         // the part's transpose taken back off), all as one undo step; chords aren't changed (the chord track's own
         // menus swap them). False if nothing was moved (a note since edited or gone is left alone).
         std::vector<KeyIssue> checkSongKey (std::optional<Key> chosen = std::nullopt) const;
+        // (0.190.0) The song's key guessed from its notes (`guessSongKey`), worked out once per content change
+        // (a track click doesn't redo it) and shared by KEY CHECK, the MIDI editor's key marks and checkSongKey;
+        // the tracks' parts are held, so an edit that didn't announce itself is still seen.
+        std::optional<Key> getGuessedSongKey() const;
+        KeyAt getKeyCheckKeys (std::optional<Key> chosen) const;   // (keyCheckKeys with that guess)
         bool fixOutOfKeyNotes (const std::vector<KeyIssue>&);
         int detectChordsToPads (const std::vector<int>& partIds, const DetectSettings&);
         // The settings last used (settings key "chordDetect").
@@ -687,6 +808,18 @@ namespace pr7s
         // A part replaced as a whole (an audio clip trimmed or faded: start,
         // length, offset and fades together). One undo step.
         void updatePart (int trackId, int index, const Part&);
+        // (0.187.0) The Object Selection tool's other two sizings (Sizing.h), for the parts with these ids
+        // (frozen tracks left alone), led by `leadId`, which goes to [newStart, newStart + newLength): its start
+        // moved = its left edge dragged (each part's end stays), else its right edge (each start stays).
+        // movesContents: a left edge carries the content (each by the same beats); a right edge is Normal Sizing
+        // (each by the same beats). timeStretch: each part stretched by the lead's new / old length about the
+        // edge that stays; an audio clip not warped before is given `getDefaultStretchMode()`. One undo step;
+        // false if nothing changed (or `normal`: the arrangement trims as it always did).
+        bool sizeParts (const std::vector<int>& partIds, int leadId, double newStart, double newLength, Sizing);
+        // How the selected clips' audio is stretched (StretchModes); one undo step (none for clips already so).
+        bool setStretchMode (const std::vector<int>& partIds, int mode);
+        int getDefaultStretchMode() const;   // for clips stretched from now on (settings "stretchModeDefault")
+        void setDefaultStretchMode (int);
         // Where the part with this id is now: its track and index (none if it's gone).
         std::optional<std::pair<int, int>> findPart (int partId) const;
 
@@ -1299,6 +1432,12 @@ namespace pr7s
         };
         std::vector<SectionChord> getSectionChords (int index) const;
         bool setSectionChords (int index, const std::vector<SectionChord>&);
+        // (0.208.0, the owner: CHORD ROLL) A block's chords drawn anew in its key (engine/ChordRoll.h: chord to chord
+        // by our progressions' weights, the block's name its feel; the block's own rhythm kept when it has two or more
+        // chords filling it; toward the next block's first chord), through setSectionChords: one undo step, linked
+        // copies follow, a built block's lanes are built again over them with their styles. The last rolls of each
+        // block (not saved) aren't given again. False: no such block.
+        bool rollSectionChords (int index, juce::uint32 seed);
 
         // BLUEPRINTS (0.152.0, engine/Blueprints.h): a song's section layout as a preset. Using one replaces the
         // SECTIONS row with its blocks (names, lengths, linked copies, types, transitions) from bar 1, sets the song's
@@ -1383,6 +1522,12 @@ namespace pr7s
         void setTempoView (double low, double high);   // the curve's shown range (not undo steps)
         // The tempo at the playhead (the transport shows it).
         double getTempoNow() const;
+        // (0.191.0) The song's tempo map and signatures, kept and made again only when the tempo (the tempo
+        // track's on and its events, or the fixed tempo) or the signatures changed: the screen's timers and
+        // paints built them again many times a frame. Message thread only; Project::tempoMap() / signatures()
+        // stay as they were for everything else. Hold no reference across an edit: ask again.
+        const TempoMap& getTempoMap() const;
+        const SignatureMap& getSignatureMap() const;
         // The manual's Process Tempo (0.13.0): the stretch from `start` to
         // `end` (beats; the locators) made to last `newSeconds`, by scaling the
         // tempo inside it (every event there, and its ramps, by one factor: the
@@ -1529,6 +1674,14 @@ namespace pr7s
             std::function<void (Project&)> prepareSong;
             int channel = 0;   // (0.51.0) a channel export: only this track or channel reaches the file (0: the mix)
             bool mono = false; // (0.78.0) a one-channel file: the two sides averaged (Render in Place of a mono track)
+            // (0.200.0, the owner asked: the manual's File Type) WAV as before, FLAC (lossless, about half the size;
+            // 16 or 24-bit: a 32-bit float choice is written 24-bit) or MP3 (LAME, constant bit rate).
+            enum class FileType { wave, flac, mp3 };
+            FileType fileType = FileType::wave;
+            int flacCompression = 5;   // FLAC's compression level 0 (fastest) to 8 (smallest): the size barely changes
+            Mp3Settings mp3;
+            static juce::String extensionOf (FileType type) { return type == FileType::flac ? ".flac" : type == FileType::mp3 ? ".mp3" : ".wav"; }
+            juce::String extension() const { return extensionOf (fileType); }
         };
         // (0.51.0, the manual's Export Audio Mixdown: Channel Selection Multiple, Export Range Cycle
         // Markers) Several files in one go: each channel chosen (none: the main mix) over each cycle
@@ -1665,6 +1818,10 @@ namespace pr7s
         void setMediaPreviewLevel (float);
 
     private:
+        struct KeptTempo { bool valid = false, follows = false; double bpm = 0.0; std::vector<TempoEvent> events; TempoMap map; };
+        struct KeptSignatures { bool valid = false; int numerator = 0, denominator = 0; std::vector<SignatureEvent> changes; SignatureMap map; };
+        mutable KeptTempo keptTempo;            // (0.191.0) getTempoMap's
+        mutable KeptSignatures keptSignatures;  // (0.191.0) getSignatureMap's
         // (0.90.0) The SECTIONS row's moves: the new blocks, each from an old block's index (its music carried, cut to
         // its new length) or -1 (new and empty: what was there moves on). One undo step.
         struct SectionMove { int from = -1; SongSection block; };
@@ -1677,6 +1834,7 @@ namespace pr7s
             std::vector<ChordEvent> chords;
             bool operator== (const SectionContent&) const = default;
         };
+        std::map<int, std::vector<juce::String>> rolledLately;   // (0.208.0) by block id: the last rolls' fingerprints
         SectionContent sectionContent (const SectionPlace&) const;
         void writeSectionContent (const SectionPlace&, const SectionContent&);
         void syncLinkedSections();
@@ -1741,6 +1899,7 @@ namespace pr7s
             int cycleCount = 0;      // the engine's when it began: the cycle coming round ends it
             float before = 0.0f;
             std::vector<AutomationPoint> points;
+            size_t pinned = 0;       // (0.230.0) points not to be replaced by a later move on their beat (a retouch's held value)
             bool released = false;   // let go (an on/off switch latches on until stop; Auto-Latch, Cross-Over: every control)
             bool retouched = false;  // Cross-Over: touched again after letting go (crossing the old curve punches out)
             std::optional<bool> aboveOld;   // Cross-Over: which side of the old curve the hand was on
@@ -1759,6 +1918,14 @@ namespace pr7s
         std::map<const juce::AudioProcessor*, bool> editorAnswers;   // hasEditor's
         void unloadPlugins (Track&);   // their settings kept first (disable, freeze)
         void loadPlugins (Track&);     // from the kept settings (enable, unfreeze)
+        struct GuessedKey
+        {
+            bool valid = false;
+            juce::uint64 version = 0;
+            std::vector<PartList> parts;
+            std::optional<Key> key;
+        };
+        mutable GuessedKey guessedKey;   // (0.190.0)
         std::map<int, PartList> frozenParts;   // the parts as they were frozen (locked; 0.175.0: shared with the song, so the check every change is one look)
         void punchOut (size_t pass, double endBeat, bool returnToOld = true);
         void startPass (int busId, const AutomationLane& control);
@@ -1773,6 +1940,15 @@ namespace pr7s
         static inline bool guardUndoSharing = false;   // (0.165.0, the tests turn it on)
     private:
         Project copyWithoutPluginStates (bool forUndo) const;   // (0.83.1)
+        std::optional<Project> composerMixCopy() const;   // (0.229.0) the hearing's levels and solos, no layers' parts
+        bool hearingMix (Project&) const;                 // the lanes' levels and the hearing's solos on a copy; false: none play
+        mutable juce::String laneLevelsText;              // (0.229.0) the lane levels as last parsed
+        mutable std::array<float, 8> laneLevelsParsed {};
+        mutable bool laneLevelsRead = false;
+        mutable juce::String profilesText;                // (0.229.0) the instrument profiles as last parsed
+        mutable std::vector<InstrumentProfile> profilesParsed;
+        mutable bool profilesRead = false;
+        juce::String lastComposerText, lastComposerStored;   // (0.229.0) setComposerState's last call
         bool applyAutoColour();   // (0.79.0) the rule's colours onto its tracks; true if any changed
         void restore (const Project&);
         void joinFolderGroup (Track&);    // (0.50.0)
@@ -1791,12 +1967,26 @@ namespace pr7s
         // ones among them you soloed), each track's own fader, pan, inserts and mute. Empty: none can play.
         std::optional<Project> composerAuditionCopy() const;
         std::optional<ComposerAudition> composerAudition;   // (0.58.0)
-        juce::String composerState;                         // (without a settings file)
+        juce::uint64 songGeneration = 0;                    // (0.206.0)
+        const Project::ArchitectRiff* riffInHand() const noexcept;   // (0.226.0) the chosen block's, else the loose one
+        Project::ArchitectRiff* riffInHand() noexcept;
+        int riffOfName (const juce::String& name) const;   // the riff of the last block of that name (0: none)
+        int composerRiffBlock = 0;
+        std::pair<bool, int> loadedRiffFrom { false, -1 };
+        void followRiffInHand();
+        void giveOldRiffToBlocks();
+        void loadComposerRiff();                            // (0.206.0) composerRiff from the song's
+        bool levelEmptyTrack (int trackId, LineIdea::Part); // (0.206.0) an empty found track: the lane's Hub level
+        void hearLaneLevels();                              // (0.206.0) the hearing's copy's mix again after a lane level
         void endComposerAudition (bool backToSong);
         std::map<juce::String, std::pair<std::shared_ptr<const AudioData>, std::vector<Hitpoint>>> hitpointCache;   // (0.32.0) every candidate, by recording and the data they came from
         void forgetAudio (const juce::String& name);   // (0.34.1) a recording and everything made from it
         void forgetAllAudio();
         WarpRenderer warpRenderer;
+        struct SoundStamp { juce::String signature; juce::uint64 stamp = 0; };
+        std::map<juce::String, SoundStamp> soundStamps;   // (0.190.0)
+        juce::uint64 lastSoundStamp = 0;
+        juce::uint64 soundStampOf (const juce::String& file);
         // (0.34.0) VariAudio: each recording's pitch, and its sound as edited (by what was edited).
         void noteSpikes();                  // (0.57.3) the engine's spike report into the session log
         juce::uint32 lastSpikeNote = 0;
@@ -1820,6 +2010,7 @@ namespace pr7s
         void placeTakes (Track&, std::vector<Part> takes, double from, double to, bool replace, int lane = -1);
         void buildRecordingControllers (std::vector<Controller>&, double partStart) const;   // (0.25.0: each kind's last pass in a cycle)
         bool newControllersRamp = true;   // (without a settings file)
+        int defaultStretchModeHere = 0;   // (0.187.0; without a settings file)
         juce::File drumMapFolderOverride;
         juce::String defaultDrumMapHere;   // (0.77.3: without a settings file)
         int editorSoloTrack = 0;           // (0.78.0) setEditorSolo
@@ -1837,6 +2028,7 @@ namespace pr7s
         juce::AudioDeviceManager devices;
         bool withDevices = false;
         bool multiCoreAudio = false;   // (without a settings file)
+        int audioHelperChoice = 0;     // (0.190.0; likewise)
         bool softwareDrawing = false;  // (without a settings file)
         void applyMultiCore();
         Engine engine;
@@ -1956,11 +2148,24 @@ namespace pr7s
         std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;
         std::array<ComposerTracks, numComposerTrackLanes> composerTracksHere {};   // (0.112.0; without a settings file; empty names: the default)
         bool looseCopiesHere = true;
+        int riffQualityHere = 1;
+        int riffPadStyleHere = 0;
+        juce::StringArray hiddenRiffsHere;
+        juce::StringArray recentRiffsHere;   // (0.233.0) newest last
+        bool sectionTonesHere = true;   // (0.205.0, without a settings file)
+        int sectionToneBlocks = 0;
+        std::array<ToneChoice, 3> toneChoicesHere {};   // (0.204.0; lead, clean, acoustic, without a settings file)
+        std::array<ToneChoice, 3> readToneChoices() const;
+        juce::String lastTone;
+        juce::String lastPatch;
+        juce::StringArray lastTones;
+        std::array<float, 8> laneLevelsHere { -5.5f, 0.0f, 0.0f, -11.5f, -9.5f, 0.0f, 0.0f, 0.0f };   // (0.201.0; without a settings file)
         juce::StringArray grooveFavouritesHere;   // (0.178.0; without a settings file)
         std::array<TrackTypeLook, numTrackTypes> readTrackTypeLooks() const;
         void giveTypeLook (Track&, int index) const;   // a new track's colour and list colour   // (without a settings file: the tests)
         void collectPluginStates (bool reuseUnchanged = false);
         juce::MemoryBlock pluginState (juce::AudioProcessor&, bool reuseUnchanged);
+        void pluginStateInto (juce::AudioProcessor&, bool reuseUnchanged, juce::MemoryBlock& into);   // (0.190.0)
         int reusedStates = 0;
         void backupIfDue();
         juce::String loggedDevice;   // the audio device's last line in the session log
@@ -1992,6 +2197,7 @@ namespace pr7s
         // and the PR7-D tracks paused while the composer is heard.
         juce::File linkFolderOverride;
         std::map<int, juce::String> pr7dSent;
+        std::map<int, PartList> pr7dLooked;   // (0.190.0) each PR7-D track's parts as last fingerprinted
         std::map<int, juce::Time> pr7dWritten;
         std::vector<int> pr7dPaused;
         bool pr7dPlaysDrumsHere = true;
@@ -2003,13 +2209,14 @@ namespace pr7s
         mutable std::shared_ptr<const PreparedPr7dGrooves> keptPr7dPrepared;   // (0.176.0: labelled once per read)
         mutable juce::Time keptPr7dIndexDate;
         mutable bool keptPr7dRead = false;
+        mutable int pr7dGeneration = 0;
         // (0.112.1) PR7-D's index read on a thread of its own in the app (the owner's 100,000 grooves held the screen
         // over a second): the library kept until it's read, then swapped in by the timer and announced.
         struct Pr7dReading { juce::File folder; juce::Time date; Pr7dLibrary result; std::shared_ptr<const PreparedPr7dGrooves> prepared; std::atomic<bool> done { false }; std::thread thread; };
         mutable std::unique_ptr<Pr7dReading> pr7dReading;
         bool takePr7dReading() const;   // true when a finished read was swapped in
         struct KeptPr7dGrooves { juce::Time date; int style = -1; int bpm = 0; int bar = 0; size_t count = 0; DrumNotes notes = DrumNotes::asWritten; GrooveList grooves; };
-        mutable KeptPr7dGrooves keptPr7dGrooves;
+        mutable std::vector<KeptPr7dGrooves> keptPr7dGrooves;   // (0.190.0: the last few tempos)
         std::shared_ptr<const AudioData> mediaPreviewSound;
         double mediaPreviewBeats = 0.0;
         bool mediaPreviewMidi = false;

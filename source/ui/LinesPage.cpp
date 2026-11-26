@@ -53,7 +53,7 @@ public:
         const auto lit = isPlaying();
         g.setColour (juce::Colour (lit ? 0xff1f1720 : 0xff141015));
         g.fillRoundedRectangle (bounds, 5.0f);
-        g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+        ParagonColours::setFill (g, lit ? ParagonColours::accent : ParagonColours::panelEdge, bounds.reduced (0.5f));
         g.drawRoundedRectangle (bounds.reduced (0.5f), 5.0f, lit ? 1.5f : 1.0f);
 
         auto area = bounds.reduced (10.0f, 8.0f);
@@ -65,9 +65,10 @@ public:
         g.drawFittedText (idea().description, area.removeFromTop (30.0f).toNearestInt(), juce::Justification::topLeft, 2, 0.9f);
         if (added.isNotEmpty())
         {
-            g.setColour (ParagonColours::accent);
             g.setFont (ParagonLookAndFeel::titleFont (11.0f));
-            g.drawText ("ADDED: " + added.toUpperCase(), bounds.reduced (10.0f, 8.0f).removeFromTop (20.0f), juce::Justification::centredRight, true);
+            const auto addedArea = bounds.reduced (10.0f, 8.0f).removeFromTop (20.0f);
+            ParagonColours::setTextFill (g, ParagonColours::accent, "ADDED: " + added.toUpperCase(), addedArea, juce::Justification::centredRight);
+            g.drawText ("ADDED: " + added.toUpperCase(), addedArea, juce::Justification::centredRight, true);
         }
         paintRoll (g, roll);
     }
@@ -778,7 +779,7 @@ void BuildSectionPanel::paint (juce::Graphics& g)
             auto bar = row.removeFromRight (60).withSizeKeepingCentre (60, 6).toFloat();
             g.setColour (ParagonColours::panelEdge);
             g.fillRoundedRectangle (bar, 3.0f);
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, bar.withWidth (bar.getWidth() * sug.score));
             g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * sug.score), 3.0f);
             g.setColour (ParagonColours::textDim);
             g.setFont (juce::Font (ParagonLookAndFeel::textFont (11.5f)));
@@ -1411,7 +1412,7 @@ void LinesPage::timerCallback()
 void LinesPage::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0c0a0d));
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     auto head = getLocalBounds().removeFromTop (headerHeight).reduced (gap, 8);
     g.setColour (ParagonColours::text);

@@ -2,6 +2,7 @@
 
 #include "engine/Studio.h"
 #include "ui/ChordUi.h"
+#include "ui/DiceKey.h"
 
 // A block on the SECTIONS row edited where it is (0.103.0, the owner: "right click and get a quick menu ... name, type,
 // length, and the ability to change or reorder that block's chords ... the scale set for the entire song, then for each
@@ -33,18 +34,23 @@ public:
     void setBars (int);
     void setSongKey (const pr7s::Key&);
     void setTransition (const juce::String&);    // (0.104.0)
+    void setPosition (int place);                 // (0.229.0) its place in the row, from 1: it moves there, its music with it
     void changeChord (int i, const pr7s::Chord&);
     void setChordBars (int i, double bars);
     void moveChord (int from, int to);
     void removeChord (int i);
     void addChord();
     void clearChords();
+    // (0.208.0) ROLL: the block's chords drawn anew in its key (Studio::rollSectionChords): another roll each time.
+    bool rollChords (juce::uint32 seed);
+    juce::TextButton& getRollKey() { return rollKey; }
     juce::Rectangle<int> getChordBounds (int i) const;   // (in this component)
     juce::ComboBox& getNameBox() { return nameBox; }
     juce::ComboBox& getTypeBox() { return typeBox; }
     juce::ComboBox& getLengthBox() { return lengthBox; }
     juce::ComboBox& getKeyBox() { return keyBox; }
     juce::ComboBox& getTransitionBox() { return transitionBox; }
+    juce::ComboBox& getPositionBox() { return positionBox; }
 
     static constexpr int width = 900, height = 330;
 
@@ -55,10 +61,11 @@ private:
     std::vector<pr7s::Studio::SectionChord> chords;
     juce::Label title, info, chordsLabel, hint;
     juce::Label nameLabel { {}, "NAME" }, typeLabel { {}, "TYPE" }, lengthLabel { {}, "LENGTH" }, keyLabel { {}, "SONG KEY" },
-                transitionLabel { {}, "INTO THE NEXT" };
-    juce::ComboBox nameBox, typeBox, lengthBox, keyBox, transitionBox;
+                transitionLabel { {}, "INTO THE NEXT" }, positionLabel { {}, "POSITION" };
+    juce::ComboBox nameBox, typeBox, lengthBox, keyBox, transitionBox, positionBox;
     std::unique_ptr<Strip> strip;
     juce::TextButton addKey { "+ CHORD" }, clearKey { "CLEAR CHORDS" }, openKey { "OPEN IN THE ARCHITECT" }, moreKey { "MORE..." };
+    DiceKey rollKey { "ROLL" };   // (0.209.0: a die, in the accent)
     bool refreshing = false;
 
     double beatsPerBar() const;

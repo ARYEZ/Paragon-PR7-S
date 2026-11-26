@@ -102,12 +102,13 @@ TEST_CASE ("0.137.0: the drums lane's pool: 100, two thirds Toontrack, the secti
         t2 += g.toontrack ? 1 : 0;
     CHECK (t2 == 150);
 
-    // Few Toontrack verses: all of them, then the folder's others, then other folders' verses.
+    // Few Toontrack verses: all of them, then other folders' verses; never the Toontrack folder's other parts
+    // (0.210.0, the owner: "match the part of the song"; 0.137.0 filled up with them).
     std::vector<LibraryGroove> fewToontrack (all.begin(), all.begin() + 20);
     fewToontrack.insert (fewToontrack.end(), all.begin() + 150, all.begin() + 350);
     c.libraryGrooves = fewToontrack;
     const auto filled = composerGroovePool (verseState(), eightBars(), c);
-    REQUIRE (filled.size() == 200);
+    REQUIRE (filled.size() == 170);
     auto tVerse = 0, tOther = 0, oVerse = 0;
     for (const auto& g : filled)
     {
@@ -119,8 +120,8 @@ TEST_CASE ("0.137.0: the drums lane's pool: 100, two thirds Toontrack, the secti
             ++oVerse;
     }
     CHECK (tVerse == 20);
-    CHECK (tOther == 50);    // (all the folder's others)
-    CHECK (oVerse == 130);   // (their 50, the favourites' 50 and Toontrack's missing 30)
+    CHECK (tOther == 0);
+    CHECK (oVerse == 150);   // (all the other packs' verses: their 50, the favourites' 50 and Toontrack's missing 80)
 }
 
 TEST_CASE ("0.137.0: a section with no groove of its own takes the nearest kind's", "[composer][library][groovepool]")
@@ -140,11 +141,11 @@ TEST_CASE ("0.137.0: a section with no groove of its own takes the nearest kind'
             n += g.file.getFullPathName().contains (word) ? 1 : 0;
         return n;
     };
-    // A solo (none named so): the chorus's all in (then, short of 66, the Toontrack folder's others).
+    // A solo (none named so): the chorus's, and only those (0.210.0).
     s.lane (ComposerLayer::drums).style = 6;
     const auto solo = composerGroovePool (s, eightBars(), c);
     CHECK (count (solo, "Chorus") == 10);
-    CHECK (solo.size() == 20);
+    CHECK (solo.size() == 10);
     // A bridge: the verse's.
     s.lane (ComposerLayer::drums).style = 3;
     CHECK (count (composerGroovePool (s, eightBars(), c), "Verse") == 10);
@@ -153,7 +154,7 @@ TEST_CASE ("0.137.0: a section with no groove of its own takes the nearest kind'
     c.libraryGrooves = all;
     const auto bridge = composerGroovePool (s, eightBars(), c);
     CHECK (count (bridge, "Bridge") == 1);
-    CHECK (bridge.size() == 21);   // (the bridge, then the Toontrack folder's 20 as the fill-up)
+    CHECK (bridge.size() == 1);   // (0.210.0: no fill-up with other parts)
 }
 
 TEST_CASE ("0.137.0: the kick and snare's fit to the guitar ranks the pool", "[composer][library][groovepool]")
@@ -333,19 +334,23 @@ TEST_CASE ("0.178.0: favourite folders: 50 of the 200, the rest of Toontrack 100
         REQUIRE (picked.has_value());
         CHECK (picked->favourite);
     }
-    // ROLL still goes through all 200 (favourites a quarter of them).
+    // (0.210.0, the owner) ROLL goes round the favourites only: all 50, none twice, then round them again.
     juce::Random random (3);
-    std::set<juce::String> rolled;
-    auto favouriteRolls = 0;
-    for (int i = 0; i < 199; ++i)   // (every one but the one playing first, a favourite, before any comes back)
+    std::set<juce::String> rolled { composerLibraryGroove (s, spans, c)->file.getFullPathName() };
+    for (int i = 0; i < 49; ++i)
     {
         REQUIRE (rollLibraryGroove (s, spans, c, random));
         const auto now = composerLibraryGroove (s, spans, c);
+        CHECK (now->favourite);
+        CHECK (rolled.count (now->file.getFullPathName()) == 0);
         rolled.insert (now->file.getFullPathName());
-        favouriteRolls += now->favourite ? 1 : 0;
     }
-    CHECK (rolled.size() == 199);
-    CHECK (favouriteRolls == 49);
+    CHECK (rolled.size() == 50);
+    for (int i = 0; i < 60; ++i)
+    {
+        REQUIRE (rollLibraryGroove (s, spans, c, random));
+        CHECK (composerLibraryGroove (s, spans, c)->favourite);
+    }
 
     // Favourites short: their places to Toontrack first.
     std::vector<LibraryGroove> fewFavourites (all.begin(), all.begin() + 170);   // (150 Toontrack, 20 favourites)
@@ -376,4 +381,36 @@ TEST_CASE ("0.178.0: a file in a favourite folder: subfolders count, a name only
     CHECK_FALSE (isInFavouriteFolder (root.getChildFile ("Packs/Favourite/One.mid"), folders));
     CHECK_FALSE (isInFavouriteFolder (root.getChildFile ("Packs/One.mid"), folders));
     CHECK_FALSE (isInFavouriteFolder (root.getChildFile ("Packs/Fav/One.mid"), {}));
+}
+
+TEST_CASE ("0.210.0: a groove's part read from whole words, and no groove naming no part", "[composer][library][groovepool]")
+{
+    const auto partsOf = [] (const juce::String& path) { return groove (path, 8).sectionMask; };
+    CHECK (partsOf ("Toontrack/Reverse Grooves/Beat 1.mid") == 0);        // ("verse" inside "Reverse")
+    CHECK (partsOf ("Other Packs/Universe/Groove 1.mid") == 0);
+    CHECK (partsOf ("Other Packs/Introspective/Groove 1.mid") == 0);      // ("intro")
+    CHECK (partsOf ("Other Packs/Hooked/Groove 1.mid") == 0);             // ("hook")
+    CHECK (partsOf ("Other Packs/Consolation/Groove 1.mid") == 0);        // ("solo")
+    CHECK (partsOf ("Toontrack/Pack/Song 1/Verse/Variation 1.mid") == 1 << 1);
+    CHECK (partsOf ("Toontrack/Pack/Song 1/Verse2.mid") == 1 << 1);
+    CHECK (partsOf ("Toontrack/Pack/Song_1_CHORUS_A.mid") == 1 << 2);
+    CHECK (partsOf ("Toontrack/Pack/Middle8.mid") == 1 << 3);
+
+    // The owner's report: a verse showing "Variation 1", "Variation 2"... from folders naming no part.
+    std::vector<LibraryGroove> all;
+    for (int i = 0; i < 10; ++i)
+        all.push_back (groove ("Toontrack/Pack/Song 1/Verse/Verse " + juce::String (i) + ".mid", 8));
+    for (int i = 0; i < 80; ++i)
+        all.push_back (groove ("Toontrack/Pack/Song " + juce::String (i) + "/Variation " + juce::String (i) + ".mid", 8));
+    for (int i = 0; i < 20; ++i)
+        all.push_back (groove ("Toontrack/Reverse Grooves/Beat " + juce::String (i) + ".mid", 8));
+    ComposerContext c;
+    c.libraryGrooves = all;
+    const auto pool = composerGroovePool (verseState(), eightBars(), c);
+    CHECK (pool.size() == 10);
+    for (const auto& g : pool)
+    {
+        CHECK_FALSE (g.name.startsWith ("Variation"));
+        CHECK_FALSE (g.name.startsWith ("Beat"));
+    }
 }

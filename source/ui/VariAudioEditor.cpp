@@ -952,7 +952,7 @@ void VariAudioEditor::paintPanel (juce::Graphics& g) const
     g.setFont (ParagonLookAndFeel::titleFont (13.0f));
     for (const auto& [text, area] : headings)
     {
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setTextFill (g, ParagonColours::accent, text, area, juce::Justification::centredLeft);
         g.drawText (text, area, juce::Justification::centredLeft, false);
         g.setColour (ParagonColours::panelEdge);
         g.fillRect (area.withY (area.getBottom() - 1).withHeight (1));

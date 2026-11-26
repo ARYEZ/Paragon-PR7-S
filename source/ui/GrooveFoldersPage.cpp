@@ -25,7 +25,7 @@ namespace
         }
         else if (inherited)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.35f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.35f), (star).getBounds());
             g.fillPath (star);
         }
         else
@@ -128,14 +128,50 @@ GrooveFoldersPage::GrooveFoldersPage (Studio& s) : studio (s)
     summary.setFont (ParagonLookAndFeel::textFont (14.0f));
     summary.setColour (juce::Label::textColourId, ParagonColours::textDim);
     addAndMakeVisible (summary);
+    source.setFont (ParagonLookAndFeel::textFont (14.0f));
+    source.setColour (juce::Label::textColourId, ParagonColours::text);
+    source.setMinimumHorizontalScale (0.7f);
+    addAndMakeVisible (source);
+    addKey.setWantsKeyboardFocus (false);
+    addKey.setTooltip ("Add a folder of MIDI grooves to the MediaBay. ARCHITECT reads PR7-D's groove library first; "
+                       "when PR7-D has none it uses the MediaBay's drum MIDI");
+    addKey.onClick = [this]
+    {
+        chooser = std::make_unique<juce::FileChooser> ("Choose a folder of MIDI grooves");
+        chooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectDirectories,
+                              [safe = juce::Component::SafePointer<GrooveFoldersPage> (this)] (const juce::FileChooser& fc)
+        {
+            if (safe != nullptr && fc.getResult().isDirectory())
+                safe->addFolder (fc.getResult());
+        });
+    };
+    addAndMakeVisible (addKey);
     refresh();
     startTimerHz (2);
+}
+
+void GrooveFoldersPage::addFolder (const juce::File& folder)
+{
+    studio.addGrooveFolder (folder);
+    refresh();
+}
+
+void GrooveFoldersPage::followLibrary()
+{
+    const auto generation = studio.getPr7dGeneration();
+    const auto scans = studio.getMediaBay().getScansTaken();
+    const auto text = studio.describeGrooveSource();
+    if (generation != shownGeneration || scans != shownScans)
+        refresh();
+    else if (text != source.getText())
+        source.setText (text, juce::dontSendNotification);
 }
 
 void GrooveFoldersPage::timerCallback()
 {
     if (! isShowing())
         return;
+    followLibrary();
     if (const auto now = studio.getGrooveFavouriteFolders(); now != favourites)
     {
         favourites = now;
@@ -240,6 +276,9 @@ void GrooveFoldersPage::refresh()
     counts.clear();
     children.clear();
     favourites = studio.getGrooveFavouriteFolders();
+    shownGeneration = studio.getPr7dGeneration();
+    shownScans = studio.getMediaBay().getScansTaken();
+    source.setText (studio.describeGrooveSource(), juce::dontSendNotification);
     const auto context = studio.getComposerContext (0.0);
     paths.reserve (context.libraryGrooves.size());
     for (const auto& g : context.libraryGrooves)
@@ -276,6 +315,13 @@ void GrooveFoldersPage::resized()
     auto area = getLocalBounds();
     titleArea = area.removeFromTop (26);
     noteArea = area.removeFromTop (44);
+    {
+        auto row = area.removeFromTop (28);
+        addKey.setBounds (row.removeFromRight (220));
+        row.removeFromRight (12);
+        source.setBounds (row);
+        area.removeFromTop (6);
+    }
     auto bottom = area.removeFromBottom (34);
     clearKey.setBounds (bottom.removeFromRight (220));
     bottom.removeFromRight (12);

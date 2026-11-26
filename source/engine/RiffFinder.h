@@ -1,0 +1,124 @@
+#pragma once
+
+#include "engine/MediaBay.h"
+#include "engine/MidiImport.h"
+#include "engine/RiffPaste.h"
+
+#include <atomic>
+#include <functional>
+
+// FIND A RIFF IN THE MEDIABAY (0.227.0, the owner: "do we have the ability to scan the media Bay for riffs that are
+// in key for the song that we are working on and would fit for the part"). Ours, all of it:
+//
+//   - which files: the MediaBay's MIDI files (any location it scans), not drums (a drum word in the name or a
+//     folder, the DRUMS category, or only channel-10 notes), 1 to 16 bars long, with at least three notes;
+//   - each read as + MY RIFF reads a file (every track but channel 10's, from the bar it starts in), its key from
+//     the MediaBay's (yours, the name's or the file's) else guessed from its notes (`guessKey`);
+//   - moved into the song's key the short way (a major riff into a minor key: to its relative major, the same notes),
+//     then by whole octaves into a guitar's range (A0 to E5: 33 to 88);
+//   - scored: how much of it is in the key after moving (the most), how much of it a guitar can play, its tempo
+//     against the song's (twice or half as fast counts, less), the section's word in its name or folders (another
+//     section's word counts against), and riff words (riff, guitar, gtr, chug).
+//
+// The score is a guide: it can't hear whether a riff is any good.
+namespace pr7s
+{
+    // (0.231.0) How FIND A RIFF plays a pad's chords on the guitar.
+    enum class PadStyle { powerChords, strummed };
+
+    struct RiffFindRequest
+    {
+        Key key;                          // the song's (the riff is moved into it)
+        double bpm = 120.0;
+        double beatsPerBar = 4.0;
+        DrumSection section = DrumSection::verse;
+        int most = 100;                   // how many come back (the best)
+        int mostRead = 4000;              // how many files are read at most (the likeliest by name and tempo first)
+        // (0.227.1) Known drum grooves left out: PR7-D's library and ARCHITECT's drum grooves (full paths, sorted),
+        // and anything inside PR7-D's linked groove folders.
+        std::vector<juce::String> drumFiles;
+        std::vector<juce::File> drumFolders;
+        // (0.228.0) Riffs whose quality (`riffQuality`) is under this are left out (0 keeps them all), and files
+        // you've hidden (full paths, sorted).
+        double leastQuality = 0.55;
+        std::vector<juce::String> hidden;
+        // (0.231.0) How a pad's chords are played: ringing power chords, or full chord shapes strummed.
+        PadStyle padStyle = PadStyle::powerChords;
+        // (0.233.0) Variety (the owner: "I'm seeing the same 100 songs a lot"). With a seed (not 0), each search
+        // reads a different share of a big library (the likeliest by name and tempo still first, the rest of the
+        // reading drawn at random), the riffs shown in the last searches (`recent`: full paths, sorted) go behind
+        // the ones not seen, close scores are drawn in a different order, and no folder gives more than
+        // `perFolder` of the list until every folder's had its turn. Seed 0: the fixed ranking as before.
+        juce::uint32 seed = 0;
+        std::vector<juce::String> recent;
+        int perFolder = 6;
+    };
+
+    // (0.228.0) How much a MIDI file is like a guitar riff, from its notes (ours, the owner: "half the riffs don't
+    // translate to guitar ... there's not much to them"). Each part 0-1:
+    //   - hits: how many places a bar something starts (a riff 4-16; a bar or two of pads 1-2);
+    //   - rhythm: how many different places in the bar it plays across its bars (a riff has a rhythm of its own);
+    //   - held: how little of it is long held notes (pads and chord beds hold for bars);
+    //   - stacks: how little of it is chords of four notes or more (a guitar plays single notes, power chords
+    //     and triads, not five-note pads spread over three octaves);
+    //   - leaps: how little it jumps over an octave between quick notes (arpeggiators jumping round the keyboard);
+    //   - repeats: how much its bars repeat each other's rhythm (riffs repeat; random noodling doesn't);
+    //   - filled: how few of its bars are empty;
+    //   - low: how much sits on a guitar's riffing strings once moved (under E4) rather than up the neck.
+    // The score is their weighted mix, pulled down by the worst of hits, held, stacks and leaps; `problems` names the weak ones ("mostly held notes", "big stacked chords").
+    struct RiffQuality
+    {
+        double score = 0.0;
+        double hits = 0.0, rhythm = 0.0, held = 0.0, stacks = 0.0, leaps = 0.0, repeats = 0.0, filled = 0.0, low = 0.0;
+        double hitsPerBar = 0.0;
+        juce::StringArray problems;
+    };
+    RiffQuality riffQuality (const std::vector<LineNote>& notes, int bars, double beatsPerBar);
+    // (0.230.0) Held stacked chords (a pad): most of the time in hits of three notes or more held a beat or longer,
+    // four hits a bar at most.
+    bool looksLikePad (const std::vector<LineNote>&, double beatsPerBar);
+    // A pad's chords as a guitar plays them: each change read as a chord (chordOfNotes, plain chords; none: its
+    // lowest note as the root), the same chord twice in a row joined, then a power chord (root, fifth, octave; a
+    // diminished chord's flat fifth) on the low strings (root in A1-G#2) struck at each change and every half bar
+    // while it holds, rung to the next strike. `readShare`: the changes read as a chord (0-1).
+    // (0.231.0) `strummed`: each chord as the full shape a guitar holds (AcousticVoicing::open: five or six notes from
+    // the root's string, E2-E5), strummed down, down-up, up-down-up on the eighths (down strokes low to high over
+    // 0.02 beat, up strokes the top four high to low, softer), a down stroke at every change, each ringing to the next.
+    std::vector<LineNote> padAsGuitar (const std::vector<LineNote>&, double beatsPerBar, double totalBeats, double* readShare = nullptr,
+                                       PadStyle style = PadStyle::powerChords);
+    // The quality choices: STRICT 0.7, NORMAL 0.55, EVERYTHING 0.
+    double riffQualityThreshold (int level);
+
+    struct RiffFind
+    {
+        juce::File file;
+        juce::String name, folder;        // the file's name, its folder's
+        ComposerRiff riff;                // moved into the song's key and a guitar's range, ready to paste
+        Key from;                         // the key it was in (known or guessed)
+        bool keyKnown = false;            // from the MediaBay (else guessed)
+        int shift = 0;                    // semitones its tonic moved (the octaves not counted)
+        double inKey = 0.0;               // 0-1: its notes in the song's key after moving
+        double playable = 0.0;            // 0-1: in a guitar's range
+        double tempo = 0.0;               // 0: not known
+        double score = 0.0;               // 0-1
+        double quality = 0.0;             // (0.228.0) `riffQuality`'s score
+        bool pad = false;                 // (0.230.0) a pad's held chords, played as a guitar's ringing power chords
+        juce::String reason;              // "in key 96%, MOVED +3, 2 bars, 120 BPM, says verse"
+    };
+
+    // A drum file by its name, any of its folders (a drum word, a drum library's name such as Toontrack, EZX or SDX,
+    // or Toontrack's "NNN@Name" folders) or its category (the notes are checked as it's read).
+    bool looksLikeDrums (const MediaItem&);
+    // (0.227.1) Notes that read as a drum kit: a kick, a snare and a hi-hat or cymbal note of the General MIDI /
+    // Toontrack layouts all played, most notes on kit notes, and kicks struck together with a hat or cymbal.
+    bool notesLookLikeDrums (const std::vector<Note>&);
+    // A file the request says is a drum groove (its lists or folders).
+    bool isKnownDrumFile (const juce::File&, const RiffFindRequest&);
+    // A key written as the MediaBay writes it ("Am", "F#", "Bbm"); none when empty or not one.
+    std::optional<Key> keyFromText (const juce::String&);
+    // One file's notes as a found riff (none: no notes left once the drums are out, or longer than 16 bars).
+    std::optional<RiffFind> scoreRiff (const MediaItem&, const MidiImport&, const RiffFindRequest&);
+    // Every likely MIDI file read and scored, the best first (`stop`: true ends it early, with what it has).
+    std::vector<RiffFind> findRiffs (const std::vector<MediaItem>&, const RiffFindRequest&,
+                                     const std::function<bool()>& stop = {}, std::atomic<int>* read = nullptr);
+}

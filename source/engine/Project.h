@@ -89,6 +89,10 @@ namespace pr7s
         // (0.32.0) Warp markers, sorted by beat (none: the recording plays at its own speed).
         std::vector<WarpMarker> warp;
         bool isWarped() const noexcept { return warp.size() >= 2; }
+        // (0.187.0) How a warped clip is stretched: 0 CLEAN (pitch kept), 1 VOICE (pitch and the voice's
+        // character kept), 2 LIGHT (quicker, a little rougher), 3 TAPE (speed and pitch together, as a tape
+        // played faster or slower). `StretchModes` (Sizing.h) names them. Saved as "stretch" when not 0.
+        int stretchMode = 0;
         // (0.47.0, the info line) An audio event's own volume (dB, its gain before the track's
         // fader; `leastVolumeDb` and under: silent), and a MIDI part's Transpose (semitones) and
         // Velocity (added to each note's, 1-127): both for playback only, its notes stay as written.
@@ -280,6 +284,9 @@ namespace pr7s
         static constexpr float trimRange = 12.0f;   // our choice
         bool canTrim() const noexcept { return target == Target::volume || target == Target::send; }
 
+        // (0.230.0, the owner: "10 or 20 on top of the exact same spot") Points on the same beat cut down to the
+        // first and the last (a jump stays a jump); the same value twice: one. Sorted points.
+        static int collapseStacks (std::vector<AutomationPoint>& points);
         bool isStep() const noexcept { return target == Target::mute; }
         bool sameControl (const AutomationLane& other) const noexcept
         {
@@ -536,6 +543,28 @@ namespace pr7s
         bool signatureTrackShown = false, signatureLocked = false;
         MarkerTrack markerTrack;                // (0.49.0) the marker track and its markers
         SongSections songSections;              // (0.90.0) the SECTIONS row: the song as blocks, end to end from bar 1
+        // (0.206.0) ARCHITECT's state for this song (ComposerState::toString; empty: its defaults) and the riff pasted
+        // into it (its notes as text: Composer.h's lineNotesToText). Saved in the song, not undo steps (restore leaves
+        // them): another song, a new one or a template brings its own.
+        struct ArchitectRiff
+        {
+            int id = 0;                         // (0.226.0) in architectRiffs: what SongSection::riff names (the loose one: 0)
+            juce::String notes;
+            int bars = 1, section = 1;          // (DrumSection's number)
+            juce::String name;
+            bool played = false, chordsFrom = false;   // the guitar lane plays it; the chords read from it
+            bool fit = false;                   // (0.226.0) FIT MY RIFF TO THE CHORDS: its notes moved onto the chords under it
+            bool operator== (const ArchitectRiff&) const = default;
+        };
+        juce::String architectState;
+        std::optional<ArchitectRiff> architectRiff;
+        // (0.226.0) The SECTIONS row's riffs: a block names one by its id (SongSection::riff). architectRiff above is
+        // the riff ARCHITECT uses with no block chosen (a song without the row, as before). Written only while a
+        // block names it.
+        std::vector<ArchitectRiff> architectRiffs;
+        const ArchitectRiff* findArchitectRiff (int id) const noexcept;
+        ArchitectRiff* findArchitectRiff (int id) noexcept;
+        int nextArchitectRiffId() const noexcept;
         AutoFades autoFades;                    // (0.52.0) the song's Auto Fades settings
         AutoColour autoColour;                  // (0.79.0) COLOUR IN ORDER (saved; not an undo step)
         bool autoColourTakes (const Track&) const noexcept;

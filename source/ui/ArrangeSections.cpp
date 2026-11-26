@@ -9,6 +9,7 @@
 
 #include "ui/ParagonLookAndFeel.h"
 #include "ui/ChordUi.h"
+#include "ui/InfoEntry.h"
 
 namespace
 {
@@ -63,7 +64,7 @@ juce::Rectangle<float> ArrangeView::getSectionBounds (int index) const
     const auto& blocks = studio.getSongSections().blocks;
     if (area.isEmpty() || ! juce::isPositiveAndBelow (index, (int) blocks.size()))
         return {};
-    const auto signatures = studio.getProject().signatures();
+    const auto& signatures = studio.getSignatureMap();   // (0.229.0: the kept map, not a new one per block)
     auto bar = 0;
     for (const auto i : shownSectionOrder())
     {
@@ -79,10 +80,120 @@ juce::Rectangle<float> ArrangeView::getSectionBounds (int index) const
     return {};
 }
 
+std::vector<ArrangeView::SectionPlaceShown> ArrangeView::sectionPlacesShown() const
+{
+    // (0.229.0) Every block's bounds and number in one walk (the row's paint asked for each block from the start:
+    // with 30 blocks, 90 walks and 60 signature maps a frame).
+    const auto area = getSectionArea();
+    const auto& blocks = studio.getSongSections().blocks;
+    std::vector<SectionPlaceShown> out (blocks.size());
+    if (area.isEmpty())
+        return out;
+    const auto& signatures = studio.getSignatureMap();
+    auto bar = 0, number = 1;
+    for (const auto i : shownSectionOrder())
+    {
+        const auto& b = blocks[(size_t) i];
+        const auto x1 = timeline.xForBeat (signatures.beatOfBar (bar));
+        const auto x2 = timeline.xForBeat (signatures.beatOfBar (bar + b.bars));
+        out[(size_t) i] = { { x1 + 1.0f, area.getY(), juce::jmax (3.0f, x2 - x1 - 2.0f), area.getHeight() }, number++ };
+        bar += b.bars;
+    }
+    return out;
+}
+
+juce::Rectangle<float> ArrangeView::numberBoxIn (juce::Rectangle<float> bounds, int number)
+{
+    if (bounds.getWidth() < 60.0f || bounds.getHeight() < 20.0f)
+        return {};
+    const auto h = juce::jmin (18.0f, bounds.getHeight() - 8.0f);
+    const auto digits = juce::String (number).length();
+    return { bounds.getX() + 5.0f, bounds.getY() + 4.0f, h * 0.62f * (float) juce::jmax (2, digits) + 6.0f, h };
+}
+
+juce::Rectangle<float> ArrangeView::getSectionNumberBox (int index) const
+{
+    return numberBoxIn (getSectionBounds (index), sectionNumberOf (index));
+}
+
+int ArrangeView::sectionNumberOf (int index) const
+{
+    const auto order = shownSectionOrder();
+    const auto at = std::find (order.begin(), order.end(), index);
+    return at == order.end() ? -1 : (int) (at - order.begin()) + 1;
+}
+
+bool ArrangeView::moveSectionToNumber (int index, int number)
+{
+    const auto count = (int) studio.getSongSections().blocks.size();
+    if (! juce::isPositiveAndBelow (index, count) || number < 1)
+        return false;
+    const auto to = juce::jmin (number, count) - 1;
+    if (to == index)
+        return false;
+    const auto moved = studio.moveSongSection (index, to);   // (the selection is by id: it stays on the moved block)
+    repaint();
+    return moved;
+}
+
+void ArrangeView::editSectionNumber (int index)
+{
+    closeSectionNumber();
+    const auto box = getSectionNumberBox (index);
+    if (box.isEmpty())
+        return;
+    sectionNumberId = studio.getSongSections().blocks[(size_t) index].id;
+    auto entry = std::make_unique<InfoEntry>();
+    entry->setFont (ParagonLookAndFeel::titleFont (box.getHeight() * 0.95f));
+    entry->setJustification (juce::Justification::centred);
+    entry->setInputRestrictions (3, "0123456789");
+    entry->setColour (juce::TextEditor::backgroundColourId, juce::Colours::black);
+    entry->setColour (juce::TextEditor::outlineColourId, juce::Colour (pr7s::FamilyColours::red));
+    entry->setColour (juce::TextEditor::focusedOutlineColourId, juce::Colour (pr7s::FamilyColours::pink));
+    entry->setText (juce::String (sectionNumberOf (index)), false);
+    entry->setBounds (box.expanded (6.0f, 2.0f).withWidth (juce::jmax (box.getWidth() + 12.0f, 40.0f)).toNearestInt());
+    juce::Component::SafePointer<ArrangeView> self (this);
+    entry->onEnter = [self] (bool) { if (self) self->commitSectionNumber(); };
+    entry->onReturnKey = [self] { if (self) self->commitSectionNumber(); };
+    entry->onEscapeKey = [self] { if (self) juce::MessageManager::callAsync ([self] { if (self) self->closeSectionNumber(); }); };
+    entry->onFocusLost = [self] { if (self) self->commitSectionNumber(); };   // (as the track list's numbers: leaving it applies it)
+    addAndMakeVisible (*entry);
+    entry->selectAll();
+    entry->grabKeyboardFocus();
+    sectionNumberEntry = std::move (entry);
+}
+
+void ArrangeView::commitSectionNumber()
+{
+    if (sectionNumberEntry == nullptr)
+        return;
+    const auto text = sectionNumberEntry->getText().trim();
+    const auto id = sectionNumberId;
+    sectionNumberEntry->onFocusLost = nullptr;
+    sectionNumberEntry->setVisible (false);
+    // The box goes after its own callback has returned (a component mustn't be deleted inside it).
+    juce::Component::SafePointer<ArrangeView> self (this);
+    juce::MessageManager::callAsync ([self] { if (self) self->closeSectionNumber(); });
+    sectionNumberId = 0;
+    const auto index = studio.getSongSections().indexOf (id);
+    if (index >= 0 && text.containsOnly ("0123456789") && text.isNotEmpty())
+        moveSectionToNumber (index, text.getIntValue());
+}
+
+void ArrangeView::closeSectionNumber()
+{
+    if (sectionNumberEntry == nullptr)
+        return;
+    sectionNumberEntry->onFocusLost = nullptr;
+    sectionNumberEntry.reset();
+    sectionNumberId = 0;
+}
+
 int ArrangeView::sectionBlockAt (juce::Point<float> at) const
 {
-    for (int i = 0; i < (int) studio.getSongSections().blocks.size(); ++i)
-        if (getSectionBounds (i).expanded (1.0f, 0.0f).contains (at))
+    const auto shown = sectionPlacesShown();
+    for (int i = 0; i < (int) shown.size(); ++i)
+        if (shown[(size_t) i].bounds.expanded (1.0f, 0.0f).contains (at))
             return i;
     return -1;
 }
@@ -110,9 +221,10 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
         // (0.165.0: its words in paintPinned: they stay put on the screen)
         return;
     }
+    const auto shown = sectionPlacesShown();
     for (int i = 0; i < (int) blocks.size(); ++i)
     {
-        const auto bounds = getSectionBounds (i);
+        const auto bounds = shown[(size_t) i].bounds;
         if (bounds.getRight() < clip.getX() || bounds.getX() > clip.getRight())
             continue;
         const auto& b = blocks[(size_t) i];
@@ -124,6 +236,19 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
         g.setColour (dragged ? pearl : tint.withAlpha (isSelected ? 1.0f : 0.85f));
         g.drawRoundedRectangle (bounds.reduced (0.5f), 4.0f, dragged || isSelected ? 2.0f : 1.0f);
         auto text = bounds.reduced (8.0f, 2.0f);
+        // (0.229.0) Its place in a box at its top left; double-click it to type another.
+        const auto numberBox = numberBoxIn (bounds, shown[(size_t) i].number);
+        if (! numberBox.isEmpty())
+        {
+            g.setColour (juce::Colour (0xff141116).withAlpha (0.78f));
+            g.fillRoundedRectangle (numberBox, 3.0f);
+            g.setColour (tint.withAlpha (isSelected || dragged ? 1.0f : 0.7f));
+            g.drawRoundedRectangle (numberBox.reduced (0.5f), 3.0f, 1.0f);
+            g.setColour (juce::Colours::white);
+            g.setFont (ParagonLookAndFeel::titleFont (numberBox.getHeight() * 0.95f));
+            g.drawText (juce::String (shown[(size_t) i].number), numberBox, juce::Justification::centred, false);
+            text.setLeft (numberBox.getRight() + 6.0f);
+        }
         if (text.getWidth() < 14.0f)
             continue;
         // (0.91.0) A linked copy: two links of a chain at its top right.
@@ -143,8 +268,8 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
         if (b.type.isNotEmpty() && text.getHeight() >= 26.0f)
         {
             auto typeLine = text.removeFromBottom (text.getHeight() * 0.38f);
-            g.setColour (isSelected || dragged ? juce::Colours::white.withAlpha (0.85f) : ParagonColours::accent);
             g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (12.0f, typeLine.getHeight() + 1.0f)));
+            ParagonColours::setTextFill (g, isSelected || dragged ? juce::Colours::white.withAlpha (0.85f) : ParagonColours::accent, b.type, typeLine, juce::Justification::centredLeft);
             g.drawText (b.type, typeLine, juce::Justification::centredLeft, true);
             g.setColour (isSelected || dragged ? juce::Colours::white : ParagonColours::text);
             g.setFont (ParagonLookAndFeel::titleFont (juce::jmin (16.0f, text.getHeight())));
@@ -160,7 +285,8 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
         // (0.114.0) Its own key, when the song's sections aren't all in one key.
         const auto ownKey = ! studio.isOneKey() && juce::isPositiveAndBelow (b.key, (int) pr7s::Key::all().size())
                               ? " - " + ChordUi::spokenKey (pr7s::Key::all()[(size_t) b.key]).toUpperCase() : juce::String();
-        const auto bars = juce::String (b.bars) + (b.bars == 1 ? " BAR" : " BARS") + ownKey + (b.transition.isNotEmpty() ? " - " + b.transition : juce::String());
+        const auto bars = juce::String (b.bars) + (b.bars == 1 ? " BAR" : " BARS") + ownKey + (b.riff > 0 ? juce::String (" - RIFF") : juce::String())   // (0.226.0: built around its own riff)
+                        + (b.transition.isNotEmpty() ? " - " + b.transition : juce::String());
         const auto barsWidth = juce::GlyphArrangement::getStringWidth (juce::Font (ParagonLookAndFeel::titleFont (12.0f)), bars) + 6.0f;
         if (text.getWidth() > barsWidth * 2.5f)
         {
@@ -244,6 +370,11 @@ bool ArrangeView::sectionDoubleClick (const juce::MouseEvent& event)
     if (! row || row->kind != Timeline::Row::Kind::sections)
         return false;
     const auto hit = sectionBlockAt (event.position);
+    if (hit >= 0 && getSectionNumberBox (hit).expanded (2.0f).contains (event.position))
+    {
+        editSectionNumber (hit);   // (0.229.0)
+        return true;
+    }
     if (hit >= 0)
     {
         if (onOpenSection)

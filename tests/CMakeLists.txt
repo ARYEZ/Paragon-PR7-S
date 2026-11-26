@@ -40,6 +40,9 @@ add_executable(ParagonPR7STests
     BuildSectionTests.cpp
     ComposerTests.cpp
     ComposerTracksTests.cpp
+    ArchitectLevelsTests.cpp
+    ArchitectSongTests.cpp
+    BarLockTests.cpp
     ComposerSpeedTests.cpp
     InstrumentTests.cpp
     GrooveTests.cpp
@@ -57,6 +60,8 @@ add_executable(ParagonPR7STests
     AutoFadeTests.cpp
     RenderKeyTests.cpp
     WarpTests.cpp
+    SizingTests.cpp
+    RubberBandTests.cpp
     AlignTests.cpp
     VariAudioTests.cpp
     VariAudio2Tests.cpp
@@ -85,20 +90,29 @@ add_executable(ParagonPR7STests
     LibraryOptionsTests.cpp
     FavouriteFoldersTests.cpp
     Speed0179Tests.cpp
+    AutoHearTests.cpp
     ExpressionControllerTests.cpp
     Speed0173Tests.cpp
     MediaBaySpeedTests.cpp
     Speed0113Tests.cpp
     CleanGuitarTests.cpp
+    AcousticLaneTests.cpp
+    GuitarToneTests.cpp
+    SectionToneTests.cpp
     MyRiffLaneTests.cpp
+    BlockRiffTests.cpp
+    RiffFinderTests.cpp
     SongKeyTests.cpp
     BlueprintTests.cpp
     Tweaks0853Tests.cpp
     SyncTests.cpp
     DroningBandTests.cpp
     SongSectionTests.cpp
+    ChordRollTests.cpp
     InsertSilenceTests.cpp
     ComposerOctaveTests.cpp
+    LaneWorldTests.cpp
+    SynthPatchTests.cpp
     OptionBrowserTests.cpp
     ChordGuideTests.cpp
     LibraryDrumsTests.cpp
@@ -107,6 +121,7 @@ add_executable(ParagonPR7STests
     Pr7dLinkTests.cpp
     FolderTests.cpp
     StemExportTests.cpp
+    ExportFormatTests.cpp
     PerformanceTests.cpp
     UiTests.cpp
     Tweaks071Tests.cpp
@@ -120,6 +135,8 @@ add_executable(ParagonPR7STests
     FastPickingTests.cpp
     BandSectionTests.cpp
     AutoSaveTests.cpp
+    Speed0190Tests.cpp
+    Speed0191Tests.cpp
     PerfTests.cpp
     Snapshot.cpp)
 

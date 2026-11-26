@@ -1,5 +1,7 @@
 #pragma once
 
+#include <array>
+
 #include "ui/InfoEntry.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -151,6 +153,9 @@ public:
     // for the chord at the playhead. 0 nothing, 1 the key, 2 an added note, 3 a 3rd / 5th (or a slash bass), 4 the root.
     // By the pitch as heard (the part's transpose counted). Never in the drum view or on a drum track.
     int chordGuideLevel (int writtenPitch, double songBeat) const;
+    // (0.191.0) The chord guides' levels for one chord: [pitch class] = 0-4, as chordGuideLevel works them
+    // out (a pitch's heard pitch class is the part's transpose away). Made once per chord per paint.
+    std::array<int, 12> chordGuideLevels (int chordIndex) const;
     void setChordGuides (bool on);
     bool isChordGuidesOn() const noexcept { return chordGuidesOn; }
     juce::TextButton& getChordGuidesKey() noexcept { return chordGuidesKey; }
@@ -488,6 +493,10 @@ private:
     pr7s::Studio& studio;
     ArrangeView& arrange;
     int partId = 0;                          // the part shown (0: none yet)
+    // (0.191.0) Where the part shown was last found (a track's and a part's place in the song), checked
+    // by its id each time: it was looked for through every part of every track for every note drawn.
+    mutable int foundTrack = -1, foundPart = -1;
+    const pr7s::Track* findShownTrack() const;   // the part's track (none: no part), through the kept place
     struct FollowCache   // (0.83.1) where a following part's notes sound, kept for the redraws
     {
         juce::uint64 version = 0;

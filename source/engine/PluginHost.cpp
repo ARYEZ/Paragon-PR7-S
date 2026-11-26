@@ -119,7 +119,7 @@ namespace pr7s
         }
     }
 
-    std::optional<juce::PluginDescription> PluginHost::findBackline (const char* file)
+    std::optional<juce::PluginDescription> PluginHost::findBackline (const char* file, bool instrument)
     {
         std::optional<juce::PluginDescription> best;
         juce::VST3PluginFormat vst3;
@@ -137,7 +137,7 @@ namespace pr7s
             juce::OwnedArray<juce::PluginDescription> found;
             vst3.findAllTypesForFile (found, place.getFullPathName());
             for (auto* description : found)
-                if (description->isInstrument && (! best || newer (description->version, best->version)))
+                if (description->isInstrument == instrument && (! best || newer (description->version, best->version)))
                     best = *description;
         }
         return best;
@@ -167,6 +167,20 @@ namespace pr7s
                 SessionLog::note ("The studio's drums: " + describe (*studioDrums));
         }
         return studioDrums ? &*studioDrums : nullptr;
+    }
+
+    const juce::PluginDescription* PluginHost::getStudioGuitar()
+    {
+        if (! findStudioSynth)
+            return nullptr;
+        if (! studioGuitarLooked)
+        {
+            studioGuitarLooked = true;
+            studioGuitar = findBackline (studioGuitarFile, false);
+            if (studioGuitar)
+                SessionLog::note ("The studio's guitar effects: " + describe (*studioGuitar));
+        }
+        return studioGuitar ? &*studioGuitar : nullptr;
     }
 
     std::unique_ptr<juce::AudioPluginInstance> PluginHost::create (const Instrument& instrument, double sampleRate, int blockSize,

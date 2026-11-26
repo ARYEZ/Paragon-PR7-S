@@ -3,7 +3,7 @@
 #include "engine/Instruments.h"
 #include "ui/InstrumentsPage.h"
 
-// 0.180.0 (the owner's report: a clean guitar riff after one with swells or vibrato played on with the instrument's
+// 0.237.0 (the owner's report: a clean guitar riff after one with swells or vibrato played on with the instrument's
 // sound turned most of the way down). ARCHITECT's controllers: the swell and vibrato numbers from the instrument
 // profile (0: none), and every part ending with what its notes moved back at rest.
 
@@ -42,7 +42,7 @@ namespace
     }
 }
 
-TEST_CASE ("0.180.0: swells and vibrato on the profile's controllers, or none", "[instruments][expression]")
+TEST_CASE ("0.237.0: swells and vibrato on the profile's controllers, or none", "[instruments][expression]")
 {
     const auto notes = swellBendVibrato();
     const auto usual = Studio::effectControllers (notes, 2, 120.0);
@@ -61,7 +61,7 @@ TEST_CASE ("0.180.0: swells and vibrato on the profile's controllers, or none", 
     CHECK (! none.empty());
 }
 
-TEST_CASE ("0.180.0: a part ends with its controllers back at rest", "[instruments][expression]")
+TEST_CASE ("0.237.0: a part ends with its controllers back at rest", "[instruments][expression]")
 {
     auto c = Studio::effectControllers (swellBendVibrato(), 2, 120.0);
     Studio::restControllers (c, 8.0);
@@ -101,7 +101,7 @@ TEST_CASE ("0.180.0: a part ends with its controllers back at rest", "[instrumen
     CHECK (std::any_of (own.begin(), own.end(), [] (const Controller& k) { return k.number == 74 && k.value == 0 && k.start > 7.9; }));
 }
 
-TEST_CASE ("0.180.0: an ARCHITECT part on a track uses the profile's controllers and ends at rest", "[instruments][expression][studio]")
+TEST_CASE ("0.237.0: an ARCHITECT part on a track uses the profile's controllers and ends at rest", "[instruments][expression][studio]")
 {
     Studio studio (false);
     auto guitar = InstrumentProfile::shreddage ("Shreddage Jupiter");
@@ -124,7 +124,7 @@ TEST_CASE ("0.180.0: an ARCHITECT part on a track uses the profile's controllers
     CHECK (last->start < part.length);
 }
 
-TEST_CASE ("0.180.0: the profile keeps its controllers; profiles saved before it get CC 11 and CC 1", "[instruments][expression]")
+TEST_CASE ("0.237.0: the profile keeps its controllers; profiles saved before it get CC 11 and CC 1", "[instruments][expression]")
 {
     auto p = InstrumentProfile::djinnBass2();
     p.swellCc = 7;
@@ -143,7 +143,7 @@ TEST_CASE ("0.180.0: the profile keeps its controllers; profiles saved before it
     CHECK (older->vibratoCc == 1);
 }
 
-TEST_CASE ("0.180.0: the INSTRUMENTS page's SWELL CC and VIBRATO CC", "[instruments][expression][ui]")
+TEST_CASE ("0.237.0: the INSTRUMENTS page's SWELL CC and VIBRATO CC", "[instruments][expression][ui]")
 {
     Studio studio (false);
     InstrumentsPage page (studio);

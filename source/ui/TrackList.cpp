@@ -1,3 +1,4 @@
+#include <limits>
 #include "TrackList.h"
 #include "ui/ChordUi.h"
 
@@ -38,7 +39,7 @@ public:
             p.addTriangle (area.getX(), area.getY() + 2.0f, area.getRight(), area.getY() + 2.0f, area.getCentreX(), area.getBottom() - 1.0f);
         else
             p.addTriangle (area.getX() + 2.0f, area.getY(), area.getX() + 2.0f, area.getBottom(), area.getRight() - 1.0f, area.getCentreY());
-        g.setColour (isMouseOver() || open ? ParagonColours::accent : ParagonColours::textDim);
+        ParagonColours::setFill (g, isMouseOver() || open ? ParagonColours::accent : ParagonColours::textDim, (p).getBounds());
         g.fillPath (p);
     }
     void mouseEnter (const juce::MouseEvent&) override { repaint(); }
@@ -200,11 +201,44 @@ public:
         lanes.setToggleState (t->showLanes, juce::dontSendNotification);
         lanes.setVisible (false);
         AutomationKeys::refresh (read, write, owner.studio, trackId);
+        followMix();
+        // (0.191.0) Laid out and drawn again only when something it shows changed (every change in the song
+        // did both for every row before: a fader's release, a note moved, a part selected...).
+        const auto look = lookOf (*t);
+        if (look == shownLook)
+            return;
+        shownLook = look;
+        ++owner.rowsRedrawn;
         arrow.open = t->automationOpen;
         arrow.repaint();
-        followMix();
         resized();   // (0.50.0: a folder's keys follow its group channel)
         repaint();
+    }
+
+    // Everything the row's paint and layout read from the song (as MixerView's Strip::shownLook).
+    juce::String lookOf (const pr7s::Track& t) const
+    {
+        juce::String look;
+        const auto add = [&look] (const juce::String& part) { look << part << "\x1f"; };
+        const auto flag = [&add] (bool on) { add (on ? "1" : "0"); };
+        add (t.name);
+        add (juce::String (t.colour.getARGB()));
+        flag (t.disabled); flag (t.mute); flag (soloed (t)); flag (t.solo); flag (t.armed); flag (t.frozen);
+        flag (t.isFolder()); flag (t.folderOpen); flag (t.folderGroup); flag (t.isChannel()); flag (t.isGroup()); flag (t.isAudio());
+        flag (t.monitor); flag (t.showLanes); flag (t.automationOpen); flag (t.automationRead); flag (t.automationWrite);
+        flag (t.listColourOn);
+        add (juce::String (t.listColourAmount));
+        add (juce::String ((int) t.follow));
+        add (juce::String ((int) t.liveFollow));
+        add (instrument.getButtonText());
+        add (juce::String (indent()));
+        flag (owner.studio.isTrackSelected (trackId));
+        if (t.isFolder())
+            add (juce::String ((int) owner.studio.getProject().folderMembers (trackId, false).size()));
+        if (const auto* link = owner.studio.getLinkGroupOf (t.id))
+            add (link->name);
+        add (getBounds().toString());
+        return look;
     }
 
     // The volume knob as it is now: the automation's, while it's read.
@@ -263,7 +297,7 @@ public:
         }
         if (selected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.6f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.6f), bounds.withTrimmedLeft (6.0f));
             g.drawRect (bounds.withTrimmedLeft (6.0f), 1.0f);
         }
 
@@ -289,9 +323,11 @@ public:
             if (const auto* link = owner.studio.getLinkGroupOf (t->id)) states.add ("LINKED: " + link->name.toUpperCase());
             if (! states.isEmpty())
             {
-                g.setColour (t->solo || t->armed ? ParagonColours::accent : juce::Colour (0xfff4eeea).withAlpha (0.75f));
                 g.setFont (font (13.0f));
-                g.drawText (states.joinIntoString ("  "), name.getBounds().withTrimmedLeft (4).removeFromBottom (16), juce::Justification::bottomLeft, false);
+                const auto statesArea = name.getBounds().withTrimmedLeft (4).removeFromBottom (16);
+                ParagonColours::setTextFill (g, t->solo || t->armed ? ParagonColours::accent : juce::Colour (0xfff4eeea).withAlpha (0.75f),
+                                             states.joinIntoString ("  "), statesArea, juce::Justification::bottomLeft);
+                g.drawText (states.joinIntoString ("  "), statesArea, juce::Justification::bottomLeft, false);
             }
         }
 
@@ -417,6 +453,7 @@ public:
     juce::Rectangle<float> levelArea;
     LevelMeter::Ballistics reading;
     int shownLevel = -1;   // (0.83.1) what the meter last drew
+    juce::String shownLook;   // (0.191.0) what the row last showed (lookOf)
 };
 
 //==============================================================================
@@ -439,6 +476,18 @@ public:
         const auto* t = owner.studio.getProject().findTrack (trackId);
         solo.setToggleState (t != nullptr && t->soloLane == lane, juce::dontSendNotification);
         solo.setVisible (t != nullptr && lane < t->numLanes());
+        // (0.191.0) Drawn again only when what it shows changed: its colour, its lane's takes.
+        juce::String look;
+        if (t != nullptr)
+        {
+            auto takes = 0;
+            for (const auto& p : t->parts)
+                takes += p.lane == lane ? 1 : 0;
+            look << (juce::int64) t->colour.getARGB() << " " << takes << " " << t->numLanes();
+        }
+        if (look == shownLook && look.isNotEmpty())
+            return;
+        shownLook = look;
         repaint();
     }
 
@@ -477,6 +526,7 @@ public:
     TrackList& owner;
     const int trackId, lane;
     juce::TextButton solo { "S" };
+    juce::String shownLook;   // (0.191.0)
 };
 
 //==============================================================================
@@ -531,6 +581,12 @@ public:
             control.setButtonText (owner.studio.getLaneName (busId, *l));
             mute.setToggleState (l->muted, juce::dontSendNotification);
         }
+        // (0.191.0) Drawn again only when its colour changed (its value follows on the timer).
+        const auto* track = owner.studio.getProject().findTrack (busId);
+        const auto look = track != nullptr ? (juce::int64) track->colour.getARGB() : (juce::int64) -1;
+        if (look == shownColour)
+            return;
+        shownColour = look;
         repaint();
     }
 
@@ -565,7 +621,7 @@ public:
         g.setColour (juce::Colour (0xff050405));
         g.fillRect (bounds.withY (bounds.getBottom() - 1.0f).withHeight (1.0f));
         const auto* track = owner.studio.getProject().findTrack (busId);
-        g.setColour ((track != nullptr ? track->colour : ParagonColours::accent).withAlpha (0.45f));
+        ParagonColours::setFill (g, (track != nullptr ? track->colour : ParagonColours::accent).withAlpha (0.45f), bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
         g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
         g.setColour (ParagonColours::textDim);
         g.setFont (ParagonLookAndFeel::textFont (12.0f));
@@ -591,6 +647,7 @@ public:
     juce::TextButton control, mute { "M" }, append { "+" }, remove { "X" };
     juce::Rectangle<float> valueArea;
     juce::String shownValue;   // (0.83.1) the value the row last drew
+    juce::int64 shownColour = std::numeric_limits<juce::int64>::min();   // (0.191.0)
 };
 
 juce::Button* TrackList::getLaneRemoveKey (int busId, int laneIndex)
@@ -637,7 +694,7 @@ public:
         g.fillRect (bounds.withWidth (6.0f).reduced (0.0f, 1.0f));
         if (selected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.6f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.6f), bounds.withTrimmedLeft (6.0f));
             g.drawRect (bounds.withTrimmedLeft (6.0f), 1.0f);
         }
         g.setColour (ParagonColours::text);
@@ -1285,6 +1342,7 @@ public:
 TrackList::TrackList (pr7s::Studio& studioToUse, Timeline& timelineToUse)
     : studio (studioToUse), timeline (timelineToUse)
 {
+    setOpaque (true);   // (0.191.0: it fills itself; what's behind it needn't be drawn first)
     addTrack.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
     addTrack.setTooltip ("Add a track, with PR7-K or one of your VST3 instruments");
     addTrack.onClick = [this] { showAddTrackMenu(); };   // (0.9.11: not shown; the right-click menus have Add Track)
@@ -1353,6 +1411,7 @@ void TrackList::rebuild()
     auto same = rows.size() == shown.size();
     for (size_t i = 0; same && i < shown.size(); ++i)
         same = rows[i]->trackId == shown[i];
+    auto rebuilt = ! same;   // (0.191.0) the whole list drawn again only when its rows changed
     if (! same)
     {
         rows.clear();
@@ -1383,6 +1442,7 @@ void TrackList::rebuild()
                 addAndMakeVisible (*takeRows.back());
             }
         lastLayout = layout;
+        rebuilt = true;
     }
     for (auto& lane : laneRows)
         lane->refresh();
@@ -1392,55 +1452,77 @@ void TrackList::rebuild()
     {
         masterRow = std::make_unique<MasterRow> (*this);
         addAndMakeVisible (*masterRow);
+        rebuilt = true;
     }
     masterRow->refresh();
     if (studio.getProject().tempoTrackShown && tempoRow == nullptr)
     {
         tempoRow = std::make_unique<TempoRow> (*this);
         addAndMakeVisible (*tempoRow);
+        rebuilt = true;
     }
-    else if (! studio.getProject().tempoTrackShown)
+    else if (! studio.getProject().tempoTrackShown && tempoRow != nullptr)
+    {
         tempoRow = nullptr;
+        rebuilt = true;
+    }
     if (tempoRow != nullptr)
         tempoRow->refresh();
     if (studio.getProject().signatureTrackShown && signatureRow == nullptr)
     {
         signatureRow = std::make_unique<SignatureRow> (*this);
         addAndMakeVisible (*signatureRow);
+        rebuilt = true;
     }
-    else if (! studio.getProject().signatureTrackShown)
+    else if (! studio.getProject().signatureTrackShown && signatureRow != nullptr)
+    {
         signatureRow = nullptr;
+        rebuilt = true;
+    }
     if (signatureRow != nullptr)
         signatureRow->refresh();
     if (studio.getSongSections().shown && sectionsRow == nullptr)
     {
         sectionsRow = std::make_unique<SectionsRow> (*this);
         addAndMakeVisible (*sectionsRow);
+        rebuilt = true;
     }
-    else if (! studio.getSongSections().shown)
+    else if (! studio.getSongSections().shown && sectionsRow != nullptr)
+    {
         sectionsRow = nullptr;
+        rebuilt = true;
+    }
     if (sectionsRow != nullptr)
         sectionsRow->refresh();
     if (studio.getMarkerTrack().shown && markerRow == nullptr)
     {
         markerRow = std::make_unique<MarkerRow> (*this);
         addAndMakeVisible (*markerRow);
+        rebuilt = true;
     }
-    else if (! studio.getMarkerTrack().shown)
+    else if (! studio.getMarkerTrack().shown && markerRow != nullptr)
+    {
         markerRow = nullptr;
+        rebuilt = true;
+    }
     if (markerRow != nullptr)
         markerRow->refresh();
     if (studio.getChordTrack().shown && chordRow == nullptr)
     {
         chordRow = std::make_unique<ChordRow> (*this);
         addAndMakeVisible (*chordRow);
+        rebuilt = true;
     }
-    else if (! studio.getChordTrack().shown)
+    else if (! studio.getChordTrack().shown && chordRow != nullptr)
+    {
         chordRow = nullptr;
+        rebuilt = true;
+    }
     if (chordRow != nullptr)
         chordRow->refresh();
     resized();
-    repaint();
+    if (rebuilt)
+        repaint();
 }
 
 void TrackList::resized()
@@ -2125,7 +2207,7 @@ void TrackList::paintOverChildren (juce::Graphics& g)
     // Where the dragged tracks would go: a line between the rows.
     if (dropIndex >= 0 && dropY >= 0)
     {
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> (0.0f, (float) dropY - 1.5f, (float) getWidth(), 3.0f));
         g.fillRect (juce::Rectangle<float> (0.0f, (float) dropY - 1.5f, (float) getWidth(), 3.0f));
     }
 }

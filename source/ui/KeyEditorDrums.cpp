@@ -313,14 +313,14 @@ void KeyEditor::paintDrumList (juce::Graphics& g)
         const auto& sound = map->sounds[(size_t) pitch];
         const auto r = juce::Rectangle<float> (area.getX(), yForPitch (pitch), area.getWidth(), rowHeight);
         const auto lit = auditioning == pitch;
-        g.setColour (lit ? ParagonColours::accent.withAlpha (0.45f) : selectedPitch[(size_t) pitch] ? ParagonColours::accent.withAlpha (0.18f)
-                                                                     : row % 2 == 0 ? juce::Colour (0xff181318) : juce::Colour (0xff120e13));
+        ParagonColours::setFill (g, lit ? ParagonColours::accent.withAlpha (0.45f) : selectedPitch[(size_t) pitch] ? ParagonColours::accent.withAlpha (0.18f)
+                                                                     : row % 2 == 0 ? juce::Colour (0xff181318) : juce::Colour (0xff120e13), r);
         g.fillRect (r);
         g.setColour (ParagonColours::panelEdge.withAlpha (0.6f));
         g.fillRect (r.withY (r.getBottom() - 1.0f).withHeight (1.0f));
         // M: muted.
         const auto box = getDrumMuteBox (pitch);
-        g.setColour (sound.mute ? ParagonColours::accent : juce::Colour (0xff0b090c));
+        ParagonColours::setFill (g, sound.mute ? ParagonColours::accent : juce::Colour (0xff0b090c), box);
         g.fillRoundedRectangle (box, 2.0f);
         g.setColour (sound.mute ? juce::Colours::black : ParagonColours::textDim);
         g.setFont (font (9.0f));

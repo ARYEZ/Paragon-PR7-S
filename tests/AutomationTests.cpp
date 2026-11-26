@@ -585,3 +585,69 @@ TEST_CASE ("0.57.1: an automated plug-in knob is set only when its value changes
     CHECK (knob2->get() == 0.5f);
     CHECK (knob2->sets == 1);
 }
+
+TEST_CASE ("0.230.0: a fader moved many times in one block writes one point there, not a stack", "[automation][studio][stacks]")
+{
+    using T = AutomationLane::Target;
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    const auto volume = Studio::control (T::volume);
+    studio.setAutomationWrite (track, true);
+    studio.play();
+    renderSamples (studio.getEngine(), 2048);
+    studio.grabControl (track, volume);
+    // Twenty moves before the next block (the mouse at 120 Hz, the buffer at 2048): one beat for them all.
+    for (int i = 0; i < 20; ++i)
+        studio.setVolume (track, -1.0f - (float) i, false);
+    for (int block = 0; block < 6; ++block)
+    {
+        renderSamples (studio.getEngine(), 2048);
+        for (int i = 0; i < 20; ++i)
+            studio.setVolume (track, -20.0f + (float) (block * 3) - (float) i * 0.1f, false);
+    }
+    studio.releaseControl (track, volume);
+    studio.stop();
+    const auto* lanes = studio.getAutomation (track);
+    REQUIRE (lanes->size() == 1);
+    const auto& points = lanes->front().points;
+    // At most two points on any one beat (the jump where the pass starts), one a block, and the pass's edges.
+    for (size_t i = 0; i + 2 < points.size(); ++i)
+        CHECK_FALSE ((std::abs (points[i].beat - points[i + 2].beat) < 1.0e-9));
+    CHECK (points.size() <= 10);
+    // The last value written in a block is the one kept there.
+    CHECK_THAT (travelToVolume (*lanes->front().valueAt (studio.getEngine().getPosition() - 1.0e-3)), WithinAbs (-6.0, 1.0));
+}
+
+TEST_CASE ("0.230.0: stacked points in a saved song are cut down when it opens (a jump kept)", "[automation][stacks]")
+{
+    std::vector<AutomationPoint> points;
+    points.push_back ({ 0.0, 0.5f });
+    for (int i = 0; i < 15; ++i)
+        points.push_back ({ 2.0, 0.1f + 0.05f * (float) i });   // fifteen on one beat
+    points.push_back ({ 4.0, 0.3f });
+    points.push_back ({ 4.0, 0.3f });                            // the same twice: one
+    points.push_back ({ 6.0, 0.2f, 0.0f, true });
+    CHECK (AutomationLane::collapseStacks (points) == 14);
+    REQUIRE (points.size() == 5);
+    CHECK (points[1].beat == 2.0);
+    CHECK (points[1].value == 0.1f);                             // where the jump starts
+    CHECK_THAT (points[2].value, Catch::Matchers::WithinAbs (0.1 + 0.05 * 14.0, 1.0e-6));   // and where it lands
+    CHECK (points[3].beat == 4.0);
+    CHECK (points[4].terminator);
+
+    Studio studio (false);
+    const auto track = studio.getProject().tracks[0].id;
+    auto xml = studio.getProject().toXml();
+    {
+        Project p = studio.getProject();
+        AutomationLane lane;
+        lane.points.push_back ({ 1.0, 0.4f });
+        for (int i = 0; i < 10; ++i)
+            lane.points.push_back ({ 3.0, 0.2f + 0.01f * (float) i });
+        p.findTrack (track)->automation.push_back (lane);
+        xml = p.toXml();
+    }
+    const auto opened = Project::fromXml (*xml);
+    REQUIRE (opened.has_value());
+    CHECK (opened->findTrack (track)->automation.front().points.size() == 3);
+}

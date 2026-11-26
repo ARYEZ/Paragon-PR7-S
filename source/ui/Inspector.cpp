@@ -66,7 +66,7 @@ public:
             arrow.addTriangle (arrowArea.getX(), arrowArea.getY(), arrowArea.getX(), arrowArea.getBottom(), arrowArea.getRight(), arrowArea.getCentreY());
         else
             arrow.addTriangle (arrowArea.getX(), arrowArea.getY(), arrowArea.getRight(), arrowArea.getY(), arrowArea.getCentreX(), arrowArea.getBottom());
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, (arrow).getBounds());
         g.fillPath (arrow);
         g.setColour (ParagonColours::text);
         g.setFont (isTrack ? ParagonLookAndFeel::titleFont (12.5f) : font (12.0f));
@@ -127,7 +127,7 @@ public:
     {
         if (lit)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.16f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.16f), getLocalBounds().withTrimmedBottom (1));
             g.fillRect (getLocalBounds().withTrimmedBottom (1));
         }
         g.setColour (disabled ? juce::Colour (0xff4a454c) : colour);
@@ -507,7 +507,7 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
     {
         if (insertLineY < 0)
             return;
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0.0f), (float) ((float) insertLineY), (float) ((float) insertsHolder.getWidth()), (float) (1.5f)));
         g.fillRect (0.0f, (float) insertLineY, (float) insertsHolder.getWidth(), 1.5f);
     };
     studio.addChangeListener (this);

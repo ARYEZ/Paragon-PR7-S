@@ -59,9 +59,9 @@ public:
         const auto& p = page.profiles[(size_t) row];
         if (selectedRow)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.18f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.18f), juce::Rectangle<float> ((float) (0), (float) (0), (float) (w), (float) (h)));
             g.fillRect (0, 0, w, h);
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (4), (float) (3), (float) (h - 8)));
             g.fillRect (0, 4, 3, h - 8);
         }
         g.setColour (ParagonColours::text);
@@ -224,7 +224,7 @@ public:
             };
         }
         y += rowHeight + 8;
-        // (0.180.0) The controllers ARCHITECT's swells and vibrato move on this instrument.
+        // (0.237.0) The controllers ARCHITECT's swells and vibrato move on this instrument.
         {
             const auto ccText = [] (int cc) { return cc > 0 ? juce::String (cc) : juce::String ("OFF"); };
             label ("SWELL CC", { 0, y, 90, rowHeight });
@@ -579,7 +579,7 @@ bool InstrumentsPage::setBendRange (const juce::String& text)
 
 namespace
 {
-    // (0.180.0) "OFF", "0" or empty: none; 1-127: that controller; anything else: not one.
+    // (0.237.0) "OFF", "0" or empty: none; 1-127: that controller; anything else: not one.
     std::optional<int> parseCc (const juce::String& text)
     {
         const auto t = text.trim();

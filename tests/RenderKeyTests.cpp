@@ -106,6 +106,30 @@ TEST_CASE ("Render in Place's defaults: 32-bit float, the original muted, disabl
     }
     CHECK (two.getProject().findTrack (lead)->disabled);
     CHECK (two.getProject().findTrack (lead)->hidden);
+
+    // (0.181.1) Parts chosen one by one with CLIPS "as one event": one clip from the first's start to the
+    // last's end; "as block events": parts that meet joined, a gap still splits.
+    {
+        Studio three (false);
+        const auto t = three.getProject().tracks[0].id;
+        three.addPart (t, { 0.0, 4.0, "A", { { 0.0, 1.0, 60, 1.0f } } });
+        three.addPart (t, { 4.0, 4.0, "B", { { 0.0, 1.0, 64, 1.0f } } });
+        three.addPart (t, { 12.0, 4.0, "C", { { 0.0, 1.0, 67, 1.0f } } });
+        auto one = options;
+        one.mode = Studio::RenderOptions::Mode::one;
+        one.source = Studio::RenderOptions::Source::keep;
+        const auto made = three.renderInPlace ({ { t, 0.0, 4.0, false }, { t, 4.0, 8.0, false }, { t, 12.0, 16.0, false } }, one, error);
+        REQUIRE (made.size() == 1);
+        const auto& clips = three.getProject().findTrack (made[0])->parts;
+        REQUIRE (clips.size() == 1);
+        CHECK (clips[0].start == 0.0);
+        CHECK_THAT (clips[0].length, Catch::Matchers::WithinAbs (16.0, 0.01));
+        auto blocks = one;
+        blocks.mode = Studio::RenderOptions::Mode::blocks;
+        const auto joined = three.renderInPlace ({ { t, 0.0, 4.0, false }, { t, 4.0, 8.0, false }, { t, 12.0, 16.0, false } }, blocks, error);
+        REQUIRE (joined.size() == 2);   // 0-8 joined, 12-16 apart (a track each, as two stretches always were)
+        three.getAudioFolder().deleteRecursively();
+    }
     two.getAudioFolder().deleteRecursively();
     studio.getAudioFolder().deleteRecursively();
     other.getAudioFolder().deleteRecursively();
