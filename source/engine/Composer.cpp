@@ -36886,8 +36886,9 @@ namespace pr7s
                             bandHit (l, idea, chordAt (at), at, q4 * 0.6, k == 0);
                     }
                 }
-                // (0.244.0) Round ten (the owner's 56 songs; shapes only).
-                else if (name == "STOP BAR BEFORE THE NEXT")
+                // (0.244.0) Round ten (the owner's 56 songs; shapes only). A chain of its own: MSVC refuses blocks nested
+                // over 128 deep (fatal error C1061), and every else-if is one more; the names never meet, so nothing changes.
+                if (name == "STOP BAR BEFORE THE NEXT")
                 {
                     cutAt (idea, lastBar);
                     if (! playing)

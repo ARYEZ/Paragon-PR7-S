@@ -12,6 +12,8 @@ Round ten, part six: shared options from your 56 songs, offered under every sect
 - **Keys:** BALLAD CHORUS PIANO PUSHES, TALK-BOX HOOK (a sliding single-note lead in the gaps), REVERSE SWELLS INTO EVERY OTHER BAR, ORGAN CHORD EIGHTHS, ORGAN SIXTEENTH STAB PULSE, BALLAD PIANO 3+3+2 WITH TOP-LINE FILLS, SYNTH BRASS STABS, BALLAD PIANO ROCKING COMP; and KEYS ON TWO, TWO-AND, THREE.
 - **The ACOUSTIC lane's styles:** Hybrid pick and strum, Strum on the beats, triads on the ands, Fingerpicked roll, Strum every eighth but the and of one, alternating bass.
 
+**0.244.0 comes with this release.** Its Windows build stopped: the transitions are one long chain of choices, and the Windows compiler refuses one nested more than 128 deep (0.244.0 made it 131). The new transitions are now a chain of their own; what they play is unchanged. 0.244.0 was never published, so this release carries its sixteen transitions (see 0.244.0 below).
+
 Not checked here: how it sounds, by ear.
 
 ## 0.244.0
