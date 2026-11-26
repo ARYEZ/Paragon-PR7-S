@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.245.0
+
+Round ten, part six: shared options from your 56 songs, offered under every section type (shapes only, our own names). Eight of them are round ten's types' own options, now offered everywhere as they play.
+
+- **Guitar:** CHORDS ON TWO AND FOUR OVER THE BASS, FULL CHORDS: EIGHTHS, THEN THE ANDS, RING, THEN EIGHTHS, TWO-BAR CELL, RING ON ONE, MUTED CHUGS OFF THE BEAT; and from the types, HITS ON ONE, THREE, FOUR AND FOUR-AND, CHUNKS, THEN A SINGLE-NOTE ANSWER, MUTED SIXTEENTH RUNS THROUGH THE CHORD.
+- **Drums:** MACHINE BALLAD GROOVE, SIXTEENTH HATS ACCENTED ON THE ANDS, CONGAS AND SHAKER, SNARE AND THREE GHOSTS AFTER EACH BACKBEAT, KICK QUARTERS, SNARE ONLY ON THREE, KICK AND BELL IN TWOS, WOODBLOCK SIXTEENTHS, SNARE AND CLAPS ON TWO, THREE AND FOUR, COWBELL BACKBEAT, PEDAL HAT ON THE BEATS, CLOSED PAIRS, KICK ON ONE AND ITS AND, SNARE ON THREE, FLOOR-TOM DRIVE UNDER OPEN-HAT EIGHTHS, SIDESTICK ON TWO, CABASA SIXTEENTHS, BALLAD HAT ON TWO AND FOUR ONLY; and from the types, BALLAD GROOVE, KICK ON ONE AND THE A OF FOUR, OPEN HAT ON TWO, THREE AND FOUR, BALLAD RIDE ON THE ANDS.
+- **Bass** (before LOCKED WITH THE KICK): ONE, TWO-AND, THREE, FOUR (beat 4 a passing note into the next root), LOCKED TO ONE, ONE-AND, THREE; and EIGHTHS WITH BEAT THREE EMPTY.
+- **Keys:** BALLAD CHORUS PIANO PUSHES, TALK-BOX HOOK (a sliding single-note lead in the gaps), REVERSE SWELLS INTO EVERY OTHER BAR, ORGAN CHORD EIGHTHS, ORGAN SIXTEENTH STAB PULSE, BALLAD PIANO 3+3+2 WITH TOP-LINE FILLS, SYNTH BRASS STABS, BALLAD PIANO ROCKING COMP; and KEYS ON TWO, TWO-AND, THREE.
+- **The ACOUSTIC lane's styles:** Hybrid pick and strum, Strum on the beats, triads on the ands, Fingerpicked roll, Strum every eighth but the and of one, alternating bass.
+
+Not checked here: how it sounds, by ear.
+
 ## 0.244.0
 
 Round ten, part five: sixteen transitions from your 56 songs (shapes only, our own names), in every block's INTO THE NEXT menu after the last ones. Each changes only the block's last bar or two.

@@ -25,7 +25,9 @@ namespace pr7s
             "Low open pedal under moving shapes", "One-a strum, the change drops four-and", "Two strum bursts a bar",
             "Full strum every six, third dyads between", "Bass note, then a syncopated upper strum", "Open strum on 1, 2, 2-and, 3-and, 4",
             "Drone strum, top slid in", "Alternating-bass boom-chick", "Rolled strum, change on three, a walking bar",
-            "Downstrokes on one and two, light sixteenths after" };
+            "Downstrokes on one and two, light sixteenths after",
+            // (0.245.0) Round ten (the owner's 56 songs; shapes only).
+            "Hybrid pick and strum", "Strum on the beats, triads on the ands", "Fingerpicked roll", "Strum every eighth but the and of one, alternating bass" };
         return names;
     }
 
@@ -1086,6 +1088,65 @@ namespace pr7s
                             }
                         });
                         return "A full downstroke on 1 held a beat and again on 2, then softer sixteenth strums after, the ups on the top three strings";
+                    // (0.245.0) Round ten (the owner's 56 songs; shapes only).
+                    case 45:   // Hybrid pick and strum
+                        every ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            const auto shape = full (o);
+                            for (int beat = 0; beat < 4; ++beat)
+                            {
+                                const auto t = o + beat * 4 * s16;
+                                pick (main, t, beat % 2 == 0 ? root (chordAt (t)) : pitchIn (chordAt (t).root + 7, lowest, lowest + 11), 0.74f, s16 * 0.9);
+                                pick (main, t + s16, shape.empty() ? root (chordAt (t)) + 12 : shape[shape.size() / 2], 0.5f, s16 * 0.9);
+                                strum (main, t + 2 * s16, top (shape, 4), 0.62f, true);
+                                strum (main, t + 3 * s16, top (shape, 3), 0.48f, false);
+                            }
+                        });
+                        return "Every beat a bass note picked, a soft middle string, then a light down and up strum on the top strings";
+                    case 46:   // Strum on the beats, triads on the ands
+                        every ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            const auto shape = full (o);
+                            for (int k = 0; k < 16; k += 2)
+                                strum (main, o + k * s16, k % 4 == 0 ? shape : top (shape, 3), k % 4 == 0 ? 0.8f : 0.56f, k % 4 == 0);
+                        });
+                        return "A full strum on every beat, a high three-string triad on every and between them";
+                    case 47:   // Fingerpicked roll
+                        every ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            const auto shape = full (o);
+                            if (shape.size() < 3)
+                                return;
+                            const auto topNote = shape.back(), mid = shape[shape.size() - 2], low = shape[shape.size() - 3];
+                            for (int beat = 0; beat < 4; ++beat)
+                                pick (main, o + beat * 4 * s16, beat % 2 == 0 ? root (chordAt (o)) : pitchIn (chordAt (o).root + 7, lowest, lowest + 11), 0.72f, 4 * s16);
+                            for (const auto k : { 0, 8 })
+                                pick (main, o + k * s16, topNote, 0.6f, 2 * s16);
+                            for (const auto k : { 7, 15 })
+                                pick (main, o + k * s16, topNote, 0.5f, s16);
+                            for (const auto k : { 2, 10 })
+                            {
+                                pick (main, o + k * s16, low, 0.52f, s16);
+                                pick (main, o + (k + 1) * s16, mid, 0.5f, s16);
+                            }
+                            for (const auto k : { 6, 14 })
+                                pick (main, o + k * s16, mid, 0.48f, s16);
+                        });
+                        return "A thumb on the quarters (root, then fifth), the top string pinched on 1 and 3 and alone on the a of 2 and 4, the middle strings rolled in pairs";
+                    case 48:   // Strum every eighth but the and of one, alternating bass
+                        every ([&] (int b)
+                        {
+                            const auto o = b * bpb;
+                            const auto shape = full (o);
+                            pick (main, o, root (chordAt (o)), 0.78f, 2 * s16);
+                            pick (main, o + 8 * s16, root (chordAt (o)) + 12, 0.7f, 2 * s16);
+                            for (const auto k : { 4, 6, 10, 12, 14 })
+                                strum (main, o + k * s16, top (shape, 4), k % 4 == 0 ? 0.66f : 0.52f, k % 4 == 0);
+                        });
+                        return "The root on 1 and its octave on 3 picked, strums on every eighth from 2 but the and of 1";
                     default: break;
                 }
                 return {};

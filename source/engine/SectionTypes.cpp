@@ -2418,7 +2418,13 @@ namespace pr7s
                      "SNARE ON THE DOTS, KICKS BETWEEN", "HATS IN THREES", "CRASH QUARTERS, KICK 2+3+3", "TWO-SOUND SIXTEENTH LOOP, NO FILLS",
                      "KICK EIGHTHS, TOMS ON ONE, TWO AND FOUR", "KICK EIGHTHS, TOMS IN THE BACK HALF", "KICK DOUBLED BY THE FLOOR TOM, BUSY",
                      "TOM LOOP, MOVING SNARE CELL", "SPLASH QUARTERS, A ROLL EVERY EIGHT",
-                     "MACHINE LOOP, HOLES FILLED", "DISCO HAT: CLOSED ON THE BEAT, GHOST ON THE E, OPEN ON THE AND" };
+                     "MACHINE LOOP, HOLES FILLED", "DISCO HAT: CLOSED ON THE BEAT, GHOST ON THE E, OPEN ON THE AND",
+                     // (0.245.0) Round ten (the owner's 56 songs); three are other types' own, shared as they are.
+                     "MACHINE BALLAD GROOVE", "SIXTEENTH HATS ACCENTED ON THE ANDS, CONGAS AND SHAKER", "SNARE AND THREE GHOSTS AFTER EACH BACKBEAT",
+                     "KICK QUARTERS, SNARE ONLY ON THREE", "KICK AND BELL IN TWOS", "WOODBLOCK SIXTEENTHS", "SNARE AND CLAPS ON TWO, THREE AND FOUR",
+                     "COWBELL BACKBEAT", "PEDAL HAT ON THE BEATS, CLOSED PAIRS", "KICK ON ONE AND ITS AND, SNARE ON THREE",
+                     "FLOOR-TOM DRIVE UNDER OPEN-HAT EIGHTHS", "SIDESTICK ON TWO, CABASA SIXTEENTHS", "BALLAD HAT ON TWO AND FOUR ONLY",
+                     "BALLAD GROOVE, KICK ON ONE AND THE A OF FOUR", "OPEN HAT ON TWO, THREE AND FOUR", "BALLAD RIDE ON THE ANDS" };
         if (layer == ComposerLayer::bass)   // (0.160.0) round four's bass versions: put in front of LOCKED WITH THE KICK
             return { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                      "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
@@ -2432,7 +2438,9 @@ namespace pr7s
                      "OFF THE ONE, THE NEXT ROOT HELD FROM THREE", "EIGHT-NOTE SIXTEENTH OSTINATO ON THE KEY'S ROOT", "FUNK BASS, TWO SIXTEENTH CLUSTERS",
                      "HELD FROM TWO-AND", "EIGHTHS WITH A FIVE-SIXTEENTH RUN", "ROOT, A BURST, THEN OCTAVE EIGHTHS",
                      // (0.237.0) Round nine; ROOT AND FLAT SEVEN ROCKING is a type's own, shared as it is.
-                     "DRONE PULSE, THEN THE RIFF", "ROOT AND FLAT SEVEN ROCKING" };
+                     "DRONE PULSE, THEN THE RIFF", "ROOT AND FLAT SEVEN ROCKING",
+                     // (0.245.0) Round ten; EIGHTHS WITH BEAT THREE EMPTY is a type's own, shared as it is.
+                     "ONE, TWO-AND, THREE, FOUR", "LOCKED TO ONE, ONE-AND, THREE", "EIGHTHS WITH BEAT THREE EMPTY" };
         if (layer == ComposerLayer::guitar)   // (0.158.0) round four's riff kinds
             return { "CHUGS, THEN THREE CHORDS", "HIT, THEN BURSTS ON TWO AND FOUR", "PUSHED POWER CHORDS WITH A FLAT-TWO STAB",
                      "ROOT TWICE, TRITONE PUSHED IN", "SUS2 SPLIT BETWEEN TWO GUITARS", "TONIC WALL UNDER MOVING CHORDS",
@@ -2472,7 +2480,11 @@ namespace pr7s
                     // (0.237.0) Round nine (the owner's 17 industrial songs); HIGH NOTE ON TWO AND FOUR is a type's own, shared as it is.
                     "POWER-CHORD BAR, BROKEN-OCTAVE BAR", "LOW CHUG ON THE BASS FIGURE", "CHORD, HIGH NOTE, MINOR DYAD IN EIGHTHS",
                     "TRIAD STABS ON TWO AND FOUR", "HOLED SINGLE-NOTE LINE, OCTAVE HELD EVERY FOURTH BAR", "TAKES OVER THE KEYS' OSTINATO",
-                    "HIGH NOTE ON TWO AND FOUR" };
+                    "HIGH NOTE ON TWO AND FOUR",
+                    // (0.245.0) Round ten (the owner's 56 songs); three are types' own, shared as they are.
+                    "CHORDS ON TWO AND FOUR OVER THE BASS", "FULL CHORDS: EIGHTHS, THEN THE ANDS", "RING, THEN EIGHTHS, TWO-BAR CELL",
+                    "RING ON ONE, MUTED CHUGS OFF THE BEAT", "HITS ON ONE, THREE, FOUR AND FOUR-AND", "CHUNKS, THEN A SINGLE-NOTE ANSWER",
+                    "MUTED SIXTEENTH RUNS THROUGH THE CHORD" };
         if (layer == ComposerLayer::chords)
             return { "SYNTH BASS SIXTEENTHS", "STRINGS ON THE QUARTERS", "PIANO ARPEGGIO IN 3+3+2", "PIZZICATO ARPEGGIO", "TIMPANI ROLL RISER",
                      // (0.155.0) Round four.
@@ -2502,7 +2514,11 @@ namespace pr7s
                      // (0.237.0) Round nine (the owner's 17 industrial songs); LOW BOOMS AND NOISE STABS is a type's own, shared as it is.
                      "SAW DOUBLES THE GUITAR CHUG", "NOISE HITS ON TWO AND FOUR", "ORCHESTRA HIT BURSTS", "MUSIC BOX UP-ARPEGGIO",
                      "THE BAR'S ROOT IN EIGHTHS, HIGH", "SYNTH CALLS ON 2, 3, 3-AND, 4-AND", "TRITONE SEESAW IN EIGHTHS",
-                     "QUARTER-NOTE CHORD-TONE CYCLE, HIGH", "LOW BOOMS AND NOISE STABS" };
+                     "QUARTER-NOTE CHORD-TONE CYCLE, HIGH", "LOW BOOMS AND NOISE STABS",
+                     // (0.245.0) Round ten (the owner's 56 songs); KEYS ON TWO, TWO-AND, THREE is a type's own, shared as it is.
+                     "BALLAD CHORUS PIANO PUSHES", "TALK-BOX HOOK", "REVERSE SWELLS INTO EVERY OTHER BAR", "ORGAN CHORD EIGHTHS",
+                     "ORGAN SIXTEENTH STAB PULSE", "BALLAD PIANO 3+3+2 WITH TOP-LINE FILLS", "SYNTH BRASS STABS", "BALLAD PIANO ROCKING COMP",
+                     "KEYS ON TWO, TWO-AND, THREE" };
         return {};
     }
 

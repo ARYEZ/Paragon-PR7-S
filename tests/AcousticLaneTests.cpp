@@ -87,7 +87,7 @@ TEST_CASE ("ACOUSTIC GUITAR: a lane after CLEAN GUITAR, off to start with, its s
     CHECK (composerLayerName (L::acoustic) == "ACOUSTIC GUITAR");
     CHECK (composerPartOf (L::acoustic) == LineIdea::Part::acoustic);
     CHECK (composerStyleCount (L::acoustic) == acousticGuitarStyles().size());
-    CHECK (acousticGuitarStyles().size() == 35 + 10);   // (0.217.0: ten more)
+    CHECK (acousticGuitarStyles().size() == 35 + 10 + 4);   // (0.217.0: ten more)
     CHECK (secondAcousticParts().size() == 7);
     CHECK (secondAcousticParts()[0] == "LOOSER COPY");
 

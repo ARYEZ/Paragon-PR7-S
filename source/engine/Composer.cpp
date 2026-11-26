@@ -13708,6 +13708,326 @@ namespace pr7s
             }
 
             //------------------------------------------------------------------
+            // (0.245.0) Round ten's shared options (the owner's 56 songs; shapes only, our names): offered under every type.
+            static const juce::StringArray& shared245 (ComposerLayer l)
+            {
+                static const juce::StringArray guitar { "CHORDS ON TWO AND FOUR OVER THE BASS", "FULL CHORDS: EIGHTHS, THEN THE ANDS",
+                                                        "RING, THEN EIGHTHS, TWO-BAR CELL", "RING ON ONE, MUTED CHUGS OFF THE BEAT" };
+                static const juce::StringArray drums { "MACHINE BALLAD GROOVE", "SIXTEENTH HATS ACCENTED ON THE ANDS, CONGAS AND SHAKER",
+                                                       "SNARE AND THREE GHOSTS AFTER EACH BACKBEAT", "KICK QUARTERS, SNARE ONLY ON THREE", "KICK AND BELL IN TWOS",
+                                                       "WOODBLOCK SIXTEENTHS", "SNARE AND CLAPS ON TWO, THREE AND FOUR", "COWBELL BACKBEAT",
+                                                       "PEDAL HAT ON THE BEATS, CLOSED PAIRS", "KICK ON ONE AND ITS AND, SNARE ON THREE",
+                                                       "FLOOR-TOM DRIVE UNDER OPEN-HAT EIGHTHS", "SIDESTICK ON TWO, CABASA SIXTEENTHS", "BALLAD HAT ON TWO AND FOUR ONLY" };
+                static const juce::StringArray bass { "ONE, TWO-AND, THREE, FOUR", "LOCKED TO ONE, ONE-AND, THREE" };
+                static const juce::StringArray keys { "BALLAD CHORUS PIANO PUSHES", "TALK-BOX HOOK", "REVERSE SWELLS INTO EVERY OTHER BAR", "ORGAN CHORD EIGHTHS",
+                                                      "ORGAN SIXTEENTH STAB PULSE", "BALLAD PIANO 3+3+2 WITH TOP-LINE FILLS", "SYNTH BRASS STABS",
+                                                      "BALLAD PIANO ROCKING COMP" };
+                static const juce::StringArray none;
+                return l == ComposerLayer::guitar ? guitar : l == ComposerLayer::drums ? drums : l == ComposerLayer::bass ? bass
+                     : l == ComposerLayer::chords ? keys : none;
+            }
+
+            std::optional<LineIdea> guitar245 (const juce::String& n) const
+            {
+                if (! shared245 (ComposerLayer::guitar).contains (n))
+                    return std::nullopt;
+                auto out = idea (LineIdea::Part::rhythm, n.toLowerCase(), {});
+                auto text = [&] (const char* t) { out.description = t; };
+                const auto low = tuning().lowest();
+                if (n == "CHORDS ON TWO AND FOUR OVER THE BASS")
+                {
+                    text ("A full chord struck on 2 and on 4 and rung, nothing on the downbeats: the bass's eighths carry them");
+                    for (int bar = 0; bar < bars; ++bar)
+                        for (const auto k : { 4, 12 })
+                            for (const auto p : chord241 (bar, low + 12))
+                                add (out, bar * bpb + k * s16, q * 1.8, p, open());
+                }
+                else if (n == "FULL CHORDS: EIGHTHS, THEN THE ANDS")
+                {
+                    text ("A full chord on the eighths through beat 2, then only on the ands of 3 and 4");
+                    for (int bar = 0; bar < bars; ++bar)
+                        each16 ("x-x-x-x---x---x-", bar * bpb, [&] (double t, int)
+                        {
+                            for (const auto p : chord241 (bar, low + 12))
+                                add (out, t, e * 0.9, p, open());
+                        });
+                }
+                else if (n == "RING, THEN EIGHTHS, TWO-BAR CELL")
+                {
+                    text ("Two-bar cells: the chord rung through a bar, then power-chord eighths through the next");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        if (bar % 2 == 0)
+                            for (const auto p : chord241 (bar, low + 12))
+                                add (out, bar * bpb, bpb * 0.95, p, open());
+                        else
+                            for (int i = 0; i < 8; ++i)
+                                power (out, bar * bpb + i * e, e * 0.85, barRoot (bar), i % 2 == 0 ? open() : muted(), false);
+                    }
+                }
+                else
+                {
+                    text ("A chord rung on 1 for a beat and a half, then muted low chugs off the beat, the pattern turned round in the second bar");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        power (out, bar * bpb, 6 * s16 * 0.95, barRoot (bar), open());
+                        each16 (bar % 2 == 0 ? "--------x-x---x-" : "------x---x-x-x-", bar * bpb, [&] (double t, int) { add (out, t, s16 * 1.2, barRoot (bar), muted()); });
+                    }
+                }
+                return out;
+            }
+
+            std::optional<LineIdea> bass245 (const juce::String& n) const
+            {
+                if (! shared245 (ComposerLayer::bass).contains (n))
+                    return std::nullopt;
+                auto out = idea (LineIdea::Part::bass, n.toLowerCase(), {});
+                const auto one = n == "ONE, TWO-AND, THREE, FOUR";
+                out.description = one ? "The root on 1, the and of 2 and 3, beat 4 a passing note into the next root"
+                                      : "The root locked to 1, its and and 3, held to the next";
+                for (int bar = 0; bar < bars; ++bar)
+                {
+                    const auto root = bassRoot (bar * bpb);
+                    if (one)
+                    {
+                        each16 ("x-----x-x-------", bar * bpb, [&] (double t, int k) { add (out, t, (k == 8 ? 4 : k == 6 ? 2 : 6) * s16 * 0.9, root, 0.84f); });
+                        const auto next = nextBass240 (bar);
+                        add (out, bar * bpb + 3 * q, q * 0.9, next == root ? root + 7 : next + (next > root ? -1 : 1) * (std::abs (next - root) > 2 ? 2 : 1), 0.74f);
+                    }
+                    else
+                        each16 ("x-x-----x-------", bar * bpb, [&] (double t, int k) { add (out, t, (k == 8 ? 8 : k == 2 ? 6 : 2) * s16 * 0.9, root, 0.86f); });
+                }
+                return out;
+            }
+
+            std::optional<LineIdea> keys245 (const juce::String& n) const
+            {
+                if (! shared245 (ComposerLayer::chords).contains (n))
+                    return std::nullopt;
+                auto out = idea (LineIdea::Part::chords, n.toLowerCase(), {});
+                auto text = [&] (const char* t) { out.description = t; };
+                if (n == "BALLAD CHORUS PIANO PUSHES")
+                {
+                    text ("The root and its octave low in the piano on 1, the and of 2, the and of 3 and the and of 4 (that one on the next chord), octave eighths every fourth bar");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = pitchOfClassIn (chordOfBar (bar).root, 45, 56);
+                        const auto next = pitchOfClassIn (chordOfBar (bar + 1 < bars ? bar + 1 : 0).root, 45, 56);
+                        if (bar % 4 == 3)
+                            for (int i = 0; i < 8; ++i)
+                            {
+                                add (out, bar * bpb + i * e, e * 0.9, root, 0.56f);
+                                add (out, bar * bpb + i * e, e * 0.9, root + 12, 0.52f);
+                            }
+                        else
+                            each16 ("x-----x---x---x-", bar * bpb, [&] (double t, int k)
+                            {
+                                const auto p = k == 14 ? next : root;
+                                add (out, t, (k == 0 ? 6 : 4) * s16 * 0.9, p, 0.58f);
+                                add (out, t, (k == 0 ? 6 : 4) * s16 * 0.9, p + 12, 0.54f);
+                            });
+                    }
+                }
+                else if (n == "TALK-BOX HOOK")
+                {
+                    text ("A single-note lead, three or four notes a bar from the and of 2, sliding between the chord's notes in the space after the band's hits");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto sh = shape240 (bar, 60);
+                        if (sh.empty())
+                            continue;
+                        const int at[] { 6, 8, 11, 14 };
+                        const int order[] { 0, 2, 1, 0 };
+                        for (int i = 0; i < (bar % 2 == 0 ? 3 : 4); ++i)
+                        {
+                            add (out, bar * bpb + at[i] * s16, 2 * s16 * 1.1, sh[(size_t) (order[i] % (int) sh.size())], 0.56f);
+                            if (i > 0)
+                            {
+                                out.notes.back().effect = LineNote::Effect::slideIn;
+                                out.notes.back().amount = 2.0f;
+                            }
+                        }
+                    }
+                }
+                else if (n == "REVERSE SWELLS INTO EVERY OTHER BAR")
+                {
+                    text ("A high chord swelled in from beat 2 up to every other bar line, like a reversed cymbal");
+                    for (int bar = 0; bar < bars; bar += 2)
+                    {
+                        const auto len = (juce::jmin (2, bars - bar) * bpb - q) * 0.97;
+                        for (const auto p : shape240 (juce::jmin (bar + 1, bars - 1), 72))
+                        {
+                            add (out, bar * bpb + q, len, p, 0.36f);
+                            out.notes.back().effect = LineNote::Effect::swell;
+                            out.notes.back().amount = 1.0f;
+                        }
+                    }
+                }
+                else if (n == "ORGAN CHORD EIGHTHS")
+                {
+                    text ("Organ chords of four or five notes on 1, 2, its and, 3 and 4, growing to every eighth over the section");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        auto sh = shape240 (bar, 55);
+                        if (! sh.empty())
+                            sh.push_back (sh.front() + 12);
+                        each16 (bar >= half240() ? eighths : "x---x-x-x---x---", bar * bpb, [&] (double t, int)
+                        {
+                            for (const auto p : sh)
+                                add (out, t, e * 0.8, p, 0.46f);
+                        });
+                    }
+                }
+                else if (n == "ORGAN SIXTEENTH STAB PULSE")
+                {
+                    text ("The organ's chord repeated in sixteenths for most of the bar, a rest, then a last-sixteenth pickup");
+                    for (int bar = 0; bar < bars; ++bar)
+                        each16 ("xxxxxxxxxxx----x", bar * bpb, [&] (double t, int k)
+                        {
+                            for (const auto p : shape240 (k == 15 ? (bar + 1 < bars ? bar + 1 : 0) : bar, 58))
+                                add (out, t, s16 * 0.7, p, k % 4 == 0 ? 0.52f : 0.4f);
+                        });
+                }
+                else if (n == "BALLAD PIANO 3+3+2 WITH TOP-LINE FILLS")
+                {
+                    text ("Piano chords on 1, the and of 2, 3 and its and in 3+3+2, a stepwise top line in eighths on beats 3 and 4 into the next chord");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto sh = shape240 (bar, 60);
+                        if (sh.empty())
+                            continue;
+                        for (const auto k : { 0, 6 })
+                            for (const auto p : sh)
+                                add (out, bar * bpb + k * s16, (k == 0 ? 6 : 2) * s16 * 0.95, p, 0.46f);
+                        const auto aim = shape240 (bar + 1 < bars ? bar + 1 : 0, 60);
+                        const auto target = aim.empty() ? sh.back() : aim.back();
+                        for (int i = 0; i < 4; ++i)
+                            add (out, bar * bpb + 2 * q + i * e, e * 0.9, scaleStep (key, target + 12, i - 4), 0.44f);
+                    }
+                }
+                else if (n == "SYNTH BRASS STABS")
+                {
+                    text ("Short brassy synth chords on the and of 1 and on 3, louder every fourth bar");
+                    for (int bar = 0; bar < bars; ++bar)
+                        each16 ("--x-----x-------", bar * bpb, [&] (double t, int)
+                        {
+                            for (const auto p : shape240 (bar, 64))
+                                add (out, t, e * 0.7, p, bar % 4 == 3 ? 0.66f : 0.56f);
+                        });
+                }
+                else
+                {
+                    text ("A rocking ballad comp: the left hand's root on 1 and 3, the right hand's chord on the eighths between");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = pitchOfClassIn (chordOfBar (bar).root, 40, 51);
+                        for (const auto k : { 0, 8 })
+                            add (out, bar * bpb + k * s16, e * 1.8, root, 0.5f);
+                        each16 ("--x-x-x---x-x-x-", bar * bpb, [&] (double t, int)
+                        {
+                            for (const auto p : shape240 (bar, 60))
+                                add (out, t, e * 0.8, p, 0.4f);
+                        });
+                    }
+                }
+                return out;
+            }
+
+            std::optional<LineIdea> drums245 (const juce::String& n) const
+            {
+                if (! shared245 (ComposerLayer::drums).contains (n))
+                    return std::nullopt;
+                auto out = idea (LineIdea::Part::drums, n.toLowerCase(), {});
+                constexpr int clap = 39, cowbell = 56, cabasa = 69, shaker = 70, conga = 63, congaLow = 64, woodblock = 76;
+                auto every = [&] (const char* t, auto&& bar)
+                {
+                    out.description = t;
+                    for (int b = 0; b < bars; ++b)
+                        bar (b);
+                    return std::optional<LineIdea> (out);
+                };
+                if (n == "MACHINE BALLAD GROOVE")
+                    return every ("A machine ballad: the kick on 1, the and of 2 and its a, the snare on 2 and 4, sixteenth hats leaned on the beats, a cabasa, claps on the a of 3 and the e of 4, a snare pickup every other bar", [&] (int b)
+                    {
+                        kit (out, b, "x-----xx--------", b % 2 == 1 ? "----x-------x-x-" : backbeat, GmDrum::closedHat, "xxxxxxxxxxxxxxxx", 4);
+                        each16 ("--xx--xx--xx--xx", b * bpb, [&] (double t, int) { hit (out, t, cabasa, 0.36f); });
+                        each16 ("-----------x-x--", b * bpb, [&] (double t, int) { hit (out, t, clap, 0.5f); });
+                    });
+                if (n == "SIXTEENTH HATS ACCENTED ON THE ANDS, CONGAS AND SHAKER")
+                    return every ("The kick on 1 and 3 (and the and of 2 every other bar), the snare on 2 and 4, sixteenth hats leaned on the ands, congas on the and of 2 and on 4, a shaker", [&] (int b)
+                    {
+                        kit (out, b, b % 2 == 1 ? "x-----x-x-------" : "x-------x-------", backbeat, GmDrum::closedHat, "----------------", 4);
+                        for (int k = 0; k < 16; ++k)
+                        {
+                            hit (out, b * bpb + k * s16, GmDrum::closedHat, k % 4 == 2 ? 0.58f : 0.34f);
+                            hit (out, b * bpb + k * s16, shaker, 0.3f);
+                        }
+                        hit (out, b * bpb + 6 * s16, conga, 0.56f);
+                        hit (out, b * bpb + 12 * s16, congaLow, 0.56f);
+                    });
+                if (n == "SNARE AND THREE GHOSTS AFTER EACH BACKBEAT")
+                    return every ("The kick on 1, 3 and its a, the snare on 2 and 4 each followed by three soft sixteenths, a gapped sixteenth shaker", [&] (int b)
+                    {
+                        kit (out, b, "x-------x--x----", backbeat, GmDrum::closedHat, eighths, 4);
+                        each16 ("-----xxx-----xxx", b * bpb, [&] (double t, int) { hit (out, t, GmDrum::snare, 0.3f); });
+                        each16 ("xx-xxx-xxx-xxx-x", b * bpb, [&] (double t, int) { hit (out, t, shaker, 0.3f); });
+                    });
+                if (n == "KICK QUARTERS, SNARE ONLY ON THREE")
+                    return every ("The kick on every quarter, the snare only on 3, open hats on the beats, a crash every two bars", [&] (int b)
+                    { kit (out, b, quarters, "--------x-------", GmDrum::openHat, quarters, 2); });
+                if (n == "KICK AND BELL IN TWOS")
+                    return every ("Nothing but the kick in pairs (the a of 1 and 2, the a of 3 and 4) and the ride bell in pairs between", [&] (int b)
+                    {
+                        each16 ("x--xx---x--xx---", b * bpb, [&] (double t, int) { hit (out, t, GmDrum::kick, 0.8f); });
+                        each16 ("-----xx------xx-", b * bpb, [&] (double t, int) { hit (out, t, GmDrum::rideBell, 0.56f); });
+                    });
+                if (n == "WOODBLOCK SIXTEENTHS")
+                    return every ("A woodblock on every sixteenth, its accent moving every half bar, the kick on 1 and 3 and the snare on 2 and 4", [&] (int b)
+                    {
+                        kit (out, b, "x-------x-------", backbeat, GmDrum::closedHat, "----------------", 4);
+                        for (int k = 0; k < 16; ++k)
+                            hit (out, b * bpb + k * s16, woodblock, k % 8 == (b % 2 == 0 ? 0 : 3) ? 0.6f : 0.34f);
+                    });
+                if (n == "SNARE AND CLAPS ON TWO, THREE AND FOUR")
+                    return every ("The kick on 1 and its and, the snare and a clap together on 2, 3 and 4, eighth hats", [&] (int b)
+                    {
+                        kit (out, b, "x-x-------------", "----x---x---x---", GmDrum::closedHat, eighths, 4);
+                        each16 ("----x---x---x---", b * bpb, [&] (double t, int) { hit (out, t, clap, 0.6f); });
+                    });
+                if (n == "COWBELL BACKBEAT")
+                    return every ("A plain beat, the kick on 1 and 3 and the snare on 2 and 4, a cowbell on the quarters in place of the hats", [&] (int b)
+                    {
+                        kit (out, b, "x-------x-------", backbeat, GmDrum::closedHat, "----------------", 4);
+                        each16 (quarters, b * bpb, [&] (double t, int k) { hit (out, t, cowbell, k == 0 ? 0.6f : 0.48f); });
+                    });
+                if (n == "PEDAL HAT ON THE BEATS, CLOSED PAIRS")
+                    return every ("The pedal hat on every beat, closed hats in pairs on the e and and between, the kick on 1 and 3, the snare on 2 and 4", [&] (int b)
+                    {
+                        kit (out, b, "x-------x-------", backbeat, GmDrum::closedHat, "-xx--xx--xx--xx-", 4);
+                        each16 (quarters, b * bpb, [&] (double t, int) { hit (out, t, GmDrum::pedalHat, 0.44f); });
+                    });
+                if (n == "KICK ON ONE AND ITS AND, SNARE ON THREE")
+                    return every ("Half time: the kick on 1 and its and, a big snare on 3, eighth hats", [&] (int b)
+                    { kit (out, b, "x-x-------------", "--------x-------", GmDrum::closedHat, eighths, 4); });
+                if (n == "FLOOR-TOM DRIVE UNDER OPEN-HAT EIGHTHS")
+                    return every ("The floor tom and the kick together on every eighth, open hats on the eighths, the snare on 2 and 4", [&] (int b)
+                    {
+                        kit (out, b, eighths, backbeat, GmDrum::openHat, eighths, 4);
+                        each16 (eighths, b * bpb, [&] (double t, int) { hit (out, t, GmDrum::tomFloor, 0.58f); });
+                    });
+                if (n == "SIDESTICK ON TWO, CABASA SIXTEENTHS")
+                    return every ("A soft groove: the kick on 1 and the and of 2, a sidestick on 2 and 4, a cabasa on every sixteenth", [&] (int b)
+                    {
+                        each16 ("x-----x---------", b * bpb, [&] (double t, int) { hit (out, t, GmDrum::kick, 0.64f); });
+                        each16 (backbeat, b * bpb, [&] (double t, int) { hit (out, t, GmDrum::sideStick, 0.6f); });
+                        for (int k = 0; k < 16; ++k)
+                            hit (out, b * bpb + k * s16, cabasa, k % 2 == 0 ? 0.36f : 0.26f);
+                    });
+                return every ("Only the hats, closed on 2 and 4: no kick and no snare, room for the voice", [&] (int b)
+                { each16 (backbeat, b * bpb, [&] (double t, int) { hit (out, t, GmDrum::closedHat, 0.5f); }); });
+            }
+
+            //------------------------------------------------------------------
             // (0.243.0) Round ten's intros and outros (shapes only, our names).
             float fade243 (int bar) const { return 1.0f - 0.55f * (float) growth242 (bar); }
             // The key's own chord a number of semitones over its tonic (major or minor by `minorThird`), from `low`.
@@ -19539,6 +19859,8 @@ namespace pr7s
                 auto text = [&] (const char* t) { out.description = t; };
                 if (n == "OUT")
                     return silent (r, "guitar");
+                if (auto round10 = guitar245 (n))   // (0.245.0: round ten's shared options)
+                    return *round10;
                 if (auto round10 = guitar243 (n))   // (0.243.0: round ten's intros and outros)
                     return *round10;
                 if (auto round10 = guitar242 (n))   // (0.242.0: round ten's other sections)
@@ -24165,6 +24487,8 @@ namespace pr7s
                     return out;
                 };
                 if (n == "OUT") return silent (b, "bass");
+                if (auto round10 = bass245 (n))   // (0.245.0: round ten's shared options)
+                    return *round10;
                 if (auto round10 = bass243 (n))   // (0.243.0: round ten's intros and outros)
                     return *round10;
                 if (auto round10 = bass242 (n))   // (0.242.0: round ten's other sections)
@@ -25566,6 +25890,8 @@ namespace pr7s
                 const auto k = LineIdea::Part::chords;
                 if (n == "SILENT")
                     return silent (k, "keys");
+                if (auto round10 = keys245 (n))   // (0.245.0: round ten's shared options)
+                    return *round10;
                 if (auto round10 = keys243 (n))   // (0.243.0: round ten's intros and outros)
                     return *round10;
                 if (auto round10 = keys242 (n))   // (0.242.0: round ten's other sections)
@@ -26533,6 +26859,8 @@ namespace pr7s
                         bar (b);
                     return out;
                 };
+                if (auto round10 = drums245 (n))   // (0.245.0: round ten's shared options)
+                    return *round10;
                 if (auto round10 = drums243 (n))   // (0.243.0: round ten's intros and outros)
                     return *round10;
                 if (auto round10 = drums242 (n))   // (0.242.0: round ten's other sections)
@@ -29527,8 +29855,13 @@ namespace pr7s
                     "KICK AND TOM, SNARE AND CLAP ON THREE", "PLUCKED OSTINATO IN OCTAVES",
                     // (0.237.0) Round nine: six types' own options, shared as their writers play them.
                     "HIGH NOTE ON TWO AND FOUR", "ROOT AND FLAT SEVEN ROCKING", "LOW BOOMS AND NOISE STABS",
-                    "MACHINE LOOP, HOLES FILLED", "DISCO HAT: CLOSED ON THE BEAT, GHOST ON THE E, OPEN ON THE AND", "SNARE ON THE DOTS, KICKS BETWEEN" };
-                if (round3Written.contains (n) || Round3::shared217().contains (n) || Round3::shared218 (l).contains (n) || Round3::shared237 (l).contains (n))   // (0.217.0, 0.218.0: round eight's options)
+                    "MACHINE LOOP, HOLES FILLED", "DISCO HAT: CLOSED ON THE BEAT, GHOST ON THE E, OPEN ON THE AND", "SNARE ON THE DOTS, KICKS BETWEEN",
+                    // (0.245.0) Round ten: eight types' own options, shared as their writers play them.
+                    "BALLAD GROOVE, KICK ON ONE AND THE A OF FOUR", "OPEN HAT ON TWO, THREE AND FOUR", "BALLAD RIDE ON THE ANDS",
+                    "EIGHTHS WITH BEAT THREE EMPTY", "HITS ON ONE, THREE, FOUR AND FOUR-AND", "CHUNKS, THEN A SINGLE-NOTE ANSWER",
+                    "MUTED SIXTEENTH RUNS THROUGH THE CHORD", "KEYS ON TWO, TWO-AND, THREE" };
+                if (round3Written.contains (n) || Round3::shared217().contains (n) || Round3::shared218 (l).contains (n) || Round3::shared237 (l).contains (n)
+                    || Round3::shared245 (l).contains (n))   // (0.217.0, 0.218.0: round eight's options)
                 {
                     Round3 forced (s, spans, c);
                     forced.forcedName = n;
