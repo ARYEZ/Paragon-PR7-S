@@ -3658,7 +3658,7 @@ TEST_CASE ("0.118.0: the verse types, every lane's options a different part", "[
     const std::vector<juce::String> names { "PICKED LINE, KICK IN THREES", "PICKED OSTINATO", "SKANK LINE", "LINE OVER HITS", "THREE BARS AND A STOP",
                                             "SIDESTICK PULSE", "OFF-BEAT SNARE", "CHUGS, THEN DOTTED HITS", "PEDAL RIFF IN SIXTEENTHS", "TRESILLO RIFF" };
     const auto verse = sectionTypesFor ("Verse");
-    REQUIRE (verse.size() == 4 + names.size() + 12 + 5 + 11 + 6 + 14 + 18 + 15 + 2);   // (0.168.0: six more; 0.181.0: fourteen more; 0.194.0: eighteen more; 0.213.0: fifteen more)   // (0.139.0: twelve more after them; 0.146.0: five more)
+    REQUIRE (verse.size() == 4 + names.size() + 12 + 5 + 11 + 6 + 14 + 18 + 15 + 10 + 2);   // (0.168.0: six more; 0.181.0: fourteen more; 0.194.0: eighteen more; 0.213.0: fifteen more)   // (0.139.0: twelve more after them; 0.146.0: five more)
     CHECK (verse[3].name == "MUTED DRIVE");
     for (size_t i = 0; i < names.size(); ++i)
     {
@@ -4194,7 +4194,7 @@ TEST_CASE ("0.139.0: the twelve verse types from the 61 songs, every lane's opti
                                             "TOM FIGURE VERSE", "SIX-SIXTEENTH CELLS", "HOLED SIXTEENTH PEDAL", "GUITAR CALLS, BASS ANSWERS",
                                             "THREE-BAR CYCLE", "THREE-BAR RIFF, KICK AND BASS ON THE BEATS", "KICK AND BASS IN UNISON", "BASS GROOVE, GUITAR SQUEALS" };
     const auto verse = sectionTypesFor ("Verse");
-    REQUIRE (verse.size() == 97u);   // (0.146.0: five more after them; 0.168.0: six more; 0.181.0: fourteen more; 0.194.0: eighteen more; 0.213.0: fifteen more)
+    REQUIRE (verse.size() == 107u);   // (0.146.0: five more after them; 0.168.0: six more; 0.181.0: fourteen more; 0.194.0: eighteen more; 0.213.0: fifteen more)
     for (size_t i = 0; i < names.size(); ++i)
     {
         CHECK (verse[14 + i].name == names[i]);
@@ -5286,7 +5286,7 @@ TEST_CASE ("0.146.0: the guitar ideas as verse types, every lane's options a dif
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars; the guitar's low A 33)
     const std::vector<juce::String> names { "OCTAVE-JUMP PEDAL", "PEDAL 7+3+3+3", "DRIVEN ARPEGGIO", "CHUG PAIRS, HIGH PINGS", "MUTED PEDAL, ACCENTS IN THREES" };
     const auto verse = sectionTypesFor ("Verse");
-    REQUIRE (verse.size() == 97u);   // (0.168.0: six more; 0.181.0: fourteen more; 0.194.0: eighteen more; 0.213.0: fifteen more)
+    REQUIRE (verse.size() == 107u);   // (0.168.0: six more; 0.181.0: fourteen more; 0.194.0: eighteen more; 0.213.0: fifteen more)
     const auto key = [] (const LineIdea& idea)
     {
         juce::String k;
@@ -5432,7 +5432,7 @@ TEST_CASE ("0.147.0: round four's verse types, every lane's options a different 
                                             "TRILL HOOK OVER HATS", "HELD CHORD A BAR, TWO HITS EVERY FOURTH", "STRINGS ALONE VERSE",
                                             "TREMOLO LINE IN GROUPS", "RIFF BARS AND THIN BARS IN TURN" };
     const auto verse = sectionTypesFor ("Verse");
-    REQUIRE (verse.size() == 97u);   // (0.168.0: six more; 0.181.0: fourteen more; 0.194.0: eighteen more; 0.213.0: fifteen more)
+    REQUIRE (verse.size() == 107u);   // (0.168.0: six more; 0.181.0: fourteen more; 0.194.0: eighteen more; 0.213.0: fifteen more)
     const auto key = [] (const LineIdea& idea)
     {
         juce::String k;
@@ -6462,7 +6462,7 @@ TEST_CASE ("0.168.0: round five's verse types, every lane's options a different 
     const std::vector<juce::String> names { "PEDAL STUTTER UNDER OCTAVE THIRDS", "CHOKED EIGHTHS, HIGH COLOUR TONE HELD", "BASS RUNS UNDER HELD CHORDS",
                                             "ONE RIFF, THE KIT CHANGES", "OPEN OCTAVE BAR, FALLING TRITONE ANSWER", "PEDAL CELL WITH A HIGH ANSWER" };
     const auto verse = sectionTypesFor ("Verse");
-    REQUIRE (verse.size() == 97u);   // (0.181.0: fourteen more; 0.194.0: eighteen more; 0.213.0: fifteen more)
+    REQUIRE (verse.size() == 107u);   // (0.181.0: fourteen more; 0.194.0: eighteen more; 0.213.0: fifteen more)
     const auto key = [] (const LineIdea& idea)
     {
         juce::String k;
@@ -6945,7 +6945,7 @@ TEST_CASE ("0.181.0: round six's verse types, every lane's options a different p
                                             "CLEAN TWO-NOTE SIXTEENTHS OVER A BASS RIFF", "HIGH OPEN-PEDAL RIFF OVER A SIXTEENTH ROOT", "KICK AND HAT EIGHTHS, BASS ALONE",
                                             "CLIPPED EIGHTH CHORDS UNDER A SINGLE-NOTE LINE", "FIVE PICKS AND A GAP" };
     const auto verse = sectionTypesFor ("Verse");
-    REQUIRE (verse.size() == 97u);   // (0.194.0: eighteen more; 0.213.0: fifteen more)
+    REQUIRE (verse.size() == 107u);   // (0.194.0: eighteen more; 0.213.0: fifteen more)
     const auto key = [] (const LineIdea& idea)
     {
         juce::String k;
@@ -7664,7 +7664,7 @@ TEST_CASE ("0.194.0: round seven's verse types, every lane's options a different
     std::vector<juce::String> names (acousticLed);
     names.insert (names.end(), electric.begin(), electric.end());
     const auto verse = sectionTypesFor ("Verse");
-    REQUIRE (verse.size() == 97u);   // (0.213.0: fifteen more after them)
+    REQUIRE (verse.size() == 107u);   // (0.213.0: fifteen more after them)
     CHECK (verse[verse.size() - 2].name == "DRONING");
     const auto key = [] (const LineIdea& idea)
     {
@@ -9325,7 +9325,7 @@ TEST_CASE ("0.213.0: round eight's verse types, every lane's options a different
                                             "OCTAVE GUITAR DOUBLES THE WALKING BASS RIFF", "SHORT, SHORT, LONG UNISON, EIGHTHS TO END", "LINE BAR, CHORDS FROM ONE-AND",
                                             "BASS ALONE, A HALF-STEP TOUCH, QUARTER HATS", "PEDAL TRIAD WITH CLIMBING INNER VOICES", "UNISON LOW SIXTEENTHS OVER A TOM GROOVE" };
     const auto verse = sectionTypesFor ("Verse");
-    REQUIRE (verse.size() == 97u);
+    REQUIRE (verse.size() == 107u);
     CHECK (verse[verse.size() - 2].name == "DRONING");
     const auto key = [] (const LineIdea& idea)
     {
@@ -9993,4 +9993,115 @@ TEST_CASE ("0.229.0: a block's number typed moves it there, its music with it", 
     CHECK (song.names() == juce::StringArray { "Verse", "Intro", "Chorus" });
     CHECK (editor.getIndex() == 1);
     CHECK (editor.getPositionBox().getSelectedId() == 2);
+}
+
+TEST_CASE ("0.234.0: round nine's verse types, every lane's options a different part", "[sections][types][verse234]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> names { "MACHINE LOOP, BASS RIFF, GUITARS OUT", "BASS ON THE CHORUS RIFF, FOUR ON THE FLOOR", "HIT ON ONE, PICKUP CHORDS ON FOUR",
+                                            "SYNTH OCTAVE BURSTS, GUITARS AND HATS OUT", "RIDE ONLY, BOOMS AND NOISE", "BASS AND ORGAN QUARTER RIFF, TWO STABS",
+                                            "HIGH GUITARS CARRY IT, BASS OUT", "SYNTH-BASS LOOP UNDER HALF TIME", "BASS AND ONE MUTED CHUG, DRUMS OUT",
+                                            "SOFT CHORD BAR, DOTTED OCTAVE PINGS" };
+    const auto verse = sectionTypesFor ("Verse");
+    REQUIRE (verse.size() == 107u);
+    CHECK (verse[verse.size() - 2].name == "DRONING");
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << (n.harmony ? "h" : "") << ";";
+        return k;
+    };
+    for (size_t i = 0; i < names.size(); ++i)
+    {
+        INFO (names[i]);
+        CHECK (verse[95 + i].name == names[i]);
+        REQUIRE (sectionTypeCalled (names[i]).has_value());
+        ComposerState s;
+        applySectionType (s, "Verse", names[i]);
+        REQUIRE (s.sectionType == names[i]);
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                const auto name = sectionApproaches (s, l)[(int) o];
+                INFO (composerLayerName (l) << " " << o << " " << name);
+                CHECK (seen.insert (key (choices[o])).second);
+                if (name != "OUT" && name != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+    }
+
+    const auto layersOf = [&] (const juce::String& type, int guitar = 0, int bass = 0, int drums = 0, int keys = 0)
+    {
+        ComposerState s;
+        applySectionType (s, "Verse", type);
+        s.lane (ComposerLayer::guitar).approach = guitar;
+        s.lane (ComposerLayer::bass).approach = bass;
+        s.lane (ComposerLayer::drums).approach = drums;
+        s.lane (ComposerLayer::chords).approach = keys;
+        return composeLayers (s, spans, c);
+    };
+    const auto hitsOf = [] (const LineIdea& idea, int note)
+    {
+        int count = 0;
+        for (const auto& n : idea.notes)
+            count += n.pitch == note ? 1 : 0;
+        return count;
+    };
+    // The guitars out: nothing on the guitar lane; the machine loop's kick on every eighth and never a fill.
+    {
+        const auto layers = layersOf ("MACHINE LOOP, BASS RIFF, GUITARS OUT");
+        CHECK (layers[(size_t) ComposerLayer::guitar].notes.empty());
+        CHECK (hitsOf (layers[(size_t) ComposerLayer::drums], GmDrum::kick) == 8 * 8);
+        CHECK (hitsOf (layers[(size_t) ComposerLayer::drums], GmDrum::tomHigh) == 0);
+    }
+    // HIT ON ONE: every bar a power chord on 1, nothing between 2 and 4, two chords from 4.
+    {
+        const auto layers = layersOf ("HIT ON ONE, PICKUP CHORDS ON FOUR");
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        REQUIRE (! g.notes.empty());
+        for (const auto& n : g.notes)
+        {
+            const auto inBar = std::fmod (n.beat, 4.0);
+            CHECK ((inBar < 0.05 || inBar > 2.95));
+        }
+    }
+    // Ride only: no kick, no snare.
+    {
+        const auto layers = layersOf ("RIDE ONLY, BOOMS AND NOISE");
+        const auto& d = layers[(size_t) ComposerLayer::drums];
+        CHECK (hitsOf (d, GmDrum::kick) == 0);
+        CHECK (hitsOf (d, GmDrum::snare) == 0);
+        CHECK (hitsOf (d, GmDrum::ride) == 8 * 8);
+    }
+    // Drums out under the muted chug; the chug doesn't follow the chords.
+    {
+        const auto layers = layersOf ("BASS AND ONE MUTED CHUG, DRUMS OUT");
+        CHECK (layers[(size_t) ComposerLayer::drums].notes.empty());
+        std::set<int> pitches;
+        for (const auto& n : layers[(size_t) ComposerLayer::guitar].notes)
+            pitches.insert (n.pitch);
+        CHECK (pitches.size() == 2u);
+    }
+    // Two high guitars: half the notes on the second track.
+    {
+        const auto layers = layersOf ("HIGH GUITARS CARRY IT, BASS OUT");
+        const auto& g = layers[(size_t) ComposerLayer::guitar];
+        const auto second = std::count_if (g.notes.begin(), g.notes.end(), [] (const LineNote& n) { return n.harmony; });
+        CHECK (second * 2 == (long) g.notes.size());
+        CHECK (layers[(size_t) ComposerLayer::bass].notes.empty());
+    }
 }

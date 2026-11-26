@@ -2,6 +2,27 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.234.0
+
+Ten new verse types from the 17 industrial songs you sent. They're in a verse's TYPE menu, before DRONING and SPARSE. The songs were read for their shapes only: no song's notes are copied, and the names are our own.
+
+What's new about them is how much they leave out. In many of these verses the guitars drop away and the bass, the drums and the keys carry the song, with the guitars saved for the chorus.
+
+- **MACHINE LOOP, BASS RIFF, GUITARS OUT:** a two-bar bass riff in quarter notes over a drum loop that never fills: the kick on every eighth and sixteenth hats, with a tambourine in the hats' gaps.
+- **BASS ON THE CHORUS RIFF, FOUR ON THE FLOOR:** four on the floor with no snare and sixteenth hats. The guitar is out until halfway, then plays high triad stabs on 2 and 4; or a single feedback chord rings the first four bars.
+- **HIT ON ONE, PICKUP CHORDS ON FOUR:** a power chord struck on 1 and left to ring, then two chords pushed on 4 and its and into the next bar, over a stomping glam beat. An organ can double the hits.
+- **SYNTH OCTAVE BURSTS, GUITARS AND HATS OUT:** a short synth burst on 1 in octaves, the bass rocking between the root and the flat seven, kick and snare with no hats.
+- **RIDE ONLY, BOOMS AND NOISE:** no kick or snare, just ride eighths and the pedal hat. Low synth booms and high noise stabs sit off the beat, over quarter-note roots; a clean guitar holds long notes, then plays short eighths.
+- **BASS AND ORGAN QUARTER RIFF, TWO STABS:** the bass and an organ two octaves up on a quarter-note riff, every other bar's last change pushed a sixteenth early. Short stabs (with claps) land on 1 and 2 every other bar, over four on the floor with no hats.
+- **HIGH GUITARS CARRY IT, BASS OUT:** the bass and low guitar out. Two high guitars play three-note chords in eighths, the second guitar on the lane's second track. The kick alternates a sparse bar and a busy bar.
+- **SYNTH-BASS LOOP UNDER HALF TIME:** a two-bar synth bass that fits between the kicks of a half-time loop, the snare only on 3. Strings hold one note every two bars and climb at the end.
+- **BASS AND ONE MUTED CHUG, DRUMS OUT:** the drums out. One guitar plays muted sixteenths rocking a half step, never following the chords, with the bass's roots under it.
+- **SOFT CHORD BAR, DOTTED OCTAVE PINGS:** a soft chord bar, then a bar of high octave pings every three sixteenths, over ghosted snares and loud-soft sixteenth hats.
+
+Each lane in these types has its own options: two guitar parts, the bass's own part plus ROOTS HELD and LOCKED WITH THE KICK, keys, and two drum beats.
+
+Not checked here: how they sound on your instruments.
+
 ## 0.233.0
 
 FIND A RIFF IN THE MEDIABAY gives you a different 100 riffs each time you search. Before, it always gave the same list: the same key, tempo and section brought back the same 100 riffs every time. It also read at most 4,000 files, always the same ones first, so most of a big library was never looked at.
