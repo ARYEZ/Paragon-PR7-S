@@ -234,7 +234,7 @@ bool BlueprintsPage::deleteChosen()
 void BlueprintsPage::paint (juce::Graphics& g)
 {
     g.fillAll (pageColour);
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     auto area = getLocalBounds().reduced (gap);
     auto title = area.removeFromTop (34);
@@ -352,7 +352,7 @@ void BlueprintsPage::paintListBoxItem (int row, juce::Graphics& g, int width, in
     if (! juce::isPositiveAndBelow (row, (int) blueprints.size()))
         return;
     const auto& bp = blueprints[(size_t) row];
-    g.setColour (selected ? ParagonColours::accentDim : row % 2 == 0 ? juce::Colour (0xff131015) : pageColour);
+    ParagonColours::setFill (g, selected ? ParagonColours::accentDim : row % 2 == 0 ? juce::Colour (0xff131015) : pageColour, juce::Rectangle<float> ((float) (0), (float) (0), (float) (width), (float) (height)));
     g.fillRect (0, 0, width, height);
     auto r = juce::Rectangle<int> (0, 0, width, height).reduced (10, 4);
     g.setColour (ParagonColours::text);

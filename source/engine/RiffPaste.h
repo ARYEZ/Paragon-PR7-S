@@ -46,4 +46,15 @@ namespace pr7s
     LineIdea tileRiff (const ComposerRiff&, double totalBeats, double beatsPerBar);
     // Its chords over a section from `start` (repeated, cut at the end; `overrides`: by span index).
     std::vector<ChordSpan> riffSpans (const std::vector<RiffChord>&, const Key&, double start, double totalBeats, double riffBeats);
+
+    // (0.226.0, the owner: the verse's chords set on the chord track, a riff of their own used on it) FIT MY RIFF
+    // TO THE CHORDS: the tiled riff (its beat 0 = spans.front().start) with each note moved from the riff's own
+    // chord there (riffChords, the riff's guessed key) onto the chord under it in `spans`, as Follow Chord
+    // Track's Chords & Scales moves a note: the same rhythm, lengths, velocities and effects; keyswitches, and
+    // notes where both say the same chord, untouched.
+    LineIdea fitRiffToChords (const LineIdea& tiled, const ComposerRiff&, const std::vector<ChordSpan>& spans, double beatsPerBar);
+    // Where the riff's own chords (repeated as it's tiled) and the chords under it disagree: every half bar
+    // checked by root and kind (major, minor...), each disagreeing stretch once (beats from spans.front().start).
+    struct RiffClash { double beat = 0.0; Chord riff, track; };
+    std::vector<RiffClash> riffClashes (const ComposerRiff&, const std::vector<ChordSpan>& spans, double beatsPerBar);
 }

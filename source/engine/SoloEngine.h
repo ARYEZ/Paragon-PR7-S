@@ -64,7 +64,12 @@ namespace pr7s
                                  chromaticVampFlow, riffRegisterBreak,
                                  // (0.162.0, from the owner's round-four songs' solos, shapes only; our names)
                                  threesAcrossBlocks, riffTalkCallStab, riffDoubleStopUnison, tremoloThenTalk,
-                                 riffStutterBreak, twinThirdsSingalong, swayingThirdsTheme, stillCellMovingChords };
+                                 riffStutterBreak, twinThirdsSingalong, swayingThirdsTheme, stillCellMovingChords,
+                                 // (0.207.0, from the owner's round-six songs' solos, shapes only; our names)
+                                 holdPedalTwinStorm, panelsOverTheChug, sequenceThenTwinArpeggios, trillThenHold, wahWaves,
+                                 majorRubOverMinorRiff, octaveLeapsAndCries, lateCallsBentHome, cellsUpShakeTheTop, stopTimeDoubleStops,
+                                 pickupIntoChordStabs, bluesCurlsUnderTheTonic, pickupQuarterBreak, unpluggedPentatonicStream, tripletHammerFallingTune,
+                                 tuneAnOctaveDown, riffOnAWarpedBar, sungTwiceTurned, seesawAndRing, fourBendsAndOut };
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",
@@ -77,6 +82,7 @@ namespace pr7s
     SoloStyle soloStyleForGuitarStyle (int guitarStyle);
     // (0.162.0) With the take: nu-metal's BY STYLE picks one of the round-four songs' eight styles by `variation`.
     SoloStyle soloStyleForGuitarStyle (int guitarStyle, int variation);
+    // (0.207.0) Metalcore's BY STYLE picks ROLLING SEQUENCES or one of round six's three metal styles by `variation`.
 
     // A whole solo in that style over the chords (`automatic`: nothing; guitarLeadIdeas asks soloStyleForGuitarStyle).
     LineIdea composeSolo (SoloStyle, const std::vector<ChordSpan>&, double beatsPerBar, const GuitarTuning&,

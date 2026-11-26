@@ -28,6 +28,8 @@ class TrackList final : public juce::Component,
                         private juce::Timer
 {
 public:
+    int getRowsRedrawn() const noexcept { return rowsRedrawn; }   // (0.191.0, tests) track rows drawn again by a change
+    int rowsRedrawn = 0;
     TrackList (pr7s::Studio&, Timeline&);
     ~TrackList() override;
 

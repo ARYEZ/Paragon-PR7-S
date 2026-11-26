@@ -376,8 +376,9 @@ void TransportBar::paint (juce::Graphics& g)
         auto b = badge;
         Logo::drawMark (g, b.removeFromTop (b.getHeight() * 0.62f).reduced (0.0f, 6.0f), juce::Justification::centredLeft,
                         { Finish::ink(), juce::Colour (0xffe0103c), Finish::stampEdge(), {}, 1.0f, false });
-        g.setColour (Finish::printedRed());
+        // (0.189.0) In the family gradient across its letters, as the Hub's.
         g.setFont (font (10.0f));
+        ParagonColours::setTextFill (g, ParagonColours::accent, "RECORDING STUDIO", b, juce::Justification::topLeft);
         g.drawText ("RECORDING STUDIO", b, juce::Justification::topLeft, false);
     }
 
@@ -410,7 +411,7 @@ void TransportBar::paint (juce::Graphics& g)
             drawFixedPitch (g, value, inside, juce::jmin (44.0f, inside.getHeight() * 0.95f));
         };
         drawScreen (positionScreen, "POSITION", screenPosition (getPositionText(), [this] { auto most = studio.getProject().numerator; for (const auto& e : studio.getProject().signatureChanges) most = juce::jmax (most, e.numerator); return most; }()));
-        drawScreen (timeScreen, "TIME", pr7s::formatTime (studio.getProject().tempoMap().secondsAt (beats)));
+        drawScreen (timeScreen, "TIME", pr7s::formatTime (studio.getTempoMap().secondsAt (beats)));
     }
 
     // CPU: the audio processing load, as much of each block's time as it

@@ -345,6 +345,7 @@ namespace pr7s
         juce::StringArray parts;
         parts.addTokens (name, " _-.()[]", "");
         parts.removeEmptyStrings();
+        juce::String bare;
         for (int i = 0; i < parts.size(); ++i)
         {
             const auto& part = parts[i];
@@ -368,12 +369,22 @@ namespace pr7s
                 }
             }
             const auto lower = rest.toLowerCase();
-            if (lower.isEmpty() || lower == "maj" || lower == "major")
+            // A bare letter ("Ghosthack-A_Kit") is the weakest sign: kept only if no part says
+            // more ("Am", "F#", "C maj"); a later part that does wins (0.225.0).
+            if (lower.isEmpty())
+            {
+                if (accidental.isNotEmpty())
+                    return juce::String::charToString (letter) + accidental;
+                if (bare.isEmpty())
+                    bare = juce::String::charToString (letter);
+                continue;
+            }
+            if (lower == "maj" || lower == "major")
                 return juce::String::charToString (letter) + accidental;
             if (lower == "m" || lower == "min" || lower == "minor")
                 return juce::String::charToString (letter) + accidental + "m";
         }
-        return {};
+        return bare;
     }
 
     juce::String MediaDatabase::keyFromRootNote (int midiNote, int mode)
@@ -417,37 +428,76 @@ namespace pr7s
         return {};
     }
 
-    MediaTags MediaDatabase::tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key)
+    namespace
     {
-        // <BWFXML><STEINBERG><ATTR_LIST><ATTR><TYPE/><NAME/><VALUE/></ATTR>... The names aren't
-        // published: they're matched by what they hold (our best reading of them).
+        // "Drum&Perc | Kick" -> "Drum&Perc", "Kick" (no bar: all of it, no sub).
+        void splitPair (const juce::String& value, juce::String& first, juce::String& second)
+        {
+            first = value.upToFirstOccurrenceOf ("|", false, false).trim();
+            second = value.contains ("|") ? value.fromFirstOccurrenceOf ("|", false, false).trim() : juce::String();
+        }
+
+        void addCharacter (MediaTags& t, const juce::String& value)
+        {
+            for (auto word : juce::StringArray::fromTokens (value, ",|;/ ", ""))
+                for (const auto& pair : characterPairs())
+                    for (const auto& side : { pair.left, pair.right })
+                        if (word.trim().equalsIgnoreCase (side))
+                            t.character.addIfNotAlreadyThere (side);
+        }
+    }
+
+    MediaTags MediaDatabase::tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key, juce::StringArray* searchable)
+    {
+        // <BWFXML><STEINBERG><ATTR_LIST><ATTR><NAME/><TYPE/><VALUE/></ATTR>... The names aren't
+        // published by its maker: the ones read first are those sound libraries and tag editors
+        // write (MusicalInstrument "Category|Sub", MusicalStyle "Style|Sub", ...); anything else
+        // is matched by what its name holds.
         MediaTags t;
         const auto xml = juce::parseXML (ixml);
-        const auto* steinberg = xml != nullptr ? xml->getChildByName ("STEINBERG") : nullptr;
+        const auto* steinberg = xml != nullptr ? (xml->hasTagName ("STEINBERG") ? xml.get() : xml->getChildByName ("STEINBERG")) : nullptr;
         const auto* list = steinberg != nullptr ? steinberg->getChildByName ("ATTR_LIST") : nullptr;
         if (list == nullptr)
             return t;
-        // ("Drum&Perc | Kick": the part after the bar.)
-        const auto lastPart = [] (const juce::String& v) { return v.fromLastOccurrenceOf ("|", false, false).trim(); };
+        juce::String genre, postCategory;
         for (const auto* attr : list->getChildWithTagNameIterator ("ATTR"))
         {
-            const auto name = attr->getChildElementAllSubText ("NAME", {}).toLowerCase();
+            const auto exact = attr->getChildElementAllSubText ("NAME", {}).trim();
+            const auto name = exact.toLowerCase();
             const auto value = attr->getChildElementAllSubText ("VALUE", {}).trim();
             if (value.isEmpty())
                 continue;
             const auto sub = name.contains ("sub");
-            if (name.contains ("category"))
-                (sub ? t.subCategory : t.category) = lastPart (value);
-            else if (name.contains ("style"))
-                (sub ? t.subStyle : t.style) = lastPart (value);
-            else if (name.contains ("character"))
+            juce::String first, second;
+            splitPair (value, first, second);
+            if (name == "musicalinstrument" || name == "musicalcategory" || (name.contains ("category") && ! name.contains ("post") && ! name.contains ("template")))
             {
-                for (auto word : juce::StringArray::fromTokens (value, ",|;", ""))
-                    for (const auto& pair : characterPairs())
-                        for (const auto& side : { pair.left, pair.right })
-                            if (word.trim().equalsIgnoreCase (side))
-                                t.character.addIfNotAlreadyThere (side);
+                if (sub)
+                    t.subCategory = second.isNotEmpty() ? second : first;
+                else
+                {
+                    t.category = first;
+                    if (second.isNotEmpty())
+                        t.subCategory = second;
+                }
             }
+            else if (name == "mediacategorypost")
+                postCategory = value;
+            else if (name.contains ("style"))
+            {
+                if (sub)
+                    t.subStyle = second.isNotEmpty() ? second : first;
+                else
+                {
+                    t.style = first;
+                    if (second.isNotEmpty())
+                        t.subStyle = second;
+                }
+            }
+            else if (name.contains ("genre"))
+                genre = value;
+            else if (name.contains ("character"))
+                addCharacter (t, value);
             else if (name.contains ("comment"))
                 t.comment = value;
             else if (name.contains ("tempo") || name.contains ("bpm"))
@@ -463,6 +513,55 @@ namespace pr7s
                 if (const auto k = keyFromName (spoken.removeCharacters (" ")); k.isNotEmpty())
                     key = k;
             }
+            else if (searchable != nullptr
+                     && (name.contains ("library") || name.contains ("album") || name.contains ("artist")
+                         || name.contains ("title") || name.contains ("company") || name.contains ("keyword")
+                         || name.contains ("cdname") || name.contains ("description")))
+                searchable->addIfNotAlreadyThere (value);
+        }
+        if (t.category.isEmpty() && postCategory.isNotEmpty())
+            splitPair (postCategory, t.category, t.subCategory);
+        else if (searchable != nullptr && postCategory.isNotEmpty())
+            searchable->addIfNotAlreadyThere (postCategory);
+        if (t.style.isEmpty() && genre.isNotEmpty())
+            splitPair (genre, t.style, t.subStyle);
+        return t;
+    }
+
+    MediaTags MediaDatabase::tagsFromAppleLoop (const juce::String& appleTags, juce::StringArray* searchable)
+    {
+        static const juce::StringArray genres { "Rock/Blues", "Electronic/Dance", "Jazz", "Urban", "World/Ethnic",
+                                                "Cinematic/New Age", "Orchestral", "Country/Folk", "Experimental", "Other Genre" };
+        // Apple's descriptors: those that are one of our character sides become one; the rest
+        // (Single, Ensemble, Part, Fill, Grooving, Arrhythmic, Melodic, Dissonant, Cheerful,
+        // Relaxed, Intense...) are searched.
+        static const juce::StringArray descriptors { "Single", "Ensemble", "Part", "Fill", "Acoustic", "Electric",
+                                                     "Dry", "Processed", "Clean", "Distorted", "Cheerful", "Dark",
+                                                     "Relaxed", "Intense", "Grooving", "Arrhythmic", "Melodic", "Dissonant" };
+        MediaTags t;
+        for (auto tag : juce::StringArray::fromTokens (appleTags, ";", ""))
+        {
+            tag = tag.trim();
+            if (tag.isEmpty())
+                continue;
+            if (genres.contains (tag))
+            {
+                if (t.style.isEmpty())
+                    t.style = tag;
+            }
+            else if (descriptors.contains (tag))
+            {
+                const auto before = t.character.size();
+                addCharacter (t, tag);
+                if (t.character.size() == before && searchable != nullptr)
+                    searchable->addIfNotAlreadyThere (tag);
+            }
+            else if (t.category.isEmpty())
+                t.category = tag;
+            else if (t.subCategory.isEmpty())
+                t.subCategory = tag;
+            else if (searchable != nullptr)
+                searchable->addIfNotAlreadyThere (tag);
         }
         return t;
     }
@@ -578,6 +677,12 @@ namespace pr7s
                                        juce::WavAudioFormat::riffInfoComments, juce::WavAudioFormat::riffInfoKeywords, juce::WavAudioFormat::riffInfoSubject })
                     if (const auto v = m.getValue (k, {}).trim(); v.isNotEmpty())
                         info.addIfNotAlreadyThere (v);
+                // Apple Loops' tags (0.224.0): genre, instrument, descriptors.
+                if (const auto apple = m.getValue (juce::AiffAudioFormat::appleTag, {}); apple.isNotEmpty())
+                    item.fileTags = tagsFromAppleLoop (apple, &info);
+                // A RIFF INFO genre is the style when nothing else gives one (0.224.0).
+                if (const auto genre = m.getValue (juce::WavAudioFormat::riffInfoGenre, {}).trim(); genre.isNotEmpty() && item.fileTags.style.isEmpty())
+                    item.fileTags.style = genre;
                 item.info = info.joinIntoString (" ").substring (0, 400);
             }
             // The other DAW's MediaBay tags, in the WAV's iXML.
@@ -586,11 +691,21 @@ namespace pr7s
                 {
                     double bpm = 0.0;
                     juce::String key;
-                    item.fileTags = tagsFromIXml (ixml, bpm, key);
+                    juce::StringArray more;
+                    auto fromIXml = tagsFromIXml (ixml, bpm, key, &more);
+                    // (the iXML's word wins; what it doesn't say is kept from INFO / ACID)
+                    if (fromIXml.style.isEmpty())
+                    {
+                        fromIXml.style = item.fileTags.style;
+                        fromIXml.subStyle = item.fileTags.subStyle;
+                    }
+                    item.fileTags = fromIXml;
                     if (bpm > 0.0 && item.bpm <= 0.0)
                         item.bpm = bpm;
                     if (key.isNotEmpty() && item.key.isEmpty())
                         item.key = key;
+                    if (! more.isEmpty())
+                        item.info = (item.info + " " + more.joinIntoString (" ")).trim().substring (0, 600);
                 }
         }
         else if (item.type == MediaType::pluginPreset)
@@ -637,7 +752,174 @@ namespace pr7s
                 item.seconds = item.beats * 60.0 / juce::jmax (1.0, midi->bpm);
             }
         }
+        // What the file doesn't say, guessed from its name and folders (0.225.0).
+        if (item.type == MediaType::audio || item.type == MediaType::midi)
+        {
+            const auto guessed = tagsFromWords (file);
+            auto& t = item.fileTags;
+            if (t.category.isEmpty())
+            {
+                t.category = guessed.category;
+                t.subCategory = guessed.subCategory;
+            }
+            if (t.style.isEmpty())
+            {
+                t.style = guessed.style;
+                t.subStyle = guessed.subStyle;
+            }
+            if (t.character.isEmpty())
+                t.character = guessed.character;
+        }
         return item;
+    }
+
+    MediaTags MediaDatabase::tagsFromWords (const juce::File& file)
+    {
+        // The words of a name, lower case: letters and digits only ("Hi-Hat" -> "hi", "hat").
+        const auto wordsOf = [] (const juce::String& text)
+        {
+            juce::StringArray words;
+            juce::String word;
+            for (auto c : text)
+            {
+                if (juce::CharacterFunctions::isLetterOrDigit (c))
+                    word += juce::CharacterFunctions::toLowerCase (c);
+                else if (word.isNotEmpty())
+                {
+                    words.add (word);
+                    word.clear();
+                }
+            }
+            if (word.isNotEmpty())
+                words.add (word);
+            return words;
+        };
+        struct Rule { const char* words; const char* category; const char* sub; };
+        // In order: the first rule whose words are all there wins ("bass guitar" before "guitar",
+        // "bass drum" before "bass", instruments before roles such as "lead" or "pad").
+        static const Rule rules[] {
+            { "bass drum", "Drums", "Kick" }, { "kick", "Drums", "Kick" }, { "kicks", "Drums", "Kick" },
+            { "bass guitar", "Bass", "Electric" }, { "upright bass", "Bass", "Upright" }, { "double bass", "Bass", "Upright" },
+            { "synth bass", "Bass", "Synth" }, { "sub bass", "Bass", "Sub" }, { "808", "Bass", "Sub" },
+            { "snare", "Drums", "Snare" }, { "snares", "Drums", "Snare" }, { "rimshot", "Drums", "Snare" },
+            { "hihat", "Drums", "Hi-Hat" }, { "hihats", "Drums", "Hi-Hat" }, { "hi hat", "Drums", "Hi-Hat" }, { "hat", "Drums", "Hi-Hat" }, { "hats", "Drums", "Hi-Hat" },
+            { "cymbal", "Drums", "Cymbal" }, { "cymbals", "Drums", "Cymbal" }, { "crash", "Drums", "Cymbal" }, { "ride", "Drums", "Cymbal" }, { "china", "Drums", "Cymbal" },
+            { "tom", "Drums", "Tom" }, { "toms", "Drums", "Tom" },
+            { "fill", "Drums", "Fill" }, { "fills", "Drums", "Fill" },
+            { "clap", "Drums", "Percussion" }, { "claps", "Drums", "Percussion" }, { "perc", "Drums", "Percussion" }, { "percs", "Drums", "Percussion" },
+            { "percussion", "Drums", "Percussion" }, { "percussions", "Drums", "Percussion" }, { "shaker", "Drums", "Percussion" },
+            { "tambourine", "Drums", "Percussion" }, { "conga", "Drums", "Percussion" }, { "bongo", "Drums", "Percussion" }, { "snap", "Drums", "Percussion" },
+            { "guitar", "Guitar", nullptr }, { "guitars", "Guitar", nullptr }, { "gtr", "Guitar", nullptr },
+            { "bass", "Bass", nullptr }, { "bassline", "Bass", nullptr }, { "sub", "Bass", "Sub" },
+            { "electric piano", "Keys", "Electric Piano" }, { "rhodes", "Keys", "Electric Piano" }, { "epiano", "Keys", "Electric Piano" }, { "wurli", "Keys", "Electric Piano" },
+            { "piano", "Keys", "Piano" }, { "organ", "Keys", "Organ" }, { "clav", "Keys", "Clav" }, { "keys", "Keys", nullptr },
+            { "cello", "Strings", "Solo" }, { "violin", "Strings", "Solo" }, { "viola", "Strings", "Solo" }, { "pizzicato", "Strings", "Pizzicato" }, { "pizz", "Strings", "Pizzicato" },
+            { "strings", "Strings", "Ensemble" }, { "string", "Strings", nullptr },
+            { "trumpet", "Brass and Winds", "Brass" }, { "trombone", "Brass and Winds", "Brass" }, { "horn", "Brass and Winds", "Brass" }, { "horns", "Brass and Winds", "Brass" }, { "brass", "Brass and Winds", "Brass" },
+            { "flute", "Brass and Winds", "Woodwinds" }, { "sax", "Brass and Winds", "Woodwinds" }, { "saxophone", "Brass and Winds", "Woodwinds" }, { "clarinet", "Brass and Winds", "Woodwinds" },
+            { "choir", "Vocals", "Choir" }, { "chop", "Vocals", "Chop" }, { "vocal", "Vocals", nullptr }, { "vocals", "Vocals", nullptr }, { "vox", "Vocals", nullptr }, { "voice", "Vocals", nullptr }, { "chant", "Vocals", nullptr },
+            { "drone", "Ambience", "Drone" }, { "drones", "Ambience", "Drone" }, { "texture", "Ambience", "Texture" }, { "textures", "Ambience", "Texture" },
+            { "soundscape", "Ambience", "Texture" }, { "soundscapes", "Ambience", "Texture" }, { "atmosphere", "Ambience", "Texture" }, { "atmos", "Ambience", "Texture" },
+            { "riser", "Sound FX", "Riser" }, { "uplifter", "Sound FX", "Riser" }, { "impact", "Sound FX", "Impact" }, { "sweep", "Sound FX", "Sweep" },
+            { "downlifter", "Sound FX", "Sweep" }, { "whoosh", "Sound FX", "Sweep" }, { "reverse", "Sound FX", "Reverse" }, { "glitch", "Sound FX", "Glitch" },
+            { "fx", "Sound FX", nullptr }, { "sfx", "Sound FX", nullptr },
+            { "pad", "Synth", "Pad" }, { "pads", "Synth", "Pad" }, { "arp", "Synth", "Arp" }, { "arpeggio", "Synth", "Arp" }, { "pluck", "Synth", "Pluck" }, { "plucks", "Synth", "Pluck" },
+            { "sequence", "Synth", "Sequence" }, { "seq", "Synth", "Sequence" }, { "lead", "Synth", "Lead" }, { "leads", "Synth", "Lead" }, { "synth", "Synth", nullptr },
+            { "drum", "Drums", nullptr }, { "drums", "Drums", nullptr }, { "beat", "Drums", nullptr }, { "beats", "Drums", nullptr }, { "break", "Drums", nullptr }, { "breaks", "Drums", nullptr },
+        };
+        // A guitar's or a synth's part ("Lead Guitar" is GUITAR / LEAD).
+        static const std::pair<const char*, const char*> guitarSubs[] {
+            { "lead", "Lead" }, { "rhythm", "Rhythm" }, { "riff", "Riff" }, { "chug", "Chug" }, { "clean", "Clean" }, { "acoustic", "Acoustic" }, { "noise", "Noise" } };
+        static const std::pair<const char*, const char*> styles[] {
+            { "djent", "Metal|Djent" }, { "metalcore", "Metal|Metalcore" }, { "thrash", "Metal|Thrash" }, { "deathcore", "Metal|Death" }, { "death metal", "Metal|Death" },
+            { "doom", "Metal|Doom" }, { "nu metal", "Metal|Nu Metal" }, { "numetal", "Metal|Nu Metal" }, { "metal", "Metal|" },
+            { "punk", "Rock|Punk" }, { "post rock", "Rock|Post-Rock" }, { "hard rock", "Rock|Hard Rock" }, { "rock", "Rock|" },
+            { "synthwave", "Electronic|Synthwave" }, { "dubstep", "Electronic|Dubstep" }, { "riddim", "Electronic|Dubstep" }, { "techno", "Electronic|Techno" },
+            { "house", "Electronic|House" }, { "dnb", "Electronic|Drum and Bass" }, { "drum and bass", "Electronic|Drum and Bass" }, { "edm", "Electronic|" },
+            { "trap", "Hip-Hop|Trap" }, { "drill", "Hip-Hop|Trap" }, { "boom bap", "Hip-Hop|Boom Bap" }, { "boombap", "Hip-Hop|Boom Bap" },
+            { "lofi", "Hip-Hop|Lo-Fi" }, { "lo fi", "Hip-Hop|Lo-Fi" }, { "hip hop", "Hip-Hop|" }, { "hiphop", "Hip-Hop|" },
+            { "trailer", "Cinematic|Trailer" }, { "cinematic", "Cinematic|" }, { "blues", "Blues|" }, { "jazz", "Jazz|" }, { "disco", "Funk|Disco" }, { "funk", "Funk|" },
+            { "pop", "Pop|" },
+        };
+        static const std::pair<const char*, const char*> characters[] {
+            { "wet", "Processed" }, { "processed", "Processed" }, { "dry", "Dry" }, { "clean", "Clean" }, { "distorted", "Distorted" }, { "dist", "Distorted" },
+            { "gritty", "Distorted" }, { "dirty", "Distorted" }, { "overdrive", "Distorted" }, { "dark", "Dark" }, { "bright", "Bright" }, { "soft", "Soft" },
+            { "hard", "Hard" }, { "acoustic", "Acoustic" }, { "electric", "Electric" }, { "aggressive", "Aggressive" }, { "calm", "Calm" }, { "tight", "Tight" },
+        };
+
+        const auto has = [] (const juce::StringArray& words, const char* phrase)
+        {
+            const auto want = juce::StringArray::fromTokens (phrase, " ", "");
+            for (int i = 0; i + want.size() <= words.size(); ++i)
+            {
+                bool all = true;
+                for (int k = 0; k < want.size() && all; ++k)
+                    all = words[i + k] == want[k];
+                if (all)
+                    return true;
+            }
+            return false;
+        };
+
+        // The name first, then up to three folders up (not the drive). A folder's "fx" / "sfx" /
+        // "kit" / "loops" says nothing about the file (libraries keep everything under "SFX").
+        std::vector<juce::StringArray> places;
+        places.push_back (wordsOf (file.getFileNameWithoutExtension()));
+        auto folder = file.getParentDirectory();
+        for (int up = 0; up < 3 && folder.getParentDirectory() != folder; ++up, folder = folder.getParentDirectory())
+        {
+            auto words = wordsOf (folder.getFileName());
+            for (auto skip : { "fx", "sfx", "kit", "kits", "loops", "loop", "samples", "one", "shots", "oneshots" })
+                words.removeString (skip);
+            places.push_back (words);
+        }
+
+        MediaTags t;
+        for (const auto& words : places)
+        {
+            for (const auto& r : rules)
+                if (has (words, r.words))
+                {
+                    t.category = r.category;
+                    t.subCategory = r.sub != nullptr ? r.sub : "";
+                    if (t.category == "Guitar")
+                        for (const auto& [w, sub] : guitarSubs)
+                            if (has (words, w))
+                            {
+                                t.subCategory = sub;
+                                break;
+                            }
+                    break;
+                }
+            if (t.category.isNotEmpty())
+                break;
+        }
+        for (const auto& words : places)
+        {
+            for (const auto& [w, both] : styles)
+                if (has (words, w))
+                {
+                    const juce::String value (both);
+                    t.style = value.upToFirstOccurrenceOf ("|", false, false);
+                    t.subStyle = value.fromFirstOccurrenceOf ("|", false, false);
+                    break;
+                }
+            if (t.style.isNotEmpty())
+                break;
+        }
+        // Character from the name only (a folder's "Dark" is rarely every file's).
+        for (const auto& [w, side] : characters)
+            if (has (places.front(), w))
+            {
+                // One side of a pair at most.
+                bool taken = false;
+                for (const auto& pair : characterPairs())
+                    if ((pair.left == side || pair.right == side) && (t.character.contains (pair.left) || t.character.contains (pair.right)))
+                        taken = true;
+                if (! taken)
+                    t.character.add (side);
+            }
+        return t;
     }
 
     //==========================================================================
@@ -652,8 +934,10 @@ namespace pr7s
             auto found = database.scanAll ([this] { return threadShouldExit(); });
             if (threadShouldExit())
                 return;
+            auto index = prepareScan (found);   // (0.190.0: sorted and indexed here, not on the screen's thread)
             const juce::ScopedLock sl (database.pendingLock);
             database.pending = std::move (found);
+            database.pendingIndex = std::move (index);
         }
 
     private:
@@ -957,19 +1241,40 @@ namespace pr7s
         scanner.reset();
         scanning = true;
         auto found = scanAll ([] { return false; });
+        auto index = prepareScan (found);
         {
             const juce::ScopedLock sl (pendingLock);
             pending = std::move (found);
+            pendingIndex = std::move (index);
         }
         takeScanResults();
+    }
+
+    MediaDatabase::PreparedIndex MediaDatabase::prepareScan (std::vector<MediaItem>& found)
+    {
+        // (0.190.0) What takeScanResults did with the whole list on the message thread, done by the scan's own
+        // thread: sorted by name (the same stable order), each file's index by path and its folder's path.
+        std::stable_sort (found.begin(), found.end(), [] (const MediaItem& a, const MediaItem& b) { return a.name.compareNatural (b.name) < 0; });
+        PreparedIndex index;
+        index.count = found.size();
+        index.byPath.reserve (found.size() * 2);
+        index.parents.assign (found.size(), {});
+        for (int i = 0; i < (int) found.size(); ++i)
+        {
+            index.byPath[found[(size_t) i].file.getFullPathName()] = i;
+            index.parents[(size_t) i] = found[(size_t) i].file.getParentDirectory().getFullPathName();
+        }
+        return index;
     }
 
     bool MediaDatabase::takeScanResults()
     {
         std::optional<std::vector<MediaItem>> result;
+        std::optional<PreparedIndex> index;
         {
             const juce::ScopedLock sl (pendingLock);
             std::swap (result, pending);
+            std::swap (index, pendingIndex);
         }
         if (! result)
             return false;
@@ -990,9 +1295,23 @@ namespace pr7s
                 item.rating = getRating (item.file);
                 item.tags = getTags (item.file);
             }
-            std::stable_sort (items.begin(), items.end(), [] (const MediaItem& a, const MediaItem& b)
-                              { return a.name.compareNatural (b.name) < 0; });
-            rebuildIndex();
+            const auto byName = [] (const MediaItem& a, const MediaItem& b) { return a.name.compareNatural (b.name) < 0; };
+            auto sortedAlready = std::is_sorted (items.begin(), items.end(), byName);
+            if (! sortedAlready)
+                std::stable_sort (items.begin(), items.end(), byName);
+            if (sortedAlready && index.has_value() && index->count == items.size())
+            {
+                // (0.190.0) The index the scan made (the order is the one it was made for): rebuildIndex's work without it.
+                ++generation;
+                byPath = std::move (index->byPath);
+                parents = std::move (index->parents);
+                searchTexts.assign (items.size(), {});
+                searchMade.assign (items.size(), 0);
+                nameRank.clear();
+                folderRank.clear();
+            }
+            else
+                rebuildIndex();
             nameRank.resize (items.size());
             for (int i = 0; i < (int) items.size(); ++i)
                 nameRank[(size_t) i] = i;   // (just sorted by name)
@@ -1045,26 +1364,80 @@ namespace pr7s
         if (folderPath.isNotEmpty() && ! inFolder (parents[(size_t) index], folderPath, query.subfolders))
             return false;
         for (const auto& filter : query.attributes)
+            if (! passesFilter (index, filter))
+                return false;
+        return search.isEmpty() || search.matches (searchTextOf (item));
+    }
+
+    bool MediaDatabase::passesBase (int index, const MediaQuery& query, const TextSearch& search, const juce::String& folderPath) const
+    {
+        const auto& item = items[(size_t) index];
+        if (! query.types.empty() && query.types.count (item.type) == 0)
+            return false;
+        if (item.rating < query.minimumRating)
+            return false;
+        if (folderPath.isNotEmpty() && ! inFolder (parents[(size_t) index], folderPath, query.subfolders))
+            return false;
+        return search.isEmpty() || search.matches (searchTextOf (item));
+    }
+
+    const MediaDatabase::AttributeIds& MediaDatabase::attributeIdsOf (const AttributeId& attribute) const
+    {
+        // (0.190.0) Each item's values of an attribute as numbers into one list of the values found, made once
+        // per change of the items, their ratings or tags (every count and filter made a list of strings for
+        // every item for every column, on every keystroke).
+        const auto key = juce::String ((int) attribute.kind) + ":" + (attribute.kind == MediaAttribute::user ? attribute.user.toLowerCase() : juce::String());
+        auto& ids = attributeIds[key];
+        if (ids.made && ids.generation == generation && ids.count == items.size())
+            return ids;
+        ids = {};
+        ids.made = true;
+        ids.generation = generation;
+        ids.count = items.size();
+        ids.offsets.reserve (items.size() + 1);
+        std::unordered_map<juce::String, int> place;
+        for (const auto& item : items)
         {
-            if (filter.values.isEmpty())
-                continue;
-            const auto has = attributeValues (item, filter.attribute);
-            if (filter.attribute.kind == MediaAttribute::character)
+            ids.offsets.push_back ((int) ids.ids.size());
+            for (const auto& v : attributeValues (item, attribute))
             {
-                for (const auto& v : filter.values)
-                    if (! has.contains (v))
-                        return false;
-            }
-            else
-            {
-                bool any = false;
-                for (const auto& v : filter.values)
-                    any = any || has.contains (v);
-                if (! any)
-                    return false;
+                auto found = place.find (v);
+                if (found == place.end())
+                {
+                    found = place.emplace (v, ids.values.size()).first;
+                    ids.values.add (v);
+                }
+                ids.ids.push_back (found->second);
             }
         }
-        return search.isEmpty() || search.matches (searchTextOf (item));
+        ids.offsets.push_back ((int) ids.ids.size());
+        return ids;
+    }
+
+    bool MediaDatabase::passesFilter (int index, const AttributeFilter& filter) const
+    {
+        if (filter.values.isEmpty())
+            return true;
+        const auto& ids = attributeIdsOf (filter.attribute);
+        const auto from = ids.offsets[(size_t) index], to = ids.offsets[(size_t) index + 1];
+        const auto has = [&] (const juce::String& v)
+        {
+            for (auto k = from; k < to; ++k)
+                if (ids.values[ids.ids[(size_t) k]] == v)
+                    return true;
+            return false;
+        };
+        if (filter.attribute.kind == MediaAttribute::character)
+        {
+            for (const auto& v : filter.values)
+                if (! has (v))
+                    return false;
+            return true;
+        }
+        for (const auto& v : filter.values)
+            if (has (v))
+                return true;
+        return false;
     }
 
     const juce::String& MediaDatabase::searchTextOf (const MediaItem& item) const
@@ -1089,26 +1462,63 @@ namespace pr7s
 
     std::vector<std::pair<juce::String, int>> MediaDatabase::valueCounts (const MediaQuery& query, const AttributeId& attribute) const
     {
-        auto others = query;
-        others.attributes.erase (std::remove_if (others.attributes.begin(), others.attributes.end(),
-                                                 [&] (const AttributeFilter& f) { return f.attribute == attribute; }),
-                                 others.attributes.end());
-        const TextSearch search (others.text);
-        const auto folderPath = others.folder == juce::File() ? juce::String() : others.folder.getFullPathName();
-        std::map<juce::String, int> counts;
-        for (int i = 0; i < (int) items.size(); ++i)
-            if (passes (i, others, search, folderPath))
-                for (const auto& v : attributeValues (items[(size_t) i], attribute))
-                    ++counts[v];
-        std::vector<std::pair<juce::String, int>> list (counts.begin(), counts.end());
-        const auto numeric = attribute.kind == MediaAttribute::tempo || attribute.kind == MediaAttribute::rating;
-        std::sort (list.begin(), list.end(), [numeric] (const auto& a, const auto& b)
+        return valueCountsAll (query, { attribute }).front();
+    }
+
+    std::vector<std::vector<std::pair<juce::String, int>>> MediaDatabase::valueCountsAll (const MediaQuery& query,
+                                                                                         const std::vector<AttributeId>& columns) const
+    {
+        // (0.190.0) Every column's counts in one walk over the items: an item that passes every filter counts in
+        // every column; one that fails only filters of a column's own attribute counts in that column alone (as
+        // the query without that column's filters finds it); the rest in none. The same counts as a walk per column.
+        std::vector<std::vector<int>> counts;
+        std::vector<const AttributeIds*> columnIds;
+        for (const auto& attribute : columns)
         {
-            if (numeric)
-                return a.first.getDoubleValue() < b.first.getDoubleValue();
-            return a.first.compareNatural (b.first) < 0;
-        });
-        return list;
+            columnIds.push_back (&attributeIdsOf (attribute));
+            counts.emplace_back (columnIds.back()->values.size(), 0);
+        }
+        const TextSearch search (query.text);
+        const auto folderPath = query.folder == juce::File() ? juce::String() : query.folder.getFullPathName();
+        std::vector<int> failing;
+        for (int i = 0; i < (int) items.size(); ++i)
+        {
+            if (! passesBase (i, query, search, folderPath))
+                continue;
+            failing.clear();
+            for (int f = 0; f < (int) query.attributes.size(); ++f)
+                if (! passesFilter (i, query.attributes[(size_t) f]))
+                    failing.push_back (f);
+            for (size_t col = 0; col < columns.size(); ++col)
+            {
+                auto counted = true;
+                for (const auto f : failing)
+                    counted = counted && query.attributes[(size_t) f].attribute == columns[col];
+                if (! counted)
+                    continue;
+                const auto& ids = *columnIds[col];
+                for (auto k = ids.offsets[(size_t) i]; k < ids.offsets[(size_t) i + 1]; ++k)
+                    ++counts[col][(size_t) ids.ids[(size_t) k]];
+            }
+        }
+        std::vector<std::vector<std::pair<juce::String, int>>> all;
+        for (size_t col = 0; col < columns.size(); ++col)
+        {
+            std::vector<std::pair<juce::String, int>> list;
+            for (size_t v = 0; v < counts[col].size(); ++v)
+                if (counts[col][v] > 0)
+                    list.push_back ({ columnIds[col]->values[(int) v], counts[col][v] });
+            std::sort (list.begin(), list.end(), [] (const auto& a, const auto& b) { return a.first < b.first; });   // (as the map gave them)
+            const auto numeric = columns[col].kind == MediaAttribute::tempo || columns[col].kind == MediaAttribute::rating;
+            std::sort (list.begin(), list.end(), [numeric] (const auto& a, const auto& b)
+            {
+                if (numeric)
+                    return a.first.getDoubleValue() < b.first.getDoubleValue();
+                return a.first.compareNatural (b.first) < 0;
+            });
+            all.push_back (std::move (list));
+        }
+        return all;
     }
 
     void MediaDatabase::sort (std::vector<int>& indices, MediaColumn column, bool ascending) const

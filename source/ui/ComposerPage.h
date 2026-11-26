@@ -8,6 +8,11 @@
 #include "ui/LinesPage.h"
 #include "ui/PartDropTarget.h"
 #include "ui/OptionBrowser.h"
+#include "ui/DiceKey.h"
+#include "engine/RiffFinder.h"
+
+#include <atomic>
+#include <thread>
 
 // THE COMPOSER (0.58.0, the owner asked: "a combined page, all layers stacked, each with a lock and a
 // re-roll, and one generate button"). engine/Composer.h says how the layers are chosen.
@@ -84,6 +89,18 @@ public:
     void setMood (const juce::String&);
     void setBars (int);                      // 4, 8 or 16
     void setProgression (const juce::String& name);
+    // (0.208.0, the owner: CHORD ROLL) ROLL CHORDS on the chord line: new chords drawn in the key, chord to chord by our
+    // progressions' weights, the section's feel weighting them (engine/ChordRoll.h). On a SECTIONS block: the block's
+    // chords on the chord track (Studio::rollSectionChords: one undo step, linked copies follow, built lanes built
+    // again with their styles), the composer then reading the chord track. Without a block: each of the source's
+    // chords swapped for the roll's (its rhythm kept). The same roll isn't given twice in a row.
+    bool rollChords();
+    juce::TextButton& getRollChordsKey() noexcept { return rollChordsKey; }
+    // (0.208.0) The PROGRESSION menu's POPULAR IN <KEY> section: the studio's popular progressions in the key (those all
+    // in the key), as the chord pads show them. One: the library's progression with the same chords (genre and mood
+    // let go so it passes), else its chords over the source's, in turn.
+    std::vector<pr7s::Progression> getPopularInKey() const;
+    void usePopularProgression (int index);
     void setFromChordTrack (bool);
     void setToChordTrack (bool);
     void setTrack (pr7s::ComposerLayer, int trackId);   // 0: automatic (the one named for it, else new)
@@ -93,18 +110,33 @@ public:
     juce::TextButton& getOctaveKey (pr7s::ComposerLayer l) { return lanes[(size_t) l].octave; }
     juce::Rectangle<int> getLaneHeader (pr7s::ComposerLayer l) const { return lanes[(size_t) l].header; }
     void setLowString (pr7s::ComposerLayer, bool);       // (0.61.0) bass and guitar
+    // (0.193.0) SECOND ACOUSTIC: what the ACOUSTIC GUITAR lane's second track plays (secondAcousticParts()).
+    void setSecondAcoustic (int part);
+    int getSecondAcoustic() const { return state.lane (pr7s::ComposerLayer::acoustic).second; }
+    juce::TextButton& getSecondAcousticKey() { return lanes[(size_t) pr7s::ComposerLayer::acoustic].second; }
     void setOnlyString (pr7s::ComposerLayer, int);       // (0.62.0) 1.. the string (1 the lowest); 0 off
     juce::String stringText (pr7s::ComposerLayer) const; // the key's text: ANY STRING, LOW STRING, STRING 2 ONLY
     void setTuning (pr7s::ComposerLayer, const juce::String& name);   // the bass's or the guitar's
     int trackFor (pr7s::ComposerLayer, bool hearing) const;
     // (0.112.0) Every track the lane plays on (COMPOSER TRACKS' EVERY: guitar left and right), the first as trackFor's.
     std::vector<int> tracksFor (pr7s::ComposerLayer, bool hearing) const;
+    // (0.204.0) The lane's tone (Studio::toneTrack, replacing a PR7-G there) on each of its tracks; the status says what.
+    bool putToneOnLane (pr7s::ComposerLayer);
+    // (0.205.0) The lane's tracks' PR7-G knobs written block by block over the SECTIONS row (Studio::writeSectionTones).
+    bool writeSectionTonesOnLane (pr7s::ComposerLayer);
+    bool putPatchOnLane (pr7s::ComposerLayer);   // (0.220.0) the keys lane's CYBERPUNK part's PR7-K patch on its tracks
     juce::String trackText (pr7s::ComposerLayer) const;   // "TRACK: BASS", "TRACKS: GUITAR L + GUITAR R"
     // Each lane's idea once per track it plays on (the copies after the first a little looser), with those tracks and lanes.
     struct Placed { std::vector<pr7s::LineIdea> ideas; std::vector<int> onto, layers; };
     Placed placeLanes (double originBeat, bool hearing) const;   // (0: a new track when used / not heard)
     bool hear();                             // false: nothing to play them on
     void closeOptionBrowser();   // (0.176.0) the OPTIONS browser window, if one is open
+    // (0.206.0) ARCHITECT's state is the song's: when the song is replaced (Studio::getSongGeneration moved) the page
+    // starts over from the new song's (state, riff, nothing taken, swapped, chosen, composed or heard; its first block).
+    // The timer does it while shown; MainView::openComposer before showing the kept window. False: the same song.
+    bool startOverIfNewSong();
+    std::function<void()> onSongChanged;   // (the suite: IDEAS back on the new song's chords)
+    juce::uint64 getSeenSongGeneration() const noexcept { return seenGeneration; }
     void stop();
     bool isHearing() const;
     std::vector<int> useAll();               // the tracks written
@@ -144,6 +176,30 @@ public:
     // (0.179.0) withParts false: the library grooves' names only (pending, made by fillGrooveOption), for the short
     // menu and the browser; the other options are always whole.
     std::vector<OptionBrowser::Option> laneOptions (pr7s::ComposerLayer, bool withParts = true) const;
+    // (0.202.0, the owner: "lock bars 1-3 and 5-7, hit roll and get better fills for the end of each four bars") BAR
+    // LOCKS: bars chosen on a lane (dragged across in its notes; Shift or Ctrl adds), then LOCK BARS keeps their notes
+    // exactly while ROLL, GENERATE and every change rewrite the others. On the drums with bars locked, ROLL gives
+    // another fill (composerFills) and the options window lists the FILLS first (ids `fillId` + the fill's place).
+    void selectBars (pr7s::ComposerLayer, int firstBar, int lastBar, bool add = false);   // 0 = bar 1
+    void clearBarSelection (pr7s::ComposerLayer);
+    juce::uint64 getBarSelection (pr7s::ComposerLayer l) const noexcept { return barSelection[(size_t) l]; }
+    juce::uint64 getLockedBars (pr7s::ComposerLayer l) const noexcept { return state.lane (l).lockedBars; }
+    void lockBars (pr7s::ComposerLayer, juce::uint64 bars);
+    void unlockBars (pr7s::ComposerLayer, juce::uint64 bars);
+    void lockSelectedBars (pr7s::ComposerLayer);      // (LOCK BARS: every chosen bar locked, or let go if all were)
+    void unlockAllBars (pr7s::ComposerLayer);
+    void rollGroove (pr7s::ComposerLayer);            // ROLL as without bar locks (the drums: a new groove, no fill)
+    int barCount() const;
+    bool openBarsChosen() const;                      // (0.203.0) a drums bar chosen that isn't locked
+    juce::String fillOfBar (int bar) const;
+    juce::String fillNameOf (const std::map<int, juce::String>& barFills, int bar) const;   // (0.229.0)           // (0.203.0) the fill's name in that drums bar (empty: none)
+    int barAtX (pr7s::ComposerLayer, int x) const;
+    juce::Rectangle<int> getBarBounds (pr7s::ComposerLayer, int bar) const;
+    juce::TextButton& getBarsKey (pr7s::ComposerLayer l) { return lanes[(size_t) l].bars; }
+    static constexpr int fillId = 300000;
+    static inline const juce::String fillsGroup = "FILLS";
+    std::vector<OptionBrowser::Option> fillOptions() const;   // (none without bar locks on the drums)
+    juce::String getFill() const { return state.lane (pr7s::ComposerLayer::drums).fill; }
     juce::String optionListKey (pr7s::ComposerLayer l) const { return "lane:" + pr7s::composerLayerName (l).toLowerCase(); }
     // (0.177.0, the owner: "if it is selecting 100 riffs from my library why wouldn't I literally hear 100 different
     // options") While the drums play grooves from the library, the drums lane's options ARE the section's grooves
@@ -177,8 +233,10 @@ public:
     // (0.157.0) TYPE and the solo style: a short menu and the browser (types measured by the drums each writes, the
     // library's grooves left out; solos by the solo each writes). Ids: a type's place in sectionTypesFor + 1 (0:
     // STANDARD); a solo style's number.
-    std::vector<OptionBrowser::Option> typeOptions() const;
-    std::vector<OptionBrowser::Option> soloOptions() const;
+    std::vector<OptionBrowser::Option> typeOptions (bool withParts = true) const;
+    std::vector<OptionBrowser::Option> soloOptions (bool withParts = true) const;
+    void measureType (const pr7s::ComposerState& from, const juce::String& sectionName, const juce::String& type, OptionBrowser::Option&) const;
+    bool fillSoloOption (OptionBrowser::Option&) const;   // (0.229.0) a pending solo style's part made
     juce::PopupMenu makeTypeMenu();
     void typeMenuChosen (int item);
     std::unique_ptr<OptionBrowser> makeTypeBrowser();
@@ -186,13 +244,19 @@ public:
     bool canTryType() const;   // HEAR can try a type (not on a block already built: that would rebuild the song)
     void useType (const juce::String& name);
     void useSoloStyle (pr7s::SoloStyle);
-    static inline const juce::String typeListKey = "type", soloListKey = "solo";
+    static inline const juce::String typeListKey = "type", soloListKey = "solo", riffListKey = "riff";
     static constexpr int moreTypesItem = 4801, moreSolosItem = 4802;
     static constexpr int moreOptionsItem = 4800;
+    static constexpr int worldItems = 6400;       // (0.219.0) the keys lane's WORLD: 6400 + engine/LaneWorlds.h's LaneWorld
     static constexpr int approachItems = 6300;    // (0.94.0) the type's approaches: 6300 automatic, 6301 + i (0.156.0: up to 6399)
     static inline const juce::String typeOwnGroup = "THIS TYPE'S OWN", songsGroup = "FROM YOUR SONGS", stylesGroup = "STYLES";
     // (0.126.0) OWN STYLES: a lane the section type writes plays its own styles instead (and back).
     void setOwnStyles (pr7s::ComposerLayer, bool own);
+    // (0.219.0) A lane's WORLD (engine/LaneWorlds.h; only the keys lane has worlds yet): its parts from another genre,
+    // the rest of the band staying on the section type.
+    void setWorld (pr7s::ComposerLayer, int world);
+    int getWorld (pr7s::ComposerLayer l) const { return state.lane (l).world; }
+    static bool hasWorlds (pr7s::ComposerLayer l) { return l == pr7s::ComposerLayer::chords; }
     // (0.126.0) SYNC TO: this lane alone follows another lane's rhythm (none: not on its own).
     void setSyncTo (pr7s::ComposerLayer, std::optional<pr7s::ComposerLayer> leader);
     std::optional<pr7s::ComposerLayer> getSyncTo (pr7s::ComposerLayer l) const
@@ -225,6 +289,21 @@ public:
     bool pasteRiff (pr7s::ComposerRiff, int lane = -1);          // the riff in: its key guessed (not once locked), its chords
     bool pasteRiffFromPart (int partId, pr7s::DrumSection, int lane = -1);
     bool pasteRiffFromFile (const juce::File&, pr7s::DrumSection, int lane = -1);
+    // (0.227.0) FIND A RIFF IN THE MEDIABAY: its MIDI files read on a thread of their own, scored against the song
+    // (engine/RiffFinder.h), the best shown in the option browser (HEAR plays one on the riff's lane with the band,
+    // USE IT loads it as MY RIFF, moved into the song's key).
+    void findRiffsInMediaBay();
+    std::vector<pr7s::RiffFind> findRiffsNow();                 // (tests: at once)
+    std::unique_ptr<OptionBrowser> makeRiffBrowser (std::vector<pr7s::RiffFind>);
+    // (0.228.0) The found riffs as the browser lists them (the hidden ones left out); hides one and lists them again.
+    std::vector<OptionBrowser::Option> riffOptions() const;
+    void hideFoundRiff (int id, OptionBrowser*);
+    bool useFoundRiff (const pr7s::RiffFind&);
+    bool hearFoundRiff (const pr7s::RiffFind&);
+    pr7s::RiffFindRequest riffRequest() const;
+    bool isFindingRiffs() const noexcept { return riffSearch != nullptr; }
+    void waitForRiffsForTests();                                // the search finished and its browser made
+    juce::uint32 riffSeedForTests = 0;                          // (0.233.0) not 0: every search draws with this seed
     // (0.83.4, the owner: drag a MIDI part or file in and it builds that part) Your riff taken, then the section
     // built around it (the lanes on, the guitar playing the riff): the tracks written, none if nothing was.
     std::vector<int> buildFromPart (int partId, pr7s::DrumSection, int lane = -1);
@@ -240,6 +319,17 @@ public:
     bool isFromRiff() const noexcept { return fromRiff; }
     bool isPlayingMyRiff() const noexcept { return useMyRiff && studio.getComposerRiff().has_value(); }
     void setPlayMyRiff (bool);
+    // (0.226.0, the owner: "a different riff per part") With a SECTIONS block chosen, the riff is that block's own
+    // (and its linked copies'); + MY RIFF puts a new one on it, and blockRiffChosen gives it one of the song's
+    // riffs (an id from Studio::getSongRiffs; -1: none, its lanes write their own).
+    bool chooseBlockRiff (int riffId);
+    // (0.226.0) Chords already on the chord track where a riff is pasted are kept (the band follows them; BUILD
+    // doesn't write the riff's over them); where the riff's own chords disagree the status line says so; FIT MY
+    // RIFF TO THE CHORDS moves its notes onto them (off: played exactly as you played it).
+    void setFitRiff (bool);
+    bool isFittingRiff() const noexcept { return fitRiff; }
+    juce::String riffClashText() const;   // "" when they agree (or no riff, or the chords are the riff's)
+    juce::String blockRiffText() const;   // "VERSE RIFF: <name>" / "NO RIFF" ("" with no block chosen)
     std::function<std::vector<int>()> getSelectedParts;          // (MainView: the arrangement's selection)
     // (0.76.0, the owner: instruments too loud while composing) Each lane's VOLUME is the fader of the track it's
     // heard on; MIXER opens the mixer in its own window over the composer. Hearing goes on through both.
@@ -254,6 +344,7 @@ public:
     juce::TextButton* getNextKey (int i) const { return nextKeys[i]; }
 
     const pr7s::ComposerState& getState() const noexcept { return state; }
+    const pr7s::ComposerContext& getContext() const noexcept { return context; }
     const pr7s::LineIdea& getIdea (pr7s::ComposerLayer l) const noexcept { return ideas[(size_t) l]; }
     const std::vector<pr7s::ChordSpan>& getSpans() const noexcept { return spans; }
     void runTimerForTests() { timerCallback(); }
@@ -267,15 +358,39 @@ public:
 
 private:
     std::unique_ptr<OptionBrowserWindow> browserWindow;
+    // (0.227.0) A MediaBay riff search under way (its own thread; the timer opens the browser when it's done).
+    struct RiffSearch
+    {
+        std::atomic<bool> stop { false }, done { false };
+        std::atomic<int> read { 0 };
+        int total = 0;
+        std::vector<pr7s::RiffFind> found;
+        std::thread thread;
+    };
+    std::unique_ptr<RiffSearch> riffSearch;
+    std::vector<pr7s::RiffFind> riffsShown;   // what the riff browser lists (its ids are indices into it)
+    void finishRiffSearch();
     int targetBlock = 0;   // (0.90.0) the SECTIONS row's block composed (its id; 0: none)
+    // (0.221.0) The targeted block's chords on the chord track as last seen: when they change (the block editor, the
+    // chord track) or another block is aimed at, ARCHITECT reads them (CHORDS FROM: CHORD TRACK).
+    int seenChordsBlock = 0;
+    std::vector<pr7s::Studio::SectionChord> seenBlockChords;
     struct Lane
     {
-        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, style, track, busy, low { "ANY STRING" }, octave { "OCTAVE 0" };
+        juce::TextButton on { "ON" }, lock { "LOCK" }, roll { "ROLL" }, bars { "LOCK BARS" }, style, track, busy, low { "ANY STRING" }, octave { "OCTAVE 0" },
+                         second { "2ND: LOOSER COPY" };   // (0.193.0: the acoustic lane only)
         juce::Slider volume { juce::Slider::LinearBar, juce::Slider::TextBoxLeft };   // (0.76.0) the track it's heard on
         juce::Rectangle<int> header, notes;
         juce::Rectangle<int> note;   // (0.120.0) under the keys: where it's heard (empty: no room)
     };
 
+    std::vector<OptionBrowser::Option> laneOptionsOwn (pr7s::ComposerLayer, bool withParts) const;
+    std::vector<pr7s::ComposerFill> fillsShown;   // (0.203.0) the fills, for the open bars' labels
+    std::array<juce::uint64, pr7s::composerLayerCount> barSelection {};   // (0.202.0) the bars chosen on each lane
+    bool selectingBars = false;
+    int barAnchor = 0;
+    juce::uint64 selectionBefore = 0;
+    void refreshBarKeys();
     void timerCallback() override;
     void refresh (bool rehear = true);   // spans, ideas, keys, the state saved; heard again when hearing
     void showStyleMenu (pr7s::ComposerLayer);
@@ -290,6 +405,8 @@ private:
     Trial trial;
     void showTypeMenu();
     void applyBlockType();   // the target block's type onto the state (when it differs)
+    void followBlockChords();   // (0.221.0) the target block's chords changed: read them from the chord track
+    static constexpr int popularItems = 10000;   // (0.208.0) the PROGRESSION menu's POPULAR IN <KEY>
     static constexpr int myRiffItem = 4900;   // (0.75.0) the guitar's style menu: My Riff   // (0.70.0) the lead's style menu: Solo Style items
     void showTrackMenu (pr7s::ComposerLayer);
     void showProgressionMenu();
@@ -303,6 +420,7 @@ private:
     void showBusyMenu (pr7s::ComposerLayer);
     void showOctaveMenu (pr7s::ComposerLayer);
     void showLowMenu (pr7s::ComposerLayer);
+    void showSecondMenu();
     std::vector<pr7s::ChordSpan> placedSpans() const;   // at the hearing start, else buildStart()
     void refreshSong();                                  // the SONG strip's NEXT keys
     std::vector<std::pair<juce::Rectangle<int>, int>> songChips() const;   // (0.93.0) the blocks' chips and their indices
@@ -338,12 +456,15 @@ private:
     double hearingStart = 0.0;
     juce::String status;
     juce::uint64 seenChange = 0;
+    juce::uint64 seenContent = 0;   // (0.190.0)
     int pressedLane = -1;          // the lane the mouse went down on (a click hears, a drag takes it out)
     bool draggedOut = false;
 
     juce::ComboBox keyBox, genreBox, moodBox, lengthBox, styleBox;
     juce::TextButton progressionKey, libraryKey { "LIBRARY" }, chordTrackKey { "CHORD TRACK" }, toChordTrackKey { "+ CHORD TRACK" };
     juce::TextButton hearKey { "HEAR" }, useKey { "USE ALL" }, generateKey { "GENERATE" };
+    DiceKey rollChordsKey { "ROLL CHORDS" };   // (0.208.0)
+    std::vector<juce::String> chordRollsLately;          // (0.208.0) without a block: the last rolls (fingerprints)
     juce::Rectangle<int> ruler, controlsLabels;
     // (0.74.0)
     juce::ComboBox sectionBox;
@@ -354,10 +475,17 @@ private:
     juce::Rectangle<int> songArea;
     std::array<std::optional<pr7s::LineIdea>, pr7s::composerLayerCount> taken;
     std::vector<pr7s::ChordSpan> lastSpans;   // (taken ideas forgotten when the chords change)
-    bool fromRiff = false, useMyRiff = false;
+    bool fromRiff = false, useMyRiff = false, fitRiff = false;
+    bool chordTrackHasChordsAt (double start, double end) const;
+    std::optional<pr7s::ComposerRiff> seenRiff;   // (0.226.0) the riff in hand last looked at
+    void followRiffInHand();                      // the chosen block's riff in hand; its lanes set for it when it changes
+    void riffLanesFor (pr7s::ComposerLayer onto); // the riff's lane on and locked, the others following it
     std::map<int, pr7s::Chord> chordOverrides;
     juce::TextButton myRiffKey { "MY RIFF" }, pasteKey { "+ MY RIFF" }, mixerKey { "MIXER" }, syncKey { "SYNC: OFF" };
     void refreshVolumes();
+    juce::uint64 seenGeneration = 0;
+    int quietWrites = 0;   // (0.206.0) > 0: what refresh writes back into the song doesn't mark it modified
+    void startOverForSong();
     int draggingVolume = -1;
     std::unique_ptr<juce::FileChooser> chooser;
 };

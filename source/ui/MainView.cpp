@@ -654,8 +654,11 @@ void MainView::paint (juce::Graphics& g)
 {
     g.fillAll (ParagonColours::background);
 
-    // The header: the emblem, PARAGON and the PR7-S mark.
+    // The header: the emblem, PARAGON and the PR7-S mark. (0.191.0: only when the redraw reaches them: the
+    // whole window's children repainting through here drew the mark's paths each time.)
     auto header = getLocalBounds().removeFromTop (headerHeight).toFloat();
+    if (g.getClipBounds().getY() < headerHeight)
+    {
     const juce::Rectangle<float> emblem { 16.0f, 12.0f, 30.0f, 28.0f };
     juce::Path triangle;
     triangle.addTriangle (emblem.getTopLeft(), emblem.getTopRight(), { emblem.getCentreX(), emblem.getBottom() });
@@ -670,6 +673,7 @@ void MainView::paint (juce::Graphics& g)
                     { ParagonColours::glow, ParagonColours::glow, {}, {}, 1.0f, true });
     g.setColour (ParagonColours::panelEdge);
     g.fillRect (header.withY (header.getBottom() - 1.0f).withHeight (1.0f));
+    }
 
     // The work area's frame.
     const auto middle = getLocalBounds().withTrimmedTop (headerHeight + transportHeight + (isWide() ? 0 : toolbarHeight)).toFloat().reduced (6.0f, 2.0f);
@@ -856,7 +860,7 @@ void MainView::InspectorEdge::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
     const auto lit = isMouseOverOrDragging();
-    g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+    ParagonColours::setFill (g, lit ? ParagonColours::accent : ParagonColours::panelEdge, bounds.withSizeKeepingCentre (lit ? 2.0f : 1.0f, bounds.getHeight()));
     g.fillRect (bounds.withSizeKeepingCentre (lit ? 2.0f : 1.0f, bounds.getHeight()));
 }
 
@@ -891,10 +895,10 @@ void MainView::ZoneDivider::paint (juce::Graphics& g)
     g.setColour (juce::Colour (0xff0b090c));
     g.fillRect (bounds);
     const auto lit = isMouseOverOrDragging();
-    g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+    ParagonColours::setFill (g, lit ? ParagonColours::accent : ParagonColours::panelEdge, bounds.withSizeKeepingCentre (bounds.getWidth(), 1.0f));
     g.fillRect (bounds.withSizeKeepingCentre (bounds.getWidth(), 1.0f));
     // The grip: three short lines in the middle.
-    g.setColour (lit ? ParagonColours::accent : ParagonColours::textDim);
+    ParagonColours::setFill (g, lit ? ParagonColours::accent : ParagonColours::textDim, bounds.withSizeKeepingCentre (36.0f, 6.5f));
     for (int i = -1; i <= 1; ++i)
         g.fillRoundedRectangle (bounds.withSizeKeepingCentre (36.0f, 1.5f).translated (0.0f, (float) i * 2.5f), 0.75f);
 }
@@ -1254,7 +1258,7 @@ bool MainView::handleKey (const juce::KeyPress& key)
         for (const auto t : ArrangeView::tools)
             if (ArrangeView::toolKey (t) > 0 && key.getTextCharacter() == (juce::juce_wchar) ('0' + ArrangeView::toolKey (t)))
             {
-                arrange.setTool (t);
+                arrange.pressToolKey (t);   // (0.187.0: 1 again cycles SELECT's sizings)
                 return true;
             }
     if (key.getKeyCode() == juce::KeyPress::F9Key || key.getKeyCode() == juce::KeyPress::F10Key)
@@ -1874,7 +1878,7 @@ void MainView::exportMix()
     exportPage = page;
     juce::DialogWindow::LaunchOptions options;
     // (0.52.1, the owner asked) Twice the size, or as big as the screen allows (the page at its tallest: ~600 px).
-    options.content.setOwned (new ScaledPage (std::unique_ptr<juce::Component> (page), ScaledPage::scaleFor (*this, page->getWidth(), 610)));
+    options.content.setOwned (new ScaledPage (std::unique_ptr<juce::Component> (page), ScaledPage::scaleFor (*this, page->getWidth(), 760)));
     options.dialogTitle = "Paragon PR7-S: Export the mix";
     options.dialogBackgroundColour = juce::Colour (0xff0c0a0d);
     options.useNativeTitleBar = true;
@@ -1996,9 +2000,11 @@ void MainView::chooseExportFile (const pr7s::Studio::ExportOptions& chosen)
     {
         // Where: beside the song, named after it.
         const auto song = studio.getFile();
-        const auto start = song != juce::File() ? song.withFileExtension (".wav")
-                         : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Mix.wav");
-        chooser = std::make_unique<juce::FileChooser> ("Export the mix", start, "*.wav");
+        // (0.200.0) The extension the file type's: .wav, .flac or .mp3.
+        const auto extension = chosen.extension();
+        const auto start = song != juce::File() ? song.withFileExtension (extension)
+                         : juce::File::getSpecialLocation (juce::File::userDocumentsDirectory).getChildFile ("Mix" + extension);
+        chooser = std::make_unique<juce::FileChooser> ("Export the mix", start, "*" + extension);
         chooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::warnAboutOverwriting,
                               [safe = juce::Component::SafePointer<MainView> (this), chosen] (const juce::FileChooser& fc)
                               {
@@ -2008,7 +2014,7 @@ void MainView::chooseExportFile (const pr7s::Studio::ExportOptions& chosen)
                                       juce::MessageManager::callAsync ([safe, chosen, file]
                                       {
                                           if (safe != nullptr)
-                                              safe->writeExport (file.withFileExtension (".wav"), chosen);
+                                              safe->writeExport (file.withFileExtension (chosen.extension()), chosen);
                                       });
                               });
     }
@@ -2469,7 +2475,7 @@ void MainView::RightZoneEdge::paint (juce::Graphics& g)
 {
     const auto bounds = getLocalBounds().toFloat();
     const auto lit = isMouseOverOrDragging();
-    g.setColour (lit ? ParagonColours::accent : ParagonColours::panelEdge);
+    ParagonColours::setFill (g, lit ? ParagonColours::accent : ParagonColours::panelEdge, bounds.withSizeKeepingCentre (lit ? 2.0f : 1.0f, bounds.getHeight()));
     g.fillRect (bounds.withSizeKeepingCentre (lit ? 2.0f : 1.0f, bounds.getHeight()));
 }
 
@@ -2581,10 +2587,10 @@ void MainView::openKeyCheck()
     keyEditor.setKeyMarks ([this, version = juce::uint64 (-1), chosen = std::optional<pr7s::Key>(), keys = pr7s::KeyAt()] () mutable
     {
         const auto now = keyCheckWindow != nullptr ? keyCheckWindow->getPage().getChosenKey() : std::nullopt;
-        if (keys == nullptr || version != studio.getChangeVersion() || chosen != now)
+        if (keys == nullptr || version != studio.getContentVersion() || chosen != now)
         {
-            keys = pr7s::keyCheckKeys (studio.getProject(), now);
-            version = studio.getChangeVersion();
+            keys = studio.getKeyCheckKeys (now);   // (0.190.0: the guess shared, a track click doesn't redo it)
+            version = studio.getContentVersion();
             chosen = now;
         }
         return keys;
@@ -2614,6 +2620,7 @@ void MainView::openComposer()
     {
         // (0.176.0) Kept since it was last closed (hidden, its timers idle): shown again, not built again. Building it
         // and taking it down each time was the lag the owner felt opening and closing it.
+        composerWindow->getPage().startOverIfNewSong();   // (0.206.0: another song since: its own ARCHITECT)
         if (! composerWindow->isVisible())
         {
             composerWindow->getPage().aimAtSectionsRow();   // (its block gone: the first not built, as a fresh one)

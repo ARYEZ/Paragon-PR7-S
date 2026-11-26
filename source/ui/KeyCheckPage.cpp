@@ -61,12 +61,12 @@ void KeyCheckPage::check()
 {
     const auto& project = studio.getProject();
     issues = studio.checkSongKey (chosen);
-    seenVersion = studio.getChangeVersion();
+    seenVersion = studio.getContentVersion();   // (0.190.0: a track click changes no note)
     if (chosen.has_value())
         keyText = keyName (*chosen);
     else if (! project.chordTrack.scales.empty())
         keyText = "THE CHORD TRACK'S KEYS";
-    else if (const auto guessed = pr7s::guessSongKey (project))
+    else if (const auto guessed = studio.getGuessedSongKey())
         keyText = keyName (*guessed) + " (GUESSED FROM THE NOTES)";
     else
         keyText = "NO NOTES YET";
@@ -123,16 +123,17 @@ juce::String KeyCheckPage::getRowText (int row) const
 void KeyCheckPage::paint (juce::Graphics& g)
 {
     g.fillAll (pageColour);
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     auto head = getLocalBounds().removeFromTop (headerHeight).reduced (gap, 8);
     auto title = head.removeFromTop (34);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (22.0f));
     g.drawText ("KEY CHECK", title.removeFromLeft (160), juce::Justification::centredLeft, false);
-    g.setColour (issues.empty() ? ParagonColours::text : ParagonColours::accent);
     g.setFont (font (16.0f));
-    g.drawText (getSummary(), head.removeFromTop (24), juce::Justification::centredLeft, true);
+    const auto summaryArea = head.removeFromTop (24);
+    ParagonColours::setTextFill (g, issues.empty() ? ParagonColours::text : ParagonColours::accent, getSummary(), summaryArea, juce::Justification::centredLeft);
+    g.drawText (getSummary(), summaryArea, juce::Justification::centredLeft, true);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (13.0f));
     g.drawText ("THE CHORD TRACK'S RULE (THE SCALE, IN MINOR ALSO THE RAISED 7TH). DRUMS SKIPPED. CLICK A ROW TO SEE THE NOTE. "
@@ -159,7 +160,7 @@ void KeyCheckPage::paintListBoxItem (int row, juce::Graphics& g, int width, int 
         return;
     const auto& i = issues[(size_t) row];
     const auto& project = studio.getProject();
-    g.setColour (selected ? ParagonColours::accentDim : row % 2 == 0 ? juce::Colour (0xff131015) : pageColour);
+    ParagonColours::setFill (g, selected ? ParagonColours::accentDim : row % 2 == 0 ? juce::Colour (0xff131015) : pageColour, juce::Rectangle<float> ((float) (0), (float) (0), (float) (width), (float) (height)));
     g.fillRect (0, 0, width, height);
     auto r = juce::Rectangle<int> (0, 0, width, height).reduced (10, 0);
     g.setColour (ParagonColours::textDim);
@@ -188,9 +189,9 @@ void KeyCheckPage::paintListBoxItem (int row, juce::Graphics& g, int width, int 
     g.setColour (ParagonColours::textDim);
     g.drawText ("IN " + keyName (i.key), r.withTrimmedRight (100), juce::Justification::centredLeft, true);
     const auto key = fixArea (width).toFloat();
-    g.setColour (ParagonColours::accentDim);
+    ParagonColours::setFill (g, ParagonColours::accentDim, key);
     g.fillRoundedRectangle (key, 4.0f);
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, key.reduced (0.5f));
     g.drawRoundedRectangle (key.reduced (0.5f), 4.0f, 1.0f);
     g.setColour (ParagonColours::text);
     g.setFont (font (15.0f));
@@ -212,7 +213,7 @@ void KeyCheckPage::listBoxItemClicked (int row, const juce::MouseEvent& e)
 
 void KeyCheckPage::timerCallback()
 {
-    if (studio.getChangeVersion() != seenVersion)
+    if (studio.getContentVersion() != seenVersion)
         check();
 }
 

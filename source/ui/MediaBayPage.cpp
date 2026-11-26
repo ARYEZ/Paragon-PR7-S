@@ -129,10 +129,10 @@ public:
             juce::Path shape;
             shape.addRoundedRectangle (icon.withTrimmedTop (2.0f), 1.5f);
             shape.addRoundedRectangle (icon.withWidth (6.0f).withHeight (4.0f), 1.0f);
-            g.setColour (colour.withAlpha (0.75f));
+            ParagonColours::setFill (g, colour.withAlpha (0.75f), shape.getBounds());
             g.fillPath (shape);
-            g.setColour (colour);
             g.setFont (interFont (12.0f));
+            ParagonColours::setTextFill (g, colour, label, juce::Rectangle<int> (40, 0, width - 42, height), juce::Justification::centredLeft);
             g.drawText (label, 40, 0, width - 42, height, juce::Justification::centredLeft, true);
         }
 
@@ -1638,7 +1638,24 @@ std::vector<std::pair<juce::String, int>> MediaBayPage::getFilterValues (int col
         return {};
     auto query1 = query;
     query1.folder = selectedFolder;
-    auto values = database.valueCounts (query1, query.attributes[(size_t) column].attribute);
+    // (0.190.0) All the columns at once, once (each column walked every file before, with the others' filters).
+    juce::String key;
+    key << (int) database.getGeneration() << "|" << query1.text << "|" << query1.minimumRating << "|" << query1.folder.getFullPathName()
+        << "|" << (query1.subfolders ? 1 : 0) << "|";
+    for (const auto t : query1.types)
+        key << (int) t << ",";
+    std::vector<pr7s::AttributeId> columns;
+    for (const auto& f : query1.attributes)
+    {
+        key << "|" << (int) f.attribute.kind << ":" << f.attribute.user << "=" << f.values.joinIntoString ("\x1f");
+        columns.push_back (f.attribute);
+    }
+    if (key != countsKey || countsKept.size() != columns.size())
+    {
+        countsKept = database.valueCountsAll (query1, columns);
+        countsKey = key;
+    }
+    auto values = countsKept[(size_t) column];
     // A chosen value no file has any more stays in the list (with 0), so it can be unchosen.
     for (const auto& chosen : query.attributes[(size_t) column].values)
         if (std::none_of (values.begin(), values.end(), [&] (const auto& v) { return v.first == chosen; }))
@@ -1680,9 +1697,11 @@ void MediaBayPage::timerCallback()
         browser->repaint();
         refresh();
     }
-    else if (database.isScanning() && ++scanFrames % 10 == 0)
+    else if (database.isScanning() && ++scanFrames % 10 == 0 && isShowing())
         browser->repaint();   // (the folders being scanned in the accent colour)
     const auto playing = studio.isMediaPreviewing();
+    if (! isShowing())
+        return;   // (0.191.0: hidden, the search and the scans followed, nothing drawn)
     if ((playKey.getButtonText() == "STOP") != playing || database.isScanning())
         refreshKeys();
     if (playing)

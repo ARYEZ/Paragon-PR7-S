@@ -183,12 +183,13 @@ jobs:
           fi
 
       # THE BACKLINE: the family's instruments, each from its own latest release, its VST3 beside the app in
-      # each zip (the app looks there first): PR7-K, the studio's synth (0.9.11), and PR7-D, the studio's drums
-      # (0.107.0). One that can't be had is left out with a warning (the app then uses what it has).
-      - name: The Backline (PR7-K, PR7-D)
+      # each zip (the app looks there first): PR7-K, the studio's synth (0.9.11), PR7-D, the studio's drums
+      # (0.107.0), and PR7-G, the studio's guitar effects (0.204.0). One that can't be had is left out with a
+      # warning (the app then uses what it has).
+      - name: The Backline (PR7-K, PR7-D, PR7-G)
         if: steps.version.outputs.publish != 'false'
         run: |
-          for member in K D; do
+          for member in K D G; do
             mkdir -p "backline/${member}"
             if gh release download --repo "ARYEZ/Paragon-PR7-${member}" --pattern "*-VST3.zip" --dir "backline/${member}"; then
               for os in Windows Linux; do
@@ -228,13 +229,14 @@ jobs:
             chmod -R a+x artifacts/ParagonPR7S-Linux/*.vst3/Contents/x86_64-linux 2>/dev/null || true
           fi
           # Each zip: the app, its .pdb on Windows (names in the session log's
-          # crash entries), and the Backline's VST3s (PR7-K, PR7-D) that were fetched.
+          # crash entries), and the Backline's VST3s (PR7-K, PR7-D, PR7-G) that were fetched.
           pack() {   # folder, zip name, app, zip flags
             # (0.52.3) The icon for an Elgato Stream Deck's keys (the owner asked), in a folder beside the app.
             mkdir -p "artifacts/$1/Stream Deck icons" && cp resources/icon/stream-deck-*.png "artifacts/$1/Stream Deck icons/"
             (cd "artifacts/$1" && files=("$3" "Stream Deck icons") && { [ -e "Paragon PR7-S.pdb" ] && files+=("Paragon PR7-S.pdb"); true; } \
                && { [ -e "Paragon PR7-K.vst3" ] && files+=("Paragon PR7-K.vst3"); true; } \
                && { [ -e "Paragon PR7-D.vst3" ] && files+=("Paragon PR7-D.vst3"); true; } \
+               && { [ -e "Paragon PR7-G.vst3" ] && files+=("Paragon PR7-G.vst3"); true; } \
                && zip $4 "../../release/$2" "${files[@]}")
           }
           # (adding a missing Linux zip to a release: Linux only)

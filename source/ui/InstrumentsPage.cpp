@@ -59,9 +59,9 @@ public:
         const auto& p = page.profiles[(size_t) row];
         if (selectedRow)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.18f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.18f), juce::Rectangle<float> ((float) (0), (float) (0), (float) (w), (float) (h)));
             g.fillRect (0, 0, w, h);
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (4), (float) (3), (float) (h - 8)));
             g.fillRect (0, 4, 3, h - 8);
         }
         g.setColour (ParagonColours::text);
@@ -222,6 +222,18 @@ public:
                 const auto chosen = box->getSelectedId() - 1;
                 later (page, [this, chosen] { page.setChugRun (chosen); });
             };
+        }
+        y += rowHeight + 8;
+        // (0.238.0) The controllers ARCHITECT's swells and vibrato move on this instrument.
+        {
+            const auto ccText = [] (int cc) { return cc > 0 ? juce::String (cc) : juce::String ("OFF"); };
+            label ("SWELL CC", { 0, y, 90, rowHeight });
+            edit (ccText (profile->swellCc), { 90, y, 60, rowHeight }, [this] (const juce::String& t) { page.setSwellCc (t); });
+            label ("VIBRATO CC", { 170, y, 100, rowHeight });
+            edit (ccText (profile->vibratoCc), { 270, y, 60, rowHeight }, [this] (const juce::String& t) { page.setVibratoCc (t); });
+            y += rowHeight + 4;
+            label ("WHAT ARCHITECT MOVES FOR SWELLS (UP FROM NOTHING) AND VIBRATO. MATCH YOUR INSTRUMENT'S MAPPING; OFF: NONE WRITTEN.",
+                   { 0, y, 640, 18 });
         }
         y += rowHeight + 4;
         label ("NOTHING IS WRITTEN OUTSIDE " + pr7s::noteName (profile->rangeLow()) + " TO " + pr7s::noteName (profile->rangeHigh())
@@ -562,6 +574,54 @@ bool InstrumentsPage::setBendRange (const juce::String& text)
     }
     p->bendRange = juce::jlimit (0, 48, text.getIntValue());
     store();
+    return true;
+}
+
+namespace
+{
+    // (0.238.0) "OFF", "0" or empty: none; 1-127: that controller; anything else: not one.
+    std::optional<int> parseCc (const juce::String& text)
+    {
+        const auto t = text.trim();
+        if (t.isEmpty() || t.equalsIgnoreCase ("off") || t.equalsIgnoreCase ("none"))
+            return 0;
+        const auto digits = t.startsWithIgnoreCase ("cc") ? t.substring (2).trim() : t;
+        if (digits.isEmpty() || ! digits.containsOnly ("0123456789") || digits.length() > 3)
+            return {};
+        const auto n = digits.getIntValue();
+        if (n > 127)
+            return {};
+        return n;
+    }
+}
+
+bool InstrumentsPage::setSwellCc (const juce::String& text)
+{
+    auto* p = current();
+    const auto cc = parseCc (text);
+    if (p == nullptr || ! cc.has_value())
+    {
+        rebuild();
+        return false;
+    }
+    p->swellCc = *cc;
+    store();
+    rebuild();
+    return true;
+}
+
+bool InstrumentsPage::setVibratoCc (const juce::String& text)
+{
+    auto* p = current();
+    const auto cc = parseCc (text);
+    if (p == nullptr || ! cc.has_value())
+    {
+        rebuild();
+        return false;
+    }
+    p->vibratoCc = *cc;
+    store();
+    rebuild();
     return true;
 }
 

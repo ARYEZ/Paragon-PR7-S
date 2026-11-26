@@ -72,7 +72,7 @@ public:
             const auto out = ! c.chord.isInKey (key);
             g.setColour (juce::Colour (0xff1d191f));
             g.fillRoundedRectangle (r, 5.0f);
-            g.setColour (out ? juce::Colour (pr7s::FamilyColours::pink) : (dragging && i == from ? ParagonColours::accent : juce::Colour (0xff3a333d)));
+            ParagonColours::setFill (g, out ? juce::Colour (pr7s::FamilyColours::pink) : (dragging && i == from ? ParagonColours::accent : juce::Colour (0xff3a333d)), r.reduced (0.5f));
             g.drawRoundedRectangle (r.reduced (0.5f), 5.0f, dragging && i == from ? 2.0f : 1.0f);
             auto inner = r.reduced (6.0f, 4.0f);
             g.setColour (ParagonColours::text);
@@ -88,7 +88,7 @@ public:
         {
             const auto x = target < (int) editor.chords.size() ? cell (target).getX() - 2
                          : cell ((int) editor.chords.size() - 1).getRight() + 2;
-            g.setColour (ParagonColours::accent);
+            ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (x - 1), (float) (0), (float) (3), (float) (getHeight())));
             g.fillRect (x - 1, 0, 3, getHeight());
         }
     }
@@ -150,7 +150,7 @@ private:
 //==============================================================================
 SectionEditor::SectionEditor (pr7s::Studio& s, int id) : studio (s), blockId (id), strip (std::make_unique<Strip> (*this))
 {
-    for (auto* l : { &title, &info, &chordsLabel, &hint, &nameLabel, &typeLabel, &lengthLabel, &keyLabel, &transitionLabel })
+    for (auto* l : { &title, &info, &chordsLabel, &hint, &nameLabel, &typeLabel, &lengthLabel, &keyLabel, &transitionLabel, &positionLabel })
     {
         l->setColour (juce::Label::textColourId, ParagonColours::text);
         l->setFont (words (15.0f));
@@ -162,11 +162,13 @@ SectionEditor::SectionEditor (pr7s::Studio& s, int id) : studio (s), blockId (id
     hint.setFont (words (13.0f));
     hint.setText ("CLICK A CHORD TO CHANGE IT, ITS LENGTH OR MOVE IT; DRAG ONE SIDEWAYS TO PUT IT ELSEWHERE", juce::dontSendNotification);
     chordsLabel.setText ("CHORDS FROM THE KEY", juce::dontSendNotification);
-    for (auto* l : { &nameLabel, &typeLabel, &lengthLabel, &keyLabel, &transitionLabel })
+    for (auto* l : { &nameLabel, &typeLabel, &lengthLabel, &keyLabel, &transitionLabel, &positionLabel })
         l->setColour (juce::Label::textColourId, ParagonColours::textDim);
 
-    for (auto* box : { &nameBox, &typeBox, &lengthBox, &keyBox, &transitionBox })
+    for (auto* box : { &nameBox, &typeBox, &lengthBox, &keyBox, &transitionBox, &positionBox })
         addAndMakeVisible (*box);
+    positionBox.setTooltip ("Its place in the song: it moves there, its music with it");
+    positionBox.onChange = [this] { if (! refreshing && positionBox.getSelectedId() > 0) setPosition (positionBox.getSelectedId()); };
     {
         // (0.157.0) Grouped under headings.
         const auto& transitions = pr7s::sectionTransitions();
@@ -210,13 +212,15 @@ SectionEditor::SectionEditor (pr7s::Studio& s, int id) : studio (s), blockId (id
     };
 
     addAndMakeVisible (*strip);
-    for (auto* k : { &addKey, &clearKey, &openKey, &moreKey })
+    for (auto* k : std::initializer_list<juce::TextButton*> { &addKey, &rollKey, &clearKey, &openKey, &moreKey })
     {
         ChordUi::styleKey (*k);
         addAndMakeVisible (*k);
     }
     addKey.onClick = [this] { addChord(); };
     clearKey.onClick = [this] { clearChords(); };
+    rollKey.setTooltip ("New chords in the key, drawn chord to chord toward the likely ones; the section's name gives them their feel");
+    rollKey.onClick = [this] { rollChords ((juce::uint32) juce::Random::getSystemRandom().nextInt()); };
     openKey.onClick = [this] { if (onOpen && getIndex() >= 0) onOpen (getIndex()); };
     moreKey.onClick = [this] { if (onMore && getIndex() >= 0) onMore (getIndex()); };
     setSize (width, height);
@@ -307,6 +311,10 @@ void SectionEditor::refresh()
     if (! hasOwn)
         lengthBox.addItem (barsText (b.bars), b.bars);
     lengthBox.setSelectedId (b.bars, juce::dontSendNotification);
+    positionBox.clear (juce::dontSendNotification);
+    for (int i = 1; i <= (int) blocks.size(); ++i)
+        positionBox.addItem (juce::String (i) + " OF " + juce::String ((int) blocks.size()), i);
+    positionBox.setSelectedId (index + 1, juce::dontSendNotification);
     keyLabel.setText (studio.isOneKey() ? "SONG KEY" : "THIS SECTION'S KEY", juce::dontSendNotification);
     const auto key = getKey();
     const auto& keys = pr7s::Key::all();
@@ -321,6 +329,15 @@ void SectionEditor::refresh()
                              + " OF " + barsText (blockBeats() / beatsPerBar()) + ")", juce::dontSendNotification);
     repaint();
     strip->repaint();
+}
+
+void SectionEditor::setPosition (int place)
+{
+    const auto index = getIndex();
+    const auto count = (int) studio.getSongSections().blocks.size();
+    if (index >= 0 && place >= 1)
+        studio.moveSongSection (index, juce::jmin (place, count) - 1);   // (kept by id: still this block)
+    refresh();
 }
 
 void SectionEditor::setName (const juce::String& name)
@@ -400,6 +417,13 @@ void SectionEditor::removeChord (int i)
         return;
     chords.erase (chords.begin() + i);
     write();
+}
+
+bool SectionEditor::rollChords (juce::uint32 seed)
+{
+    const auto done = studio.rollSectionChords (getIndex(), seed);
+    refresh();
+    return done;
 }
 
 void SectionEditor::clearChords()
@@ -490,14 +514,15 @@ void SectionEditor::resized()
     r.removeFromTop (6);
     auto labels = r.removeFromTop (20);
     auto boxes = r.removeFromTop (28);
-    const auto w = (r.getWidth() - 4 * 10) / 5;
-    const std::array<std::pair<juce::Label*, juce::ComboBox*>, 5> pairs { { { &nameLabel, &nameBox }, { &typeLabel, &typeBox },
-                                                                          { &lengthLabel, &lengthBox }, { &keyLabel, &keyBox },
-                                                                          { &transitionLabel, &transitionBox } } };
+    const auto w = (r.getWidth() - 5 * 10 - 110) / 5;
+    const std::array<std::pair<juce::Label*, juce::ComboBox*>, 6> pairs { { { &positionLabel, &positionBox }, { &nameLabel, &nameBox },
+                                                                          { &typeLabel, &typeBox }, { &lengthLabel, &lengthBox },
+                                                                          { &keyLabel, &keyBox }, { &transitionLabel, &transitionBox } } };
     for (auto [label, box] : pairs)
     {
-        label->setBounds (labels.removeFromLeft (w));
-        box->setBounds (boxes.removeFromLeft (w));
+        const auto bw = box == &positionBox ? 110 : w;
+        label->setBounds (labels.removeFromLeft (bw));
+        box->setBounds (boxes.removeFromLeft (bw));
         labels.removeFromLeft (10);
         boxes.removeFromLeft (10);
     }
@@ -506,9 +531,9 @@ void SectionEditor::resized()
     strip->setBounds (r.removeFromTop (110));
     hint.setBounds (r.removeFromTop (22));
     auto keys = r.removeFromBottom (32);
-    for (auto* k : { &addKey, &clearKey })
+    for (auto* k : std::initializer_list<juce::TextButton*> { &addKey, &rollKey, &clearKey })
     {
-        k->setBounds (keys.removeFromLeft (130));
+        k->setBounds (keys.removeFromLeft (k == &rollKey ? 110 : 130));
         keys.removeFromLeft (8);
     }
     moreKey.setBounds (keys.removeFromRight (110));

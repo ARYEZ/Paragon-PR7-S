@@ -27,7 +27,7 @@ public:
         g.fillAll (panelColour);
         if (selected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.22f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.22f), juce::Rectangle<float> ((float) (0), (float) (0), (float) (width), (float) (height)));
             g.fillRect (0, 0, width, height);
         }
     }
@@ -36,7 +36,7 @@ public:
     {
         if (selected && column == Column::name)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.7f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.7f), juce::Rectangle<float> ((float) (0), (float) (0), (float) (3), (float) (height)));
             g.fillRect (0, 0, 3, height);
         }
         const auto text = cellText (list, row, column);
@@ -53,8 +53,11 @@ public:
             g.setColour (deactivated ? ParagonColours::accent : ParagonColours::textDim);
             g.setFont (ParagonLookAndFeel::textFont (13.0f));
         }
-        g.drawFittedText (text, column == Column::name ? 14 : 8, 0, width - (column == Column::name ? 20 : 14), height,
-                          column == Column::version ? juce::Justification::centredRight : juce::Justification::centredLeft, 1, 0.9f);
+        const juce::Rectangle<int> textArea (column == Column::name ? 14 : 8, 0, width - (column == Column::name ? 20 : 14), height);
+        const auto justification = column == Column::version ? juce::Justification::centredRight : juce::Justification::centredLeft;
+        if (deactivated)
+            ParagonColours::setTextFill (g, ParagonColours::accent, text, textArea, justification);
+        g.drawFittedText (text, textArea, justification, 1, 0.9f);
     }
 
     void cellClicked (int row, int column, const juce::MouseEvent& e) override

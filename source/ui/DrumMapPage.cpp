@@ -33,7 +33,7 @@ struct DrumMapPage::MapsModel final : juce::ListBoxModel
         const auto isSelected = list[(size_t) row].name == page.selectedMap;
         if (isSelected)
         {
-            g.setColour (ParagonColours::accent.withAlpha (0.3f));
+            ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.3f), juce::Rectangle<float> ((float) (0), (float) (0), (float) (width), (float) (height)));
             g.fillRect (0, 0, width, height);
         }
         g.setColour (isSelected ? ParagonColours::text : ParagonColours::textDim);
@@ -302,7 +302,7 @@ int DrumMapPage::getNumRows()
 
 void DrumMapPage::paintRowBackground (juce::Graphics& g, int row, int width, int height, bool isSelected)
 {
-    g.setColour (isSelected ? ParagonColours::accent.withAlpha (0.28f) : row % 2 == 0 ? juce::Colour (0xff181318) : juce::Colour (0xff120e13));
+    ParagonColours::setFill (g, isSelected ? ParagonColours::accent.withAlpha (0.28f) : row % 2 == 0 ? juce::Colour (0xff181318) : juce::Colour (0xff120e13), juce::Rectangle<float> ((float) (0), (float) (0), (float) (width), (float) (height)));
     g.fillRect (0, 0, width, height);
 }
 
@@ -325,9 +325,10 @@ void DrumMapPage::paintCell (juce::Graphics& g, int row, int column, int width, 
         default: break;
     }
     const auto changedNote = (column == inColumn && s.inNote != pitch) || (column == outColumn && s.outNote != pitch);
-    g.setColour (column == muteColumn ? ParagonColours::accent : column == nameColumn ? ParagonColours::text
-                 : changedNote ? ParagonColours::accent : ParagonColours::textDim);
     g.setFont (column == nameColumn ? font (13.0f) : font (12.0f, juce::Font::plain));
+    ParagonColours::setTextFill (g, column == muteColumn ? ParagonColours::accent : column == nameColumn ? ParagonColours::text
+                                 : changedNote ? ParagonColours::accent : ParagonColours::textDim,
+                                 text, juce::Rectangle<int> (6, 0, width - 10, height), juce::Justification::centredLeft);
     g.drawText (text, 6, 0, width - 10, height, juce::Justification::centredLeft, true);
 }
 
@@ -378,8 +379,8 @@ void DrumMapPage::cellDoubleClicked (int row, int column, const juce::MouseEvent
 void DrumMapPage::paint (juce::Graphics& g)
 {
     g.fillAll (pageColour);
-    g.setColour (ParagonColours::accent);
     g.setFont (ParagonLookAndFeel::titleFont (20.0f));
+    ParagonColours::setTextFill (g, ParagonColours::accent, "DRUM MAP SETUP", juce::Rectangle<float> ((float) (16), (float) (10), (float) (400), (float) (28)), juce::Justification::centredLeft);
     g.drawText ("DRUM MAP SETUP", 16, 10, 400, 28, juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (12.0f, juce::Font::plain));

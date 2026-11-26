@@ -276,3 +276,31 @@ TEST_CASE ("0.138.0: IDEAS' DRUMS tab offers the composer's pool (PR7-D's groove
     REQUIRE_FALSE (chorus.empty());
     CHECK (chorus.front().style == "Big 01");
 }
+
+TEST_CASE ("0.211.0: where the groove library comes from, said in words", "[pr7d][groovesource]")
+{
+    Pr7dFolder folder;
+    const auto library = readPr7dLibrary (folder.presets);
+    CHECK (library.indexFound);
+    CHECK (library.listed == 7);
+    CHECK (library.inDatabases == 1);
+    CHECK (library.outside == 1);   // (the excluded folder's)
+    CHECK (library.grooves.size() == 5);
+
+    Studio studio (false);
+    studio.setPr7dFolderForTests (folder.presets);
+    const auto text = studio.describeGrooveSource();
+    CHECK (text.startsWith ("PR7-D'S GROOVE LIBRARY: 5 GROOVES IN 2 LINKED FOLDERS"));
+    CHECK (text.contains ("2 LEFT OUT"));
+
+    // No Grooves.xml: said so, with where it looked.
+    folder.presets.getChildFile ("Grooves.xml").deleteFile();
+    juce::TemporaryFile other;
+    other.getFile().createDirectory();
+    studio.setPr7dFolderForTests (other.getFile());
+    CHECK (studio.describeGrooveSource().contains ("WASN'T FOUND"));
+    CHECK (studio.describeGrooveSource().contains (other.getFile().getChildFile ("Grooves.xml").getFullPathName().toUpperCase())
+           == false);   // (the path keeps its own case)
+    CHECK (studio.describeGrooveSource().contains (other.getFile().getChildFile ("Grooves.xml").getFullPathName()));
+    CHECK (studio.describeGrooveSource().endsWith ("USING THE MEDIABAY'S MIDI INSTEAD."));
+}

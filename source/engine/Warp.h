@@ -58,15 +58,32 @@ namespace pr7s
     public:
         std::shared_ptr<const juce::AudioBuffer<float>> render (const Part&, const juce::AudioBuffer<float>& recording,
                                                                 double sampleRate, const TempoMap&);
-        void clear() { pieces.clear(); whole.clear(); samplesKept = 0; wholeSamplesKept = 0; }
-        juce::int64 wholeSamplesHeld() const noexcept { return wholeSamplesKept; }
+        void clear() { pieces.clear(); whole.clear(); }
+        // (0.190.0) What's made from one recording forgotten (a VariAudio edit to it), the others kept.
+        void forgetFile (const juce::String& audioFile);
+        // The whole clips' samples nothing else holds (what the budget counts), and all held.
+        juce::int64 wholeSamplesHeld() const noexcept;
+        juce::int64 wholeSamplesUnreferenced() const noexcept;
         size_t piecesKept() const noexcept { return pieces.size(); }
+        size_t wholeKept() const noexcept { return whole.size(); }
+        static constexpr juce::int64 budget = 100'000'000;   // (samples: about 400 MB)
+        static constexpr size_t mostWhole = 64;
 
     private:
-        std::map<juce::String, std::shared_ptr<const juce::AudioBuffer<float>>> pieces;
+        // (0.190.0) Kept by when last used: past the budget the least recently used go first, and
+        // never one a clip (or the engine) still holds: forgetting it freed nothing and only made the
+        // next update stretch it again (whole-song warped DIs ran Signalsmith on every edit).
+        struct Kept
+        {
+            std::shared_ptr<const juce::AudioBuffer<float>> sound;
+            juce::uint64 used = 0;
+            juce::String file;
+        };
+        template <typename Map> void evict (Map&, juce::int64 budgetSamples, size_t most);
+        std::map<std::string, Kept> pieces;
         // (0.83.1) The whole clips by an exact key of raw bytes (the numbers as they are, not written
         // out as text: the key is made on every engine update for every warped clip, a fader step too).
-        std::map<std::string, std::shared_ptr<const juce::AudioBuffer<float>>> whole;
-        juce::int64 samplesKept = 0, wholeSamplesKept = 0;
+        std::map<std::string, Kept> whole;
+        juce::uint64 tick = 0;
     };
 }

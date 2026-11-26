@@ -65,6 +65,7 @@ namespace
                         { ch, "Chorus Groove 01", "Chorus", 120.0, 4 }, { f, "Fill 01", "Fills", 120.0, 1 } };
             for (auto& g : grooves)
                 g.bars = 4;   // (0.137.0: the composer takes only 4 to 16 bars; one-bar files stand in)
+            grooves.back().bars = 1;   // (0.232.0: a fill two bars at most)
         }
     };
 
@@ -235,4 +236,234 @@ TEST_CASE ("0.175.0: under a type, the library's groove made once is every drums
             CHECK (choices[i].notes[n].pitch == alone.notes[n].pitch);
         }
     }
+}
+
+TEST_CASE ("0.222.0: the drums lane's fills: the groove's own song's first, Toontrack's before others, a different one at each fill place", "[composer][library][fills222]")
+{
+    juce::TemporaryFile folder;
+    const auto root = folder.getFile();
+    root.createDirectory();
+    std::vector<std::pair<double, int>> beat;
+    for (int i = 0; i < 8; ++i)
+        beat.push_back ({ i * 0.5, 42 });
+    beat.push_back ({ 0.0, 36 });
+    beat.push_back ({ 1.0, 38 });
+    std::vector<LibraryGroove> grooves;
+    const auto add = [&] (const juce::String& path, const std::vector<std::pair<double, int>>& hits, bool fill)
+    {
+        const auto file = writeGroove (root.getChildFile (path), hits);
+        LibraryGroove g { file, file.getFileNameWithoutExtension(), file.getParentDirectory().getFileName(), 120.0, fill ? 1 : 4 };
+        g.bars = fill ? 1 : 4;   // (0.232.0: fills two bars at most)
+        classifyGroove (g);
+        grooves.push_back (g);
+    };
+    add ("Toontrack/Metal Pack/Song A/Verse.mid", beat, false);
+    // Each fill a tom of its own on beat 4, so the bar tells which one played.
+    for (int i = 0; i < 3; ++i)
+        add ("Toontrack/Metal Pack/Song A/Fill " + juce::String (i + 1) + ".mid", { { 3.0, 41 + i } }, true);
+    for (int i = 0; i < 5; ++i)
+        add ("Toontrack/Metal Pack/Song B/Fill " + juce::String (i + 1) + ".mid", { { 3.0, 50 + i } }, true);
+    for (int i = 0; i < 10; ++i)
+        add ("Other Pack/Song C/Fill " + juce::String (i + 1) + ".mid", { { 3.0, 60 + i } }, true);   // (named first in the old order)
+
+    ComposerContext c;
+    c.libraryGrooves = grooves;
+    c.drums.fillEvery = 2;
+
+    // (0.232.0, the owner's order) Song A's three first, topped up from the other pack; another Toontrack song's
+    // (Song B) never.
+    const auto fills = composerLibraryFills (grooves[0], 1, c, 12);
+    REQUIRE (fills.size() == 12);
+    for (int i = 0; i < 3; ++i)
+        CHECK (fills[(size_t) i].file.getParentDirectory().getFileName() == "Song A");
+    for (int i = 3; i < 12; ++i)
+        CHECK (fills[(size_t) i].file.getFullPathName().contains ("Other Pack"));
+
+    // A groove from another pack: its own folder's fills first (Toontrack's never).
+    add ("Other Pack/Song C/Groove.mid", beat, false);
+    c.libraryGrooves = grooves;
+    const auto other = composerLibraryFills (grooves.back(), 1, c, 12);
+    REQUIRE (other.size() == 10);
+    for (const auto& f : other)
+        CHECK (f.file.getFullPathName().contains ("Other Pack"));
+
+    // Played: 16 bars, a fill every 2 (8 places), and not the same fill at every place.
+    std::vector<ChordSpan> spans;
+    for (int bar = 0; bar < 16; ++bar)
+        spans.push_back ({ bar * 4.0, bar * 4.0 + 4.0, Chord { 9, Chord::Type::minor }, Key {} });
+    c.libraryGrooves = std::vector<LibraryGroove> (grooves.begin(), grooves.end() - 1);
+    ComposerState s;
+    s.fitKicks = false;
+    s.libraryGroove = grooves[0].file.getFullPathName();
+    std::set<int> heard;
+    for (int place = 0; place < 8; ++place)
+        for (const auto p : pitchesIn (composeLayers (s, spans, c)[(size_t) ComposerLayer::drums], place * 8.0 + 7.0, place * 8.0 + 8.0))
+            if (p >= 41 && p < 70)
+                heard.insert (p);
+    CHECK (heard.size() >= 6);
+    for (const auto p : heard)
+        CHECK ((p < 50 || p >= 60));   // (no other Toontrack song's fill)
+    // The first three places: Song A's three, in some order.
+    std::set<int> first;
+    for (int place = 0; place < 3; ++place)
+        for (const auto p : pitchesIn (composeLayers (s, spans, c)[(size_t) ComposerLayer::drums], place * 8.0 + 7.0, place * 8.0 + 8.0))
+            if (p >= 41 && p < 70)
+                first.insert (p);
+    CHECK (first == std::set<int> { 41, 42, 43 });
+}
+
+TEST_CASE ("0.223.0: the FILLS list follows the groove: its own song's fills first, ROLL among them", "[composer][library][fills223]")
+{
+    juce::TemporaryFile folder;
+    const auto root = folder.getFile();
+    root.createDirectory();
+    std::vector<std::pair<double, int>> beat;
+    for (int i = 0; i < 8; ++i)
+        beat.push_back ({ i * 0.5, 42 });
+    beat.push_back ({ 0.0, 36 });
+    beat.push_back ({ 1.0, 38 });
+    std::vector<LibraryGroove> grooves;
+    const auto add = [&] (const juce::String& path, const std::vector<std::pair<double, int>>& hits, bool fill)
+    {
+        const auto file = writeGroove (root.getChildFile (path), hits);
+        LibraryGroove g { file, file.getFileNameWithoutExtension(), file.getParentDirectory().getFileName(), 120.0, fill ? 1 : 4 };
+        g.bars = fill ? 1 : 4;   // (0.232.0: fills two bars at most)
+        classifyGroove (g);
+        grooves.push_back (g);
+    };
+    add ("Toontrack/Metal Pack/Song A/Verse.mid", beat, false);
+    for (int i = 0; i < 5; ++i)   // (four or more: the other pack's fills stay out of the groove's own)
+        add ("Toontrack/Metal Pack/Song A/Fill " + juce::String (i + 1) + ".mid", { { 3.0, 41 + i } }, true);
+    for (int i = 0; i < 10; ++i)
+        add ("Another Pack/Song C/Fill " + juce::String (i + 1) + ".mid", { { 3.0, 60 + i } }, true);
+
+    ComposerContext c;
+    c.libraryGrooves = grooves;
+    std::vector<ChordSpan> spans;
+    for (int bar = 0; bar < 8; ++bar)
+        spans.push_back ({ bar * 4.0, bar * 4.0 + 4.0, Chord { 9, Chord::Type::minor }, Key {} });
+    ComposerState s;
+    s.fitKicks = false;
+    s.libraryGroove = grooves[0].file.getFullPathName();
+
+    // With the chords: Song A's five first, in their own group, topped up from the other pack; each once.
+    const auto fills = composerFills (s, c, &spans);
+    REQUIRE (fills.size() >= 15);
+    for (int i = 0; i < 5; ++i)
+    {
+        CHECK (fills[(size_t) i].group == grooveFillsGroup);
+        CHECK (fills[(size_t) i].id.contains ("Song A"));
+    }
+    for (int i = 5; i < 15; ++i)
+    {
+        CHECK (fills[(size_t) i].group == grooveFillsGroup);
+        CHECK (fills[(size_t) i].id.contains ("Another Pack"));
+    }
+    CHECK (fills[15].group == "FILLS");
+    std::set<juce::String> ids;
+    for (const auto& f : fills)
+        CHECK (ids.insert (f.id).second);
+    // Without them: as before (no groove group).
+    for (const auto& f : composerFills (s, c))
+        CHECK (f.group != grooveFillsGroup);
+
+    // ROLL draws only the groove's nearest twelve.
+    std::set<juce::String> nearest;
+    for (int i = 0; i < 12; ++i)
+        nearest.insert (fills[(size_t) i].id);
+    juce::Random random (7);
+    for (int i = 0; i < 20; ++i)
+    {
+        REQUIRE (rollFill (s, c, random, 0, &spans));
+        CHECK (nearest.count (s.lane (ComposerLayer::drums).fill) == 1);
+    }
+}
+
+TEST_CASE ("0.232.0: fills from the groove's song folder's FILLS, then its TRANSITIONS, then favourites', then other packs'; two bars, whole", "[composer][library][fills232]")
+{
+    juce::TemporaryFile folder;
+    const auto root = folder.getFile();
+    root.createDirectory();
+    std::vector<std::pair<double, int>> beat;
+    for (int i = 0; i < 8; ++i)
+        beat.push_back ({ i * 0.5, 42 });
+    beat.push_back ({ 0.0, 36 });
+    beat.push_back ({ 1.0, 38 });
+    std::vector<LibraryGroove> grooves;
+    const auto add = [&] (const juce::String& path, const std::vector<std::pair<double, int>>& hits, int bars)
+    {
+        const auto file = writeGroove (root.getChildFile (path), hits);
+        LibraryGroove g { file, file.getFileNameWithoutExtension(), file.getParentDirectory().getFileName(), 120.0, 4 };
+        g.bars = bars;
+        classifyGroove (g);
+        grooves.push_back (g);
+    };
+    add ("Toontrack/High Energy Grooves/Chemical Metal/Chorus/Chorus 02.mid", beat, 4);
+    // Its song's FILLS: two one-bar fills and a two-bar one, and a four-bar one (too long).
+    add ("Toontrack/High Energy Grooves/Chemical Metal/Fills/Fill 01.mid", { { 3.0, 41 } }, 1);
+    add ("Toontrack/High Energy Grooves/Chemical Metal/Fills/Fill 02.mid", { { 3.0, 43 } }, 1);
+    add ("Toontrack/High Energy Grooves/Chemical Metal/Fills/Fill 03.mid", { { 0.0, 38 }, { 7.0, 45 } }, 2);
+    add ("Toontrack/High Energy Grooves/Chemical Metal/Fills/Fill 04.mid", { { 15.0, 47 } }, 4);
+    add ("Toontrack/High Energy Grooves/Chemical Metal/Transitions/Transition 01.mid", { { 3.0, 48 } }, 1);
+    add ("Toontrack/High Energy Grooves/Other Song/Fills/Fill 01.mid", { { 3.0, 50 } }, 1);    // never
+    add ("Toontrack/Fav Pack/Song/Fills/Fill 01.mid", { { 3.0, 52 } }, 1);                     // a favourite's
+    add ("Ghost Pack/Fills/Fill 01.mid", { { 3.0, 60 } }, 1);                                  // another pack's
+
+    CHECK (fillFolderOf (grooves[1].file).kind == 0);
+    CHECK (fillFolderOf (grooves[1].file).owner.getFileName() == "Chemical Metal");
+    CHECK (fillFolderOf (grooves[5].file).kind == 1);
+    CHECK (grooves[5].fill);   // (a transition counts as a fill)
+    CHECK (fillFolderOf (grooves[0].file).kind == -1);
+
+    ComposerContext c;
+    c.libraryGrooves = grooves;
+    c.favouriteFolders.add (root.getChildFile ("Toontrack/Fav Pack").getFullPathName());
+    const auto fills = composerLibraryFills (grooves[0], 2, c, 12);
+    REQUIRE (fills.size() == 6);
+    juce::StringArray names;
+    for (const auto& f : fills)
+        names.add (f.file.getParentDirectory().getParentDirectory().getFileName() + "/" + f.file.getParentDirectory().getFileName());
+    for (int i = 0; i < 3; ++i)
+        CHECK (names[i] == "Chemical Metal/Fills");
+    CHECK (names[3] == "Chemical Metal/Transitions");
+    CHECK (names[4] == "Song/Fills");
+    CHECK (names[5] == "Ghost Pack/Fills");
+
+    // The whole fill: the two-bar one from its first note, eight beats.
+    double length = 0.0;
+    const auto notes = libraryFillNotes (grooves[3], 4.0, length);
+    CHECK (length == 8.0);
+    REQUIRE (notes.size() == 2);
+    CHECK (notes[1].beat == 7.0);
+    // A one-bar fill ending on the next bar's crash (bars not known): the landing isn't another bar.
+    auto landing = grooves[1];
+    landing.bars = 0;
+    landing.file = writeGroove (root.getChildFile ("Landing/Fills/Fill.mid"), { { 3.0, 41 }, { 4.0, 49 } });
+    const auto landed = libraryFillNotes (landing, 4.0, length);
+    CHECK (length == 1.0);
+    REQUIRE (landed.size() == 1);
+    CHECK (landed[0].pitch == 41);
+    // Four bars: none.
+    CHECK (libraryFillNotes (grooves[4], 4.0, length).empty());
+
+    // Played: with only the song's two-bar fill, it plays whole over bars 3-4 (a fill every four bars).
+    c.libraryGrooves = std::vector<LibraryGroove> { grooves[0], grooves[3] };
+    c.favouriteFolders.clear();
+    c.drums.fillEvery = 4;
+    std::vector<ChordSpan> spans;
+    for (int bar = 0; bar < 8; ++bar)
+        spans.push_back ({ bar * 4.0, bar * 4.0 + 4.0, Chord { 9, Chord::Type::minor }, Key {} });
+    ComposerState s;
+    s.fitKicks = false;
+    s.libraryGroove = grooves[0].file.getFullPathName();
+    const auto drums = composeLayers (s, spans, c)[(size_t) ComposerLayer::drums];
+    const auto atBeat = [&] (double b, int pitch)
+    {
+        return std::any_of (drums.notes.begin(), drums.notes.end(), [&] (const LineNote& n) { return std::abs (n.beat - b) < 0.01 && n.pitch == pitch; });
+    };
+    CHECK (atBeat (8.0, 38));
+    CHECK (atBeat (15.0, 45));
+    CHECK (atBeat (24.0, 38));
+    CHECK (atBeat (31.0, 45));
+    CHECK_FALSE (atBeat (9.0, 42));   // (the groove's hats gone under the fill)
 }

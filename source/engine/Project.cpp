@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include "Controllers.h"
+#include "Sizing.h"
 
 #include <functional>
 #include <set>
@@ -127,6 +128,8 @@ namespace pr7s
                                            (float) juce::jlimit (-1.0, 1.0, p->getDoubleAttribute ("curve")), false });
                 std::stable_sort (lane.trim.begin(), lane.trim.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
                 std::stable_sort (lane.points.begin(), lane.points.end(), [] (const auto& a, const auto& b) { return a.beat < b.beat; });
+                AutomationLane::collapseStacks (lane.points);   // (0.230.0: songs written before kept their stacks)
+                AutomationLane::collapseStacks (lane.trim);
                 lanes.push_back (std::move (lane));
             }
             return lanes;
@@ -182,6 +185,35 @@ namespace pr7s
         const auto span = next->beat - before.beat;
         const auto along = span > 0.0 ? (float) ((beat - before.beat) / span) : 1.0f;
         return before.value + (next->value - before.value) * curveShape (along, next->curve);
+    }
+
+    int AutomationLane::collapseStacks (std::vector<AutomationPoint>& points)
+    {
+        constexpr auto same = 1.0e-9;
+        std::vector<AutomationPoint> kept;
+        kept.reserve (points.size());
+        for (size_t i = 0; i < points.size();)
+        {
+            auto j = i;
+            auto terminator = false;
+            while (j < points.size() && std::abs (points[j].beat - points[i].beat) < same)
+                terminator = terminator || points[j++].terminator;
+            auto first = points[i];
+            first.terminator = false;
+            kept.push_back (first);
+            if (j - i > 1 && std::abs (points[j - 1].value - points[i].value) > 1.0e-6f)
+            {
+                auto last = points[j - 1];   // a jump: where it lands
+                last.terminator = false;
+                kept.push_back (last);
+            }
+            kept.back().terminator = terminator;   // (a terminator in the run: the run's last kept point ends it)
+            i = j;
+        }
+        const auto removed = (int) (points.size() - kept.size());
+        if (removed > 0)
+            points = std::move (kept);
+        return removed;
     }
 
     std::optional<float> AutomationLane::valueAt (double beat) const noexcept
@@ -277,6 +309,27 @@ namespace pr7s
     const Track* Project::findTrack (int id) const
     {
         return const_cast<Project*> (this)->findTrack (id);
+    }
+
+    Project::ArchitectRiff* Project::findArchitectRiff (int id) noexcept
+    {
+        for (auto& r : architectRiffs)
+            if (id > 0 && r.id == id)
+                return &r;
+        return nullptr;
+    }
+
+    const Project::ArchitectRiff* Project::findArchitectRiff (int id) const noexcept
+    {
+        return const_cast<Project*> (this)->findArchitectRiff (id);
+    }
+
+    int Project::nextArchitectRiffId() const noexcept
+    {
+        int id = 1;
+        for (const auto& r : architectRiffs)
+            id = juce::jmax (id, r.id + 1);
+        return id;
     }
 
     bool Project::reaches (int from, int to) const
@@ -664,6 +717,48 @@ namespace pr7s
         }
         if (markerTrack.shown || ! markerTrack.isEmpty())
             xml->addChildElement (markerTrack.toXml().release());   // (0.49.0)
+        const auto riffNamed = [this] (int id)
+        {
+            for (const auto& b : songSections.blocks)
+                if (b.riff == id)
+                    return true;
+            return false;
+        };
+        auto blockRiffs = false;
+        for (const auto& r : architectRiffs)
+            blockRiffs = blockRiffs || riffNamed (r.id);
+        if (architectState.isNotEmpty() || architectRiff.has_value() || blockRiffs)   // (0.206.0)
+        {
+            auto* a = xml->createNewChildElement ("Architect");
+            for (const auto& riff : architectRiffs)   // (0.226.0: the blocks' riffs)
+                if (riffNamed (riff.id))
+                {
+                    auto* r = a->createNewChildElement ("BlockRiff");
+                    r->setAttribute ("id", riff.id);
+                    r->setAttribute ("bars", riff.bars);
+                    r->setAttribute ("section", riff.section);
+                    r->setAttribute ("name", riff.name);
+                    r->setAttribute ("played", riff.played);
+                    r->setAttribute ("chordsFrom", riff.chordsFrom);
+                    if (riff.fit)
+                        r->setAttribute ("fit", true);
+                    r->setAttribute ("notes", riff.notes);
+                }
+            if (architectState.isNotEmpty())
+                a->setAttribute ("state", architectState);
+            if (architectRiff.has_value())
+            {
+                auto* r = a->createNewChildElement ("Riff");
+                r->setAttribute ("bars", architectRiff->bars);
+                r->setAttribute ("section", architectRiff->section);
+                r->setAttribute ("name", architectRiff->name);
+                r->setAttribute ("played", architectRiff->played);
+                r->setAttribute ("chordsFrom", architectRiff->chordsFrom);
+                if (architectRiff->fit)
+                    r->setAttribute ("fit", true);
+                r->setAttribute ("notes", architectRiff->notes);
+            }
+        }
         if (! songSections.shown || ! songSections.isEmpty())   // (0.103.0: shown by default; a hidden row is written)
             xml->addChildElement (songSections.toXml().release());   // (0.90.0)
         if (! signatureChanges.empty() || signatureTrackShown)
@@ -835,6 +930,8 @@ namespace pr7s
                     w->setAttribute ("beat", m.beat);
                     w->setAttribute ("seconds", m.seconds);
                 }
+                if (part.stretchMode != 0)
+                    p->setAttribute ("stretch", part.stretchMode);
                 if (part.lane != 0)
                     p->setAttribute ("lane", part.lane);
                 if (part.order != 0)
@@ -999,8 +1096,41 @@ namespace pr7s
         }
         if (const auto* markers = xml.getChildByName ("MarkerTrack"))
             project.markerTrack = MarkerTrack::fromXml (*markers);   // (0.49.0)
+        if (const auto* a = xml.getChildByName ("Architect"))   // (0.206.0)
+        {
+            project.architectState = a->getStringAttribute ("state");
+            for (auto* r : a->getChildWithTagNameIterator ("BlockRiff"))   // (0.226.0)
+            {
+                Project::ArchitectRiff riff;
+                riff.id = r->getIntAttribute ("id", 0);
+                riff.bars = juce::jlimit (1, 64, r->getIntAttribute ("bars", 1));
+                riff.section = juce::jmax (0, r->getIntAttribute ("section", 1));
+                riff.name = r->getStringAttribute ("name");
+                riff.played = r->getBoolAttribute ("played");
+                riff.chordsFrom = r->getBoolAttribute ("chordsFrom");
+                riff.fit = r->getBoolAttribute ("fit");
+                riff.notes = r->getStringAttribute ("notes");
+                if (riff.id > 0 && project.findArchitectRiff (riff.id) == nullptr)
+                    project.architectRiffs.push_back (riff);
+            }
+            if (const auto* r = a->getChildByName ("Riff"))
+            {
+                Project::ArchitectRiff riff;
+                riff.bars = juce::jlimit (1, 64, r->getIntAttribute ("bars", 1));
+                riff.section = juce::jmax (0, r->getIntAttribute ("section", 1));
+                riff.name = r->getStringAttribute ("name");
+                riff.played = r->getBoolAttribute ("played");
+                riff.chordsFrom = r->getBoolAttribute ("chordsFrom");
+                riff.fit = r->getBoolAttribute ("fit");
+                riff.notes = r->getStringAttribute ("notes");
+                project.architectRiff = riff;
+            }
+        }
         if (const auto* sections = xml.getChildByName ("SongSections"))
             project.songSections = SongSections::fromXml (*sections);   // (0.90.0)
+        for (auto& b : project.songSections.blocks)   // (0.226.0: a riff the song doesn't hold: none)
+            if (b.riff > 0 && project.findArchitectRiff (b.riff) == nullptr)
+                b.riff = 0;
         if (const auto* signature = xml.getChildByName ("Signatures"))
         {
             project.signatureTrackShown = signature->getBoolAttribute ("shown");
@@ -1160,6 +1290,11 @@ namespace pr7s
                 if (part.warp.size() < 2 || p->getStringAttribute ("audioFile").isEmpty())
                     part.warp.clear();
                 part.order = p->getIntAttribute ("order");
+                {
+                    // (0.188.0) A mode this version doesn't know (from a later one): CLEAN.
+                    const auto mode = p->getIntAttribute ("stretch");
+                    part.stretchMode = mode >= 0 && mode < StretchModes::count ? mode : StretchModes::clean;
+                }
                 part.linkCopy = p->getBoolAttribute ("linkCopy");
                 part.audioFile = p->getStringAttribute ("audioFile");
                 part.audioOffset = juce::jmax (0.0, p->getDoubleAttribute ("audioOffset"));

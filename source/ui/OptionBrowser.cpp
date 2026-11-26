@@ -2,6 +2,7 @@
 
 #include "ui/ParagonLookAndFeel.h"
 #include "engine/Project.h"
+#include "engine/InspiredBy.h"
 
 namespace
 {
@@ -20,6 +21,9 @@ OptionBrowser::OptionBrowser (const juce::String& t, std::vector<Option> list, i
     search.setFont (words (15.0f, juce::Font::plain));
     search.onTextChange = [this] { scroll = 0.0f; repaint(); };
     search.onEscapeKey = [this] { search.clear(); scroll = 0.0f; repaint(); };
+    search.onListKey = [this] (const juce::KeyPress& k) { return keyPressed (k); };
+    search.onReturnKey = [this] { use(); };
+    setWantsKeyboardFocus (true);
     addAndMakeVisible (search);
     for (const auto f : feels)
     {
@@ -102,11 +106,16 @@ void OptionBrowser::timerCallback()
         order.push_back (shown[(size_t) i]);
     const auto start = juce::Time::getMillisecondCounterHiRes();
     auto filled = false, any = false;
+    std::vector<int> filledIds;
     const auto take = [&] (Option& o)
     {
         if (! o.pending)
             return true;
-        filled = fillOne (o) || filled;
+        if (fillOne (o))
+        {
+            filled = true;
+            filledIds.push_back (o.id);
+        }
         return juce::Time::getMillisecondCounterHiRes() - start < 12.0;
     };
     auto going = true;
@@ -120,8 +129,19 @@ void OptionBrowser::timerCallback()
         any = any || o.pending;
     if (! any)
         stopTimer();
-    if (filled || ! any)
+    // (0.191.0) The whole (full-screen) window only when what's shown may change: the last one measured, the
+    // chosen one (its picture), or a FEEL / ENERGY key choosing by the measures. Else the rows in view that
+    // were measured (their tags) and the count at the top, 60 times a second while measuring.
+    const auto chosenFilled = std::find (filledIds.begin(), filledIds.end(), chosen) != filledIds.end();
+    if (! any || chosenFilled || (filled && (feel != pr7s::OptionFeel::unknown || energy != 0)))
         repaint();
+    else
+    {
+        repaint (getLocalBounds().reduced (12).removeFromTop (34));   // (the count: MEASURING: n TO GO)
+        for (int i = first; i < juce::jmin ((int) shown.size(), first + rows); ++i)
+            if (std::find (filledIds.begin(), filledIds.end(), shown[(size_t) i]) != filledIds.end())
+                repaint (listRow (i).getIntersection (listArea));
+    }
 }
 
 void OptionBrowser::setOptions (std::vector<Option> list)
@@ -165,7 +185,11 @@ bool OptionBrowser::inGroup (const Option& o, const juce::String& g) const
 
 bool OptionBrowser::passes (const Option& o) const
 {
-    const auto words = juce::StringArray::fromTokens (search.getText().toLowerCase(), true);
+    return passes (o, juce::StringArray::fromTokens (search.getText().toLowerCase(), true));
+}
+
+bool OptionBrowser::passes (const Option& o, const juce::StringArray& words) const
+{
     if (! words.isEmpty())
     {
         // A search looks through every group.
@@ -215,17 +239,18 @@ int OptionBrowser::countIn (const juce::String& g) const
 std::vector<int> OptionBrowser::getShown() const
 {
     std::vector<int> out;
+    const auto words = juce::StringArray::fromTokens (search.getText().toLowerCase(), true);   // (0.191.0: once, not per option)
     if (group == recentGroup && search.isEmpty())
     {
         // The recent in the order used.
         for (const auto& name : memory.recentOf (listKey))
             for (const auto& o : options)
-                if (o.name == name && passes (o))
+                if (o.name == name && passes (o, words))
                     out.push_back (o.id);
         return out;
     }
     for (const auto& o : options)
-        if (passes (o))
+        if (passes (o, words))
             out.push_back (o.id);
     return out;
 }
@@ -275,6 +300,42 @@ void OptionBrowser::choose (int id)
     showChosen();
     refreshKeys();
     repaint();
+}
+
+void OptionBrowser::pick (int id)
+{
+    if (find (id) == nullptr)
+        return;
+    const auto changed = id != chosen;
+    choose (id);
+    if (autoHear && hearable && changed)
+        hear();
+}
+
+void OptionBrowser::step (int by)
+{
+    const auto shown = getShown();
+    if (shown.empty())
+        return;
+    const auto at = std::find (shown.begin(), shown.end(), chosen);
+    const auto index = at == shown.end() ? (by > 0 ? 0 : (int) shown.size() - 1)
+                                         : juce::jlimit (0, (int) shown.size() - 1, (int) std::distance (shown.begin(), at) + by);
+    pick (shown[(size_t) index]);
+}
+
+bool OptionBrowser::keyPressed (const juce::KeyPress& k)
+{
+    if (k.isKeyCode (juce::KeyPress::upKey) || k.isKeyCode (juce::KeyPress::downKey))
+    {
+        step (k.isKeyCode (juce::KeyPress::upKey) ? -1 : 1);
+        return true;
+    }
+    if (k.isKeyCode (juce::KeyPress::returnKey))
+    {
+        use();
+        return true;
+    }
+    return false;
 }
 
 void OptionBrowser::showChosen()
@@ -436,7 +497,9 @@ void OptionBrowser::paint (juce::Graphics& g)
     g.setColour (ParagonColours::textDim);
     g.setFont (heading (18.0f));
     g.drawText ("GROUPS", groupsArea.withHeight (34).reduced (12, 0), juce::Justification::centredLeft);
-    const auto groups = getGroups();
+    // (0.229.0) Each part only when the redrawn area reaches it: while measuring, the timer repaints rows 60 times a
+    // second, and every paint counted every group and read the chosen one's notes again.
+    const auto groups = g.clipRegionIntersects (groupsArea) ? getGroups() : juce::StringArray();
     for (int i = 0; i < groups.size(); ++i)
     {
         const auto row = groupRow (i);
@@ -465,6 +528,7 @@ void OptionBrowser::paint (juce::Graphics& g)
         g.drawText ("ENERGY", energyKeys.front()->getBounds().withX (listArea.getX()).withWidth (62), juce::Justification::centredLeft);
 
     // The list.
+    if (g.clipRegionIntersects (listArea))
     {
         juce::Graphics::ScopedSaveState keep (g);
         g.reduceClipRegion (listArea.reduced (1));
@@ -495,9 +559,11 @@ void OptionBrowser::paint (juce::Graphics& g)
             g.drawHorizontalLine (row.getBottom() - 1, (float) row.getX(), (float) row.getRight());
             auto r = row.reduced (8, 0);
             const auto fav = memory.isFavourite (listKey, o.name);
-            g.setColour (fav ? ParagonColours::accent : starOff);
             g.setFont (words (16.0f, juce::Font::plain));
-            g.drawText (juce::String (juce::CharPointer_UTF8 (fav ? "\xe2\x98\x85" : "\xe2\x98\x86")), r.removeFromLeft (22), juce::Justification::centredLeft);
+            const auto starArea = r.removeFromLeft (22);
+            const auto star = juce::String (juce::CharPointer_UTF8 (fav ? "\xe2\x98\x85" : "\xe2\x98\x86"));
+            ParagonColours::setTextFill (g, fav ? ParagonColours::accent : starOff, star, starArea, juce::Justification::centredLeft);
+            g.drawText (star, starArea, juce::Justification::centredLeft);
             const auto tag = ! search.isEmpty() || ! measured ? o.group
                              : o.measure.feel == pr7s::OptionFeel::unknown ? juce::String()
                              : pr7s::optionFeelName (o.measure.feel) + ", " + pr7s::energyName (o.measure.energy);
@@ -511,7 +577,7 @@ void OptionBrowser::paint (juce::Graphics& g)
     }
 
     // The chosen one.
-    if (const auto* o = find (chosen))
+    if (const auto* o = g.clipRegionIntersects (detailArea) ? find (chosen) : nullptr)
     {
         auto d = detailArea.reduced (14);
         g.setColour (ParagonColours::textDim);
@@ -522,25 +588,45 @@ void OptionBrowser::paint (juce::Graphics& g)
         g.drawFittedText (o->name.toUpperCase(), d.removeFromTop (60), juce::Justification::topLeft, 2);
         if (o->measure.feel != pr7s::OptionFeel::unknown)
         {
-            g.setColour (ParagonColours::accent);
             g.setFont (words (13.0f));
-            g.drawText (pr7s::optionFeelName (o->measure.feel) + "  /  " + pr7s::energyName (o->measure.energy), d.removeFromTop (20), juce::Justification::centredLeft);
+            const auto feelText = pr7s::optionFeelName (o->measure.feel) + "  /  " + pr7s::energyName (o->measure.energy);
+            const auto feelArea = d.removeFromTop (20);
+            ParagonColours::setTextFill (g, ParagonColours::accent, feelText, feelArea, juce::Justification::centredLeft);
+            g.drawText (feelText, feelArea, juce::Justification::centredLeft);
         }
         d.removeFromTop (6);
         g.setColour (ParagonColours::textDim);
         g.setFont (words (13.0f, juce::Font::plain));
-        g.drawFittedText (o->description.isNotEmpty() ? o->description : juce::String ("(no description)"),
-                          d.withBottom (pictureArea.getY() - 6), juce::Justification::topLeft, 7);
+        // (0.229.0) The description (with the owner's inspired-by notes, read from a file) made again only when the
+        // chosen one changes, or a second on: it looked at the file on disk on every paint.
+        const auto now = juce::Time::getMillisecondCounter();
+        if (describedId != o->id || describedName != o->name || describedDescription != o->description || now - describedAt > 1000)
+        {
+            describedId = o->id;
+            describedName = o->name;
+            describedDescription = o->description;
+            describedText = shownDescription (*o);
+            describedAt = now;
+        }
+        g.drawFittedText (describedText, d.withBottom (pictureArea.getY() - 6), juce::Justification::topLeft, 9);
         if (drawn)
             paintPicture (g, *o, pictureArea);
     }
+}
+
+juce::String OptionBrowser::shownDescription (const Option& o)
+{
+    auto text = o.description.isNotEmpty() ? o.description : juce::String ("(no description)");
+    if (const auto inspired = pr7s::inspiredBy (o.name); inspired.isNotEmpty())
+        text << "\n\nInspired by: " << inspired;
+    return text;
 }
 
 void OptionBrowser::paintPicture (juce::Graphics& g, const Option& o, juce::Rectangle<int> area) const
 {
     g.setColour (juce::Colour (0xff080609));
     g.fillRect (area);
-    const auto notes = o.idea.notes;
+    const auto& notes = o.idea.notes;   // (0.229.0: not copied each paint)
     if (o.pending)
     {
         g.setColour (ParagonColours::textDim);
@@ -642,6 +728,8 @@ void OptionBrowser::paintPicture (juce::Graphics& g, const Option& o, juce::Rect
 void OptionBrowser::mouseDown (const juce::MouseEvent& e)
 {
     const auto p = e.getPosition();
+    if (isShowing())
+        grabKeyboardFocus();   // (0.180.0: the arrow keys come here, not to the search box)
     if (groupsArea.contains (p))
     {
         const auto groups = getGroups();
@@ -666,9 +754,10 @@ void OptionBrowser::mouseDown (const juce::MouseEvent& e)
                     toggleFavourite (shown[(size_t) i]);
                 else
                 {
-                    choose (shown[(size_t) i]);
                     if (e.getNumberOfClicks() > 1)
                         use();
+                    else
+                        pick (shown[(size_t) i]);
                 }
                 return;
             }
@@ -709,6 +798,8 @@ OptionBrowserWindow::OptionBrowserWindow (std::unique_ptr<OptionBrowser> b, juce
     setVisible (true);
     setFullScreen (true);
     toFront (true);
+    if (browser->isShowing())
+        browser->grabKeyboardFocus();   // (0.180.0: Up / Down work at once)
 }
 
 void OptionBrowserWindow::closeButtonPressed()

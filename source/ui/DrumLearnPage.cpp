@@ -123,7 +123,7 @@ public:
             g.drawRoundedRectangle (box, 3.0f, 1.2f);
             if (s.use)
             {
-                g.setColour (ParagonColours::accent);
+                ParagonColours::setFill (g, ParagonColours::accent, box.reduced (4.0f));
                 g.fillRoundedRectangle (box.reduced (4.0f), 2.0f);
             }
             auto name = bounds.withTrimmedLeft (useWidth + 8).withWidth (nameWidth - 16).reduced (0, 8);
@@ -660,7 +660,7 @@ void DrumLearnPage::changed()
 void DrumLearnPage::paint (juce::Graphics& g)
 {
     g.fillAll (page);
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     auto head = getLocalBounds().removeFromTop (headerHeight).reduced (gap, 8);
     auto title = head.removeFromTop (34);

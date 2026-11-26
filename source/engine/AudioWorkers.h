@@ -78,10 +78,12 @@ namespace pr7s
         void helperLoop (Helper&);
 
         // generation << 32 | the next task's index
-        std::atomic<juce::uint64> state { 0 };
-        Job jobs[2];                       // by generation & 1: a job's description never changes while it's current
-        std::atomic<int> done { 0 };
-        std::atomic<juce::uint32> wake { 0 };
+        // (0.190.0) The three every core writes each on a cache line of its own: claiming a task, finishing
+        // one and waking the helpers no longer drag one another's line between the cores.
+        alignas (64) std::atomic<juce::uint64> state { 0 };
+        alignas (64) Job jobs[2];          // by generation & 1: a job's description never changes while it's current
+        alignas (64) std::atomic<int> done { 0 };
+        alignas (64) std::atomic<juce::uint32> wake { 0 };
         std::atomic<bool> quitting { false };
         std::vector<std::unique_ptr<Helper>> helpers;
 

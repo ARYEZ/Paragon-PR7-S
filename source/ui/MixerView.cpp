@@ -253,11 +253,11 @@ void MixerView::Strip::paint (juce::Graphics& g)
     g.fillRect (bounds.reduced (1.0f, 0.0f));
     g.setColour (juce::Colour (0xff050405));
     g.fillRect (bounds.withX (bounds.getRight() - 1.0f).withWidth (1.0f));
-    g.setColour (isMaster() ? ParagonColours::accent : track != nullptr ? track->colour : ParagonColours::textDim);
+    ParagonColours::setFill (g, isMaster() ? ParagonColours::accent : track != nullptr ? track->colour : ParagonColours::textDim, bounds.withHeight (4.0f).reduced (1.0f, 0.0f));
     g.fillRect (bounds.withHeight (4.0f).reduced (1.0f, 0.0f));
     if (selected)
     {
-        g.setColour (ParagonColours::accent.withAlpha (0.6f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.6f), bounds.reduced (1.0f, 0.0f).withTrimmedTop (4.0f));
         g.drawRect (bounds.reduced (1.0f, 0.0f).withTrimmedTop (4.0f), 1.0f);
     }
     // (0.83.2) A meter's redraw (30 times a second for every strip while playing) paints the meter
@@ -271,8 +271,8 @@ void MixerView::Strip::paint (juce::Graphics& g)
     // Its link group (the manual: "the number and the name ... above the channel name").
     if (const auto* link = owner.studio.getLinkGroupOf (busId))
     {
-        g.setColour (ParagonColours::accent);
         g.setFont (font (9.5f));
+        ParagonColours::setTextFill (g, ParagonColours::accent, juce::String (link->id) + "  " + link->name.toUpperCase(), linkArea.toNearestInt(), juce::Justification::centred);
         g.drawFittedText (juce::String (link->id) + "  " + link->name.toUpperCase(), linkArea.toNearestInt(), juce::Justification::centred, 1, 0.7f);
     }
     g.setColour (ParagonColours::text);
@@ -299,7 +299,7 @@ void MixerView::Strip::paint (juce::Graphics& g)
     {
         const auto& first = slots[(size_t) preFader];
         const auto y = preFader == 0 ? (float) first.getY() - 2.0f : (float) first.getY() - (float) slotGap * 0.5f - 0.5f;
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) ((float) first.getX()), (float) (y), (float) ((float) first.getWidth()), (float) (1.5f)));
         g.fillRect ((float) first.getX(), y, (float) first.getWidth(), 1.5f);
     }
     if (track != nullptr)
@@ -788,10 +788,10 @@ void MixerView::paint (juce::Graphics& g)
     g.drawText ("MIXER", bar.withTrimmedLeft (14.0f), juce::Justification::centredLeft, false);
     g.setColour (ParagonColours::textDim);
     g.setFont (font (11.0f, juce::Font::plain));
-    g.drawText (inWindow ? "Each track: its inserts (those below an orange line after the fader), its sends to the FX channels, its fader, its output"
+    g.drawText (inWindow ? "Each track: its inserts (those below a lit line after the fader), its sends to the FX channels, its fader, its output"
               : ! rackShown ? "Each track's fader, pan and keys (INSERTS or SENDS shows their racks again)"
               : showSends ? "Each track's sends: some of its sound to an FX channel (before or after its fader), back into the master"
-                          : "Each track: its instrument, its inserts (top to bottom; those below an orange line after the fader), its fader, its output",
+                          : "Each track: its instrument, its inserts (top to bottom; those below a lit line after the fader), its fader, its output",
                 bar.withTrimmedLeft (70.0f).withRight ((float) linkKeysLeft - 12.0f), juce::Justification::centredLeft, true);
     if (strips.empty())
     {
@@ -1087,11 +1087,11 @@ void MixerView::SendSlot::paint (juce::Graphics& g)
     const auto db = track->automationRead ? owner.studio.getEngine().getSendNowDb (busId, slot) : s->levelDb;
     auto bar = bounds.reduced (1.5f).withTrimmedLeft (12.0f);
     const auto colour = fx != nullptr ? fx->colour : ParagonColours::accent;
-    g.setColour (colour.withAlpha (active ? 0.45f : 0.15f));
+    ParagonColours::setFill (g, colour.withAlpha (active ? 0.45f : 0.15f), bar);
     g.fillRoundedRectangle (bar.withWidth (bar.getWidth() * pr7s::volumeToTravel (db)), 2.0f);
     // The on/off dot.
     const auto dot = juce::Rectangle<float> (6.0f, 6.0f).withCentre ({ bounds.getX() + 7.0f, bounds.getCentreY() });
-    g.setColour (active ? ParagonColours::accent : ParagonColours::accentDim.darker (0.6f));
+    ParagonColours::setFill (g, active ? ParagonColours::accent : ParagonColours::accentDim.darker (0.6f), dot);
     g.fillEllipse (dot);
     g.setColour (active ? ParagonColours::text : ParagonColours::textDim);
     g.setFont (font (juce::jmin (18.0f, juce::jmax (juce::jmin (11.0f, bounds.getHeight() * 0.8f), bounds.getHeight() * 0.55f))));
@@ -1099,8 +1099,9 @@ void MixerView::SendSlot::paint (juce::Graphics& g)
                       juce::Justification::centredLeft, 1, 0.7f);
     if (s->preFader)
     {
-        g.setColour (ParagonColours::accent);
-        g.drawText ("PRE", bar.removeFromRight (22.0f), juce::Justification::centred, false);
+        const auto pre = bar.removeFromRight (22.0f);
+        ParagonColours::setTextFill (g, ParagonColours::accent, "PRE", pre, juce::Justification::centred);
+        g.drawText ("PRE", pre, juce::Justification::centred, false);
     }
 }
 

@@ -40,8 +40,8 @@ namespace HubFrame
         auto badge = header.toFloat().reduced (24.0f, 14.0f).withWidth (juce::jmin (520.0f, (float) header.getWidth() - 48.0f));
         Logo::drawMark (g, badge.removeFromTop (badge.getHeight() * 0.66f), juce::Justification::centredLeft,
                         { Finish::ink(), juce::Colour (0xffe0103c), Finish::stampEdge(), {}, 1.0f, false });
-        g.setColour (Finish::printedRed());
         g.setFont (ParagonLookAndFeel::textFont (12.0f));
+        ParagonColours::setTextFill (g, ParagonColours::accent, caption, badge, juce::Justification::topLeft);   // (0.189.0)
         g.drawText (caption, badge, juce::Justification::topLeft, false);
 
         // The page: the Hub's panel with the question boxes' red edge.

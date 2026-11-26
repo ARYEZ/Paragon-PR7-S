@@ -349,7 +349,7 @@ public:
             const auto isTonic = inKey && spot.chord.root == key.pitchClass() && (spot.chord.type == Chord::Type::minor) == key.minor;
             const auto isFrom = from && from->root == spot.chord.root && from->type == spot.chord.type;
             const auto dot = juce::Rectangle<float> (spot.radius * 2.0f, spot.radius * 2.0f).withCentre (spot.centre);
-            g.setColour (isTonic ? ParagonColours::accent : inKey ? juce::Colour (0xff4a1a24) : juce::Colour (0xff141015));
+            ParagonColours::setFill (g, isTonic ? ParagonColours::accent : inKey ? juce::Colour (0xff4a1a24) : juce::Colour (0xff141015), dot);
             g.fillEllipse (dot);
             if (isFrom)
             {
@@ -452,14 +452,17 @@ public:
                     const auto cell = r.removeFromLeft (cellWidth).reduced (1.5f, 0.0f);
                     const auto& chord = p.chords[c];
                     const auto lit = (int) i == playingRow && (int) c == playingStep;
-                    g.setColour (lit ? ParagonColours::accent : juce::Colour (0xff171318));
+                    ParagonColours::setFill (g, lit ? ParagonColours::accent : juce::Colour (0xff171318), cell);
                     g.fillRoundedRectangle (cell, 3.0f);
                     const auto inKey = chord.isInKey (key);
-                    g.setColour (lit ? juce::Colour (0xff120d10) : inKey ? ParagonColours::text : ParagonColours::accent);
+                    const auto labelColour = lit ? juce::Colour (0xff120d10) : inKey ? ParagonColours::text : ParagonColours::accent;
                     g.setFont (chordFont (chordSize));
                     auto label = cell;
-                    g.drawFittedText (chord.name (key), label.removeFromTop (label.getHeight() * 0.58f).toNearestInt(), juce::Justification::centredBottom, 1, 0.7f);
+                    const auto nameArea = label.removeFromTop (label.getHeight() * 0.58f).toNearestInt();
+                    ParagonColours::setTextFill (g, labelColour, chord.name (key), nameArea, juce::Justification::centredBottom);
+                    g.drawFittedText (chord.name (key), nameArea, juce::Justification::centredBottom, 1, 0.7f);
                     g.setFont (chordFont (chordSize * 0.72f));
+                    ParagonColours::setTextFill (g, labelColour, chord.romanName (key), label.toNearestInt(), juce::Justification::centredTop);
                     g.drawFittedText (chord.romanName (key), label.toNearestInt(), juce::Justification::centredTop, 1, 0.7f);
                 }
             }
@@ -662,7 +665,7 @@ public:
                 const auto& key = pr7s::Key::all()[(size_t) (row + (minor ? rows : 0))];
                 const auto cell = cellBounds (row, minor);
                 const auto lit = key == now, over = hover && *hover == key;
-                g.setColour (lit ? ParagonColours::accent : over ? juce::Colour (0xff2a2129) : juce::Colour (0xff171318));
+                ParagonColours::setFill (g, lit ? ParagonColours::accent : over ? juce::Colour (0xff2a2129) : juce::Colour (0xff171318), cell);
                 g.fillRoundedRectangle (cell, 4.0f);
                 g.setColour (lit ? juce::Colour (0xff120d10) : minor ? ParagonColours::text.withAlpha (0.85f) : ParagonColours::text);
                 // (0.71.1, the owner: Bebas) Bebas has no small letters, so "Bb" would read "BB": spelled out.
@@ -1497,10 +1500,10 @@ void ChordPadsView::paintPad (juce::Graphics& g, int index, juce::Rectangle<floa
     const auto isSelected = std::find (selected.begin(), selected.end(), index) != selected.end();
     const auto& targets = studio.getAssignFromInput();
     const auto isInputTarget = ! targets.empty() && targets.front() == index;
-    if (index == dropPad)                      { g.setColour (ParagonColours::accent); g.drawRoundedRectangle (r, 5.0f, 2.5f); }
+    if (index == dropPad)                      { ParagonColours::setFill (g, ParagonColours::accent, r); g.drawRoundedRectangle (r, 5.0f, 2.5f); }
     else if (isInputTarget)                    { g.setColour (juce::Colour (0xffd42e2a)); g.drawRoundedRectangle (r, 5.0f, 2.5f); }
     else if (isSelected)                       { g.setColour (pearl); g.drawRoundedRectangle (r, 5.0f, 2.0f); }
-    else if (pads.adaptiveReference == index)  { g.setColour (ParagonColours::accent); g.drawRoundedRectangle (r, 5.0f, 2.0f); }
+    else if (pads.adaptiveReference == index)  { ParagonColours::setFill (g, ParagonColours::accent, r); g.drawRoundedRectangle (r, 5.0f, 2.0f); }
     else                                       { g.setColour (ParagonColours::panelEdge); g.drawRoundedRectangle (r, 5.0f, 1.0f); }
 
     const auto ink = pressed ? juce::Colour (0xff120d10) : ParagonColours::text;
@@ -1512,7 +1515,7 @@ void ChordPadsView::paintPad (juce::Graphics& g, int index, juce::Rectangle<floa
     // The top corners: the reference, and adaptive voicing (left); the lock (right).
     if (pads.adaptiveReference == index)
     {
-        g.setColour (pressed ? ink : ParagonColours::accent);
+        ParagonColours::setTextFill (g, pressed ? ink : ParagonColours::accent, "REF", top, juce::Justification::centredLeft);
         g.drawText ("REF", top, juce::Justification::centredLeft, false);
     }
     if (pad.locked)
@@ -1581,7 +1584,7 @@ void ChordPadsView::paintKeyboard (juce::Graphics& g, juce::Rectangle<float> are
             continue;
         }
         const juce::Rectangle<float> key (x, area.getY(), w - 1.0f, area.getHeight());
-        g.setColour (sounding (n) ? ParagonColours::accent : trigger (n) ? juce::Colour (0xffe8b0b8) : juce::Colour (0xffd8d2d4));
+        ParagonColours::setFill (g, sounding (n) ? ParagonColours::accent : trigger (n) ? juce::Colour (0xffe8b0b8) : juce::Colour (0xffd8d2d4), key);
         g.fillRect (key);
         if (n == hoverKey)
         {
@@ -1598,7 +1601,7 @@ void ChordPadsView::paintKeyboard (juce::Graphics& g, juce::Rectangle<float> are
     }
     for (const auto& [n, key] : blacks)
     {
-        g.setColour (sounding (n) ? ParagonColours::accent : trigger (n) ? juce::Colour (0xff8a2a44) : juce::Colour (0xff1a1619));
+        ParagonColours::setFill (g, sounding (n) ? ParagonColours::accent : trigger (n) ? juce::Colour (0xff8a2a44) : juce::Colour (0xff1a1619), key);
         g.fillRect (key);
         if (n == hoverKey)
         {
@@ -1896,6 +1899,8 @@ void ChordPadsView::itemDropped (const SourceDetails& details)
 //==============================================================================
 void ChordPadsView::timerCallback()
 {
+    if (! isShowing())
+        return;   // (0.191.0: put away, nothing to draw)
     // What's sounding and which pads are down: drawn only when it changes.
     const auto sounding = studio.getPadPlayer().getSounding();
     std::vector<bool> pressed (studio.getChordPads().pads.size());

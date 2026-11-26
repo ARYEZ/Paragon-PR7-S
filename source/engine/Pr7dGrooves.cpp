@@ -89,10 +89,15 @@ namespace pr7s
         const auto listed = juce::XmlDocument::parse (index);
         if (listed == nullptr)
             return library;
+        library.indexFound = true;
         for (const auto* x : listed->getChildWithTagNameIterator ("G"))
         {
+            ++library.listed;
             if (x->getStringAttribute ("stamp").startsWith ("db"))
+            {
+                ++library.inDatabases;
                 continue;   // (inside a groove database: not a .mid file)
+            }
             Pr7dGroove g;
             g.file = juce::File (x->getStringAttribute ("path"));
             const Linked* home = nullptr;
@@ -102,8 +107,16 @@ namespace pr7s
                     home = &f;
                     break;
                 }
-            if (home == nullptr || ! g.file.hasFileExtension ("mid;midi"))
+            if (home == nullptr)
+            {
+                ++library.outside;
                 continue;
+            }
+            if (! g.file.hasFileExtension ("mid;midi"))
+            {
+                ++library.notMidi;
+                continue;
+            }
             g.layout = home->layout;
             g.name = g.file.getFileNameWithoutExtension();
             g.folder = g.file.getParentDirectory().getFileName();

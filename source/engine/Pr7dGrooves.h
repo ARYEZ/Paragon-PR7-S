@@ -54,6 +54,12 @@ namespace pr7s
         std::vector<juce::File> linkedFolders;   // (0.178.0) the folders PR7-D links (not left out), in its order
         juce::Time indexDate;        // Groove Index.xml's
         bool found = false;          // Grooves.xml was there
+        // (0.211.0) What the index held, for the GROOVE FOLDERS page's status line.
+        bool indexFound = false;     // Groove Index.xml read
+        int listed = 0;              // grooves the index lists
+        int outside = 0;             // left out: not inside a linked folder
+        int notMidi = 0;             // left out: not a .mid / .midi file
+        int inDatabases = 0;         // left out: inside a groove database
     };
 
     // PR7-D's presets folder on this computer.

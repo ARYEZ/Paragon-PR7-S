@@ -57,6 +57,11 @@ namespace pr7s
         const juce::PluginDescription* getStudioDrums();
         bool isStudioDrumsFound() { return getStudioDrums() != nullptr; }
         static constexpr const char* studioDrumsFile = "Paragon PR7-D.vst3";
+        // (0.204.0) And the studio's guitar effects, Paragon PR7-G (a VST3 effect): ARCHITECT puts it on the
+        // inserts of the lead, clean and acoustic guitar lanes' tracks with a suggested tone (GuitarTones.h).
+        const juce::PluginDescription* getStudioGuitar();
+        bool isStudioGuitarFound() { return getStudioGuitar() != nullptr; }
+        static constexpr const char* studioGuitarFile = "Paragon PR7-G.vst3";
 
     private:
         void changeListenerCallback (juce::ChangeBroadcaster*) override;   // the list changed: keep it
@@ -64,9 +69,9 @@ namespace pr7s
         juce::AudioPluginFormatManager formats;
         juce::KnownPluginList known;
         juce::PropertiesFile* settings = nullptr;
-        bool findStudioSynth = true, studioSynthLooked = false, studioDrumsLooked = false;
-        std::optional<juce::PluginDescription> studioSynth, studioDrums;
-        // The newest instrument in `file` beside the app or in the VST3 folders (the Backline's search).
-        static std::optional<juce::PluginDescription> findBackline (const char* file);
+        bool findStudioSynth = true, studioSynthLooked = false, studioDrumsLooked = false, studioGuitarLooked = false;
+        std::optional<juce::PluginDescription> studioSynth, studioDrums, studioGuitar;
+        // The newest instrument (or, `instrument` false, effect) in `file` beside the app or in the VST3 folders (the Backline's search).
+        static std::optional<juce::PluginDescription> findBackline (const char* file, bool instrument = true);
     };
 }

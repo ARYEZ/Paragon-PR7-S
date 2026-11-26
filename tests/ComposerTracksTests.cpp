@@ -41,7 +41,7 @@ TEST_CASE ("0.112.0: COMPOSER TRACKS: the names each lane looks for", "[composer
 
     // Any case, any of the names, the first name's track first.
     const auto di = addNamed (studio, "bass di");
-    CHECK (studio.findIdeaTrack (LineIdea::Part::bass) == 0);
+    CHECK (studio.findIdeaTrack (LineIdea::Part::bass) == di);   // (0.192.0: "Bass"'s word is in its name)
     studio.setComposerTracks (LineIdea::Part::bass, { juce::StringArray ("Bass", "Bass DI"), false });
     CHECK (studio.findIdeaTrack (LineIdea::Part::bass) == di);
     const auto bass = addNamed (studio, "BASS");
@@ -74,6 +74,42 @@ TEST_CASE ("0.112.0: COMPOSER TRACKS: the names each lane looks for", "[composer
     studio.resetComposerTracks();
     CHECK (studio.getComposerTracks (LineIdea::Part::rhythm).names == juce::StringArray ("Guitar"));
     CHECK_FALSE (studio.getComposerTracks (LineIdea::Part::rhythm).every);
+}
+
+TEST_CASE ("0.192.0: a lane's name finds tracks with its words in their names", "[composer][composertracks]")
+{
+    Studio studio (false);
+    // The owner's: the guitar lane named Rhythm, EVERY on, two tracks "Rhythm Guitar Left" and "Rhythm Guitar Right".
+    const auto drums = addNamed (studio, "Drums");
+    const auto bass = addNamed (studio, "Bass");
+    const auto left = addNamed (studio, "Rhythm Guitar Left"), right = addNamed (studio, "Rhythm Guitar Right");
+    const auto lead = addNamed (studio, "Lead Guitar");
+    const auto clean = addNamed (studio, "Clean Guitar");
+    studio.setComposerTracks (LineIdea::Part::rhythm, { juce::StringArray ("Rhythm"), true });
+    CHECK (studio.findIdeaTracks (LineIdea::Part::rhythm) == std::vector<int> { left, right });
+    studio.setComposerTracks (LineIdea::Part::rhythm, { juce::StringArray ("Rhythm"), false });
+    CHECK (studio.findIdeaTracks (LineIdea::Part::rhythm) == std::vector<int> { left });
+
+    // The usual name "Guitar" finds them too, but not the tracks other lanes' names fit as well (Lead Guitar, Clean Guitar).
+    studio.setComposerTracks (LineIdea::Part::rhythm, { juce::StringArray ("Guitar"), true });
+    CHECK (studio.findIdeaTracks (LineIdea::Part::rhythm) == std::vector<int> { left, right });
+    CHECK (studio.findIdeaTracks (LineIdea::Part::lead) == std::vector<int> { lead });
+    CHECK (studio.findIdeaTracks (LineIdea::Part::clean) == std::vector<int> { clean });
+    CHECK (studio.findIdeaTracks (LineIdea::Part::bass) == std::vector<int> { bass });
+    CHECK (studio.findIdeaTrack (LineIdea::Part::drums) == drums);
+
+    // A whole name still wins over words: one named exactly "Guitar" comes first.
+    studio.setComposerTracks (LineIdea::Part::rhythm, { juce::StringArray ("Guitar"), false });
+    const auto plain = addNamed (studio, "guitar");
+    CHECK (studio.findIdeaTrack (LineIdea::Part::rhythm) == plain);
+
+    // Words are whole words: "Rhythm" doesn't find "Rhythmic Pad"; a name of two words needs both.
+    studio.setComposerTracks (LineIdea::Part::chords, { juce::StringArray ("Rhythm Keys"), false });
+    addNamed (studio, "Rhythmic Pad");
+    addNamed (studio, "Keys");
+    CHECK (studio.findIdeaTrack (LineIdea::Part::chords) == 0);
+    const auto rk = addNamed (studio, "Rhythm Keys 2");
+    CHECK (studio.findIdeaTrack (LineIdea::Part::chords) == rk);
 }
 
 TEST_CASE ("0.112.0: a lane on two tracks: the second a looser copy", "[composer][composertracks]")
@@ -171,6 +207,8 @@ TEST_CASE ("0.112.0: the Hub's COMPOSER TRACKS page", "[composertracks][ui]")
     ComposerTracksPage page (studio);
     page.setSize (900, 640);
     CHECK (page.getRow (1).names.getText() == "Guitar");
+    CHECK (page.getFoundText (1) == "IN THIS SONG: GUITAR L");   // (0.192.0: "Guitar"'s word in its name; EVERY off: the first)
+    page.setNames (1, "Piano Two");
     CHECK (page.getFoundText (1).contains ("NONE YET"));
     page.setNames (1, "guitar l, Guitar R");
     page.setEvery (1, true);

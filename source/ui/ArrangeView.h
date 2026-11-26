@@ -1,5 +1,7 @@
 #pragma once
 
+#include <map>
+
 #include "ui/ChordEventEditor.h"
 #include <juce_gui_basics/juce_gui_basics.h>
 
@@ -114,6 +116,13 @@ struct Timeline
     };
     std::vector<Row> layout (const pr7s::Studio&) const;
     int contentHeight (const pr7s::Studio&) const;
+    // (0.191.0) The last layout, kept by the song's change version and the row zoom (it was worked out
+    // afresh 2-3 times a paint and twice a mouse move, each a walk of the folders for every track).
+    struct KeptLayout { const pr7s::Studio* studio = nullptr; const void* tracks = nullptr; size_t count = 0;
+                        juce::uint64 version = 0; double zoom = 0.0; std::vector<Row> rows; };
+    mutable KeptLayout kept;
+    int getLayoutsMade() const noexcept { return layoutsMade; }   // (tests)
+    mutable int layoutsMade = 0;
 };
 
 // The arrangement (inspired by Cubase's project window, in our look): the ruler with
@@ -225,6 +234,14 @@ public:
     void setTool (Tool);
     Tool getTool() const noexcept { return tool; }
     void nextTool (bool forward);   // F10 / F9
+    // (0.187.0, the manual's Object Selection tool modes) How SELECT sizes a part: Normal Sizing (an edge
+    // trims), Sizing Moves Contents (a left edge carries the content), Sizing Applies Time Stretch (the
+    // content stretched or squeezed to fit). Settings "selectSizing". `pressToolKey`: a tool's number key
+    // (or its key in the row) pressed: 1 again while SELECT is the tool goes to the next sizing.
+    void pressToolKey (Tool);
+    pr7s::Sizing getSelectSizing() const noexcept { return selectSizing; }
+    void setSelectSizing (pr7s::Sizing);
+    void showSizingMenu (juce::Component* target);   // SELECT clicked again: the three, the one in use ticked
     std::function<void()> onToolChange;
     void splitAtCursor();           // Alt+X
     // P (Locators to Selection): the range, else the selected part (none: false).
@@ -347,11 +364,27 @@ public:
     void showSectionEditor (int index);
     SectionEditor* getSectionEditor() const;
     void showAddSectionMenu (int insertAt, juce::Point<int> where = {});   // insertAt -1: after the last
+    // (0.229.0, the owner: as the track list's numbers) Each block's place, 1 from the left, in a box at its top left.
+    // A double-click on it types a new place: the block moves there (Studio::moveSongSection: its music with it,
+    // one undo step); past the end: last.
+    juce::Rectangle<float> getSectionNumberBox (int index) const;   // empty: the block too small to show it
+    int sectionNumberOf (int index) const;                          // its place in the order drawn, from 1
+    bool moveSectionToNumber (int index, int number);
+    void editSectionNumber (int index);
+    juce::TextEditor* getSectionNumberEditor() const noexcept { return sectionNumberEntry != nullptr && sectionNumberEntry->isVisible() ? sectionNumberEntry.get() : nullptr; }
+    void commitSectionNumber();                                     // the typed number applied, the box closed
+    void closeSectionNumber();
 
     // Folder tracks (0.50.0, the manual's Folder Parts): a folder's row shows its tracks' parts as
     // blocks (where any of them has a part; each track a strip inside). A click on a block selects
     // every part in it (Shift: adds them), a drag moves them all along the song (Alt: copies them).
     std::vector<std::pair<double, double>> folderBlocks (int folderId) const;   // beats, merged
+    // (0.191.0) Kept per change: folderBlocks for each folder painted, and each MIDI part's range of pitches.
+    mutable std::map<int, std::vector<std::pair<double, double>>> keptFolderBlocks;
+    mutable juce::uint64 keptFolderVersion = ~juce::uint64 (0);
+    struct PitchRange { juce::uint64 version = 0; const void* notes = nullptr; size_t count = 0; int lowest = 127, highest = 0; };
+    mutable std::map<int, PitchRange> keptPitchRanges;   // by part id
+    std::pair<int, int> pitchRangeOf (const pr7s::Part&) const;
     std::vector<int> folderPartsIn (int folderId, double start, double end) const;   // part ids
     // Where an event is drawn, and the tempo row's curve area (tests).
     juce::Point<float> getTempoEventPosition (int index) const;
@@ -586,7 +619,12 @@ private:
                       tempoPoints, tempoBand, tempoDraw, chordMove, chordStart, chordEnd, comp, takeEdge, slip, audition, warpMarker,
                       markerMove, markerStart, markerEnd, markerNewCycle,   // (0.49.0)
                       folderMove,   // (0.50.0)
-                      sectionMove };   // (0.90.0) a block of the SECTIONS row dragged to another place in the order
+                      sectionMove,   // (0.90.0) a block of the SECTIONS row dragged to another place in the order
+                      sizeStart, sizeEnd };   // (0.187.0) an edge dragged with Sizing Moves Contents / Applies Time Stretch
+    pr7s::Sizing selectSizing = pr7s::Sizing::normal;
+    pr7s::Sizing dragSizing = pr7s::Sizing::normal;
+    void sizeDrag (const juce::MouseEvent&, double beat, double grid);
+    juce::MouseCursor sizingCursorFor (bool onEdge);   // SELECT's pointer with its sizing's mark (kept in toolCursors)
     // WARP (0.32.0, the manual's Free Warp in the event display): the marker being dragged.
     int warpPartId = 0, warpIndex = -1;
     double warpTo = 0.0;
@@ -698,6 +736,11 @@ private:
     void sectionUp();
     bool sectionDoubleClick (const juce::MouseEvent&);
     std::vector<int> shownSectionOrder() const;   // the blocks' indices in the order drawn (a drag's on the way)
+    struct SectionPlaceShown { juce::Rectangle<float> bounds; int number = 0; };
+    std::vector<SectionPlaceShown> sectionPlacesShown() const;   // (0.229.0) by block index
+    static juce::Rectangle<float> numberBoxIn (juce::Rectangle<float> bounds, int number);
+    std::unique_ptr<juce::TextEditor> sectionNumberEntry;   // (0.229.0: open while a block's number is typed)
+    int sectionNumberId = 0;
     void paintFolders (juce::Graphics&);
     bool folderDown (const juce::MouseEvent&);
     std::vector<int> folderDragIds;
@@ -790,6 +833,7 @@ class ToolKey final : public juce::TextButton
 {
 public:
     ArrangeView::Tool tool = ArrangeView::Tool::select;
+    pr7s::Sizing sizing = pr7s::Sizing::normal;   // (0.187.0: SELECT's mark)
     bool iconOnly = false;
     void paintButton (juce::Graphics&, bool highlighted, bool down) override;
 };

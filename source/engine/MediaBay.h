@@ -89,7 +89,7 @@ namespace pr7s
         juce::String presetClass, presetPlugin;
         bool presetInstrument = false;
         int readVersion = currentReadVersion;
-        static constexpr int currentReadVersion = 3;   // (older items are read again: 0.22.2 reads more)
+        static constexpr int currentReadVersion = 5;   // (older items are read again: 0.22.2, 0.224.0 and 0.225.0 read more)
         double tempo() const noexcept { return tags.bpm > 0.0 ? tags.bpm : bpm; }   // your tempo, else the name's or file's
         juce::String keyName() const { return tags.key.isNotEmpty() ? tags.key : key; }
         juce::String searchText() const;   // what a text search looks in (lower case; the tags too)
@@ -203,12 +203,24 @@ namespace pr7s
         // the files the query finds without that column's own filter (so a sub category column
         // shows the chosen categories' subs).
         std::vector<std::pair<juce::String, int>> valueCounts (const MediaQuery&, const AttributeId&) const;
+        // (0.190.0) Every column's counts in one walk (the same as valueCounts for each).
+        std::vector<std::vector<std::pair<juce::String, int>>> valueCountsAll (const MediaQuery&, const std::vector<AttributeId>& columns) const;
 
         // A file's attributes, read now (any thread).
         static MediaItem read (const juce::File&, juce::AudioFormatManager&);
         static double bpmFromName (const juce::String&);          // "Beat 120bpm", "loop_95_bpm": 0 if none
         static juce::String keyFromRootNote (int midiNote, int mode);   // mode 1 minor, 0 major, -1 unknown (a plain letter)
-        static MediaTags tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key);   // the other DAW's iXML attributes
+        // The other DAW's iXML attributes (0.224.0: by the names it writes: MusicalInstrument
+        // "Category|Sub", MusicalStyle "Style|Sub", MusicalCharacter, MusicalTempo, MediaComment,
+        // MediaGenre; the library, album, artist and title into `searchable`).
+        static MediaTags tagsFromIXml (const juce::String& ixml, double& bpm, juce::String& key, juce::StringArray* searchable = nullptr);
+        // Apple Loops' tags (an AIFF's "cate" chunk, as JUCE gives them: "Rock/Blues;Guitars;Electric..."):
+        // the genre as the style, the instrument as the category, the descriptors as character sides.
+        static MediaTags tagsFromAppleLoop (const juce::String& appleTags, juce::StringArray* searchable = nullptr);
+        // 0.225.0: tags guessed from the words of a file's name and of the folders it's in (most
+        // sample packs write none into their files: "Ghosthack-T2_Kit_40_Lead_Synth_FMaj" is SYNTH /
+        // LEAD). The name's words first, then the nearest folders'; our own word lists.
+        static MediaTags tagsFromWords (const juce::File& file);
         static juce::String readIXml (const juce::File& wav);     // a WAV's iXML chunk ("" if none)
         // A .vstpreset's header and Info (0.24.0): the class id, and the Info's attributes
         // (the VST3 SDK's preset keys: PlugInName, PlugInCategory, MusicalInstrument, MusicalStyle,
@@ -254,6 +266,29 @@ namespace pr7s
         std::vector<AttributeList> userCategories, userStyles;
         std::vector<UserAttribute> userAttributes;
         bool passes (int index, const MediaQuery&, const TextSearch&, const juce::String& folderPath) const;
+        bool passesBase (int index, const MediaQuery&, const TextSearch&, const juce::String& folderPath) const;   // (all but the filters)
+        bool passesFilter (int index, const AttributeFilter&) const;
+        // (0.190.0) Each item's values of one attribute as numbers into a list of its values, made again when the
+        // generation changes (the items, their ratings or tags).
+        struct AttributeIds
+        {
+            bool made = false;
+            juce::uint32 generation = 0;
+            size_t count = 0;
+            juce::StringArray values;
+            std::vector<int> offsets, ids;   // item i's: ids[offsets[i] .. offsets[i + 1])
+        };
+        const AttributeIds& attributeIdsOf (const AttributeId&) const;
+        // (0.190.0) A scan's results sorted and indexed on its own thread (takeScanResults uses them when they fit).
+        struct PreparedIndex
+        {
+            size_t count = 0;
+            std::unordered_map<juce::String, int> byPath;
+            std::vector<juce::String> parents;
+        };
+        static PreparedIndex prepareScan (std::vector<MediaItem>&);
+        std::optional<PreparedIndex> pendingIndex;   // (under pendingLock, with `pending`)
+        mutable std::map<juce::String, AttributeIds> attributeIds;
         void dropUnincluded();
         // (0.163.0) Kept beside `items`, made again whenever they change: each one's index by path, its folder's
         // path, its search text (made when first asked), its place by name and by folder (made when first sorted).

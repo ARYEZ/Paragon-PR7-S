@@ -369,6 +369,23 @@ TEST_CASE ("Snapshot: the composer (0.58.0)", "[.][snapshot-composer]")
             page.setDoubleSync (L::drums, true);
         }
         page.setSize (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_SYNC", {}) == "1" ? 1700 : 1500, 900);
+        // (0.202.0) PARAGON_SNAPSHOT_BARLOCKS=1: the drums' bars 1-3 and 5-7 locked, rolled to a fill; bars 2-4 of the
+        // bass chosen.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_BARLOCKS", {}) == "1")
+        {
+            page.setSize (1700, 900);
+            page.lockBars (L::drums, 0x77);
+            page.roll (L::drums);
+            page.setLocked (L::bass, false);
+            page.lockBars (L::bass, 0x3f);
+            page.selectBars (L::melody, 1, 3);
+        }
+        // (0.219.0) PARAGON_SNAPSHOT_WORLD=1: the keys lane in the CYBERPUNK world (its pumping pads).
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_WORLD", {}) == "1")
+        {
+            page.setWorld (L::chords, 1);
+            page.styleMenuChosen (L::chords, ComposerPage::approachItems + 1 + 3);
+        }
         const auto image = page.createComponentSnapshot (page.getLocalBounds(), true, 1.0f);
         juce::File (path).deleteFile();
         juce::FileOutputStream out { juce::File (path) };
@@ -921,12 +938,17 @@ TEST_CASE ("0.76.0: the mixer while the composer is heard: faders follow, hearin
     const auto before = heardPeak();
     REQUIRE (before > 0.001f);
 
-    // The track's fader down 20 dB (as the mixer's drag, then its release): still heard, quieter.
-    studio.setVolume (piano, -20.0f, false);
-    studio.setVolume (piano, -20.0f, true);
+    // (0.206.0) The lane's ARCHITECT level down 20 dB: still heard, quieter; the track's fader isn't what HEAR plays at.
+    const auto faderBefore = studio.getProject().findTrack (piano)->volumeDb;
+    studio.setLaneLevel (Studio::composerTrackLane (LineIdea::Part::chords), studio.getLaneLevel (LineIdea::Part::chords) - 20.0f);
     CHECK (studio.isComposerAuditioning());
     CHECK (studio.getEngine().isPlaying());
     CHECK (heardPeak() < before * 0.3f);
+    CHECK (studio.isComposerAuditioning());
+    CHECK (studio.getProject().findTrack (piano)->volumeDb == faderBefore);
+    // A fader move in the mixer (a rebuild of the copy): the hearing goes on.
+    studio.setVolume (piano, -20.0f, false);
+    studio.setVolume (piano, -20.0f, true);
     CHECK (studio.isComposerAuditioning());
 
     // Muted in the mixer: not heard, the hearing goes on.
@@ -935,11 +957,12 @@ TEST_CASE ("0.76.0: the mixer while the composer is heard: faders follow, hearin
     CHECK (heardPeak() < 1.0e-4f);
     studio.setMute (piano, false);
 
-    // The composer's lanes: VOLUME is that track's fader.
+    // The composer's lanes: VOLUME is the lane's ARCHITECT level (0.206.0), never the track's fader.
     ComposerPage page (studio);
     page.setTrack (L::chords, piano);
     page.setLaneVolume (L::chords, -6.0f);
-    CHECK (studio.getProject().findTrack (piano)->volumeDb == -6.0f);
+    CHECK (studio.getLaneLevel (LineIdea::Part::chords) == -6.0f);
+    CHECK (studio.getProject().findTrack (piano)->volumeDb == -20.0f);
     page.setTrack (L::chords, piano);   // (a refresh)
     CHECK (page.getLaneVolume (L::chords).getValue() == -6.0);
     REQUIRE (page.keyNamed ("MIXER") != nullptr);

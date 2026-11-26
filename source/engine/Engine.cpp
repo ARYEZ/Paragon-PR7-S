@@ -1,4 +1,8 @@
 #include "Engine.h"
+#if JUCE_INTEL
+ #include <immintrin.h>
+#endif
+#include <thread>
 #include "Controllers.h"
 #include "SessionLog.h"
 #include "Patterns.h"
@@ -50,21 +54,48 @@ namespace pr7s
                     }
         }
 
+        // (0.190.0) With `current` (what the engine plays now, read on the message thread, which alone
+        // writes its lanes): when the lanes read would be exactly those, `kept` is set and nothing is
+        // copied (every update copied every read lane's points, a fader step's too).
         template <typename LaneStates>
         void readLanes (const std::vector<AutomationLane>& lanes, bool read, LaneStates& into, bool& mixAutomated,
-                        int busId, const std::vector<std::pair<int, AutomationLane>>& held, const Project::AutomationSettings& automation)
+                        int busId, const std::vector<std::pair<int, AutomationLane>>& held, const Project::AutomationSettings& automation,
+                        const LaneStates* current = nullptr, bool* kept = nullptr)
         {
             mixAutomated = false;
             const auto isHeld = [&] (const AutomationLane& lane)
             {
                 return std::any_of (held.begin(), held.end(), [&] (const auto& h) { return h.first == busId && h.second.sameControl (lane); });
             };
+            const auto playsBack = [&] (const AutomationLane& lane)
+            {
+                return read && ! lane.muted && ! lane.points.empty() && ! isHeld (lane)
+                       && ! automation.suspendRead[(size_t) Project::AutomationSettings::groupOf (lane)];   // (0.28.0: Suspend Read)
+            };
+            using T = AutomationLane::Target;
+            if (current != nullptr && kept != nullptr)
+            {
+                size_t n = 0;
+                auto same = true;
+                auto mix = false;
+                for (const auto& lane : lanes)
+                    if (playsBack (lane))
+                    {
+                        same = same && n < current->size() && (*current)[n].lane == lane;
+                        ++n;
+                        mix = mix || lane.target == T::volume || lane.target == T::pan || lane.target == T::mute;
+                    }
+                if (same && n == current->size())
+                {
+                    *kept = true;
+                    mixAutomated = mix;
+                    return;
+                }
+            }
             for (const auto& lane : lanes)
-                if (read && ! lane.muted && ! lane.points.empty() && ! isHeld (lane)
-                    && ! automation.suspendRead[(size_t) Project::AutomationSettings::groupOf (lane)])   // (0.28.0: Suspend Read)
+                if (playsBack (lane))
                 {
                     into.push_back ({ lane, -1.0f });
-                    using T = AutomationLane::Target;
                     mixAutomated = mixAutomated || lane.target == T::volume || lane.target == T::pan || lane.target == T::mute;
                 }
         }
@@ -295,6 +326,7 @@ namespace pr7s
         // (0.164.0) Room for its busiest block at this block size (at up to 300 BPM; update makes it again when its events change).
         const auto room = midiRoomOf (track.events, (double) maxBlockSize / juce::jmax (1.0, sampleRate) * 5.0);
         track.midi.ensureSize (room);
+        track.midiRoom = juce::jmax (track.midiRoom, room);
         track.effectMidi.ensureSize (room);   // (0.34.5: each track's own: effects may run on several cores at once)
         track.preFaderCopy.setSize (2, maxBlockSize);
         track.left.reset (sampleRate, gainRampSeconds);
@@ -648,7 +680,8 @@ namespace pr7s
         struct Prepared { int id; std::vector<Event> events; std::vector<Event> controllerEvents; std::pair<float, float> gains; std::vector<bool> bypass; std::vector<Clip> clips;
                           std::vector<LaneState> automation; bool mixAutomated = false; bool eventsKept = false; bool clipsKept = false;
                           std::array<juce::int16, 128> drumOut {}; std::array<juce::int8, 128> drumChannel {}; std::array<juce::uint8, 128> drumIn {};
-                          size_t midiRoom = 0; std::bitset<131> controllerKinds {}; };
+                          size_t midiRoom = 0; std::bitset<131> controllerKinds {};
+                          std::vector<Event> noteEvents {}; bool automationKept = false; };
         std::vector<Prepared> prepared;
         // (0.164.0) The bytes a track's MIDI buffers need for its busiest block (grown here, under the lock, never on the
         // audio thread): the most events in any stretch of a block's beats at the song's fastest tempo, twice over (a cycle's
@@ -669,11 +702,13 @@ namespace pr7s
                 p.drumOut[(size_t) n] = (juce::int16) n, p.drumChannel[(size_t) n] = -1, p.drumIn[(size_t) n] = (juce::uint8) n;
             for (const auto& insert : track.inserts)
                 p.bypass.push_back (insert.bypass);
-            readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated, track.id, held, project.automationSettings);
+            readLanes (track.automation, track.automationRead, p.automation, p.mixAutomated, track.id, held, project.automationSettings,
+                       engineTrack != nullptr ? &engineTrack->automation : nullptr, &p.automationKept);
             if (track.disabled)
             {
                 // Disabled: nothing played, nothing read from disk (its plugins are unloaded too).
                 p.automation.clear();
+                p.automationKept = false;
                 p.mixAutomated = false;
                 prepared.push_back (std::move (p));
                 continue;
@@ -704,7 +739,16 @@ namespace pr7s
                 };
                 const auto soundFor = [&] (const Part& part)
                 {
-                    return part.isWarped() && warpSource ? warpSource (part, tempo) : soundOf (part.audioFile);
+                    if (part.isWarped() && warpSource)
+                    {
+                        ++warpSourceCalls;
+                        return warpSource (part, tempo);
+                    }
+                    return soundOf (part.audioFile);
+                };
+                const auto warpedStamp = [&] (const Part& part) -> juce::uint64
+                {
+                    return part.isWarped() && warpSource && soundStamp ? soundStamp (part.audioFile) : 0;
                 };
                 // (0.57.2) Built from the same parts, solo lane, auto fades, tempo and rate, the same parts
                 // are heard; if they still play the very same sounds, the same clips would come out: kept
@@ -715,10 +759,16 @@ namespace pr7s
                     const auto& built = engineTrack->builtFrom;
                     auto same = built.valid && built.parts == track.parts && built.soloLane == track.soloLane
                                 && built.fades == fadesNow && built.tempo == tempo.getEvents() && built.rate == sampleRate
-                                && built.sounds.size() == track.parts.size();
+                                && built.sounds.size() == track.parts.size() && built.stamps.size() == track.parts.size();
                     for (size_t i = 0; same && i < track.parts.size(); ++i)
                         if (built.sounds[i] != nullptr)
-                            same = soundFor (track.parts[i]).get() == built.sounds[i];
+                        {
+                            const auto& part = std::as_const (track.parts)[i];
+                            if (built.stamps[i] != 0)
+                                same = warpedStamp (part) == built.stamps[i];   // (the same part, tempo, rate and sound: the same stretch)
+                            else
+                                same = soundFor (part).get() == built.sounds[i];
+                        }
                     if (same)
                     {
                         p.clipsKept = true;
@@ -729,11 +779,13 @@ namespace pr7s
                 const auto heardOf = heardStretchesOf (track);
                 std::vector<decltype (audioSource (juce::String()))> partSounds (track.parts.size());
                 std::vector<const void*> soundIds (track.parts.size(), nullptr);
+                std::vector<juce::uint64> stamps (track.parts.size(), 0);
                 for (int i = 0; i < (int) track.parts.size(); ++i)
                 {
                     const auto& part = track.parts[(size_t) i];
                     if (! part.isAudio() || ! audioSource || heardOf[(size_t) i].empty())
                         continue;
+                    stamps[(size_t) i] = warpedStamp (part);   // (before the sound: a sound made after it can only be newer)
                     partSounds[(size_t) i] = soundFor (part);
                     soundIds[(size_t) i] = partSounds[(size_t) i].get();
                 }
@@ -744,6 +796,7 @@ namespace pr7s
                     built.parts = track.parts;
                     built.soloLane = track.soloLane;
                     built.sounds = soundIds;
+                    built.stamps = stamps;
                     built.fades = fadesNow;
                     built.tempo = tempo.getEvents();
                     built.rate = sampleRate;
@@ -903,6 +956,8 @@ namespace pr7s
                     p.controllerEvents.push_back (e);
                     p.controllerKinds.set (kind == 0xb0 ? (size_t) (e.data1 & 0x7f) : kind == 0xe0 ? 128u : kind == 0xd0 ? 129u : 130u);
                 }
+                else if (kind == 0x80 || kind == 0x90)
+                    p.noteEvents.push_back (e);
             }
             p.midiRoom = midiRoomFor (p.events);
             prepared.push_back (std::move (p));
@@ -931,8 +986,20 @@ namespace pr7s
         bool masterLanesMix = false;
         readLanes (project.masterAutomation, project.masterRead, masterLanes, masterLanesMix, masterBus, held, project.automationSettings);
 
+        // (0.190.0) What's worked out from the song made before the lock (the audio thread waits for it):
+        // the bars, and the EQ designs that changed (the message thread alone writes the settings read here).
+        auto signatures = project.signatures();
+        std::optional<EqDesign> masterDesign;
+        if (! (masterEqSettings == project.masterEq))
+            masterDesign = designEq (project.masterEq, sampleRate);
+        std::vector<std::optional<EqDesign>> designs (prepared.size());
+        for (size_t i = 0; i < prepared.size(); ++i)
+            if (const auto* track = findTrack (prepared[i].id))
+                if (const auto* t = project.findTrack (prepared[i].id); t != nullptr && ! (track->eqSettings == t->eq))
+                    designs[i] = designEq (t->eq, sampleRate);
+
         const juce::ScopedLock sl (lock);
-        settings = { std::move (tempo), tempoVersion, project.signatures(), project.loopOn,
+        settings = { std::move (tempo), tempoVersion, std::move (signatures), project.loopOn,
                      project.loopStart, juce::jmax (project.loopStart + 0.0625, project.loopEnd), project.click, masterLevel,
                      project.masterVolumeDb, project.automationSettings.virginTerritory };
         keepApplied (masterLanes, masterAutomation);
@@ -941,25 +1008,27 @@ namespace pr7s
         liveFollowMode = liveMode;
         liveFollowTrack = liveModeTrack;
         masterPreFader = project.masterPreFaderSlots;
-        if (! (masterEqSettings == project.masterEq))
+        if (masterDesign)
         {
             masterEqSettings = project.masterEq;
-            masterEq.setDesign (designEq (masterEqSettings, sampleRate));
+            masterEq.setDesign (*masterDesign);
         }
         masterBoostGain = project.masterBoost.gain();   // (0.78.0)
         masterAutomated = masterLanesMix;
-        for (auto& p : prepared)
-            if (auto* track = findTrack (p.id))
+        for (size_t pi = 0; pi < prepared.size(); ++pi)
+            if (auto& p = prepared[pi]; auto* track = findTrack (p.id))
             {
                 if (p.midiRoom > 0)
                 {
                     track->midi.ensureSize (p.midiRoom);   // (no allocation when the room is there)
+                    track->midiRoom = juce::jmax (track->midiRoom, p.midiRoom);
                     track->effectMidi.ensureSize (p.midiRoom);
                 }
                 if (! p.eventsKept)
                 {
                     std::swap (track->events, p.events);   // the old list goes out with `prepared`
                     std::swap (track->controllerEvents, p.controllerEvents);
+                    std::swap (track->noteEvents, p.noteEvents);
                     std::swap (track->controllerKinds, p.controllerKinds);
                     track->checkHeld = true;
                 }
@@ -980,10 +1049,10 @@ namespace pr7s
                     track->mute = t->mute || t->disabled;
                     track->soloedOut = soloedOut (*t);
                     track->preFader = t->preFaderSlots;
-                    if (! (track->eqSettings == t->eq))   // (0.43.0: designed only when it changed)
+                    if (designs[pi])   // (0.43.0: designed only when it changed; 0.190.0: before the lock)
                     {
                         track->eqSettings = t->eq;
-                        track->eq.setDesign (designEq (t->eq, sampleRate));
+                        track->eq.setDesign (*designs[pi]);
                     }
                     track->boostGain = t->boost.gain();   // (0.78.0)
                     track->output = t->output;
@@ -997,8 +1066,11 @@ namespace pr7s
                         send.preFader = from != nullptr && from->preFader;
                     }
                 }
-                keepApplied (p.automation, track->automation);
-                std::swap (track->automation, p.automation);
+                if (! p.automationKept)
+                {
+                    keepApplied (p.automation, track->automation);
+                    std::swap (track->automation, p.automation);
+                }
                 track->drumOut = p.drumOut;
                 track->drumChannel = p.drumChannel;
                 track->drumIn = p.drumIn;
@@ -1052,17 +1124,25 @@ namespace pr7s
 
     void Engine::updateMix (const Project& project)
     {
+        // (0.190.0) The EQ designs that changed made before the lock (an EQ knob's drag steps come this way).
+        std::optional<EqDesign> masterDesign;
+        if (! (masterEqSettings == project.masterEq))
+            masterDesign = designEq (project.masterEq, sampleRate);
+        std::vector<std::optional<EqDesign>> designs (project.tracks.size());
+        for (size_t i = 0; i < project.tracks.size(); ++i)
+            if (const auto* track = findTrack (project.tracks[i].id); track != nullptr && ! (track->eqSettings == project.tracks[i].eq))
+                designs[i] = designEq (project.tracks[i].eq, sampleRate);
         const juce::ScopedLock sl (lock);
         settings.masterGain = levelOf (project.masterVolumeDb);
         settings.masterVolumeDb = project.masterVolumeDb;
-        if (! (masterEqSettings == project.masterEq))
+        if (masterDesign)
         {
             masterEqSettings = project.masterEq;
-            masterEq.setDesign (designEq (masterEqSettings, sampleRate));
+            masterEq.setDesign (*masterDesign);
         }
         masterBoostGain = project.masterBoost.gain();
-        for (const auto& t : project.tracks)
-            if (auto* track = findTrack (t.id))
+        for (size_t ti = 0; ti < project.tracks.size(); ++ti)
+            if (const auto& t = project.tracks[ti]; auto* track = findTrack (t.id))
             {
                 // As `update` sets them: mute, disabled and solo are those it last set (not part of a mix move).
                 track->volumeDb = t.volumeDb;
@@ -1070,10 +1150,10 @@ namespace pr7s
                 const auto gains = sideGains (t, ! track->mute && ! track->soloedOut);
                 track->gainLeft = gains.first;
                 track->gainRight = gains.second;
-                if (! (track->eqSettings == t.eq))
+                if (designs[ti])
                 {
                     track->eqSettings = t.eq;
-                    track->eq.setDesign (designEq (t.eq, sampleRate));
+                    track->eq.setDesign (*designs[ti]);
                 }
                 track->boostGain = t.boost.gain();
                 for (int s = 0; s < Project::maxSends; ++s)
@@ -1303,13 +1383,15 @@ namespace pr7s
         // its channel, before the same key starts again (else it would ring
         // until stop: the part was muted, the note deleted, moved or transposed).
         const auto channelBits = (juce::uint8) (track.heldChannel - 1);
-        const auto from = std::lower_bound (track.events.begin(), track.events.end(), beatNow - 1.0e-9,
+        // (0.190.0) Over the note events alone (a dense controller ramp no longer walked through).
+        const auto& notes = track.noteEvents;
+        const auto from = std::lower_bound (notes.begin(), notes.end(), beatNow - 1.0e-9,
                                             [] (const Event& e, double beat) { return e.beat < beat; });
         // (0.34.1) One walk for every held note, stopping once each has met its next on or off (it
         // walked the list once per note, to its end for a note never ended: a spike after an edit).
         auto unsettled = track.held;
         std::bitset<128> ends;
-        for (auto it = from; it != track.events.end() && unsettled.any(); ++it)
+        for (auto it = from; it != notes.end() && unsettled.any(); ++it)
         {
             const auto kind = it->status & 0xf0;
             if ((kind != 0x80 && kind != 0x90) || (it->status & 0x0f) != channelBits || ! unsettled.test (it->data1 & 0x7f))
@@ -1353,8 +1435,18 @@ namespace pr7s
         auto* track = findTrack (trackId);
         if (track == nullptr)
             return false;
-        const juce::SpinLock::ScopedLockType outbox (track->outboxLock);
-        track->outbox.addEvent (message, 0);
+        size_t waiting = 0;
+        {
+            const juce::SpinLock::ScopedLockType outbox (track->outboxLock);
+            track->outbox.addEvent (message, 0);
+            waiting = (size_t) track->outbox.data.size();
+        }
+        // (0.229.0) The block's MIDI made room for the messages too (PR7-D's file path as SysEx came on top of a busy
+        // block's notes, and the buffer could grow on the audio thread). Under the lock: the audio thread uses it.
+        {
+            const juce::ScopedLock sl (lock);
+            track->midi.ensureSize (track->midiRoom + waiting + 64);
+        }
         return true;
     }
 
@@ -1606,12 +1698,31 @@ namespace pr7s
     void Engine::renderBlock (juce::AudioBuffer<float>& output, int numSamples)
     {
         output.clear();
-        const juce::ScopedTryLock sl (lock);
-        if (! sl.isLocked())
+        // (0.190.0) The screen swaps things in under the lock for a moment: tried again for up to half a
+        // millisecond before giving up (it gave a silent block at the first miss). Never waited on.
+        auto locked = lock.tryEnter();
+        if (! locked)
+        {
+            const auto until = juce::Time::getHighResolutionTicks() + juce::Time::secondsToHighResolutionTicks (lockRetrySeconds);
+            while (! locked && juce::Time::getHighResolutionTicks() < until)
+            {
+               #if JUCE_INTEL
+                for (int i = 0; i < 32; ++i)
+                    _mm_pause();
+               #else
+                std::this_thread::yield();
+               #endif
+                locked = lock.tryEnter();
+            }
+            if (locked)
+                ++lockRetriesWon;
+        }
+        if (! locked)
         {
             lockMissedThisCall = true;   // (0.57.3: the spike report says so)
             return;   // the screen is swapping something in: one silent block
         }
+        struct Release { juce::CriticalSection& l; ~Release() { l.exit(); } } const release { lock };
         if (std::exchange (newCall, false))
         {
             for (auto& slot : masterInserts)
@@ -1957,10 +2068,19 @@ namespace pr7s
         {
             const auto length = preview->getNumSamples();
             const auto gain = previewGain.load();
+            // (0.229.0) The channels' pointers taken once (they were looked up for every sample).
+            const auto previewChannels = juce::jmin (2, output.getNumChannels());
+            float* outs[2] {};
+            const float* ins[2] {};
+            for (int channel = 0; channel < previewChannels; ++channel)
+            {
+                outs[channel] = output.getWritePointer (channel);
+                ins[channel] = preview->getReadPointer (juce::jmin (channel, preview->getNumChannels() - 1));
+            }
             const auto addSample = [&] (int i, int at)
             {
-                for (int channel = 0; channel < juce::jmin (2, output.getNumChannels()); ++channel)
-                    output.getWritePointer (channel)[i] += gain * preview->getReadPointer (juce::jmin (channel, preview->getNumChannels() - 1))[at];
+                for (int channel = 0; channel < previewChannels; ++channel)
+                    outs[channel][i] += gain * ins[channel][at];
             };
             const auto wait = previewWait.load();
             const auto lockBeats = previewLockBeats.load();

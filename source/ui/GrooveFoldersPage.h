@@ -26,6 +26,9 @@ public:
     void toggle (const juce::File& folder);                   // as its star
     juce::TreeView& getTree() { return tree; }
     juce::String getSummary() const;
+    juce::String getSourceText() const { return source.getText(); }
+    void addFolder (const juce::File&);   // as ADD A GROOVE FOLDER... with that folder chosen
+    void followLibrary();                 // (as the timer) made again when PR7-D's library or a MediaBay scan comes in
 
     static constexpr int starWidth = 24;
 
@@ -36,7 +39,11 @@ private:
     juce::TreeView tree;
     std::unique_ptr<juce::TreeViewItem> root;
     juce::TextButton clearKey { "CLEAR ALL FAVOURITES" };
+    juce::TextButton addKey { "ADD A GROOVE FOLDER..." };   // (0.211.0) into the MediaBay, used when PR7-D has none
     juce::Label summary;
+    juce::Label source;   // (0.211.0) where the grooves come from, and why
+    int shownGeneration = -1, shownScans = -1;
+    std::unique_ptr<juce::FileChooser> chooser;
     juce::Rectangle<int> titleArea, noteArea;
 
     juce::StringArray favourites;   // (0.179.0) the studio's, read when they change (not on every row drawn)

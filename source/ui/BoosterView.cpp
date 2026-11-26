@@ -151,8 +151,9 @@ void BoosterView::paint (juce::Graphics& g)
     g.setColour (ParagonColours::text.withMultipliedAlpha (dim));
     g.setFont (font (13.0f));
     g.drawText ("TRIM", trimReadout.translated (0, -16), juce::Justification::centred);
-    g.setColour (ParagonColours::accent.withMultipliedAlpha (dim));
+    ParagonColours::setTextFill (g, ParagonColours::accent.withMultipliedAlpha (dim), dbText ((float) trim.getValue(), true), trimReadout, juce::Justification::centred);
     g.drawText (dbText ((float) trim.getValue(), true), trimReadout, juce::Justification::centred);
+    ParagonColours::setTextFill (g, ParagonColours::accent.withMultipliedAlpha (dim), dbText (faderDb ((float) fader.getValue()), false), faderReadout, juce::Justification::centred);
     g.drawText (dbText (faderDb ((float) fader.getValue()), false), faderReadout, juce::Justification::centred);
 
     // PR7-C's fader scale: a long line at each mark, short ones between.

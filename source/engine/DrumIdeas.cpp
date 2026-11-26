@@ -578,11 +578,33 @@ namespace pr7s
         }
         const auto& words = sectionWords();
         const auto text = (g.file.getFullPathName() + " " + g.name + " " + g.tags).toLowerCase();   // (0.107.0: PR7-D's labels too)
-        g.fill = text.contains ("fill");
+        g.fill = text.contains ("fill") || fillFolderOf (g.file).kind == 1;   // (0.232.0: a TRANSITIONS folder's too)
+        // (0.210.0) Whole words only: "verse" in "Reverse" or "Universe", "intro" in "Introspective", "hook" in
+        // "Hooked", "solo" in "Consolation" made those grooves count as that part of a song. Letters and digits are
+        // kept apart, so "Verse2" and "Chorus_1" still count.
+        juce::String words2 (" ");
+        juce::juce_wchar last = 0;
+        for (auto t = text.getCharPointer(); ! t.isEmpty(); ++t)
+        {
+            const auto ch = *t;
+            const auto letter = juce::CharacterFunctions::isLetter (ch), digit = juce::CharacterFunctions::isDigit (ch);
+            if (! letter && ! digit)
+            {
+                if (last != ' ')
+                    words2 << ' ';
+                last = ' ';
+                continue;
+            }
+            if (last != 0 && last != ' ' && juce::CharacterFunctions::isDigit (last) != digit)
+                words2 << ' ';
+            words2 << juce::String::charToString (ch);
+            last = ch;
+        }
+        words2 << ' ';
         g.sectionMask = 0;
         for (int k = 0; k < (int) words.size(); ++k)
             for (const auto& w : words[(size_t) k])
-                if (text.contains (w))
+                if (words2.contains (" " + w + " "))
                 {
                     g.sectionMask |= 1 << k;
                     break;
@@ -655,6 +677,66 @@ namespace pr7s
             if (n.start >= from - 1.0e-9)
                 out.push_back ({ n.start - from, n.length, n.pitch, n.velocity });
         std::stable_sort (out.begin(), out.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        return out;
+    }
+
+    FillFolder fillFolderOf (const juce::File& file)
+    {
+        for (auto dir = file.getParentDirectory(); dir.getParentDirectory() != dir; dir = dir.getParentDirectory())
+        {
+            // The name's first word (letters only, any case).
+            // (the name kept in a local: a pointer into a temporary's text dangles past the loop's first part)
+            const auto name = dir.getFileName().toLowerCase();
+            juce::String word;
+            for (auto t = name.getCharPointer(); ! t.isEmpty() && juce::CharacterFunctions::isLetter (*t); ++t)
+                word << juce::String::charToString (*t);
+            if (word == "fill" || word == "fills")
+                return { 0, dir.getParentDirectory() };
+            if (word == "transition" || word == "transitions")
+                return { 1, dir.getParentDirectory() };
+        }
+        return {};
+    }
+
+    std::vector<LineNote> libraryFillNotes (const LibraryGroove& groove, double beatsPerBar, double& length)
+    {
+        length = 0.0;
+        juce::String error;
+        auto notes = notesOf (groove, error);
+        if (notes.empty() || beatsPerBar <= 0.0)
+            return {};
+        auto first = notes.front().start, last = notes.front().start;
+        for (const auto& n : notes)
+        {
+            first = juce::jmin (first, n.start);
+            last = juce::jmax (last, n.start);
+        }
+        int bars = groove.bars;
+        if (bars <= 0)
+        {
+            bars = juce::jmax (1, (int) std::ceil ((last + 1.0e-6) / beatsPerBar));
+            // A landing hit on the last bar line alone (the crash that ends a fill) isn't another bar of fill.
+            const auto lastBar = (bars - 1) * beatsPerBar;
+            const auto onlyLanding = bars > 1 && std::all_of (notes.begin(), notes.end(), [&] (const auto& n)
+                                     { return n.start < lastBar - 1.0e-6 || n.start < lastBar + beatsPerBar / 16.0; });
+            if (onlyLanding && std::abs (last - lastBar) < beatsPerBar / 16.0)
+                --bars;
+        }
+        if (bars > mostFillBars)
+            return {};
+        const auto end = bars * beatsPerBar;
+        const auto quarter = beatsPerBar / 4.0;
+        const auto from = juce::jmax (0.0, std::floor (first / quarter + 1.0e-9) * quarter);
+        if (from >= end - 1.0e-6)
+            return {};
+        std::vector<LineNote> out;
+        for (const auto& n : notes)
+            if (n.start >= from - 1.0e-9 && n.start < end - 1.0e-6)
+                out.push_back ({ n.start - from, juce::jmin (n.length, end - n.start), n.pitch, n.velocity });
+        if (out.empty())
+            return {};
+        std::stable_sort (out.begin(), out.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
+        length = end - from;
         return out;
     }
 

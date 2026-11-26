@@ -5,6 +5,89 @@
 #include "Logo.h"
 
 #include <ParagonFonts.h>
+#include <mutex>
+#include <unordered_map>
+
+//==============================================================================
+namespace ParagonColours
+{
+    juce::ColourGradient accentGradient (juce::Rectangle<float> area, bool vertical, float alpha, float brightness)
+    {
+        // PR7-S's FamilyColours (pink, red, orange) with the two in-betweens Finish::neonGradient uses.
+        const auto shade = [&] (juce::uint32 argb)
+        {
+            const juce::Colour c (argb);
+            return juce::Colour::fromFloatRGBA (juce::jmin (1.0f, c.getFloatRed() * brightness), juce::jmin (1.0f, c.getFloatGreen() * brightness),
+                                                juce::jmin (1.0f, c.getFloatBlue() * brightness), juce::jlimit (0.0f, 1.0f, alpha));
+        };
+        auto from = vertical ? area.getTopLeft() : area.getTopLeft();
+        auto to = vertical ? area.getBottomLeft() : area.getTopRight();
+        if (from.getDistanceFrom (to) < 1.0f)
+            to = from + (vertical ? juce::Point<float> (0.0f, 1.0f) : juce::Point<float> (1.0f, 0.0f));
+        juce::ColourGradient gradient (shade (0xffde0639), from, shade (0xffcd6619), to, false);
+        gradient.addColour (0.25, shade (0xffd90738));
+        gradient.addColour (0.5, shade (0xffd42e2a));
+        gradient.addColour (0.75, shade (0xffcf5c1c));
+        return gradient;
+    }
+
+    void setFill (juce::Graphics& g, juce::Colour colour, juce::Rectangle<float> area, bool vertical)
+    {
+        vertical = vertical || area.getHeight() > area.getWidth() * 3.0f;   // (a thin upright line: down its length)
+        if (isAccent (colour))
+            g.setGradientFill (accentGradient (area, vertical, colour.getFloatAlpha(), litBrightness));
+        else if (isAccentDim (colour))
+            g.setGradientFill (accentGradient (area, vertical, colour.getFloatAlpha(), dimBrightness));
+        else
+            g.setColour (colour);
+    }
+
+    float measuredWidth (const juce::Font& font, const juce::String& text)
+    {
+        // (0.229.0) Kept: every lit word's span was laid out afresh on each paint (JUCE's own drawText keeps its
+        // layouts; this didn't), twice per word. Keyed by the typeface it resolves to, its size and the text.
+        struct Key
+        {
+            const void* typeface; float height, scale, kerning; juce::String text;
+            bool operator== (const Key& o) const { return typeface == o.typeface && height == o.height && scale == o.scale && kerning == o.kerning && text == o.text; }
+        };
+        struct Hash { size_t operator() (const Key& k) const { return (size_t) k.text.hashCode64() ^ std::hash<const void*>() (k.typeface) ^ std::hash<float>() (k.height); } };
+        static std::mutex lock;
+        static std::unordered_map<Key, float, Hash> kept;
+        const auto typeface = font.getTypefacePtr();
+        Key key { typeface.get(), font.getHeight(), font.getHorizontalScale(), font.getExtraKerningFactor(), text };
+        const std::lock_guard<std::mutex> hold (lock);
+        if (const auto found = kept.find (key); found != kept.end())
+            return found->second;
+        juce::GlyphArrangement glyphs;
+        glyphs.addLineOfText (font, text, 0.0f, 0.0f);
+        const auto width = glyphs.getBoundingBox (0, -1, true).getWidth();
+        if (kept.size() >= 2048)
+            kept.clear();   // (a long session: started again rather than grown without end)
+        kept.emplace (std::move (key), width);
+        return width;
+    }
+
+    juce::Rectangle<float> textSpan (const juce::Font& font, const juce::String& text, juce::Rectangle<float> box, juce::Justification justification)
+    {
+        if (text.containsChar ('\n'))
+            return box;
+        const auto width = juce::jmin (box.getWidth(), measuredWidth (font, text));
+        if (justification.testFlags (juce::Justification::right))
+            return box.withLeft (box.getRight() - width);
+        if (justification.testFlags (juce::Justification::horizontallyCentred))
+            return box.withSizeKeepingCentre (width, box.getHeight());
+        return box.withWidth (width);
+    }
+
+    void setTextFill (juce::Graphics& g, juce::Colour colour, const juce::String& text, juce::Rectangle<float> box, juce::Justification justification)
+    {
+        if (isAccent (colour) || isAccentDim (colour))
+            setFill (g, colour, textSpan (g.getCurrentFont(), text, box, justification));
+        else
+            g.setColour (colour);
+    }
+}
 
 ParagonLookAndFeel::ParagonLookAndFeel()
     : regular (juce::Typeface::createSystemTypefaceFor (ParagonFonts::InterRegular_ttf, ParagonFonts::InterRegular_ttfSize)),
@@ -19,8 +102,8 @@ ParagonLookAndFeel::ParagonLookAndFeel()
     setColour (juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     setColour (juce::Slider::textBoxBackgroundColourId, juce::Colours::transparentBlack);
     setColour (juce::Slider::textBoxHighlightColourId, ParagonColours::accentDim);
-    setColour (juce::TextEditor::textColourId, ParagonColours::accent);
-    setColour (juce::CaretComponent::caretColourId, ParagonColours::accent);
+    setColour (juce::TextEditor::textColourId, ParagonColours::pearlWhite);   // (0.189.0: JUCE draws it: no gradient)
+    setColour (juce::CaretComponent::caretColourId, ParagonColours::pearlWhite);
     setColour (juce::TextButton::textColourOffId, ParagonColours::text);
     setColour (juce::ToggleButton::textColourId, ParagonColours::text);
     setColour (juce::TooltipWindow::backgroundColourId, ParagonColours::panel);
@@ -71,7 +154,7 @@ void ParagonLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton
     }
     else
     {
-        g.setColour (ParagonColours::accentDim.darker (0.6f));
+        g.setGradientFill (ParagonColours::accentGradient (led, false, 1.0f, 0.22f));
         g.fillEllipse (led);
     }
     g.setColour (highlighted ? ParagonColours::text : juce::Colours::black);
@@ -82,8 +165,9 @@ void ParagonLookAndFeel::drawToggleButton (juce::Graphics& g, juce::ToggleButton
         // The button's own text colour, so the same switch works on the dark
         // panels (light text) and printed on the silver pedal (dark text).
         const auto textColour = button.findColour (juce::ToggleButton::textColourId);
-        g.setColour (on ? textColour : textColour.withMultipliedAlpha (0.6f));
         g.setFont (textFont (13.0f));
+        ParagonColours::setTextFill (g, on ? textColour : textColour.withMultipliedAlpha (0.6f), button.getButtonText(),
+                                     bounds.withTrimmedLeft (2.0f), juce::Justification::centredLeft);
         g.drawText (button.getButtonText(), bounds.withTrimmedLeft (2.0f), juce::Justification::centredLeft, true);
     }
 }
@@ -149,7 +233,7 @@ void ParagonLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& 
 
     if (button.getProperties()["lit"])
         fill = ParagonColours::accent;   // lit for a moment (SAVE once the song is saved, 0.11.1)
-    g.setColour (button.isEnabled() ? fill : fill.withAlpha (0.4f));
+    ParagonColours::setFill (g, button.isEnabled() ? fill : fill.withAlpha (0.4f), bounds);
     g.fillRoundedRectangle (bounds, 4.0f);
     g.setColour (ParagonColours::panelEdge);
     g.drawRoundedRectangle (bounds, 4.0f, 1.0f);
@@ -160,7 +244,8 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
     if (const auto* size = button.getProperties().getVarPointer (plainTextProperty))
     {
         g.setFont (textFont ((float) *size));
-        g.setColour (button.findColour (juce::TextButton::textColourOffId));
+        ParagonColours::setTextFill (g, button.findColour (juce::TextButton::textColourOffId), button.getButtonText(),
+                                     button.getLocalBounds().reduced (4, 0), juce::Justification::centred);
         g.drawFittedText (button.getButtonText(), button.getLocalBounds().reduced (4, 0), juce::Justification::centred, 1, 0.8f);
         return;
     }
@@ -175,7 +260,22 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
 
     if (! button.getProperties()[pedalButtonProperty])
     {
-        LookAndFeel_V4::drawButtonText (g, button, highlighted, down);
+        // JUCE's own (LookAndFeel_V2's) layout, its colour through setTextFill (0.189.0).
+        const juce::Font font (getTextButtonFont (button, button.getHeight()));
+        g.setFont (font);
+        const auto colour = button.findColour (button.getToggleState() ? juce::TextButton::textColourOnId : juce::TextButton::textColourOffId)
+                              .withMultipliedAlpha (button.isEnabled() ? 1.0f : 0.5f);
+        const int yIndent = juce::jmin (4, button.proportionOfHeight (0.3f));
+        const int cornerSize = juce::jmin (button.getHeight(), button.getWidth()) / 2;
+        const int fontHeight = juce::roundToInt (font.getHeight() * 0.6f);
+        const int leftIndent = juce::jmin (fontHeight, 2 + cornerSize / (button.isConnectedOnLeft() ? 4 : 2));
+        const int rightIndent = juce::jmin (fontHeight, 2 + cornerSize / (button.isConnectedOnRight() ? 4 : 2));
+        const int textWidth = button.getWidth() - leftIndent - rightIndent;
+        const juce::Rectangle<int> textArea (leftIndent, yIndent, textWidth, button.getHeight() - yIndent * 2);
+        ParagonColours::setTextFill (g, colour, button.getButtonText(), textArea, juce::Justification::centred);
+        if (textWidth > 0)
+            g.drawFittedText (button.getButtonText(), textArea, juce::Justification::centred, 2);
+        juce::ignoreUnused (highlighted, down);
         return;
     }
 
@@ -209,7 +309,8 @@ void ParagonLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& bu
     // Light lettering on the black key, lit in the accent orange (or its own colour).
     const auto* lit = button.getProperties().getVarPointer (litColourProperty);
     const auto litColour = lit != nullptr ? juce::Colour ((juce::uint32) (juce::int64) *lit) : ParagonColours::accent;
-    g.setColour (button.isEnabled() ? (on ? litColour : ParagonColours::text) : ParagonColours::textDim);
+    ParagonColours::setTextFill (g, button.isEnabled() ? (on ? litColour : ParagonColours::text) : ParagonColours::textDim,
+                                 button.getButtonText(), area.toNearestInt(), juce::Justification::centred);
     g.drawFittedText (button.getButtonText(), area.toNearestInt(), juce::Justification::centred, 1);
 }
 
@@ -540,7 +641,7 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
         const auto cap = juce::Rectangle<float> (channelFaderCapWidth, (float) channelFaderThumbRadius * 2.0f).withCentre ({ centreX, sliderPos });
         juce::Path outline;
         outline.addRoundedRectangle (cap, 3.5f);
-        juce::DropShadow (juce::Colours::black.withAlpha (0.6f), 8, { 0, 4 }).drawForPath (g, outline);
+        drawRoundedShadow (g, cap, 3.5f, juce::Colours::black.withAlpha (0.6f), 8, { 0, 4 });
         juce::ColourGradient chrome (juce::Colour (0xfffdfcfd), 0.0f, cap.getY(), juce::Colour (0xff5e5b60), 0.0f, cap.getBottom(), false);
         chrome.addColour (0.08, juce::Colour (0xffe6e3e7));
         chrome.addColour (0.4, juce::Colour (0xffb1aeb3));
@@ -644,9 +745,9 @@ void ParagonLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int 
     for (auto position : { minSliderPos, maxSliderPos })
     {
         const auto thumb = juce::Rectangle<float> (14.0f, 14.0f).withCentre ({ position, centreY });
-        g.setColour (ParagonColours::accent.withAlpha (0.25f));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.25f), thumb.expanded (4.0f));
         g.fillEllipse (thumb.expanded (4.0f));
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, thumb);
         g.fillEllipse (thumb);
         g.setColour (ParagonColours::background);
         g.fillEllipse (thumb.reduced (4.5f));
@@ -812,6 +913,66 @@ SharedParagonLookAndFeel::~SharedParagonLookAndFeel()
     juce::Typeface::clearTypefaceCache();
 }
 
+namespace
+{
+    int shadowsMade = 0;
+}
+
+int ParagonLookAndFeel::getShadowsMade() noexcept { return shadowsMade; }
+
+void ParagonLookAndFeel::drawRoundedShadow (juce::Graphics& g, juce::Rectangle<float> shape, float corner, juce::Colour colour,
+                                            int blur, juce::Point<int> offset)
+{
+    // As juce::DropShadow::drawForPath (the path filled white into a one-channel image round its bounds
+    // expanded by the blur + 1, box-blurred, drawn in the colour), made once and kept. drawForPath makes
+    // only the part near what's redrawn; the blur reaches only its radius, so what shows is the same.
+    struct Kept
+    {
+        float width, height, cornerRadius, fracX, fracY;
+        int blur, offsetX, offsetY, typeId;
+        juce::Rectangle<int> area;   // relative to the shape's whole-pixel corner
+        juce::Image image;
+        juce::uint64 used;
+    };
+    static std::vector<Kept> kept;   // (message thread only)
+    static juce::uint64 tick = 0;
+    jassert (blur > 0);
+    juce::Path outline;
+    outline.addRoundedRectangle (shape, corner);
+    const auto full = (outline.getBounds().getSmallestIntegerContainer() + offset).expanded (blur + 1);
+    if (full.getWidth() <= 2 || full.getHeight() <= 2)
+        return;
+    const auto originX = (int) std::floor (shape.getX()), originY = (int) std::floor (shape.getY());
+    const auto fracX = shape.getX() - (float) originX, fracY = shape.getY() - (float) originY;
+    const auto type = g.getInternalContext().getPreferredImageTypeForTemporaryImages();
+    const auto typeId = type->getTypeID();
+    const auto relative = full.translated (-originX, -originY);
+    auto found = std::find_if (kept.begin(), kept.end(), [&] (const Kept& k)
+    {
+        return k.width == shape.getWidth() && k.height == shape.getHeight() && k.cornerRadius == corner && k.fracX == fracX && k.fracY == fracY
+            && k.blur == blur && k.offsetX == offset.x && k.offsetY == offset.y && k.typeId == typeId && k.area == relative;
+    });
+    if (found == kept.end())
+    {
+        if (kept.size() >= 64)
+            kept.erase (std::min_element (kept.begin(), kept.end(), [] (const Kept& a, const Kept& b) { return a.used < b.used; }));
+        juce::Image image (juce::Image::SingleChannel, full.getWidth(), full.getHeight(), true, *type);
+        image.setBackupEnabled (false);
+        {
+            juce::Graphics g2 (image);
+            g2.setColour (juce::Colours::white);
+            g2.fillPath (outline, juce::AffineTransform::translation ((float) (offset.x - full.getX()), (float) (offset.y - full.getY())));
+        }
+        image.getPixelData()->applySingleChannelBoxBlurEffect (blur);
+        ++shadowsMade;
+        kept.push_back ({ shape.getWidth(), shape.getHeight(), corner, fracX, fracY, blur, offset.x, offset.y, typeId, relative, image, 0 });
+        found = std::prev (kept.end());
+    }
+    found->used = ++tick;
+    g.setColour (colour);
+    g.drawImageAt (found->image, originX + found->area.getX(), originY + found->area.getY(), true);
+}
+
 void ParagonLookAndFeel::drawPianoKey (juce::Graphics& g, juce::Rectangle<float> area, float radius, float bevel,
                                        bool pressed, bool highlighted)
 {
@@ -820,8 +981,8 @@ void ParagonLookAndFeel::drawPianoKey (juce::Graphics& g, juce::Rectangle<float>
 
     juce::Path outline;
     outline.addRoundedRectangle (area, radius);
-    juce::DropShadow (juce::Colours::black.withAlpha (pressed ? 0.45f : 0.6f), juce::roundToInt (bevel * 3.0f),
-                      { 0, juce::roundToInt (bevel * (pressed ? 0.6f : 1.4f)) }).drawForPath (g, outline);
+    drawRoundedShadow (g, area, radius, juce::Colours::black.withAlpha (pressed ? 0.45f : 0.6f), juce::roundToInt (bevel * 3.0f),
+                       { 0, juce::roundToInt (bevel * (pressed ? 0.6f : 1.4f)) });
 
     const auto top = area.withTrimmedLeft (bevel).withTrimmedRight (bevel)
                          .withTrimmedTop (bevel * 0.7f).withTrimmedBottom (bevel * (pressed ? 1.1f : 1.6f));
@@ -895,7 +1056,7 @@ juce::Rectangle<float> ParagonLookAndFeel::drawChromeBezel (juce::Graphics& g, j
 {
     juce::Path outline;
     outline.addRoundedRectangle (bezel, radius);
-    juce::DropShadow (juce::Colours::black.withAlpha (0.45f), 10, { 0, 4 }).drawForPath (g, outline);
+    drawRoundedShadow (g, bezel, radius, juce::Colours::black.withAlpha (0.45f), 10, { 0, 4 });
 
     // Chrome: lit along the top, darker towards the front, with the bright
     // and dark bands of its curved sides.
@@ -964,6 +1125,71 @@ int ParagonLookAndFeel::getSliderThumbRadius (juce::Slider& slider)
     return LookAndFeel_V4::getSliderThumbRadius (slider);
 }
 
+void ParagonLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& label)
+{
+    // LookAndFeel_V2's, the text's colour through setTextFill (0.189.0).
+    g.fillAll (label.findColour (juce::Label::backgroundColourId));
+    if (! label.isBeingEdited())
+    {
+        const auto alpha = label.isEnabled() ? 1.0f : 0.5f;
+        const juce::Font font (getLabelFont (label));
+        g.setFont (font);
+        const auto textArea = getLabelBorderSize (label).subtractedFrom (label.getLocalBounds());
+        ParagonColours::setTextFill (g, label.findColour (juce::Label::textColourId).withMultipliedAlpha (alpha), label.getText(), textArea,
+                                     label.getJustificationType());
+        g.drawFittedText (label.getText(), textArea, label.getJustificationType(),
+                          juce::jmax (1, (int) ((float) textArea.getHeight() / font.getHeight())), label.getMinimumHorizontalScale());
+        ParagonColours::setFill (g, label.findColour (juce::Label::outlineColourId).withMultipliedAlpha (alpha), label.getLocalBounds());
+    }
+    else if (label.isEnabled())
+        ParagonColours::setFill (g, label.findColour (juce::Label::outlineColourId), label.getLocalBounds());
+    g.drawRect (label.getLocalBounds());
+}
+
+void ParagonLookAndFeel::drawTextEditorOutline (juce::Graphics& g, int width, int height, juce::TextEditor& editor)
+{
+    if (dynamic_cast<juce::AlertWindow*> (editor.getParentComponent()) != nullptr || ! editor.isEnabled())
+        return;
+    const juce::Rectangle<int> area (width, height);
+    if (editor.hasKeyboardFocus (true) && ! editor.isReadOnly())
+    {
+        ParagonColours::setFill (g, editor.findColour (juce::TextEditor::focusedOutlineColourId), area);
+        g.drawRect (area, 2);
+    }
+    else
+    {
+        ParagonColours::setFill (g, editor.findColour (juce::TextEditor::outlineColourId), area);
+        g.drawRect (area);
+    }
+}
+
+void ParagonLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool, int, int, int, int, juce::ComboBox& box)
+{
+    // LookAndFeel_V4's, the outline and arrow through setFill (0.189.0).
+    const auto cornerSize = box.findParentComponentOfClass<juce::ChoicePropertyComponent>() != nullptr ? 0.0f : 3.0f;
+    const juce::Rectangle<int> boxBounds (0, 0, width, height);
+    g.setColour (box.findColour (juce::ComboBox::backgroundColourId));
+    g.fillRoundedRectangle (boxBounds.toFloat(), cornerSize);
+    const auto outline = box.findColour (box.hasKeyboardFocus (true) ? juce::ComboBox::focusedOutlineColourId : juce::ComboBox::outlineColourId);
+    ParagonColours::setFill (g, box.hasKeyboardFocus (true) ? outline : box.findColour (juce::ComboBox::outlineColourId), boxBounds);
+    g.drawRoundedRectangle (boxBounds.toFloat().reduced (0.5f, 0.5f), cornerSize, 1.0f);
+    const juce::Rectangle<int> arrowZone (width - 30, 0, 20, height);
+    juce::Path path;
+    path.startNewSubPath ((float) arrowZone.getX() + 3.0f, (float) arrowZone.getCentreY() - 2.0f);
+    path.lineTo ((float) arrowZone.getCentreX(), (float) arrowZone.getCentreY() + 3.0f);
+    path.lineTo ((float) arrowZone.getRight() - 3.0f, (float) arrowZone.getCentreY() - 2.0f);
+    ParagonColours::setFill (g, box.findColour (juce::ComboBox::arrowColourId).withAlpha (box.isEnabled() ? 0.9f : 0.2f), path.getBounds());
+    g.strokePath (path, juce::PathStrokeType (2.0f));
+}
+
+void ParagonLookAndFeel::drawPopupMenuSectionHeader (juce::Graphics& g, const juce::Rectangle<int>& area, const juce::String& sectionName)
+{
+    g.setFont (getPopupMenuFont().boldened());
+    const juce::Rectangle<int> textArea (area.getX() + 12, area.getY(), area.getWidth() - 16, (int) ((float) area.getHeight() * 0.8f));
+    ParagonColours::setTextFill (g, findColour (juce::PopupMenu::headerTextColourId), sectionName, textArea, juce::Justification::bottomLeft);
+    g.drawFittedText (sectionName, textArea, juce::Justification::bottomLeft, 1);
+}
+
 void ParagonLookAndFeel::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int x, int y, int width, int height, bool isScrollbarVertical,
                                         int thumbStartPosition, int thumbSize, bool isMouseOver, bool isMouseDown)
 {
@@ -977,7 +1203,8 @@ void ParagonLookAndFeel::drawScrollbar (juce::Graphics& g, juce::ScrollBar&, int
     const auto thumb = (isScrollbarVertical ? juce::Rectangle<float> ((float) x, (float) thumbStartPosition, (float) width, (float) thumbSize)
                                             : juce::Rectangle<float> ((float) thumbStartPosition, (float) y, (float) thumbSize, (float) height))
                          .reduced (3.0f);
-    g.setColour (ParagonColours::accent.withAlpha (isMouseDown ? 0.95f : isMouseOver ? 0.8f : 0.55f));
+    // (0.189.0) The thumb in the family gradient along its length.
+    g.setGradientFill (ParagonColours::accentGradient (thumb, isScrollbarVertical, isMouseDown ? 1.0f : isMouseOver ? 0.9f : 0.75f));
     g.fillRoundedRectangle (thumb, juce::jmin (thumb.getWidth(), thumb.getHeight()) * 0.5f);
 }
 
@@ -1055,8 +1282,9 @@ void ParagonLookAndFeel::drawTableHeaderBackground (juce::Graphics& g, juce::Tab
     auto area = header.getLocalBounds();
     g.setColour (juce::Colour (0xff1b1419));   // (the Hub's section strips)
     g.fillRect (area);
-    g.setColour (ParagonColours::accent.withAlpha (0.35f));
-    g.fillRect (area.removeFromBottom (1));
+    const auto line = area.removeFromBottom (1);
+    ParagonColours::setFill (g, ParagonColours::accent.withAlpha (0.35f), line);
+    g.fillRect (line);
     g.setColour (juce::Colours::black.withAlpha (0.5f));
     for (int i = header.getNumColumns (true); --i >= 0;)
         g.fillRect (header.getColumnPosition (i).removeFromRight (1).reduced (0, 6));
@@ -1068,7 +1296,7 @@ void ParagonLookAndFeel::drawTableHeaderColumn (juce::Graphics& g, juce::TableHe
     const auto highlight = isMouseDown ? 0.16f : isMouseOver ? 0.08f : 0.0f;
     if (highlight > 0.0f)
     {
-        g.setColour (ParagonColours::accent.withAlpha (highlight));
+        ParagonColours::setFill (g, ParagonColours::accent.withAlpha (highlight), juce::Rectangle<int> (width, height));
         g.fillRect (0, 0, width, height);
     }
     auto area = juce::Rectangle<int> (width, height).reduced (8, 0);
@@ -1081,10 +1309,11 @@ void ParagonLookAndFeel::drawTableHeaderColumn (juce::Graphics& g, juce::TableHe
         arrow.addTriangle (arrowArea.getX(), forwards ? arrowArea.getBottom() : arrowArea.getY(),
                            arrowArea.getRight(), forwards ? arrowArea.getBottom() : arrowArea.getY(),
                            arrowArea.getCentreX(), forwards ? arrowArea.getY() : arrowArea.getBottom());
-        g.setColour (ParagonColours::accent);
+        ParagonColours::setFill (g, ParagonColours::accent, arrowArea);
         g.fillPath (arrow);
     }
-    g.setColour (sorted ? ParagonColours::accent : ParagonColours::textDim);
     g.setFont (textFont (13.0f));
+    ParagonColours::setTextFill (g, sorted ? ParagonColours::accent : ParagonColours::textDim, columnName.toUpperCase(), area,
+                                 juce::Justification::centredLeft);
     g.drawFittedText (columnName.toUpperCase(), area, juce::Justification::centredLeft, 1);
 }

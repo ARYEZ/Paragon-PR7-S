@@ -175,7 +175,7 @@ void TrackColourMenu::setListColour (bool on, int amount)
 void TrackColourMenu::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0c0a0d));
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (13.0f));
@@ -280,6 +280,6 @@ void ColourKey::paintButton (juce::Graphics& g, bool over, bool down)
         g.setColour (colour.withSaturation (0.4f).withBrightness (1.0f));
         g.fillRect (column);
     }
-    g.setColour (down ? ParagonColours::accent : ParagonColours::panelEdge);
+    ParagonColours::setFill (g, down ? ParagonColours::accent : ParagonColours::panelEdge, r);
     g.drawRoundedRectangle (r, 3.0f, 1.0f);
 }

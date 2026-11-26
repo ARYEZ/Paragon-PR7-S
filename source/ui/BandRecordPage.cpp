@@ -141,7 +141,7 @@ public:
             auto box = juce::Rectangle<int> (0, r.top, getWidth(), r.height).toFloat();
             g.setColour (rowColour);
             g.fillRoundedRectangle (box, 5.0f);
-            g.setColour (page.readingSong == s ? ParagonColours::accent : ParagonColours::panelEdge);
+            ParagonColours::setFill (g, page.readingSong == s ? ParagonColours::accent : ParagonColours::panelEdge, box.reduced (0.5f));
             g.drawRoundedRectangle (box.reduced (0.5f), 5.0f, page.readingSong == s ? 2.0f : 1.0f);
             // TEMPO and the signature, left of the tempo box.
             auto head = juce::Rectangle<int> (0, r.top, getWidth(), 42).reduced (10, 6);
@@ -405,7 +405,7 @@ void BandRecordPage::changed()
 void BandRecordPage::paint (juce::Graphics& g)
 {
     g.fillAll (pageColour);
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     auto head = getLocalBounds().removeFromTop (headerHeight).reduced (gap, 8);
     auto title = head.removeFromTop (34);

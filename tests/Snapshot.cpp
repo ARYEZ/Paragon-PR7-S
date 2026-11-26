@@ -37,6 +37,7 @@
 // PARAGON_SNAPSHOT_SIGNATURE=1: the signature track, 7/8 from bar 3 and 3/4 from bar 5, the playhead in the 7/8 (0.45.0).
 // PARAGON_SNAPSHOT_TAP=1: the transport while tapping the tempo (0.45.0).
 // PARAGON_SNAPSHOT_WARP=1: the guitar's clip warped (markers from its hitpoints, one dragged), selected, the WARP tool (0.32.0).
+// PARAGON_SNAPSHOT_STRETCH=1: the guitar's clip stretched by SELECT's Sizing Applies Time Stretch (TAPE), the SELECT key in that sizing (0.187.0).
 // PARAGON_SNAPSHOT_STEREO=1: the guitar's take a stereo file, its right side quieter (0.81.0: drawn as two halves).
 // PARAGON_SNAPSHOT_TAKES=1: the guitar's three takes on lanes (LANES), comped (0.29.0), the COMP tool chosen.
 // PARAGON_SNAPSHOT_FOLLOW=1 (with PARAGON_SNAPSHOT_CHORDS): the lead following the chord track, two chords changed (0.36.0).
@@ -220,6 +221,18 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
         if (const auto& warped = studio.getProject().findTrack (guitar)->parts.at (0); warped.warp.size() > 4)
             studio.moveWarpMarker (id, 3, warped.warp[3].beat + 0.4);
         view.getArrangeView().setTool (ArrangeView::Tool::warp);
+        view.getArrangeView().select (guitar, 0);
+        studio.selectTrack (guitar);
+        studio.dispatchPendingMessages();
+    }
+    if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STRETCH", {}).isNotEmpty())
+    {
+        const auto& clip = studio.getProject().findTrack (guitar)->parts.at (0);
+        const auto id = clip.id;
+        studio.sizeParts ({ id }, id, clip.start, clip.length * 1.4, Sizing::timeStretch);
+        studio.setStretchMode ({ id }, StretchModes::tape);
+        view.getArrangeView().setTool (ArrangeView::Tool::select);
+        view.getArrangeView().setSelectSizing (Sizing::timeStretch);
         view.getArrangeView().select (guitar, 0);
         studio.selectTrack (guitar);
         studio.dispatchPendingMessages();
@@ -730,6 +743,23 @@ TEST_CASE ("Render the studio to a PNG", "[.][snapshot]")
             for (const auto& t : studio.getProject().tracks)
                 if (! t.isChannel() && &t != &studio.getProject().tracks.back())
                     page.setChannelChosen (t.id, true);
+        }
+        // (0.200.0) PARAGON_SNAPSHOT_EXPORT=flac: FLAC's options; =mp3: MP3's, the ID3 tag filled in.
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EXPORT", {}) == "flac")
+            page.setFileType (Windows::ExportPage::FileType::flac);
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_EXPORT", {}) == "mp3")
+        {
+            page.setFileType (Windows::ExportPage::FileType::mp3);
+            pr7s::Mp3Settings m;
+            m.id3 = true;
+            m.title = "Demo Song";
+            m.artist = "Paragon";
+            m.album = "Demos";
+            m.year = "2026";
+            m.genre = "Metal";
+            m.track = "1";
+            m.comment = "Mixed in Paragon PR7-S";
+            page.setMp3Settings (m);
         }
         const auto pageImage = page.createComponentSnapshot (page.getLocalBounds(), true, scale);
         juce::Graphics g (image);
@@ -1500,6 +1530,7 @@ TEST_CASE ("Snapshot: the Hub", "[.][snapshot-hub]")
             hub.getComposerTracksPage()->setNames (1, "Guitar L, Guitar R");
             hub.getComposerTracksPage()->setEvery (1, true);
             hub.getComposerTracksPage()->setNames (0, "Bass, Bass DI");
+            hub.getComposerTracksPage()->setTone (2, { pr7s::Studio::ToneChoice::Kind::tone, "SHRED LEAD" });   // (0.204.0)
         }
         std::unique_ptr<juce::TemporaryFile> grooveFolder;
         if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_HUB", {}) == "groovefolders")

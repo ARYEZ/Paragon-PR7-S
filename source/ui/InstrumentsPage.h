@@ -41,6 +41,9 @@ public:
     bool setBendRange (const juce::String&);
     void setShortestNote (double beats);   // (0.63.1) 0: any
     void setChugRun (int);                 // (0.63.1) 0: any
+    // (0.238.0) ARCHITECT's swell and vibrato controllers: a number 1-127, or OFF / 0 (none). false: not one.
+    bool setSwellCc (const juce::String&);
+    bool setVibratoCc (const juce::String&);
     void addKeyswitch();
     // forcesString: 1.. a string, 0 an articulation, -1 turns forcing off, -101 power chords, -102 single notes,
     // (0.66.0) -103 tapping, -104 tremolo, -105 harmonics.

@@ -416,7 +416,7 @@ void EqCurve::paintFront (juce::Graphics& g)
         g.setColour (pr7s::FamilyColours::pink.withAlpha (0.16f));
         g.fillPath (fill);
     }
-    g.setColour (shown.isFlat() ? ParagonColours::textDim : ParagonColours::accent);
+    ParagonColours::setFill (g, shown.isFlat() ? ParagonColours::textDim : ParagonColours::accent, (curve).getBounds());
     g.strokePath (curve, juce::PathStrokeType (compact ? 1.6f : 2.2f));
 
     // The bands' points.
@@ -850,6 +850,8 @@ juce::String EqEditor::channelName (pr7s::Studio& studio, int busId)
 
 void EqEditor::timerCallback()
 {
+    if (! isShowing())
+        return;   // (0.191.0: hidden, nothing to follow; it catches up when it shows again)
     if (const auto* eq = studio.getChannelEq (bus); eq != nullptr && ! (*eq == shown))
         refresh();
 }
@@ -1021,7 +1023,7 @@ void EqEditor::showPresetMenu (pr7s::Studio& studio, int busId, juce::Component*
 void EqEditor::paint (juce::Graphics& g)
 {
     g.fillAll (juce::Colour (0xff0c0a0d));
-    g.setColour (ParagonColours::accent);
+    ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> ((float) (0), (float) (0), (float) (getWidth()), (float) (3)));
     g.fillRect (0, 0, getWidth(), 3);
     g.setColour (ParagonColours::text);
     g.setFont (ParagonLookAndFeel::titleFont (18.0f));
