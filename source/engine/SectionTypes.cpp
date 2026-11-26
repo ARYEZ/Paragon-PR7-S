@@ -423,7 +423,17 @@ namespace pr7s
                          { "UNISON PUSH RIFF, PAIRED-SNARE BAR EVERY FOURTH", "A unison push riff on the bar's chord, every fourth bar busier with the snare in pairs and a splash", r, {}, c },
                          { "TWO HITS, THEN AIR", "Power chords on 1 and 2 only, the back half empty, the kick on 1, 2 and 4 and the snare on 3 and its answer", r, {}, c },
                          { "HALF-STEP POWER CHORDS EACH HALF BAR, BASS ROOT-FIFTH-OCTAVE-FIFTH", "Power-chord eighths a half bar each stepping a half step down and back, the bass on root, fifth, octave, fifth", r, {}, c },
-                         { "UNISON HITS, THE KICK ITS OWN WAY", "The guitar and the bass on seven syncopated hits, the last held, the kick on its own pattern against them", r, {}, c } };
+                         { "UNISON HITS, THE KICK ITS OWN WAY", "The guitar and the bass on seven syncopated hits, the last held, the kick on its own pattern against them", r, {}, c },
+                         // (0.235.0) Round nine (the owner's 17 industrial songs; shapes only, our names).
+                         { "RING BAR, SIXTEENTH CHORD STREAM", "A two-bar cycle: the chord rung, then full chords on every sixteenth changing every half bar; the kick in clusters in the stream bar", r, {}, c },
+                         { "HOLD BAR, CHUG BAR, HALF-TIME SNARE", "Three power chords held in one bar, the chord chugged in muted eighths the next; the snare half time in the hold bar, a crash every bar", r, {}, c },
+                         { "WHOLE-BAR CHORDS FALLING BY HALF STEPS, CHOIR PEDAL", "One power chord a bar falling a half step each bar, a choir holding the key's fifth on top, a kick and snare build to end", r, {}, c },
+                         { "HELD POWER CHORDS OVER THE LOOP", "A power chord held two bars is the only guitar, over the verse's synth-bass and half-time loop; the size from sustain, not rhythm", r, {}, c },
+                         { "TWO CHORDS HELD OVER STACCATO ROOT QUARTERS", "Short root quarters on the bass, an organ and a choir holding each chord two bars, four on the floor with no hats", r, {}, c },
+                         { "PAIRS STEPPING DOWN A STEP A BAR", "The chord, a high dyad stab and the chord a whole step lower traded each bar, a crash on every quarter", r, {}, c },
+                         { "RIFF BAR, HALF-STEP SLIDE BAR", "A low riff bar, then a power chord a whole step up and one a half step up sliding back to the root, over a stomp", r, {}, c },
+                         { "PUNK EIGHTHS IN 3+3+2, SNARE ON THE DOTS", "Power-chord eighths changing in groups of 3, 3 and 2, the snare on the dotted quarters and the kicks between, a skank bar every fourth", r, {}, c },
+                         { "CHANT STOP: GUITAR ALONE", "The drums and the bass out: the guitar alone, the fifth held two half notes, then short root hits, two pickups at the end", r, {}, c } };
             }
             case 3:
             {
@@ -1712,6 +1722,25 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "SNARE ON TWO, TWO-A AND FOUR, OPEN QUARTERS", "SNARE ON TWO, TWO-A AND FOUR, CRASH QUARTERS" }, {} },
                 { "UNISON HITS, THE KICK ITS OWN WAY", { "UNISON HITS, THE LAST HELD", "UNISON HITS, A CHORD EACH HALF BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "THE KICK ITS OWN WAY, OPEN HATS ON TWO, THREE AND FOUR", "THE KICK ITS OWN WAY, CLOSED HAT EIGHTHS" }, {} },
+                // (0.235.0) Round nine's choruses.
+                { "RING BAR, SIXTEENTH CHORD STREAM", { "RING BAR, THEN A CHORD ON EVERY SIXTEENTH", "THE STREAM EVERY BAR" }, { "WITH THE RING AND THE STREAM", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK CLUSTERS IN THE STREAM BAR, OPEN EIGHTHS", "STRAIGHT KICK, OPEN EIGHTHS" }, {} },
+                { "HOLD BAR, CHUG BAR, HALF-TIME SNARE", { "HOLD BAR, THEN A CHUG BAR", "HOLD BAR, THEN A CHUG BAR, A SECOND GUITAR'S SIXTEENTHS" }, { "ROOTS UNDER THE HOLDS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF-TIME SNARE IN THE HOLD BAR, CRASH EVERY BAR", "PLAIN BACKBEAT, CRASH EVERY BAR" }, {} },
+                { "WHOLE-BAR CHORDS FALLING BY HALF STEPS, CHOIR PEDAL", { "A CHORD A BAR, FALLING A HALF STEP", "A CHORD A BAR ON THE CHORDS" }, { "WHOLE-BAR ROOTS FALLING A HALF STEP", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "CHOIR ON THE KEY'S FIFTH, A VOICE FOLLOWING", "CHOIR CHORDS" }, { "RIDE QUARTERS, CRASH MOST BARS, A BUILD TO END", "RIDE QUARTERS, PLAIN" }, {} },
+                { "HELD POWER CHORDS OVER THE LOOP", { "A POWER CHORD HELD TWO BARS", "A POWER CHORD HELD EACH BAR" }, { "INTERLOCKING TWO-BAR LOOP", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "A HIGH FIFTH HELD OVER THE CHORDS", "HELD PADS" }, { "HALF-TIME LOOP, SPLASH ON THREE", "HALF-TIME LOOP, QUARTER HATS" }, {} },
+                { "TWO CHORDS HELD OVER STACCATO ROOT QUARTERS", { "OUT", "CHORDS HELD TWO BARS" }, { "SHORT ROOT QUARTERS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "ORGAN AND CHOIR HOLD EACH CHORD", "HELD PADS" }, { "FOUR ON THE FLOOR, NO HATS, A FILL TO END", "FOUR ON THE FLOOR, NO HATS" }, {} },
+                { "PAIRS STEPPING DOWN A STEP A BAR", { "CHORD, DYAD, A STEP DOWN AND BACK", "THE SAME, 2+3+3 BARS TO END" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "CRASH QUARTERS, OPEN HATS ON THE ANDS", "RIDE QUARTERS, OPEN HATS ON THE ANDS" }, {} },
+                { "RIFF BAR, HALF-STEP SLIDE BAR", { "RIFF BAR, THEN II AND FLAT II", "RIFF BAR, THEN A RUNG CHORD" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "STOMP, CRASH ON THE RIFF BAR", "STOMP, OPEN EIGHTHS" }, {} },
+                { "PUNK EIGHTHS IN 3+3+2, SNARE ON THE DOTS", { "EIGHTHS CHANGING IN 3+3+2", "EIGHTHS ON THE BAR'S CHORD" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE ON THE DOTS, KICKS BETWEEN, A SKANK BAR", "SNARE ON THE DOTS, KICKS BETWEEN" }, {} },
+                { "CHANT STOP: GUITAR ALONE", { "FIFTH HELD, THEN FOUR SHORT ROOTS", "FIFTH HELD, THEN TWO SHORT ROOTS" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT", "A KICK ON THE LAST BAR'S ONE" }, {} },
                 // (0.213.0) Round eight's verses.
                 { "ROOT PAIRS IN THREES, TOP NOTE TURNS", { "ROOT PAIRS, THE TOP TURNING", "ROOT PAIRS, THE OCTAVE ONLY" }, { "UNDER THE PAIRS", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "OPEN HAT QUARTERS, KICK ROUND THE PAIRS", "CLOSED HATS, KICK ROUND THE PAIRS" }, {} },

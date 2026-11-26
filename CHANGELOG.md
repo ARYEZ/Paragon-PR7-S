@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.235.0
+
+Nine new chorus types from the same 17 songs, at the end of a chorus's TYPE menu. Shapes only, our own names.
+
+- **RING BAR, SIXTEENTH CHORD STREAM:** a bar of the tonic left ringing, then a bar of full chords on every sixteenth, a new chord each beat, the kick pushing with it.
+- **HOLD BAR, CHUG BAR, HALF-TIME SNARE:** a bar of three held chords (the last one pushed) over a half-time snare, then a bar of one chord in muted eighths with the second guitar's sixteenth mutes on the lane's second track, open hat quarters and a crash every bar.
+- **WHOLE-BAR CHORDS FALLING BY HALF STEPS, CHOIR PEDAL:** a chord a bar, each a half step lower, while the keys hold the key's fifth above them like a choir; ride quarters, with a sixteenth kick and snare build in the last bar.
+- **HELD POWER CHORDS OVER THE LOOP:** a power chord held two bars per chord over the half-time synth-bass loop; the lead can hold the fifth or the octave.
+- **TWO CHORDS HELD OVER STACCATO ROOT QUARTERS:** short root quarters under chords held two bars each (the last four bars as one), the keys holding with them, four on the floor with no hats.
+- **PAIRS STEPPING DOWN A STEP A BAR:** a chord on the beat, then pairs stepping down and back within the bar, the whole figure a step lower each bar; the last two bars of eight in 2+3+3+2+3+3 groups; crash quarters with open hats on the ands.
+- **RIFF BAR, HALF-STEP SLIDE BAR:** a riff bar, then a bar sliding down by half steps into the root.
+- **PUNK EIGHTHS IN 3+3+2, SNARE ON THE DOTS:** the snare on 1, the and of 2 and 4, the kicks between them, open hats on the eighths, every fourth bar a skank bar.
+- **CHANT STOP: GUITAR ALONE:** the drums and bass out. The guitar holds two long chords, then four short root hits, with pickups in the last bar to bring the band back in the next section.
+
 ## 0.234.0
 
 Ten new verse types from the 17 industrial songs you sent. They're in a verse's TYPE menu, before DRONING and SPARSE. The songs were read for their shapes only: no song's notes are copied, and the names are our own.
