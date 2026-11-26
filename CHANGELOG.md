@@ -2,6 +2,35 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.236.0
+
+Fifteen more types from the 17 industrial songs, for the other sections, each after that section's newest types. Shapes only, our own names.
+
+**Pre-chorus**
+- **RING ONCE, THE BASS MOVES THE CHANGES:** the key's chord struck once and left ringing, while the bass carries the chord changes in eighths underneath.
+- **GAPPED QUARTERS OVER THE DISCO HAT:** short power chords on 1, 2 and 4 with beat 3 left empty, over four on the floor and disco hats (closed on the beat, a ghost after it, open on the and).
+- **HELD HORN LINE OVER THE RIDE GALLOP:** a brassy keys note held from the and of 2, a step lower each bar, over power-chord eighths and a galloping ride.
+
+**Intro**
+- **MUSIC-BOX OSTINATO, THE KIT BUILDS UNDER:** a high music-box figure alone, then a side stick, a kick and sixteenth hats come in a layer at a time.
+- **TRIBAL KICK EIGHTHS, FALLING BASS CELL:** the kick on every eighth under accented toms, the bass falling three notes on each beat, a metallic high stab every two bars.
+- **SPARSE BASS AND A HIGH RUB OVER KICK QUARTERS:** the kick on the quarters and almost nothing else, a sparse bass and a high note held against the half step above it.
+
+**Bridge**
+- **LOOP ALONE, THEN THE KEYS, THEN THE BASS:** a drum loop that never fills plays alone, the keys come in after a quarter of the section, the bass from halfway.
+
+**Breakdown**
+- **DRONE AND HALF-STEP CALL OVER THE MACHINE:** a chord held two bars with a high half-step call, a drone under it, over a machine beat.
+- **HALF-STEP TICK OVER A LONE KICK:** muted quarters ticking between the root and the half step above, a lone kick every other bar under ride eighths.
+- **KEYS OVER THE MACHINE PULSE:** the guitar out; a sequenced bass pulse and a kick-and-clap beat with a synth chord or arpeggio over them.
+- **STABS EVERY OTHER BAR OVER A CLICK:** short stabs every other bar, nothing between them but a click.
+- **BASS PULSE UNDER HELD CHORDS, DRUMS OUT:** the drums out, the bass pulsing under held chords.
+- **STOMP ALONE, THEN THE PULSE:** a stomp beat with claps alone, then the guitar's and the bass's muted eighths from halfway.
+
+**Outro**
+- **MACHINE STOMP OUTRO:** the kick on every eighth and the snare and a splash on every quarter under power-chord eighths, ending on one hit.
+- **HALF-TIME CHORDS OVER A MARCH:** big chords on 1 and 3 over a snare march with no kick.
+
 ## 0.235.0
 
 Nine new chorus types from the same 17 songs, at the end of a chorus's TYPE menu. Shapes only, our own names.

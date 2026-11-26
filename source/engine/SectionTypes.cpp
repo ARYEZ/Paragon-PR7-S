@@ -89,7 +89,11 @@ namespace pr7s
                      { "OFF-THE-ONE EIGHTHS, BASS ON THE EDGES", "A bar of quarter chords, then a bar of eighths coming in after the one; the bass only on the entry and the pickup", RiffFlavour::openChords, {}, pre },
                      { "FOUR-STAGE BUILD", "Root eighths alone over quarter kicks, then a stab cell joins, then everyone on eighths over a backbeat, then the snare on every quarter", RiffFlavour::openChords, {}, pre },
                      // (0.215.0) Round eight (the owner's 67 songs; shapes only, our names).
-                     { "WHOLE-NOTE LINE FALLING, FOUR ON THE FLOOR", "The key's chord held while the bass falls a half step a bar under it, the kick on every quarter and no snare", RiffFlavour::openChords, {}, pre } };
+                     { "WHOLE-NOTE LINE FALLING, FOUR ON THE FLOOR", "The key's chord held while the bass falls a half step a bar under it, the kick on every quarter and no snare", RiffFlavour::openChords, {}, pre },
+                     // (0.236.0) Round nine (the owner's 17 industrial songs; shapes only, our names).
+                     { "RING ONCE, THE BASS MOVES THE CHANGES", "The key's chord struck once and left to ring while the bass moves the changes in eighths under it", RiffFlavour::openChords, {}, pre },
+                     { "GAPPED QUARTERS OVER THE DISCO HAT", "Short power chords on 1, 2 and 4 with a gap on 3, over four on the floor and disco hats: closed on the beat, open on the and", RiffFlavour::openChords, {}, pre },
+                     { "HELD HORN LINE OVER THE RIDE GALLOP", "A brassy note held from the and of 2, a step lower each bar, over power-chord eighths and a galloping ride", RiffFlavour::openChords, {}, pre } };
             for (auto& t : sectionTypesFor ("Verse"))   // (0.118.0: the whole verse list, its new types too)
                 types.push_back (std::move (t));
             return types;
@@ -202,6 +206,10 @@ namespace pr7s
                          // (0.216.0) Round eight (the owner's 67 songs; shapes only, our names).
                          { "ROOT-AND-THIRD EIGHTHS ALONE, THE KIT IN STAGES", "A guitar's eighths rocking from the low root to the key's third alone, then hats, then the kick, then kick eighths, then everyone", r, {}, b },
                          { "BASS FLICKS UNDER A KEYS RUN", "The bass alone with three-sixteenth flicks on 1 and 3, then an organ's eight-note sixteenth run over it", r, {}, b },
+                         // (0.236.0) Round nine (the owner's 17 industrial songs; shapes only, our names).
+                         { "MUSIC-BOX OSTINATO, THE KIT BUILDS UNDER", "A high music-box figure on every eighth alone, then a side stick, a kick and sixteenth hats join a layer at a time", r, {}, b },
+                         { "TRIBAL KICK EIGHTHS, FALLING BASS CELL", "The kick on every eighth under accented toms, the bass falling three notes each beat, a metallic stab every two bars", r, {}, b },
+                         { "SPARSE BASS AND A HIGH RUB OVER KICK QUARTERS", "The kick on the quarters alone, a sparse bass root and fifth, a high note held against the half step above it", r, {}, b },
                          droning, open };
             }
             case 1:
@@ -526,6 +534,8 @@ namespace pr7s
                          { "BASS NEIGHBOUR SIXTEENTHS UNDER LATE DYADS", "The bass in sixteenths round the root and its flat seven, high dyads late in each bar, soft kick and snare under the ride", r, {}, b },
                          { "QUARTER STABS OVER A HELD BASS, KICK 1, 2-A, 3, 3-AND", "Full chords short on every quarter over the bass's held notes, the kick on 1, the a of 2, 3 and its and", r, {}, b },
                          { "RISING FIFTHS ON 1, 1-A, 2-AND, BAND OUT", "The band out: low fifths on 1, the a of 1 and the and of 2 rising up the key, the kick and an open hat with them, the kit back after four bars", r, {}, b },
+                         // (0.236.0) Round nine (the owner's 17 industrial songs; shapes only, our names).
+                         { "LOOP ALONE, THEN THE KEYS, THEN THE BASS", "A drum loop that never fills plays alone, the keys come in after a quarter, the bass from halfway, a guitar chord only at the end", r, {}, b },
                          creep, open, droning };
             }
             case 4:
@@ -573,6 +583,13 @@ namespace pr7s
                          // (0.215.0) Round eight (the owner's 67 songs; shapes only, our names).
                          { "UNISON CHROMATIC LINE, A BAR OF ROOT TREMOLO", "A chromatic eighth line with the bass, then a bar of the root in sixteenths, open hat eighths with no backbeat", r, {}, d },
                          { "ONE HIT ON ONE-AND, EVERY OTHER BAR", "One chord on the and of 1, then silence and a silent bar, the kick and a crash with the hits, a walk up to the root to end", r, {}, d },
+                         // (0.236.0) Round nine (the owner's 17 industrial songs; shapes only, our names).
+                         { "DRONE AND HALF-STEP CALL OVER THE MACHINE", "A chord held two bars under a high half-step call, a drone in the keys and the bass, over a machine beat that never fills", r, {}, d },
+                         { "HALF-STEP TICK OVER A LONE KICK", "Muted quarters on 2, 3 and 4 ticking between the root and the half step above, a lone kick every other bar under ride eighths", r, {}, d },
+                         { "KEYS OVER THE MACHINE PULSE", "The bass on every sixteenth and a kick-and-clap machine pulse, a synth chord or arpeggio over it, the guitar out", r, {}, d },
+                         { "STABS EVERY OTHER BAR OVER A CLICK", "Short stabs on 1 and its and every other bar with the bass and a kick, nothing between but a click", r, {}, d },
+                         { "BASS PULSE UNDER HELD CHORDS, DRUMS OUT", "The drums out: the bass pulsing even eighths under chords held two bars", r, {}, d },
+                         { "STOMP ALONE, THEN THE PULSE", "A stomp beat alone with claps, then the guitar's and the bass's muted eighths from halfway", r, {}, d },
                          heavy, staccato };
             }
             case 5:
@@ -616,6 +633,9 @@ namespace pr7s
                          { "INTRO PICKING RETURNS, ONE CHORD HELD", "The intro's picked arpeggio back, alone, ending on one chord held a bar", r, {}, b },
                          { "DOTTED COUNTER-LINES OVER THE ARPEGGIO", "A picked arpeggio with a twin under it, a dotted counter-line stepping down over it, a second a third under from halfway", r, {}, b },
                          { "CHORD TO PEDAL, LAST CHORD HELD", "The chord to the open pedal strummed, a tambourine on 2 and 4, the bass walking up every other bar; the last chord held", r, {}, b },
+                         // (0.236.0) Round nine (the owner's 17 industrial songs; shapes only, our names).
+                         { "MACHINE STOMP OUTRO", "Power-chord eighths over the kick on every eighth and the snare and a splash on every quarter, the last bar one hit", r, {}, b },
+                         { "HALF-TIME CHORDS OVER A MARCH", "Big chords on 1 and 3 over a snare march with no kick, the bass with the chords", r, {}, b },
                          droning, stabs };
             }
             case 6: return { driving, droning };
@@ -1722,6 +1742,37 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "SNARE ON TWO, TWO-A AND FOUR, OPEN QUARTERS", "SNARE ON TWO, TWO-A AND FOUR, CRASH QUARTERS" }, {} },
                 { "UNISON HITS, THE KICK ITS OWN WAY", { "UNISON HITS, THE LAST HELD", "UNISON HITS, A CHORD EACH HALF BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "THE KICK ITS OWN WAY, OPEN HATS ON TWO, THREE AND FOUR", "THE KICK ITS OWN WAY, CLOSED HAT EIGHTHS" }, {} },
+                // (0.236.0) Round nine's pre-choruses, intros, bridge, breakdowns and outros.
+                { "RING ONCE, THE BASS MOVES THE CHANGES", { "THE KEY'S CHORD RUNG EVERY TWO BARS", "THE KEY'S CHORD RUNG EVERY BAR" }, { "THE CHANGES IN EIGHTHS UNDER THE RING", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF-TIME SNARE, RIDE EIGHTHS", "BACKBEAT, CLOSED HAT EIGHTHS" }, {} },
+                { "GAPPED QUARTERS OVER THE DISCO HAT", { "POWER CHORDS ON 1, 2, 4, A GAP ON 3", "POWER CHORDS ON EVERY QUARTER, SHORT" }, { "ROOT EIGHTHS WITH GAPS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "STABS WITH THE GAPPED QUARTERS" }, { "DISCO HAT: CLOSED ON THE BEAT, GHOST ON THE E, OPEN ON THE AND", "DISCO HAT, NO GHOSTS" }, {} },
+                { "HELD HORN LINE OVER THE RIDE GALLOP", { "POWER-CHORD EIGHTHS UNDER THE HORN", "OUT" }, { "ROOT EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HORN NOTE FROM TWO-AND, FALLING A STEP A BAR", "HORN NOTE IN OCTAVES" }, { "RIDE GALLOP, FOUR ON THE FLOOR", "RIDE GALLOP, BACKBEAT" }, {} },
+                { "MUSIC-BOX OSTINATO, THE KIT BUILDS UNDER", { "OUT", "HIGH ROOT RUNG FROM HALFWAY" }, { "ROOTS FROM HALFWAY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "MUSIC-BOX EIGHTHS IN OCTAVES", "MUSIC-BOX EIGHTHS, ONE OCTAVE" }, { "SIDESTICK, THEN KICK, THEN SIXTEENTH HATS", "SIDESTICK QUARTERS ALL THROUGH" }, {} },
+                { "TRIBAL KICK EIGHTHS, FALLING BASS CELL", { "METALLIC DYAD STAB EVERY TWO BARS", "OUT" }, { "THREE-NOTE FALL EACH BEAT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK EIGHTHS, ACCENTED TOMS", "KICK EIGHTHS, FLOOR TOM ONLY" }, {} },
+                { "SPARSE BASS AND A HIGH RUB OVER KICK QUARTERS", { "OUT", "A HIGH NOTE RUBBING A HALF STEP" }, { "ONE ROOT A BAR, THE FIFTH ON FOUR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "A HIGH HALF-STEP RUB HELD", "A HIGH NOTE HELD" }, { "KICK QUARTERS, NOTHING ELSE", "KICK QUARTERS, CLOSED HAT EIGHTHS" }, {} },
+                { "LOOP ALONE, THEN THE KEYS, THEN THE BASS", { "OUT", "POWER CHORD HELD IN THE LAST QUARTER" }, { "IN FROM THE SECOND HALF, ROOT EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "IN FROM THE SECOND QUARTER, PULSED CHORDS", "IN FROM THE SECOND QUARTER, HELD" }, { "TOM LOOP, KICK QUARTERS, NO FILLS", "STRAIGHT GROOVE, CLOSED EIGHTHS" }, {} },
+                { "DRONE AND HALF-STEP CALL OVER THE MACHINE", { "THE CHORD HELD, A HALF-STEP CALL OVER", "THE CHORD HELD ALONE" }, { "ROOT DRONE IN SIXTEENTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "DRONE ON THE KEY'S ROOT", "SILENT" }, { "MACHINE: KICK EIGHTHS, SNARE TWO AND FOUR, SIXTEENTH HATS", "MACHINE WITHOUT HATS" }, {} },
+                { "HALF-STEP TICK OVER A LONE KICK", { "ROOT AND THE HALF STEP ABOVE ON TWO, THREE, FOUR", "ROOT ON TWO, THREE, FOUR" }, { "ROOT ON ONE, FIFTH ON THREE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK EVERY OTHER BAR, RIDE EIGHTHS", "KICK EVERY BAR, RIDE EIGHTHS" }, {} },
+                { "KEYS OVER THE MACHINE PULSE", { "OUT", "MUTED ROOT EIGHTHS" }, { "SEQUENCED ROOT SIXTEENTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "A SYNTH CHORD A BAR OVER THE PULSE", "A SYNTH ARPEGGIO OVER THE PULSE" }, { "KICK QUARTERS, CLAP TWO AND FOUR, SIXTEENTH HATS", "KICK QUARTERS, CLAP TWO AND FOUR" }, {} },
+                { "STABS EVERY OTHER BAR OVER A CLICK", { "STABS ON ONE AND ONE-AND, EVERY OTHER BAR", "A STAB ON ONE, EVERY OTHER BAR" }, { "WITH THE STABS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "ORCHESTRA HIT WITH THE STABS" }, { "A CLICK ON THE QUARTERS", "A CLICK ON THE EIGHTHS" }, {} },
+                { "BASS PULSE UNDER HELD CHORDS, DRUMS OUT", { "THE CHORD HELD TWO BARS", "THE CHORD HELD A BAR" }, { "ROOT EIGHTHS PULSING", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "OUT", "A CRASH EVERY FOUR BARS" }, {} },
+                { "STOMP ALONE, THEN THE PULSE", { "OUT, THEN MUTED ROOT EIGHTHS FROM HALFWAY", "OUT" }, { "OUT, THEN ROOT EIGHTHS FROM HALFWAY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "STOMP: KICK ONE AND THREE, SNARE TWO AND FOUR, NO CYMBALS", "STOMP WITH A TAMBOURINE" }, {} },
+                { "MACHINE STOMP OUTRO", { "POWER-CHORD EIGHTHS, ONE HIT TO END", "THE CHORD HELD, ONE HIT TO END" }, { "ROOT AND OCTAVE EIGHTHS, ONE HIT TO END", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK EIGHTHS, SNARE AND SPLASH QUARTERS, ONE HIT", "KICK EIGHTHS, SNARE QUARTERS, ONE HIT" }, {} },
+                { "HALF-TIME CHORDS OVER A MARCH", { "A CHORD EACH HALF BAR", "A CHORD EACH BAR" }, { "ROOTS EACH HALF BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "MARCH, NO KICK", "MARCH WITH A HALF-TIME KICK" }, {} },
                 // (0.235.0) Round nine's choruses.
                 { "RING BAR, SIXTEENTH CHORD STREAM", { "RING BAR, THEN A CHORD ON EVERY SIXTEENTH", "THE STREAM EVERY BAR" }, { "WITH THE RING AND THE STREAM", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK CLUSTERS IN THE STREAM BAR, OPEN EIGHTHS", "STRAIGHT KICK, OPEN EIGHTHS" }, {} },
