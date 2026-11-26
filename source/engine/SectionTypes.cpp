@@ -2702,6 +2702,23 @@ namespace pr7s
             { "FEEDBACK RING IN", "The last bar the band out but one high guitar note left to feed back, a soft crash and a held keys note" },
             { "KICK THREE, SNARE BURSTS", "The last bar the band and the kick on 1, 2 and 3, then a sixteenth snare burst on 4" },
             { "SNARE ON EVERY BEAT INTO THE STOP", "The last two bars the band, the kick and the snare on every beat, the last beat left silent" },
+            // (0.244.0) Round ten (the owner's 56 songs; shapes only, our names).
+            { "STOP BAR BEFORE THE NEXT", "The last bar every lane hits 1 and 2 together and stops, two keys stabs on 3 and 4 in the silence" },
+            { "DRUM-DROP BAR", "The last bar the drums drop out while everyone else plays on" },
+            { "FLAT-SIX LAUNCH, TWO BARS", "The last two bars on the key's flat six, the guitar and bass on a sixteenth figure, the kit coming in on a snare run" },
+            { "THINNING ROLL BUILD", "The last two bars a snare roll that thins into groups of three over kick quarters, the keys out, the bass walking up to the five" },
+            { "UNISON 3+3+3+3+4 BAR", "The last bar the band in unison on 3+3+3+3 sixteenths, then four sixteenths straight into the next" },
+            { "TWO-BEAT PICKUP BAR", "The last bar's first two beats silent, then a pickup of eighths on the next chord with snare eighths" },
+            { "TOM EIGHTHS UNDER A RINGING CHORD", "The last bar one chord struck and left ringing, toms on the eighths from beat 2, the bass walking into the next root" },
+            { "KICK QUARTERS, THEN KICK AND SNARE QUARTERS", "The last two bars the kick on every quarter, the snare joining it on every quarter in the last bar" },
+            { "PAIRED-SIXTEENTH BUILD BAR", "The last bar snare sixteenths in pairs, then four straight, over kick quarters" },
+            { "BAND HITS FROM TWO-AND", "The last bar everyone hits together on every eighth from the and of 2" },
+            { "KEYS GLISSANDO INTO THE DOWNBEAT", "Twelve short keys notes sweeping up two octaves over the last beat into the next downbeat" },
+            { "EVERYTHING ON ONE, HELD", "The last bar every lane strikes its chord on 1 together and holds it the bar" },
+            { "BALLAD TOM FILL BAR", "The band plays on; the last half bar a tom fill falling from the high tom to the floor" },
+            { "ROOT SIXTEENTHS BUILD", "The last bar the guitar and bass on the root in sixteenths and the snare with them, all getting louder" },
+            { "STOP, TWO HITS ON FOUR", "The last bar one hit on 1, silence, then two hits on 4 and its and on the next chord" },
+            { "TWO BARS OF KIT ALONE", "The last two bars the drums alone, the kit's groove going on and a fill over the last two beats" },
         };
         return list;
     }

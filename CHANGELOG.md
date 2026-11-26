@@ -2,6 +2,29 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.244.0
+
+Round ten, part five: sixteen transitions from your 56 songs (shapes only, our own names), in every block's INTO THE NEXT menu after the last ones. Each changes only the block's last bar or two.
+
+- **STOP BAR BEFORE THE NEXT:** every lane hits 1 and 2 together and stops, two keys stabs on 3 and 4 in the silence.
+- **DRUM-DROP BAR:** the drums drop out for the last bar while the band plays on.
+- **FLAT-SIX LAUNCH, TWO BARS:** the last two bars on the key's flat six, guitar and bass on a sixteenth figure, the kit coming in on a snare run.
+- **THINNING ROLL BUILD:** a snare roll over the last two bars that thins into groups of three, the keys dropping out, the bass walking up to the five.
+- **UNISON 3+3+3+3+4 BAR:** the band in unison on four groups of three sixteenths, then four straight ones.
+- **TWO-BEAT PICKUP BAR:** the last bar's first two beats silent, then a pickup of eighths on the next chord.
+- **TOM EIGHTHS UNDER A RINGING CHORD:** one chord struck and left ringing, toms on the eighths, the bass walking into the next root.
+- **KICK QUARTERS, THEN KICK AND SNARE QUARTERS:** the kick on every quarter, the snare joining it for the last bar.
+- **PAIRED-SIXTEENTH BUILD BAR:** snare sixteenths in pairs, then four straight.
+- **BAND HITS FROM TWO-AND:** everyone on every eighth from the and of 2.
+- **KEYS GLISSANDO INTO THE DOWNBEAT:** twelve keys notes sweeping up two octaves over the last beat.
+- **EVERYTHING ON ONE, HELD:** every lane strikes on 1 and holds the bar.
+- **BALLAD TOM FILL BAR:** a tom fill falling from the high tom to the floor over the last half bar.
+- **ROOT SIXTEENTHS BUILD:** the guitar, the bass and the snare in sixteenths, getting louder.
+- **STOP, TWO HITS ON FOUR:** a hit on 1, silence, then two hits on 4 and its and on the next chord.
+- **TWO BARS OF KIT ALONE:** the drums alone for the last two bars, a fill to end.
+
+Not built: the key-change pivots your songs use (a last chorus up two or three, a chorus up a fourth). Each SECTIONS block already takes its own key (SONG KEY off ALL SECTIONS SYNCED), so a key change is set there rather than as a transition. Not checked here: how it sounds, by ear.
+
 ## 0.243.0
 
 Round ten, part four: six intros and eleven outros from your 56 songs (shapes only, our own names, all in 4/4). Each comes before DRONING and the list's last type.

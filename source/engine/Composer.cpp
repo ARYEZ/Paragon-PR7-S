@@ -36553,6 +36553,283 @@ namespace pr7s
                             bandHit (l, idea, chordAt (at), at, q4 * 0.6, k == 0);
                     }
                 }
+                // (0.244.0) Round ten (the owner's 56 songs; shapes only).
+                else if (name == "STOP BAR BEFORE THE NEXT")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0, q4 = bar / 4.0;
+                    for (int k = 0; k < 2; ++k)
+                    {
+                        const auto at = lastBar + k * q4;
+                        if (l == ComposerLayer::drums)
+                        {
+                            add (idea, at, 3 * s16, 36, 0.92f);
+                            add (idea, at, 3 * s16, k == 0 ? 49 : 41, 0.86f);
+                        }
+                        else
+                            bandHit (l, idea, chordAt (at), at, 3 * s16, k == 0);
+                    }
+                    if (l == ComposerLayer::chords)   // (two keys stabs in the silence)
+                        for (const auto k : { 2, 3 })
+                            hit (l, idea, chordAt (lastBar), lastBar + k * q4, s16 * 1.5, false);
+                }
+                else if (name == "DRUM-DROP BAR")
+                {
+                    if (l == ComposerLayer::drums)
+                        cutAt (idea, lastBar);
+                }
+                else if (name == "FLAT-SIX LAUNCH, TWO BARS")
+                {
+                    const auto from = juce::jmax (0.0, end - 2.0 * bar), s16 = bar / 16.0;
+                    cutAt (idea, from);
+                    if (! playing)
+                        return;
+                    Chord six;
+                    six.root = (spans.front().key.pitchClass() + 8) % 12;
+                    six.type = Chord::Type::major;
+                    if (l == ComposerLayer::drums)
+                    {
+                        for (int k = 0; k < 8; ++k)
+                            add (idea, from + k * bar / 4.0, s16, 36, 0.86f);
+                        add (idea, from, s16, 49, 0.86f);
+                        for (int k = 4; k < 16; ++k)
+                            add (idea, lastBar + k * s16, s16 * 0.9, k == 15 ? 41 : 38, 0.6f + 0.025f * (float) k);
+                        add (idea, lastBar, s16, 48, 0.8f);
+                        return;
+                    }
+                    if (l == ComposerLayer::guitar || l == ComposerLayer::bass)
+                    {
+                        const auto root = l == ComposerLayer::bass ? bassRoot (six.root) : guitarRoot (six.root);
+                        static constexpr int figure[] { 0, 7, 12, 7, 0, 7, 12, 14 };
+                        for (int k = 0; k < 32; ++k)
+                            add (idea, from + k * s16, s16 * 0.85, root + figure[k % 8] - (l == ComposerLayer::bass && figure[k % 8] > 7 ? 12 : 0), open());
+                        return;
+                    }
+                    bandHit (l, idea, six, from, 2.0 * bar * 0.96, true);
+                }
+                else if (name == "THINNING ROLL BUILD")
+                {
+                    const auto from = juce::jmax (0.0, end - 2.0 * bar), s16 = bar / 16.0;
+                    if (l == ComposerLayer::drums)
+                    {
+                        cutAt (idea, from);
+                        for (int k = 0; k < 32; ++k)
+                        {
+                            const auto inSecond = k >= 16, gap = inSecond && k % 4 == 3;
+                            if (! gap)
+                                add (idea, from + k * s16, s16 * 0.9, 38, 0.5f + 0.014f * (float) k);
+                            if (k % 4 == 0)
+                                add (idea, from + k * s16, s16 * 0.9, 36, 0.86f);
+                        }
+                        return;
+                    }
+                    if (l == ComposerLayer::chords)
+                    {
+                        cutAt (idea, lastBar);   // (the keys swell, then go: the room for the build)
+                        return;
+                    }
+                    if (l == ComposerLayer::bass && playing)
+                    {
+                        cutAt (idea, lastBar);
+                        const auto aim = bassRoot ((spans.front().key.pitchClass() + 7) % 12);
+                        for (int k = 0; k < 4; ++k)
+                            add (idea, lastBar + k * bar / 4.0, bar / 4.0 * 0.9, scaleStep (spans.front().key, aim, k - 3), 0.8f + 0.03f * (float) k);
+                    }
+                }
+                else if (name == "UNISON 3+3+3+3+4 BAR")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    const int at[] { 0, 3, 6, 9, 12, 13, 14, 15 };
+                    for (int i = 0; i < 8; ++i)
+                    {
+                        const auto t0 = lastBar + at[i] * s16;
+                        const auto len = (i < 4 ? 3 : 1) * s16 * 0.9;
+                        if (l == ComposerLayer::drums)
+                        {
+                            add (idea, t0, len, i < 4 ? 36 : 38, 0.88f);
+                            if (i < 4)
+                                add (idea, t0, len, i == 0 ? 49 : 38, 0.86f);
+                        }
+                        else
+                            bandHit (l, idea, chordAt (t0), t0, len, i == 0);
+                    }
+                }
+                else if (name == "TWO-BEAT PICKUP BAR")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto e8 = bar / 8.0;
+                    for (int i = 4; i < 8; ++i)
+                    {
+                        const auto at = lastBar + i * e8;
+                        if (l == ComposerLayer::drums)
+                        {
+                            add (idea, at, e8 * 0.9, 38, 0.72f + 0.05f * (float) (i - 4));
+                            if (i == 4)
+                                add (idea, at, e8, 36, 0.86f);
+                        }
+                        else if (l != ComposerLayer::chords)
+                            bandHit (l, idea, next(), at, e8 * 0.85, false);
+                    }
+                }
+                else if (name == "TOM EIGHTHS UNDER A RINGING CHORD")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto e8 = bar / 8.0;
+                    if (l == ComposerLayer::drums)
+                    {
+                        add (idea, lastBar, e8, 49, 0.82f);
+                        add (idea, lastBar, e8, 36, 0.86f);
+                        for (int i = 2; i < 8; ++i)
+                            add (idea, lastBar + i * e8, e8 * 0.9, i < 5 ? 45 : 41, 0.66f + 0.03f * (float) i);
+                        return;
+                    }
+                    if (l == ComposerLayer::bass)
+                    {
+                        const auto aim = bassRoot (next().root);
+                        for (int k = 0; k < 4; ++k)
+                            add (idea, lastBar + k * bar / 4.0, bar / 4.0 * 0.9, k == 0 ? bassRoot (chordAt (lastBar).root) : scaleStep (spans.front().key, aim, k - 4), 0.8f);
+                        return;
+                    }
+                    bandHit (l, idea, chordAt (lastBar), lastBar, bar * 0.96, true);
+                }
+                else if (name == "KICK QUARTERS, THEN KICK AND SNARE QUARTERS")
+                {
+                    if (l != ComposerLayer::drums)
+                        return;
+                    const auto from = juce::jmax (0.0, end - 2.0 * bar), q4 = bar / 4.0;
+                    cutAt (idea, from);
+                    for (int k = 0; k < 8; ++k)
+                    {
+                        add (idea, from + k * q4, q4 * 0.5, 36, 0.86f);
+                        add (idea, from + k * q4, q4 * 0.5, 42, 0.5f);
+                        if (k >= 4)
+                            add (idea, from + k * q4, q4 * 0.5, 38, 0.82f + 0.02f * (float) k);
+                    }
+                }
+                else if (name == "PAIRED-SIXTEENTH BUILD BAR")
+                {
+                    if (l != ComposerLayer::drums)
+                        return;
+                    cutAt (idea, lastBar);
+                    const auto s16 = bar / 16.0;
+                    const char* pairs = "xx--xx--xx--xxxx";
+                    for (int k = 0; k < 16; ++k)
+                    {
+                        if (pairs[k] == 'x')
+                            add (idea, lastBar + k * s16, s16 * 0.9, 38, 0.62f + 0.02f * (float) k);
+                        if (k % 4 == 0)
+                            add (idea, lastBar + k * s16, s16 * 0.9, 36, 0.84f);
+                    }
+                }
+                else if (name == "BAND HITS FROM TWO-AND")
+                {
+                    const auto e8 = bar / 8.0;
+                    cutAt (idea, lastBar + 3 * e8);
+                    if (! playing)
+                        return;
+                    for (int i = 3; i < 8; ++i)
+                    {
+                        const auto at = lastBar + i * e8;
+                        if (l == ComposerLayer::drums)
+                        {
+                            add (idea, at, e8 * 0.8, 36, 0.9f);
+                            add (idea, at, e8 * 0.8, i == 3 ? 49 : 38, 0.86f);
+                        }
+                        else
+                            bandHit (l, idea, chordAt (at), at, e8 * 0.85, i == 3);
+                    }
+                }
+                else if (name == "KEYS GLISSANDO INTO THE DOWNBEAT")
+                {
+                    if (l != ComposerLayer::chords)
+                        return;
+                    const auto from = end - bar / 4.0;
+                    cutAt (idea, from);
+                    const auto top = pitchOfClassIn (next().root, 84, 95);
+                    for (int k = 0; k < 12; ++k)   // (twelve notes up two octaves over the last beat)
+                        add (idea, from + k * bar / 48.0, bar / 48.0, scaleStep (spans.front().key, top - 24, (k * 14) / 12), 0.4f + 0.03f * (float) k);
+                }
+                else if (name == "EVERYTHING ON ONE, HELD")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    if (l == ComposerLayer::drums)
+                    {
+                        add (idea, lastBar, 0.25, 36, 0.95f);
+                        add (idea, lastBar, 0.25, 49, 0.92f);
+                        return;
+                    }
+                    bandHit (l, idea, chordAt (lastBar), lastBar, bar * 0.97, true);
+                }
+                else if (name == "BALLAD TOM FILL BAR")
+                {
+                    if (l != ComposerLayer::drums)
+                        return;
+                    const auto from = lastBar + bar / 2.0, s16 = bar / 16.0;
+                    cutAt (idea, from);
+                    const int toms[] { 50, 48, 48, 47, 45, 45, 43, 41 };
+                    for (int k = 0; k < 8; ++k)
+                        add (idea, from + k * s16, s16 * 0.9, toms[k], 0.6f + 0.035f * (float) k);
+                }
+                else if (name == "ROOT SIXTEENTHS BUILD")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto s16 = bar / 16.0;
+                    if (l == ComposerLayer::drums)
+                    {
+                        for (int k = 0; k < 16; ++k)
+                            add (idea, lastBar + k * s16, s16 * 0.9, 38, 0.45f + 0.03f * (float) k);
+                        return;
+                    }
+                    if (l != ComposerLayer::guitar && l != ComposerLayer::bass)
+                        return;
+                    const auto pc = chordAt (lastBar).root;
+                    for (int k = 0; k < 16; ++k)
+                        add (idea, lastBar + k * s16, s16 * 0.8, l == ComposerLayer::bass ? bassRoot (pc) : guitarRoot (pc), juce::jlimit (0.3f, 1.0f, 0.5f + 0.03f * (float) k));
+                }
+                else if (name == "STOP, TWO HITS ON FOUR")
+                {
+                    cutAt (idea, lastBar);
+                    if (! playing)
+                        return;
+                    const auto e8 = bar / 8.0;
+                    for (const auto i : { 0, 6, 7 })
+                    {
+                        const auto at = lastBar + i * e8;
+                        if (l == ComposerLayer::drums)
+                        {
+                            add (idea, at, e8 * 0.8, 36, 0.92f);
+                            add (idea, at, e8 * 0.8, i == 0 ? 49 : 38, 0.88f);
+                        }
+                        else
+                            bandHit (l, idea, i == 0 ? chordAt (at) : next(), at, e8 * 0.85, i == 0);
+                    }
+                }
+                else if (name == "TWO BARS OF KIT ALONE")
+                {
+                    const auto from = juce::jmax (0.0, end - 2.0 * bar);
+                    if (l != ComposerLayer::drums)
+                    {
+                        cutAt (idea, from);
+                        return;
+                    }
+                    const auto s16 = bar / 16.0;   // (the kit's own groove on, a fill over the last two beats)
+                    cutAt (idea, end - bar / 2.0);
+                    for (int k = 8; k < 16; ++k)
+                        add (idea, lastBar + k * s16, s16 * 0.9, k < 12 ? 38 : (k < 14 ? 45 : 41), 0.66f + 0.03f * (float) (k - 8));
+                }
                 std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
             }
         };
