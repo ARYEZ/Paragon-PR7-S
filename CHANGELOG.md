@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.241.0
+
+Round ten, part two: twelve chorus types from your 56 songs (shapes only, our own names, all in 4/4). They come at the end of the chorus list.
+
+- **POWER BALLAD CHORUS:** full chords rung (or on 1 and 3, the last bar split), the kick on 1, the and of 2 and 3 with a pickup into every fourth bar, the bass on the same three and walking into each change on 4, an organ triad with a moving voice or a broken piano triad. The ACOUSTIC lane comes on with open eighth strums or big strums on 1 and 3.
+- **THE FOURTH BAR HIT ON TWO, THREE, FOUR:** a plain chorus whose every fourth bar the whole band hits on all four beats.
+- **ANTHEM PUSH CHORUS:** a chord on 1 rung to the and of 3, the band pushing on 4 and its and into the next chord, open hats, a pad with brass answering in each second half (a second guitar can hold a high chord, on the lane's second track).
+- **FIRST CHORUS UNPLUGGED:** acoustics alone (full strums on the beats, a second acoustic's triads on the ands), strings holding, no bass or kit (or a tambourine).
+- **HALF-TIME BALLAD CHORUS, PUSH ON FOUR:** a two-bar half-time kit with the snare on 3, power chords on 1 and a push on 4, the bass doubling.
+- **HOOK HALF, THEN FOUR ON THE FLOOR:** held chords over a backbeat, then eighths over four on the floor from halfway.
+- **CHANT BARS:** every other bar the band hits the four quarters together for a chant, claps on 2 and 4.
+- **BASS DROPS OUT FOR THE CHORUS:** the bass and low guitar out, strings held every two bars over the verse's loop (with woodblock sixteenths, or without).
+- **ORCHESTRAL PULSE, NO SNARE:** the kick on the eighths under ride and pedal hat, string stabs on 1, the and of 2 and 3 with a run up into every bar, the bass on a pulse figure.
+- **TWO-BAR STAB CHORUS:** stabs on 1 and the and of 2, then 1 and 3, piano triads in eighths, the ride bell on the quarters.
+- **BALLAD CHORUS, MUTED SIXTEENTHS THROUGH THE CHORD:** two palm-muted sixteenth runs a bar through each chord's notes, a ballad groove with the kick on 1 and the a of 4, the keys lifting on 2, its and and 3.
+- **HELD CHORDS UNDER PIANO TRIADS:** power chords held under eighth piano triads, pushes on the and of 3 and the and of 4, the bass leaving beat 3 empty.
+
+Not checked here: how it sounds, by ear.
+
 ## 0.240.0
 
 Round ten, part one: thirteen verse types from the 56 songs you uploaded (80s arena rock, power ballads, acoustic versions, 70s rock and 90s alt-rock). Shapes only, our own names, everything in 4/4. They sit in the verse list before DRONING and SPARSE; each lane's options are listed under the type.

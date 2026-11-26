@@ -461,7 +461,20 @@ namespace pr7s
                          { "CHANT STOP: GUITAR ALONE", "The drums and the bass out: the guitar alone, the fifth held two half notes, then short root hits, two pickups at the end", r, {}, c },
                          // (0.238.0) The swung types, a chorus's too (one list serves both).
                          { "TRIPLET STOMP, TRITONE CHUG", "Everything in triplets: power chords on the root and the flat five over a two-beat stomp of snare, three kicks and a snare between", r, {}, c },
-                         { "SHUFFLE STOMP", "A swung stomp: a low single-note shuffle on 1 and the a of each beat, the kick and floor tom together, no hats", r, {}, c } };
+                         { "SHUFFLE STOMP", "A swung stomp: a low single-note shuffle on 1 and the a of each beat, the kick and floor tom together, no hats", r, {}, c },
+                         // (0.241.0) Round ten's choruses (shapes only, our names).
+                         { "POWER BALLAD CHORUS", "A big ballad chorus: full chords rung, the kick on 1, the and of 2 and 3, the bass walking into each change on 4, an organ or piano under it", r, {}, c },
+                         { "THE FOURTH BAR HIT ON TWO, THREE, FOUR", "A plain chorus whose every fourth bar the whole band hits on 1, 2, 3 and 4 together", r, {}, c },
+                         { "ANTHEM PUSH CHORUS", "A chord on 1 rung to the and of 3, the band pushing on 4 and its and into the next, open hats, brass answering in each second half", r, {}, c },
+                         { "FIRST CHORUS UNPLUGGED", "The first chorus on acoustics alone: full strums on the beats, a second acoustic's triads on the ands, strings holding, no bass or kit", r, {}, c },
+                         { "HALF-TIME BALLAD CHORUS, PUSH ON FOUR", "A two-bar half-time kit with the snare on 3, power chords on 1 and a push on 4, the bass doubling them", r, {}, c },
+                         { "HOOK HALF, THEN FOUR ON THE FLOOR", "The first half held chords over a backbeat, the second half eighths over four on the floor with open hats", r, {}, c },
+                         { "CHANT BARS", "Every other bar the band hits the four quarters together for a chant, claps on 2 and 4, a chord rung between", r, {}, c },
+                         { "BASS DROPS OUT FOR THE CHORUS", "The bass and the low guitar out for the chorus: strings held every two bars over the verse's loop", r, {}, c },
+                         { "ORCHESTRAL PULSE, NO SNARE", "No snare: the kick on the eighths under ride and pedal hat, string stabs on 1, the and of 2 and 3, a run up into every bar", r, {}, c },
+                         { "TWO-BAR STAB CHORUS", "Short stabs on 1 and the and of 2, then on 1 and 3, piano triads on the eighths under them, the ride bell on the quarters", r, {}, c },
+                         { "BALLAD CHORUS, MUTED SIXTEENTHS THROUGH THE CHORD", "Two palm-muted sixteenth runs a bar through each chord's notes over a ballad groove, the keys lifting on 2, its and and 3", r, {}, c },
+                         { "HELD CHORDS UNDER PIANO TRIADS", "Power chords held under the piano's eighth triads, pushes on the and of 3 and the and of 4, the bass leaving beat 3 empty", r, {}, c } };
             }
             case 3:
             {
@@ -1850,6 +1863,33 @@ namespace pr7s
                   { "CLIMBING VOICES OVER THE PEDAL", "THE CHORDS OVER THE PEDAL" }, { "KICK ON THE BASS, NO CYMBALS", "KICK ON THE BASS, QUARTER HATS" }, {} },
                 { "UNISON LOW SIXTEENTHS OVER A TOM GROOVE", { "LOW SIXTEENTHS ON THE THREE-BAR PLAN", "LOW SIXTEENTHS ON THE CHORDS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "THREE-BAR TOM GROOVE, NO CYMBALS", "THREE-BAR TOM GROOVE, HATS ON THE BEATS" }, {} },
+                // (0.241.0) Round ten's choruses.
+                { "POWER BALLAD CHORUS", { "A FULL CHORD RUNG EACH BAR", "CHORDS ON ONE AND THREE, THE LAST BAR SPLIT" }, { "ONE, TWO-AND, THREE, A WALK ON FOUR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "ORGAN TRIAD HELD, A VOICE MOVING ON THREE", "PIANO BROKEN TRIAD UNDER THE CHORUS" }, { "BALLAD CHORUS: KICK ONE, TWO-AND, THREE", "BALLAD CHORUS ON THE RIDE" }, {},
+                  { "OPEN EIGHTH STRUMS UNDER THE BALLAD", "BIG STRUMS ON ONE AND THREE UNDER THE BALLAD" } },
+                { "THE FOURTH BAR HIT ON TWO, THREE, FOUR", { "RUNG CHORDS, THE FOURTH BAR HIT ON TWO, THREE, FOUR", "EIGHTHS, THE FOURTH BAR HIT ON TWO, THREE, FOUR" }, { "ROOT EIGHTHS, THE FOURTH BAR'S HITS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "BACKBEAT, THE FOURTH BAR'S HITS", "HALF TIME, THE FOURTH BAR'S HITS" }, {} },
+                { "ANTHEM PUSH CHORUS", { "CHORD ON ONE, HITS ON FOUR AND FOUR-AND", "THE PUSHES WITH A HIGH CHORD OVER THEM" }, { "ROOT EIGHTHS, LOCKED ON FOUR AND FOUR-AND", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "PAD HELD, BRASS ANSWERS IN THE SECOND HALF", "PAD HELD UNDER THE PUSHES" }, { "ANTHEM BEAT, OPEN HAT EIGHTHS", "ANTHEM BEAT, KICK ON THREE-AND EVERY OTHER BAR" }, {} },
+                { "FIRST CHORUS UNPLUGGED", { "OUT", "ONE CLEAN CHORD RUNG A BAR" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "STRINGS HOLD THE CHORDS", "SILENT" }, { "OUT", "A TAMBOURINE ON TWO AND FOUR" }, {},
+                  { "FULL STRUMS ON THE BEATS, TRIADS ON THE ANDS", "FULL STRUMS ON THE BEATS" } },
+                { "HALF-TIME BALLAD CHORUS, PUSH ON FOUR", { "POWER CHORD ON ONE, A PUSH ON FOUR", "POWER CHORD ON ONE, THE SECOND BAR ON THREE" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "TWO-BAR HALF-TIME KIT, PEDAL HAT QUARTERS", "TWO-BAR HALF-TIME KIT, OPEN HAT ON FOUR" }, {} },
+                { "HOOK HALF, THEN FOUR ON THE FLOOR", { "RUNG CHORDS, THEN EIGHTHS FROM HALFWAY", "EIGHTHS THROUGHOUT, OPEN FROM HALFWAY" }, { "ROOTS HELD, THEN EIGHTHS FROM HALFWAY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "BACKBEAT, THEN FOUR ON THE FLOOR FROM HALFWAY", "HALF TIME, THEN FOUR ON THE FLOOR FROM HALFWAY" }, {} },
+                { "CHANT BARS", { "QUARTER HITS EVERY OTHER BAR, RUNG BETWEEN", "QUARTER HITS EVERY BAR" }, { "THE QUARTER HITS WITH THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND SNARE ON THE QUARTERS, CLAPS ON TWO AND FOUR", "STOMP: KICK ON ONE AND THREE, SNARE AND CLAP ON TWO AND FOUR" }, {} },
+                { "BASS DROPS OUT FOR THE CHORUS", { "OUT", "A HIGH RUNG CHORD EVERY TWO BARS" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "STRINGS HELD EVERY TWO BARS", "STRINGS HELD, PIANO ON ONE" }, { "THE VERSE'S LOOP WITH WOODBLOCK SIXTEENTHS", "THE VERSE'S LOOP" }, {} },
+                { "ORCHESTRAL PULSE, NO SNARE", { "A LOW HELD LINE, A NOTE A BAR", "OUT" }, { "THE ORCHESTRAL PULSE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "STRINGS STAB ONE, TWO-AND, THREE, A GLISSANDO INTO EACH BAR", "STRING STABS ON ONE, TWO-AND, THREE" }, { "KICK ON THE EIGHTHS, PEDAL HAT AND RIDE, NO SNARE", "CYMBALS ONLY, NO KICK OR SNARE" }, {} },
+                { "TWO-BAR STAB CHORUS", { "STABS ON ONE AND TWO-AND, THEN ONE AND THREE", "THE STABS, THE LAST CHORD PUSHED ON FOUR-AND" }, { "ROOTS ON THE STABS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "PIANO EIGHTH TRIADS UNDER THE STABS", "HELD PADS" }, { "RIDE BELL QUARTERS, KICK INTO EVERY OTHER BAR", "RIDE BELL QUARTERS, A THIRD SNARE EVERY FOURTH BAR" }, {} },
+                { "BALLAD CHORUS, MUTED SIXTEENTHS THROUGH THE CHORD", { "MUTED SIXTEENTH RUNS THROUGH THE CHORD", "MUTED RUNS, A SECOND GUITAR RINGING" }, { "ROOT EIGHTHS WITH CHROMATIC APPROACHES", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "KEYS ON TWO, TWO-AND, THREE", "ELECTRIC PIANO QUARTERS" }, { "BALLAD GROOVE, KICK ON ONE AND THE A OF FOUR", "BALLAD GROOVE, A TOM PICKUP AT THE PHRASE ENDS" }, {} },
+                { "HELD CHORDS UNDER PIANO TRIADS", { "HELD CHORD, PUSHES ON THREE-AND AND FOUR-AND", "HELD CHORD, ONE PUSH ON FOUR-AND" }, { "EIGHTHS WITH BEAT THREE EMPTY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "PIANO EIGHTH TRIADS UNDER THE PUSHES", "HELD PADS" }, { "OPEN HAT ON TWO, THREE AND FOUR", "BALLAD RIDE ON THE ANDS" }, {} },
                 // (0.240.0) Round ten's verses.
                 { "PIANO BALLAD VERSE", { "A CLEAN DYAD EVERY OTHER BAR", "OUT" }, { "OUT, THEN ROOTS FROM HALFWAY", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "PIANO BROKEN TRIAD EIGHTHS", "PIANO BROKEN TRIAD, CHORD ON THE LAST EIGHTH" }, { "OUT, THEN A KICK ON ONE FROM HALFWAY", "SOFT SNARE TEXTURE, KICK FROM HALFWAY" }, {} },

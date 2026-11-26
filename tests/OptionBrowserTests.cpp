@@ -381,13 +381,13 @@ TEST_CASE ("0.157.0: TYPE's short menu and browser", "[options][composer][ui]")
     auto options = page.typeOptions();
     REQUIRE (options.size() == types.size() + 1);
     std::set<OptionFeel> feels;
-    auto unmeasured = 0;   // (a type with no drums of its own: ACOUSTIC STRUM CHORUS)
+    auto unmeasured = 0;   // (types with no drums of their own: ACOUSTIC STRUM CHORUS; 0.241.0: FIRST CHORUS UNPLUGGED)
     for (const auto& o : options)
     {
         unmeasured += o.measure.feel == OptionFeel::unknown ? 1 : 0;
         feels.insert (o.measure.feel);
     }
-    CHECK (unmeasured <= 2);
+    CHECK (unmeasured <= 3);
     CHECK (feels.size() >= 3);
 
     // The short menu: STANDARD, MORE TYPES; a favourite shows.
