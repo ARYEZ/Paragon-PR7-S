@@ -4785,6 +4785,8 @@ pr7s::RiffFindRequest ComposerPage::riffRequest() const
     request.leastQuality = pr7s::riffQualityThreshold (studio.getRiffQualityLevel());   // (0.228.0)
     request.padStyle = studio.getRiffPadStyle() == 1 ? pr7s::PadStyle::strummed : pr7s::PadStyle::powerChords;   // (0.231.0)
     request.hidden = studio.getHiddenRiffs();
+    request.recent = studio.getRecentRiffs();   // (0.233.0) a new draw each search, the ones seen lately behind
+    request.seed = riffSeedForTests != 0 ? riffSeedForTests : (juce::uint32) juce::Random::getSystemRandom().nextInt (0x7fffffff) | 1u;
     return request;
 }
 
@@ -4861,6 +4863,12 @@ void ComposerPage::finishRiffSearch()
                            : juce::String ("No riffs found in the MediaBay's MIDI files (none 1-16 bars long with notes but drums)");
         repaint();
         return;
+    }
+    {
+        std::vector<juce::File> shown;
+        for (const auto& f : found)
+            shown.push_back (f.file);
+        studio.noteRiffsShown (shown);
     }
     status = juce::String ((int) found.size()) + " riffs found for the " + pr7s::sectionWord (getSection()).toLowerCase() + " in "
            + ChordUi::spokenKey (state.key) + ", the best first";

@@ -1,5 +1,6 @@
 #include "engine/RiffFinder.h"
 
+#include <map>
 #include <set>
 
 #include "engine/Acoustic.h"
@@ -681,6 +682,11 @@ namespace pr7s
                 continue;   // longer than 16 bars (and the bar the first note may start in)
             likely.push_back ({ promise (item, request), &item });
         }
+        // (0.233.0) A seed shakes the order up: the promise counts, but a file further down the list gets its turn.
+        juce::Random random ((juce::int64) request.seed * 2654435761LL + 17);
+        if (request.seed != 0)
+            for (auto& l : likely)
+                l.first += random.nextDouble() * 1.5;
         std::stable_sort (likely.begin(), likely.end(), [] (const auto& a, const auto& b) { return a.first > b.first; });
         if ((int) likely.size() > request.mostRead)
             likely.resize ((size_t) juce::jmax (0, request.mostRead));
@@ -698,8 +704,44 @@ namespace pr7s
                 ++*read;
         }
         std::stable_sort (found.begin(), found.end(), [] (const RiffFind& a, const RiffFind& b) { return a.score > b.score; });
-        if ((int) found.size() > request.most)
-            found.resize ((size_t) juce::jmax (0, request.most));
-        return found;
+        if (request.seed == 0 || (int) found.size() <= 0)
+        {
+            if ((int) found.size() > request.most)
+                found.resize ((size_t) juce::jmax (0, request.most));
+            return found;
+        }
+        // (0.233.0) The list drawn: the ones seen lately behind, close scores in a new order, a few a folder.
+        std::vector<std::pair<double, size_t>> order;
+        for (size_t i = 0; i < found.size(); ++i)
+        {
+            const auto path = found[i].file.getFullPathName();
+            const bool seen = std::binary_search (request.recent.begin(), request.recent.end(), path);
+            order.push_back ({ found[i].score + random.nextDouble() * 0.08 - (seen ? 0.3 : 0.0), i });
+        }
+        std::stable_sort (order.begin(), order.end(), [] (const auto& a, const auto& b) { return a.first > b.first; });
+        std::map<juce::String, int> perFolder;
+        std::vector<bool> taken (found.size(), false);
+        std::vector<size_t> chosen;
+        const auto most = (size_t) juce::jmax (0, request.most);
+        for (int pass = 0; pass < 2 && chosen.size() < most; ++pass)
+            for (const auto& [_, i] : order)
+            {
+                if (chosen.size() >= most)
+                    break;
+                if (taken[i])
+                    continue;
+                auto& count = perFolder[found[i].file.getParentDirectory().getFullPathName()];
+                if (pass == 0 && request.perFolder > 0 && count >= request.perFolder)
+                    continue;
+                ++count;
+                taken[i] = true;
+                chosen.push_back (i);
+            }
+        std::sort (chosen.begin(), chosen.end());   // the best first, as the browser shows them
+        std::vector<RiffFind> drawn;
+        drawn.reserve (chosen.size());
+        for (auto i : chosen)
+            drawn.push_back (std::move (found[i]));
+        return drawn;
     }
 }

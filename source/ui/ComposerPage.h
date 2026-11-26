@@ -303,6 +303,7 @@ public:
     pr7s::RiffFindRequest riffRequest() const;
     bool isFindingRiffs() const noexcept { return riffSearch != nullptr; }
     void waitForRiffsForTests();                                // the search finished and its browser made
+    juce::uint32 riffSeedForTests = 0;                          // (0.233.0) not 0: every search draws with this seed
     // (0.83.4, the owner: drag a MIDI part or file in and it builds that part) Your riff taken, then the section
     // built around it (the lanes on, the guitar playing the riff): the tracks written, none if nothing was.
     std::vector<int> buildFromPart (int partId, pr7s::DrumSection, int lane = -1);

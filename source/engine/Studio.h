@@ -429,6 +429,11 @@ namespace pr7s
         std::vector<juce::String> getHiddenRiffs() const;
         void hideRiff (const juce::File&);
         void clearHiddenRiffs();
+        // (0.233.0) The riffs FIND A RIFF showed lately (full paths, sorted; settings "riffRecent", the newest
+        // `recentRiffsKept` a line each): the next search puts them behind the ones you haven't seen.
+        std::vector<juce::String> getRecentRiffs() const;
+        void noteRiffsShown (const std::vector<juce::File>&);
+        static constexpr int recentRiffsKept = 600;
         // (0.201.0, the owner's levels) The fader level a track ARCHITECT itself makes for a lane starts at (by lane,
         // composerTrackPart's order; defaults chords -11.5, melody -9.5, bass -5.5 dB, the rest 0). Tracks found by
         // name keep their own fader. Settings "composerLaneLevels" (dB a line; in memory without a settings file),
@@ -2140,6 +2145,7 @@ namespace pr7s
         int riffQualityHere = 1;
         int riffPadStyleHere = 0;
         juce::StringArray hiddenRiffsHere;
+        juce::StringArray recentRiffsHere;   // (0.233.0) newest last
         bool sectionTonesHere = true;   // (0.205.0, without a settings file)
         int sectionToneBlocks = 0;
         std::array<ToneChoice, 3> toneChoicesHere {};   // (0.204.0; lead, clean, acoustic, without a settings file)

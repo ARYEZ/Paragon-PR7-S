@@ -2,6 +2,18 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.233.0
+
+FIND A RIFF IN THE MEDIABAY gives you a different 100 riffs each time you search. Before, it always gave the same list: the same key, tempo and section brought back the same 100 riffs every time. It also read at most 4,000 files, always the same ones first, so most of a big library was never looked at.
+
+**What changed:**
+- **A different share of your library each search.** The files whose names and tempos look most promising are still more likely to be read, but each search also draws at random from the rest. Over a few searches, the whole library gets its turn.
+- **Riffs you've just been shown go to the back.** The studio remembers the last 600 riffs it listed. The next search puts them behind ones you haven't seen; they only come back when nothing new is good enough.
+- **At most 6 from one folder,** until every folder has had its turn. A single pack whose files say "riff" or "verse" in their names can't fill the whole list any more.
+- **Close scores come out in a new order** each search. The list is still shown best first.
+
+What still holds: the quality setting (+ MY RIFF > Riff Quality), the riffs you've hidden, and moving into the song's key all work as before. A riff that sounds right still has to score well to be listed: variety never lets weaker riffs push out good ones.
+
 ## 0.232.0
 
 ARCHITECT's library fills now come from where you keep them. Toontrack keeps a song's fills in a FILLS folder of its own, not in folders named after the sections, so the old rule (fills ranked by section words) kept missing them.

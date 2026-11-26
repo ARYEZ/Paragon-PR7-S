@@ -11706,6 +11706,40 @@ namespace pr7s
             settings->setValue ("riffHidden", lines.joinIntoString ("\n"));
     }
 
+    std::vector<juce::String> Studio::getRecentRiffs() const
+    {
+        juce::StringArray lines;
+        if (settings != nullptr)
+            lines.addLines (settings->getValue ("riffRecent"));
+        else
+            lines = recentRiffsHere;
+        lines.removeEmptyStrings();
+        std::vector<juce::String> paths (lines.begin(), lines.end());
+        std::sort (paths.begin(), paths.end());
+        paths.erase (std::unique (paths.begin(), paths.end()), paths.end());
+        return paths;
+    }
+
+    void Studio::noteRiffsShown (const std::vector<juce::File>& files)
+    {
+        juce::StringArray lines;
+        if (settings != nullptr)
+            lines.addLines (settings->getValue ("riffRecent"));
+        else
+            lines = recentRiffsHere;
+        lines.removeEmptyStrings();
+        for (const auto& f : files)
+        {
+            lines.removeString (f.getFullPathName());
+            lines.add (f.getFullPathName());
+        }
+        if (lines.size() > recentRiffsKept)
+            lines.removeRange (0, lines.size() - recentRiffsKept);
+        recentRiffsHere = lines;
+        if (settings != nullptr)
+            settings->setValue ("riffRecent", lines.joinIntoString ("\n"));
+    }
+
     void Studio::clearHiddenRiffs()
     {
         hiddenRiffsHere.clear();

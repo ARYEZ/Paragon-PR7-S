@@ -7,6 +7,9 @@
 #include "ui/ComposerPage.h"
 #include "ui/Finish.h"
 
+#include <map>
+#include <set>
+
 // (0.227.0) FIND A RIFF IN THE MEDIABAY: its MIDI files, not drums, 1-16 bars, moved into the song's key.
 
 using namespace pr7s;
@@ -558,4 +561,96 @@ TEST_CASE ("0.231.0: a pad strummed as full chord shapes: downs and ups on the e
     CHECK (studio.getRiffPadStyle() == 0);
     studio.setRiffPadStyle (1);
     CHECK (studio.getRiffPadStyle() == 1);
+}
+
+TEST_CASE ("0.233.0: FIND A RIFF draws a new list each search: the ones seen lately behind, a few a folder", "[composer][riff][riffinder][variety]")
+{
+    Folder folder;
+    // 30 packs of 10 riffs; the first pack's names promise the most ("verse riff"), so the fixed ranking reads it first.
+    std::vector<MediaItem> items;
+    for (int p = 0; p < 30; ++p)
+    {
+        auto dir = folder.dir.getChildFile ("Pack " + juce::String (p));
+        dir.createDirectory();
+        for (int r = 0; r < 10; ++r)
+        {
+            const auto name = (p == 0 ? juce::String ("verse riff ") : juce::String ("line ")) + juce::String (p) + "-" + juce::String (r);
+            const int root = 40 + (r % 5);
+            items.push_back (itemOf (writeRiff (dir, name, { root, root, root + 7, root, root + 5, root, root + 3, root + 7 }, 2), "Am", 2));
+        }
+    }
+    RiffFindRequest request;
+    request.key = *keyFromText ("Am");
+    request.section = DrumSection::verse;
+    request.most = 20;
+    request.leastQuality = 0.0;
+
+    const auto paths = [] (const std::vector<RiffFind>& found)
+    {
+        std::vector<juce::String> p;
+        for (const auto& f : found)
+            p.push_back (f.file.getFullPathName());
+        std::sort (p.begin(), p.end());
+        return p;
+    };
+    const auto mostFromOneFolder = [] (const std::vector<RiffFind>& found)
+    {
+        std::map<juce::String, int> count;
+        int most = 0;
+        for (const auto& f : found)
+            most = juce::jmax (most, ++count[f.file.getParentDirectory().getFullPathName()]);
+        return most;
+    };
+
+    // Seed 0: the fixed ranking, the same every time.
+    const auto fixedA = findRiffs (items, request);
+    const auto fixedB = findRiffs (items, request);
+    REQUIRE (fixedA.size() == 20);
+    CHECK (paths (fixedA) == paths (fixedB));
+
+    // With a seed: no more than six a folder, and two searches differ.
+    request.seed = 11;
+    const auto drawnA = findRiffs (items, request);
+    request.seed = 12;
+    const auto drawnB = findRiffs (items, request);
+    REQUIRE (drawnA.size() == 20);
+    REQUIRE (drawnB.size() == 20);
+    CHECK (mostFromOneFolder (drawnA) <= 6);
+    CHECK (paths (drawnA) != paths (drawnB));
+    for (size_t i = 1; i < drawnA.size(); ++i)
+        CHECK (drawnA[i - 1].score >= drawnA[i].score);   // shown the best first
+
+    // The ones just shown go behind: the next search shows none of them while 280 others wait.
+    request.recent = paths (drawnA);
+    request.seed = 13;
+    const auto next = findRiffs (items, request);
+    REQUIRE (next.size() == 20);
+    for (const auto& f : next)
+        CHECK (! std::binary_search (request.recent.begin(), request.recent.end(), f.file.getFullPathName()));
+
+    // Reading a share of a big library: mostRead 40 of 300; seeds read different files.
+    request.recent.clear();
+    request.mostRead = 40;
+    std::set<juce::String> seen;
+    for (juce::uint32 seed = 1; seed <= 8; ++seed)
+    {
+        request.seed = seed;
+        for (const auto& f : findRiffs (items, request))
+            seen.insert (f.file.getFullPathName());
+    }
+    CHECK (seen.size() > 60);
+}
+
+TEST_CASE ("0.233.0: the riffs shown are remembered, the newest kept", "[composer][riff][riffinder][variety]")
+{
+    Studio studio (false);
+    CHECK (studio.getRecentRiffs().empty());
+    std::vector<juce::File> files;
+    for (int i = 0; i < Studio::recentRiffsKept + 20; ++i)
+        files.push_back (juce::File ("/riffs/r" + juce::String (i) + ".mid"));
+    studio.noteRiffsShown (files);
+    const auto recent = studio.getRecentRiffs();
+    CHECK ((int) recent.size() == Studio::recentRiffsKept);
+    CHECK (! std::binary_search (recent.begin(), recent.end(), juce::File ("/riffs/r0.mid").getFullPathName()));
+    CHECK (std::binary_search (recent.begin(), recent.end(), juce::File ("/riffs/r619.mid").getFullPathName()));
 }

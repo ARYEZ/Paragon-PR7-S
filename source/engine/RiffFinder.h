@@ -44,6 +44,14 @@ namespace pr7s
         std::vector<juce::String> hidden;
         // (0.231.0) How a pad's chords are played: ringing power chords, or full chord shapes strummed.
         PadStyle padStyle = PadStyle::powerChords;
+        // (0.233.0) Variety (the owner: "I'm seeing the same 100 songs a lot"). With a seed (not 0), each search
+        // reads a different share of a big library (the likeliest by name and tempo still first, the rest of the
+        // reading drawn at random), the riffs shown in the last searches (`recent`: full paths, sorted) go behind
+        // the ones not seen, close scores are drawn in a different order, and no folder gives more than
+        // `perFolder` of the list until every folder's had its turn. Seed 0: the fixed ranking as before.
+        juce::uint32 seed = 0;
+        std::vector<juce::String> recent;
+        int perFolder = 6;
     };
 
     // (0.228.0) How much a MIDI file is like a guitar riff, from its notes (ours, the owner: "half the riffs don't
