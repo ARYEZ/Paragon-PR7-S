@@ -329,6 +329,9 @@ namespace pr7s
                          { "SYNTH-BASS LOOP UNDER HALF TIME", "An interlocking two-bar synth bass under a half-time loop, strings holding one note every two bars, the guitars out", r, {}, v },
                          { "BASS AND ONE MUTED CHUG, DRUMS OUT", "The drums out: one guitar's muted sixteenths rocking a half step, the bass's roots under it", r, {}, v },
                          { "SOFT CHORD BAR, DOTTED OCTAVE PINGS", "A soft chord bar, then a bar of octave pings every three sixteenths; ghosted snares and loud-soft sixteenth hats", r, {}, v },
+                         // (0.238.0) Round nine's swung types: twelve triplet eighths a bar, in 4/4 (shapes only, our names).
+                         { "TRIPLET STOMP, TRITONE CHUG", "Everything in triplets: power chords on the root and the flat five over a two-beat stomp of snare, three kicks and a snare between", r, {}, v },
+                         { "SHUFFLE STOMP", "A swung stomp: a low single-note shuffle on 1 and the a of each beat, the kick and floor tom together, no hats", r, {}, v },
                          droning, sparse };
             }
             case 2:
@@ -441,7 +444,10 @@ namespace pr7s
                          { "PAIRS STEPPING DOWN A STEP A BAR", "The chord, a high dyad stab and the chord a whole step lower traded each bar, a crash on every quarter", r, {}, c },
                          { "RIFF BAR, HALF-STEP SLIDE BAR", "A low riff bar, then a power chord a whole step up and one a half step up sliding back to the root, over a stomp", r, {}, c },
                          { "PUNK EIGHTHS IN 3+3+2, SNARE ON THE DOTS", "Power-chord eighths changing in groups of 3, 3 and 2, the snare on the dotted quarters and the kicks between, a skank bar every fourth", r, {}, c },
-                         { "CHANT STOP: GUITAR ALONE", "The drums and the bass out: the guitar alone, the fifth held two half notes, then short root hits, two pickups at the end", r, {}, c } };
+                         { "CHANT STOP: GUITAR ALONE", "The drums and the bass out: the guitar alone, the fifth held two half notes, then short root hits, two pickups at the end", r, {}, c },
+                         // (0.238.0) The swung types, a chorus's too (one list serves both).
+                         { "TRIPLET STOMP, TRITONE CHUG", "Everything in triplets: power chords on the root and the flat five over a two-beat stomp of snare, three kicks and a snare between", r, {}, c },
+                         { "SHUFFLE STOMP", "A swung stomp: a low single-note shuffle on 1 and the a of each beat, the kick and floor tom together, no hats", r, {}, c } };
             }
             case 3:
             {
@@ -1773,6 +1779,13 @@ namespace pr7s
                   { "SILENT", "HELD PADS" }, { "KICK EIGHTHS, SNARE AND SPLASH QUARTERS, ONE HIT", "KICK EIGHTHS, SNARE QUARTERS, ONE HIT" }, {} },
                 { "HALF-TIME CHORDS OVER A MARCH", { "A CHORD EACH HALF BAR", "A CHORD EACH BAR" }, { "ROOTS EACH HALF BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "MARCH, NO KICK", "MARCH WITH A HALF-TIME KICK" }, {} },
+                // (0.238.0) Round nine's swung types (verse and chorus).
+                { "TRIPLET STOMP, TRITONE CHUG", { "TRIPLET POWER CHORDS, ROOT AND FLAT FIVE", "ONE TRIPLET STAB EVERY OTHER BAR", "MUTED TRIPLET CHUGS ON THE ROOT" },
+                  { "DOUBLES THE GUITAR", "CARRIES THE TRIPLETS ALONE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SAW DOUBLES THE TRIPLETS", "SILENT", "HELD PADS" }, { "TRIPLET STOMP CELL", "TRIPLET STOMP, RIDE ON THE BEATS", "HALF-TIME TRIPLET STOMP" }, {} },
+                { "SHUFFLE STOMP", { "LOW SHUFFLE RIFF, TURNAROUND EVERY FOURTH BAR", "SHUFFLED POWER CHORDS" },
+                  { "SHUFFLE ON EVERY TRIPLET, DRONE FIRST", "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "FLAT-SEVEN SHUFFLE PULSE", "SILENT", "HELD PADS" }, { "SHUFFLE STOMP, KICK AND FLOOR, NO HATS", "SHUFFLE BACKBEAT, SHUFFLED RIDE" }, {} },
                 // (0.235.0) Round nine's choruses.
                 { "RING BAR, SIXTEENTH CHORD STREAM", { "RING BAR, THEN A CHORD ON EVERY SIXTEENTH", "THE STREAM EVERY BAR" }, { "WITH THE RING AND THE STREAM", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK CLUSTERS IN THE STREAM BAR, OPEN EIGHTHS", "STRAIGHT KICK, OPEN EIGHTHS" }, {} },

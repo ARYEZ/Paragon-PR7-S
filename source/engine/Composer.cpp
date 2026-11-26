@@ -13723,6 +13723,249 @@ namespace pr7s
                      : l == ComposerLayer::chords ? keys : none;
             }
 
+            // (0.238.0) Round nine's swung types: a bar of twelve triplet eighths (in 4/4; the owner: no
+            // meter changes). Shapes only, our names. `t3` is one triplet eighth.
+            double t3() const { return bpb / 12.0; }
+            // TRIPLET STOMP's riff, slot by slot (12 a bar): -1 rest, else semitones over the bar's root; the
+            // fourth bar's back half turns to the flat third.
+            int tripletRiff238 (int bar, int slot) const
+            {
+                static const int cell[6] { 0, 0, 0, 6, -1, 0 };
+                const auto v = cell[slot % 6];
+                if (v < 0)
+                    return -1;
+                return bar % 4 == 3 && slot >= 6 ? v + 3 : v;
+            }
+            // SHUFFLE STOMP's riff on 1 and the a of each beat (8 a bar): semitones over the bar's root.
+            int shuffleRiff238 (int bar, int note) const
+            {
+                static const int line[8] { 0, 0, 3, 0, 12, 0, 3, 0 };
+                if (bar % 4 == 3)
+                {
+                    static const int turn[8] { 5, 5, 8, 8, 3, 3, 2, 2 };
+                    return turn[note];
+                }
+                return line[note];
+            }
+            static bool tripletName238 (const juce::String& n)
+            {
+                return n.startsWith ("TRIPLET POWER CHORDS") || n == "ONE TRIPLET STAB EVERY OTHER BAR" || n == "MUTED TRIPLET CHUGS ON THE ROOT"
+                    || n == "CARRIES THE TRIPLETS ALONE" || n == "SAW DOUBLES THE TRIPLETS" || n.startsWith ("TRIPLET STOMP") || n == "HALF-TIME TRIPLET STOMP";
+            }
+            static bool shuffleName238 (const juce::String& n)
+            {
+                return n.startsWith ("LOW SHUFFLE RIFF") || n == "SHUFFLED POWER CHORDS" || n.startsWith ("SHUFFLE ON EVERY TRIPLET")
+                    || n == "FLAT-SEVEN SHUFFLE PULSE" || n.startsWith ("SHUFFLE STOMP,") || n.startsWith ("SHUFFLE BACKBEAT");
+            }
+
+            std::optional<LineIdea> guitar238 (const juce::String& n) const
+            {
+                if (! tripletName238 (n) && ! shuffleName238 (n))
+                    return std::nullopt;
+                auto out = idea (LineIdea::Part::rhythm, n.toLowerCase(), {});
+                auto text = [&] (const char* t) { out.description = t; };
+                const auto t = t3();
+                if (n == "TRIPLET POWER CHORDS, ROOT AND FLAT FIVE")
+                {
+                    text ("Power chords in triplets: three on the root, one on the flat five, a rest and the root again each two beats; every fourth bar's back half on the flat third");
+                    for (int bar = 0; bar < bars; ++bar)
+                        for (int k = 0; k < 12; ++k)
+                            if (const auto v = tripletRiff238 (bar, k); v >= 0)
+                                power (out, bar * bpb + k * t, t * 0.9, barRoot (bar) + v, k % 3 == 0 ? open() : muted());
+                    return out;
+                }
+                if (n == "ONE TRIPLET STAB EVERY OTHER BAR")
+                {
+                    text ("One power chord every other bar, struck on 1 and let go after two triplets: room for the voice");
+                    for (int bar = 0; bar < bars; bar += 2)
+                        power (out, bar * bpb, 2 * t * 0.95, barRoot (bar), hard());
+                    return out;
+                }
+                if (n == "MUTED TRIPLET CHUGS ON THE ROOT")
+                {
+                    text ("The root muted on every triplet, an open power chord on 1 and 3");
+                    for (int bar = 0; bar < bars; ++bar)
+                        for (int k = 0; k < 12; ++k)
+                        {
+                            if (k % 6 == 0)
+                                power (out, bar * bpb + k * t, t * 0.9, barRoot (bar), open());
+                            else
+                                add (out, bar * bpb + k * t, t * 0.8, barRoot (bar), tight());
+                        }
+                    return out;
+                }
+                if (n == "LOW SHUFFLE RIFF, TURNAROUND EVERY FOURTH BAR")
+                {
+                    text ("A low single-note shuffle on 1 and the a of each beat, root, flat third and octave; every fourth bar a turnaround on the fourth and flat sixth, then the flat third and the second");
+                    for (int bar = 0; bar < bars; ++bar)
+                        for (int i = 0; i < 8; ++i)
+                        {
+                            const auto at = bar * bpb + (i / 2) * 3 * t + (i % 2) * 2 * t;
+                            const auto pitch = barRoot (bar) + shuffleRiff238 (bar, i);
+                            if (bar % 4 == 3 && i >= 4)
+                                power (out, at, t * 0.9, pitch, hard(), false);
+                            else
+                                add (out, at, (i % 2 == 0 ? 2 : 1) * t * 0.9, pitch, i % 2 == 0 ? open() : muted());
+                        }
+                    return out;
+                }
+                if (n == "SHUFFLED POWER CHORDS")
+                {
+                    text ("The bar's power chord on 1 and the a of every beat, swung, the turnaround every fourth bar");
+                    for (int bar = 0; bar < bars; ++bar)
+                        for (int i = 0; i < 8; ++i)
+                        {
+                            const auto v = bar % 4 == 3 ? shuffleRiff238 (bar, i) : 0;
+                            power (out, bar * bpb + (i / 2) * 3 * t + (i % 2) * 2 * t, (i % 2 == 0 ? 2 : 1) * t * 0.9, barRoot (bar) + v, i % 2 == 0 ? open() : muted(), false);
+                        }
+                    return out;
+                }
+                return std::nullopt;
+            }
+
+            std::optional<LineIdea> bass238 (const juce::String& n) const
+            {
+                if (n != "CARRIES THE TRIPLETS ALONE" && n != "SHUFFLE ON EVERY TRIPLET, DRONE FIRST")
+                    return std::nullopt;
+                auto out = idea (LineIdea::Part::bass, n.toLowerCase(), {});
+                const auto t = t3();
+                const auto top = bassHighest();
+                auto fit = [&] (int pitch) { return pitch > top ? pitch - 12 : pitch; };
+                if (n == "CARRIES THE TRIPLETS ALONE")
+                {
+                    out.description = "The bass alone carries the triplet riff: three roots, the flat five, a rest and the root each two beats";
+                    for (int bar = 0; bar < bars; ++bar)
+                        for (int k = 0; k < 12; ++k)
+                            if (const auto v = tripletRiff238 (bar, k); v >= 0)
+                                add (out, bar * bpb + k * t, t * 0.85, fit (bassRoot (bar * bpb) + v), k % 3 == 0 ? 0.88f : 0.74f);
+                    return out;
+                }
+                out.description = "The root on every triplet, a drone for the first half; then the shuffle riff on 1 and the a of each beat with the root between";
+                const auto half = juce::jmax (1, bars / 2);
+                for (int bar = 0; bar < bars; ++bar)
+                {
+                    const auto root = bassRoot (bar * bpb);
+                    for (int k = 0; k < 12; ++k)
+                    {
+                        auto pitch = root;
+                        if (bar >= half && k % 3 != 1)
+                            pitch = fit (root + shuffleRiff238 (bar, (k / 3) * 2 + (k % 3 == 2 ? 1 : 0)));
+                        add (out, bar * bpb + k * t, t * 0.8, pitch, k % 3 == 0 ? 0.86f : 0.7f);
+                    }
+                }
+                return out;
+            }
+
+            std::optional<LineIdea> keys238 (const juce::String& n) const
+            {
+                if (n != "SAW DOUBLES THE TRIPLETS" && n != "FLAT-SEVEN SHUFFLE PULSE")
+                    return std::nullopt;
+                auto out = idea (LineIdea::Part::chords, n.toLowerCase(), {});
+                const auto t = t3();
+                if (n == "SAW DOUBLES THE TRIPLETS")
+                {
+                    out.description = "A saw synth doubling the triplet riff two octaves up, a little under the guitar";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = pitchOfClassIn (barRoot (bar) % 12, 48, 59);
+                        for (int k = 0; k < 12; ++k)
+                            if (const auto v = tripletRiff238 (bar, k); v >= 0)
+                                add (out, bar * bpb + k * t, t * 0.85, root + v, k % 3 == 0 ? 0.66f : 0.56f);
+                    }
+                    return out;
+                }
+                out.description = "A high pulse on every triplet rocking between the bar's flat seven and its root";
+                for (int bar = 0; bar < bars; ++bar)
+                {
+                    const auto root = pitchOfClassIn (barRoot (bar) % 12, 72, 83);
+                    for (int k = 0; k < 12; ++k)
+                        add (out, bar * bpb + k * t, t * 0.8, k % 2 == 0 ? root - 2 : root, k % 3 == 0 ? 0.62f : 0.5f);
+                }
+                return out;
+            }
+
+            std::optional<LineIdea> drums238 (const juce::String& n) const
+            {
+                if (! (n.startsWith ("TRIPLET STOMP") || n == "HALF-TIME TRIPLET STOMP" || n.startsWith ("SHUFFLE STOMP,") || n.startsWith ("SHUFFLE BACKBEAT")))
+                    return std::nullopt;
+                auto out = idea (LineIdea::Part::drums, n.toLowerCase(), {});
+                const auto t = t3();
+                auto crashOn = [&] (int bar, int every)
+                {
+                    if (bar % every == 0)
+                        hit (out, bar * bpb, GmDrum::crash, 0.86f);
+                };
+                if (n == "TRIPLET STOMP CELL" || n == "TRIPLET STOMP, RIDE ON THE BEATS")
+                {
+                    const auto ride = n == "TRIPLET STOMP, RIDE ON THE BEATS";
+                    out.description = ride ? "A two-beat triplet stomp: the snare on the beat, the kick on the next three triplets, the snare between, the ride on every beat"
+                                           : "A two-beat triplet stomp: the snare on the beat, the kick on the next three triplets, the snare between; no hats";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        crashOn (bar, 4);
+                        for (int h = 0; h < 2; ++h)
+                        {
+                            const auto o = bar * bpb + h * 6 * t;
+                            hit (out, o, GmDrum::snare, 0.88f);
+                            for (const auto k : { 1, 2, 3 })
+                                hit (out, o + k * t, GmDrum::kick, k == 3 ? 0.9f : 0.78f);
+                            hit (out, o + 4 * t, GmDrum::snare, 0.8f);
+                            if (ride)
+                                for (const auto k : { 0, 3 })
+                                    hit (out, o + k * t, GmDrum::ride, 0.62f);
+                        }
+                    }
+                    return out;
+                }
+                if (n == "HALF-TIME TRIPLET STOMP")
+                {
+                    out.description = "The stomp in half time: the kick on the first three triplets and the last two, the snare on 3, the hats on the beats";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        crashOn (bar, 4);
+                        for (const auto k : { 0, 1, 2, 10, 11 })
+                            hit (out, bar * bpb + k * t, GmDrum::kick, k == 0 ? 0.9f : 0.76f);
+                        hit (out, bar * bpb + 6 * t, GmDrum::snare, 0.9f);
+                        for (const auto k : { 0, 3, 6, 9 })
+                            hit (out, bar * bpb + k * t, GmDrum::closedHat, 0.56f);
+                    }
+                    return out;
+                }
+                if (n == "SHUFFLE STOMP, KICK AND FLOOR, NO HATS")
+                {
+                    out.description = "A shuffle stomp: the kick and the floor tom on the three triplets of beats 1 and 3, the snare on 2 and 4 with a kick on their a; a crash every two bars, no hats";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        crashOn (bar, 2);
+                        for (int h = 0; h < 2; ++h)
+                        {
+                            const auto o = bar * bpb + h * 6 * t;
+                            for (const auto k : { 0, 1, 2 })
+                            {
+                                hit (out, o + k * t, GmDrum::kick, k == 0 ? 0.9f : 0.76f);
+                                hit (out, o + k * t, GmDrum::tomFloor, k == 0 ? 0.8f : 0.66f);
+                            }
+                            hit (out, o + 3 * t, GmDrum::snare, 0.9f);
+                            hit (out, o + 5 * t, GmDrum::kick, 0.78f);
+                        }
+                    }
+                    return out;
+                }
+                out.description = "A shuffled backbeat: the kick on 1, the a of 2 and 3, the snare on 2 and 4, the ride on 1 and the a of every beat";
+                for (int bar = 0; bar < bars; ++bar)
+                {
+                    crashOn (bar, 4);
+                    for (const auto k : { 0, 5, 6 })
+                        hit (out, bar * bpb + k * t, GmDrum::kick, k == 0 ? 0.9f : 0.76f);
+                    for (const auto k : { 3, 9 })
+                        hit (out, bar * bpb + k * t, GmDrum::snare, 0.88f);
+                    for (int b = 0; b < 4; ++b)
+                        for (const auto k : { 0, 2 })
+                            hit (out, bar * bpb + (b * 3 + k) * t, GmDrum::ride, k == 0 ? 0.64f : 0.5f);
+                }
+                return out;
+            }
+
             std::optional<LineIdea> guitar237 (const juce::String& n) const
             {
                 if (! shared237 (ComposerLayer::guitar).contains (n))
@@ -16552,6 +16795,8 @@ namespace pr7s
                 auto text = [&] (const char* t) { out.description = t; };
                 if (n == "OUT")
                     return silent (r, "guitar");
+                if (auto round9 = guitar238 (n))   // (0.238.0: round nine's swung types)
+                    return *round9;
                 if (auto round9 = guitar237 (n))   // (0.237.0: round nine's shared options)
                     return *round9;
                 if (auto round9 = guitar236 (n))   // (0.236.0)
@@ -21168,6 +21413,8 @@ namespace pr7s
                     return out;
                 };
                 if (n == "OUT") return silent (b, "bass");
+                if (auto round9 = bass238 (n))   // (0.238.0: round nine's swung types)
+                    return *round9;
                 if (auto round9 = bass237 (n))   // (0.237.0: round nine's shared options)
                     return *round9;
                 if (auto round9 = bass236 (n))   // (0.236.0)
@@ -22559,6 +22806,8 @@ namespace pr7s
                 const auto k = LineIdea::Part::chords;
                 if (n == "SILENT")
                     return silent (k, "keys");
+                if (auto round9 = keys238 (n))   // (0.238.0: round nine's swung types)
+                    return *round9;
                 if (auto round9 = keys237 (n))   // (0.237.0: round nine's shared options)
                     return *round9;
                 if (auto round9 = keys236 (n))   // (0.236.0)
@@ -23516,6 +23765,8 @@ namespace pr7s
                         bar (b);
                     return out;
                 };
+                if (auto round9 = drums238 (n))   // (0.238.0: round nine's swung types)
+                    return *round9;
                 if (auto round9 = drums237 (n))   // (0.237.0: round nine's shared options)
                     return *round9;
                 if (auto round9 = drums236 (n))   // (0.236.0)

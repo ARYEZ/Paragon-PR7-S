@@ -2,6 +2,15 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.238.0
+
+Round nine's swung types: the last part of the 17 industrial songs. Until now every type was written on straight sixteenths; these two sit on a triplet grid instead, twelve triplet eighths a bar, still in 4/4 (no meter change). Shapes only, our own names. Each is a verse type and a chorus type.
+
+- **TRIPLET STOMP, TRITONE CHUG:** everything in triplets. The guitar's choices are TRIPLET POWER CHORDS, ROOT AND FLAT FIVE (three on the root, one on the flat five, a rest and the root every two beats, the fourth bar's back half turning to the flat third), ONE TRIPLET STAB EVERY OTHER BAR (room for the voice) and MUTED TRIPLET CHUGS ON THE ROOT. The bass doubles the guitar or CARRIES THE TRIPLETS ALONE. The keys can play SAW DOUBLES THE TRIPLETS, two octaves up and a little softer. The drums play TRIPLET STOMP CELL (the snare on the beat, the kick on the next three triplets, a snare between, no hats), the same with the ride on every beat, or HALF-TIME TRIPLET STOMP.
+- **SHUFFLE STOMP:** swung. The guitar plays LOW SHUFFLE RIFF, TURNAROUND EVERY FOURTH BAR (single notes on 1 and the a of each beat, root, flat third and octave, every fourth bar a turnaround on the fourth and flat sixth then the flat third and second) or SHUFFLED POWER CHORDS. The bass's SHUFFLE ON EVERY TRIPLET, DRONE FIRST holds a root drone for the first half, then the riff. The keys play FLAT-SEVEN SHUFFLE PULSE. The drums play SHUFFLE STOMP, KICK AND FLOOR, NO HATS (the kick and floor tom on the three triplets of beats 1 and 3, the snare on 2 and 4 with a kick on their a, a crash every two bars) or SHUFFLE BACKBEAT, SHUFFLED RIDE.
+
+Shared options (ROOTS HELD, LOCKED WITH THE KICK, HELD PADS and the extras under every type) still play their straight versions under these types. Notes are a third of a beat apart at the closest, so Shreddage's shortest note (a sixteenth) keeps them all. Not checked here: how it sounds, by ear.
+
 ## 0.237.0
 
 Round nine's shared options and transitions, from the 17 industrial songs. Shapes only, our own names.
