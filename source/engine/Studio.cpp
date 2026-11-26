@@ -11552,7 +11552,7 @@ namespace pr7s
             std::stable_sort (part.controllers.begin(), part.controllers.end(),
                               [] (const Controller& a, const Controller& b) { return a.start < b.start; });
         }
-        restControllers (part.controllers, length, swellCc, vibratoCc);   // (0.237.0)
+        restControllers (part.controllers, length, swellCc, vibratoCc);   // (0.238.0)
         return part;
     }
 

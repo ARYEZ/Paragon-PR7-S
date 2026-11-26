@@ -2,7 +2,7 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.237.0
+## 0.238.0
 
 ARCHITECT's swells and vibrato no longer leak into the next part, and you choose which controllers they move (you found a riff after one with swells turning your instrument most of the way down, with every PR7-G preset).
 
@@ -18,6 +18,28 @@ A controller stays where it was last set until another one comes. So whatever a 
 - **SWELL CC and VIBRATO CC on each instrument** (HUB > INSTRUMENTS, under SHORTEST NOTE): the controller numbers ARCHITECT uses on that instrument, 11 and 1 to start (profiles saved before keep those), or OFF to write none. Type a number 1-127 or OFF. The lead lane uses the lead's instrument (else the guitar's), the clean guitar and rhythm lanes the guitar's, the bass the bass's.
 
 Not checked here: what CC 11 and CC 1 do in your own libraries (Shreddage, Kontakt instruments). That mapping is in each instrument's own settings; set the numbers to match, or OFF.
+
+## 0.237.0
+
+Round nine's shared options and transitions, from the 17 industrial songs. Shapes only, our own names.
+
+**Seven new transitions** (a block's INTO THE NEXT):
+- **QUARTER-NOTE TRIPLET HITS INTO THE NEXT:** the last half bar three hits as quarter-note triplets.
+- **KICK AND OPEN HAT ON THE LAST EIGHTH:** everything stops an eighth early, then the next chord is pushed onto the last eighth with a kick and an open hat.
+- **KICK SIXTEENTHS FOR THE LAST HALF BAR:** the band plays on while the kick runs sixteenths, getting louder.
+- **TWO BARS CLIMBING A HALF STEP:** the last two bars in eighths, the second a half step higher.
+- **FEEDBACK RING IN:** the band drops out except one high guitar note left to feed back, a soft crash and a held keys note.
+- **KICK THREE, SNARE BURSTS:** the band and kick on 1, 2 and 3, then a sixteenth snare burst on 4.
+- **SNARE ON EVERY BEAT INTO THE STOP:** the last two bars on every beat with the snare, the very last beat left silent.
+
+**New options offered under every section type:**
+- **Guitar:** POWER-CHORD BAR, BROKEN-OCTAVE BAR; LOW CHUG ON THE BASS FIGURE; CHORD, HIGH NOTE, MINOR DYAD IN EIGHTHS; TRIAD STABS ON TWO AND FOUR; HOLED SINGLE-NOTE LINE, OCTAVE HELD EVERY FOURTH BAR; TAKES OVER THE KEYS' OSTINATO.
+- **Drums:** HATS IN THREES; CRASH QUARTERS, KICK 2+3+3; TWO-SOUND SIXTEENTH LOOP, NO FILLS; KICK EIGHTHS, TOMS ON ONE, TWO AND FOUR; KICK EIGHTHS, TOMS IN THE BACK HALF; KICK DOUBLED BY THE FLOOR TOM, BUSY; TOM LOOP, MOVING SNARE CELL; SPLASH QUARTERS, A ROLL EVERY EIGHT.
+- **Bass:** DRONE PULSE, THEN THE RIFF (the key's root in sixteenths for the first half, then a riff on the chords).
+- **Keys:** SAW DOUBLES THE GUITAR CHUG; NOISE HITS ON TWO AND FOUR; ORCHESTRA HIT BURSTS; MUSIC BOX UP-ARPEGGIO; THE BAR'S ROOT IN EIGHTHS, HIGH; SYNTH CALLS ON 2, 3, 3-AND, 4-AND; TRITONE SEESAW IN EIGHTHS; QUARTER-NOTE CHORD-TONE CYCLE, HIGH.
+
+Six parts from 0.234.0-0.236.0's types are now shared too, played exactly as they are there: SNARE ON THE DOTS, KICKS BETWEEN; the disco hat beat; MACHINE LOOP, HOLES FILLED; ROOT AND FLAT SEVEN ROCKING; LOW BOOMS AND NOISE STABS; HIGH NOTE ON TWO AND FOUR.
+
 ## 0.236.0
 
 Fifteen more types from the 17 industrial songs, for the other sections, each after that section's newest types. Shapes only, our own names.

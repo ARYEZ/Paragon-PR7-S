@@ -41,7 +41,7 @@ public:
     bool setBendRange (const juce::String&);
     void setShortestNote (double beats);   // (0.63.1) 0: any
     void setChugRun (int);                 // (0.63.1) 0: any
-    // (0.237.0) ARCHITECT's swell and vibrato controllers: a number 1-127, or OFF / 0 (none). false: not one.
+    // (0.238.0) ARCHITECT's swell and vibrato controllers: a number 1-127, or OFF / 0 (none). false: not one.
     bool setSwellCc (const juce::String&);
     bool setVibratoCc (const juce::String&);
     void addKeyswitch();

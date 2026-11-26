@@ -170,5 +170,5 @@ TEST_CASE ("0.64.0: a stab's bend and vibrato become pitch bend and mod wheel in
     const auto* track = studio.getProject().findTrack (trackId);
     REQUIRE (track != nullptr);
     REQUIRE (track->parts.size() == 1);
-    CHECK (track->parts[0].controllers.size() == 9);   // (0.237.0: and the wheel and the mod wheel back at rest at its end)
+    CHECK (track->parts[0].controllers.size() == 9);   // (0.238.0: and the wheel and the mod wheel back at rest at its end)
 }

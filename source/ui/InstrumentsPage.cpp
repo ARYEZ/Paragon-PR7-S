@@ -224,7 +224,7 @@ public:
             };
         }
         y += rowHeight + 8;
-        // (0.237.0) The controllers ARCHITECT's swells and vibrato move on this instrument.
+        // (0.238.0) The controllers ARCHITECT's swells and vibrato move on this instrument.
         {
             const auto ccText = [] (int cc) { return cc > 0 ? juce::String (cc) : juce::String ("OFF"); };
             label ("SWELL CC", { 0, y, 90, rowHeight });
@@ -579,7 +579,7 @@ bool InstrumentsPage::setBendRange (const juce::String& text)
 
 namespace
 {
-    // (0.237.0) "OFF", "0" or empty: none; 1-127: that controller; anything else: not one.
+    // (0.238.0) "OFF", "0" or empty: none; 1-127: that controller; anything else: not one.
     std::optional<int> parseCc (const juce::String& text)
     {
         const auto t = text.trim();
