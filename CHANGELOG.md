@@ -2,7 +2,7 @@
 
 Each version's notes appear on its GitHub Release page.
 
-## 0.238.0
+## 0.239.0
 
 Round nine's swung types: the last part of the 17 industrial songs. Until now every type was written on straight sixteenths; these two sit on a triplet grid instead, twelve triplet eighths a bar, still in 4/4 (no meter change). Shapes only, our own names. Each is a verse type and a chorus type.
 
@@ -10,6 +10,23 @@ Round nine's swung types: the last part of the 17 industrial songs. Until now ev
 - **SHUFFLE STOMP:** swung. The guitar plays LOW SHUFFLE RIFF, TURNAROUND EVERY FOURTH BAR (single notes on 1 and the a of each beat, root, flat third and octave, every fourth bar a turnaround on the fourth and flat sixth then the flat third and second) or SHUFFLED POWER CHORDS. The bass's SHUFFLE ON EVERY TRIPLET, DRONE FIRST holds a root drone for the first half, then the riff. The keys play FLAT-SEVEN SHUFFLE PULSE. The drums play SHUFFLE STOMP, KICK AND FLOOR, NO HATS (the kick and floor tom on the three triplets of beats 1 and 3, the snare on 2 and 4 with a kick on their a, a crash every two bars) or SHUFFLE BACKBEAT, SHUFFLED RIDE.
 
 Shared options (ROOTS HELD, LOCKED WITH THE KICK, HELD PADS and the extras under every type) still play their straight versions under these types. Notes are a third of a beat apart at the closest, so Shreddage's shortest note (a sixteenth) keeps them all. Not checked here: how it sounds, by ear.
+
+## 0.238.0
+
+ARCHITECT's swells and vibrato no longer leak into the next part, and you choose which controllers they move (you found a riff after one with swells turning your instrument most of the way down, with every PR7-G preset).
+
+**What was happening.** For a lead or clean guitar, ARCHITECT writes MIDI controllers into the part, sent to the instrument on that track (never to the effects after it: PR7-S passes no MIDI to inserts):
+- a **swell**: CC 11 (expression) from 0 up over the note's first beat and a half; once a part has a swell, every other note starts CC 11 at 110;
+- **vibrato**: CC 1 (the mod wheel) up to 96 over a held note and back to 0;
+- **bends, dives, slides and the rest**: pitch bend.
+
+A controller stays where it was last set until another one comes. So whatever a part left behind carried on into the next part, and what CC 11 and CC 1 do depends on how the instrument maps them (volume, its own effects, something else).
+
+**What changed.**
+- **Every ARCHITECT part ends at rest.** A 128th of a beat before its end, whatever its notes moved goes back: the swell controller to full (127), the vibrato controller to 0, pitch bend to the centre. Only what the part used is reset. Parts you made before this still have no reset at their end: build or ROLL them again to get it.
+- **SWELL CC and VIBRATO CC on each instrument** (HUB > INSTRUMENTS, under SHORTEST NOTE): the controller numbers ARCHITECT uses on that instrument, 11 and 1 to start (profiles saved before keep those), or OFF to write none. Type a number 1-127 or OFF. The lead lane uses the lead's instrument (else the guitar's), the clean guitar and rhythm lanes the guitar's, the bass the bass's.
+
+Not checked here: what CC 11 and CC 1 do in your own libraries (Shreddage, Kontakt instruments). That mapping is in each instrument's own settings; set the numbers to match, or OFF.
 
 ## 0.237.0
 
@@ -311,7 +328,6 @@ Find a Riff now finds synth MIDI. You use it as guitar MIDI once it's moved into
 ROLL on locked bars now draws each open bar's fill from the groove's own fills, as long as it has two or more. If it has fewer, ROLL picks from the whole list, as before.
 
 
-
 **More fills, and fills that belong to the groove.** You heard about ten fills over and over across hundreds of library grooves, and they weren't Toontrack's. Three things caused it:
 
 - For each part of a song (verse, chorus...), the drums lane picked its fill from only the top four fills. Fills that scored the same (most of them) were ranked by their file names, so the same four came up every time.
@@ -327,11 +343,9 @@ Now the fills come from where the groove is:
 The description on the drums lane says which fills it used. Fills in a folder you've left out (electronic, brushes and the rest) are still never used. The FILLS list for locked bars (0.202.0) is unchanged.
 
 
-
 **ARCHITECT now composes over the chords you gave a section.** You changed a SECTIONS block's chords (in the block editor, or by moving chords on the chord track) and opened ARCHITECT on it, but it still played the original chords. The reason: with CHORDS FROM set to LIBRARY, ARCHITECT composed a block over the library progression and never looked at that block's chords on the chord track. A song keeps ARCHITECT's settings (since 0.206.0), so a song that started on LIBRARY stayed on it.
 
 Now, when ARCHITECT works on a block and that block's chords on the chord track are new to it, it switches CHORDS FROM to CHORD TRACK and uses them. "New" means you aimed it at another block that has chords, or the chords inside the block changed. Your own choice still counts: pick LIBRARY afterwards and it stays on LIBRARY until those chords change again. A block with no chords on the chord track composes from the library, as before.
-
 
 
 **A PR7-K sound for each CYBERPUNK part.** When the keys lane is in the CYBERPUNK world and its track plays PR7-K, BUILD now writes a matching sound into that PR7-K, as the guitar lanes already get a PR7-G tone. The status line says which one went on ("KEYS: CYBER PUMP PAD ON PR7-K"). Thirteen sounds, one for each part, our own (made from PR7-K's own saws, pulses, sines, unison, filter, envelopes, DELAY and REVERB; not copied from its presets):
@@ -3729,9 +3743,7 @@ Your two asks from the export talk:
 - **Glue joins any audio clips.** Before, the glue tool only joined pieces of one recording lying end to end (a split put back); clips from different recordings refused. Now those are joined too: the clips as you hear them (their volumes, fades, warps and the crossfades between them, silence in any gaps) are written into one new file, "<track> glued 01.wav" beside the song's recordings, and one clip of it takes their place. Your original recordings stay untouched on disk, and Undo brings the separate clips back. A split glued back to its own recording still becomes one clip of the same file, with no new file. The glued clip starts at 0 dB with no fades (they're printed in).
 
 
-
 **Your keyboard files as you named them** ("keys 1.midi", "pad2.midi", "lead.midi": a file per part). A MIDI file is now the drums only when its name says drums (drum, drums, kit, perc...); any MIDI file named for something a keyboard player plays (keys, piano, pad, lead, synth, bass, arp, strings, organ...) is a keyboard part. Before, "lead.midi" would have been taken for the drums ("lead" only meant the lead guitar's DI) and a synth bass's "bass.midi" likewise. A MIDI file named nothing we know (just the song's name) is still the drums, and a WAV named lead is still the lead guitar's DI. In the review song each keyboard part's track is named after its file ("KEYS: pad2", "KEYS: lead"), so the part kinds stay told apart for the learning.
-
 
 
 **The keyboards join LEARN MY BAND** (you have every keyboard part as the players' own MIDI). Nothing has to be heard: the notes, their timing, how hard each was played and the sustain pedal are read exactly as programmed.
@@ -3742,7 +3754,6 @@ Your two asks from the export talk:
 - **Not checked on your files yet:** send a song's keyboard MIDI along with its DIs and drums and I'll check the placement as I did the drums.
 
 
-
 **Your songs broken into their parts** (you asked). Every review song LEARN MY BAND writes now opens with its sections marked: a "Sections" marker track with a cycle marker per part, named and numbered (Intro, Verse 1, Pre-Chorus 1, Chorus 1, Post-Chorus 1, Verse 2, ... Solo, Breakdown, Outro).
 
 - **How it finds them:** the drum learner's section finder reads your drummer's MIDI (where the groove changes, crashes, fills into a change, the hand moving between hats, ride and china, half time). Where the rhythm guitar's and bass's riff changes at the same bar line, that tips a close call. Boundaries go onto four-bar lines when they're within a bar of one, pieces under two bars join a neighbour, and neighbouring parts that play alike are one part.
@@ -3751,9 +3762,7 @@ Your two asks from the export talk:
 - **On your first song:** 17 sections, starting with an 18-bar Verse 1 (no intro found: if the song has one, rename and move it), choruses at bars 83, 99 and 133, a breakdown at 91, the outro at 149. It's a guess from patterns, not from hearing the song as you do: expect to rename and move a few. The corrected sections are what 0.83.0 will learn from, so each player's verse habits and chorus habits are kept apart.
 
 
-
 **Djinn Bass 2 tuned to your bass: drop A, A E A D G** (you asked). The profile had A D A D G from the screenshot in 0.62.0; its second string is now E. Your saved profile is updated once when you open the Hub's INSTRUMENTS page or the composer, and everything else in it (keyswitches, range, bend) stays as you set it. If you change the tuning by hand later, it's kept. What changes in use: the composer's bass on Djinn works out strings and frets with an E string, so ONLY STRING 2 and the low-string choices put notes where your bassist would.
-
 
 
 **LEARN MY BAND knows your band's tunings** (you told me: every song on a 7-string guitar and a 5-string bass, both in drop A). The reader now only listens for notes those instruments can play: nothing under the low A string, nothing past the 24th fret.
@@ -3761,7 +3770,6 @@ Your two asks from the export talk:
 - **Why it matters:** the hardest mistake for a pitch reader is the octave. A low, heavy note can look like the note an octave under it, because the sound repeats at both. On your first song, 264 of the rhythm guitar's 1,883 hits (14 %) came out under the guitar's low A, which a drop A 7-string can't play: those were octave slips. Now a root under the low string is looked for an octave up instead, where it really was.
 - **The bass:** a note read a half step or a whole step under the low A is taken as the low A itself (a slack string, or read a hair flat); further under, it goes up an octave.
 - **The tunings it assumes:** guitar A E A D G B E (low to high), bass A E A D G, 24 frets. If the bass is strung differently (your Djinn profile has A D A D G), tell me: only the lowest string matters for this release, and that's the A either way.
-
 
 
 **LEARN MY BAND, part one: reading your record.** The idea engine is going to learn from what your band actually played. This first part reads the record and shows you what it heard, so you can put it right before anything is learned from it.
@@ -3773,14 +3781,12 @@ Your two asks from the export talk:
 - **Lining up the drums (from your first song):** your song's drum MIDI started 8 bars before the DIs, and the DIs ran 0.23 % slow against 120 BPM (120 on the click plays as 119.72 in the files: a sample rate a hair off somewhere, inaudible but 0.7 s by the end). The reader finds both by itself, moves the drums into place and fits the DIs to the click, so the song stays at your 120 BPM. It says what it did on the page. On your song, 666 of the drummer's 951 kicks then have a bass or guitar note within 30 ms.
 - **Honest limits:** checked on your bass DI, rhythm DI and drum MIDI, and on test sounds; no lead DI yet. Rhythm guitar is the hardest part (chords): power chords and single notes read best, bigger chords less well. Expect to correct some notes. A five-minute song with two DIs takes about a minute and a half to read.
 
-
 Your four asks from this round:
 
 - **Set the cycle from the MIDI editor** so a passage loops while you edit. The editor's ruler now has the arrangement's cycle strip along its top. Drag in the strip to make a new loop (CYCLE turns on), drag either end's flag to move just that end, drag the range to slide it, and click inside it to turn CYCLE on or off. Ctrl-click anywhere in the ruler sets the left locator and Alt-click the right one, as in the arrangement. **P** (after a click in the editor) puts the loop round the notes you've selected (rounded out to the grid), or round the whole part when none are selected. **Alt+P** does that, turns CYCLE on and plays. The loop also shows faintly down the notes.
 - **SNAP on and off inside the MIDI editor.** A new SNAP key sits under the grid box (J after a click in the editor). Lit, notes you move, draw, resize or split land on the grid as before. Off, they go exactly where you put them. Holding Ctrl still gives one free drag with SNAP lit. It's the editor's own setting and is remembered; the header's SNAP is still the arrangement's.
 - **The SPLIT tool is a straight razor** (key and pointer, in the arrangement and the MIDI editor): a solid blade with an outlined handle on its pivot. The pointer cuts at the middle of the blade's edge.
 - **Stereo renders look stereo.** I checked Render in Place of instrument tracks: the files it writes are stereo (two channels), and a new test proves the left and right sides come through apart. But the arrangement drew every audio clip as one combined waveform, so a stereo file looked mono. Now a stereo recording is drawn with each side in its own half, left over right, when the track is tall enough (at least 24 pixels of waveform), with a faint line between. Mono files still draw as one. One honest note: a guitar plug-in that plays in the middle (both sides the same) renders as a stereo file with two identical halves; its pan isn't in the file, because Render in Place (with Channel Settings) leaves the fader and pan out of the render and puts them on the new track instead.
-
 
 **Selected automation points are circles** (you asked): the lit points are now pearl-white circles with a dark edge instead of squares, a touch bigger than the unselected points so they stand out. Unselected points stay as they were; where you click to grab a point hasn't changed.
 

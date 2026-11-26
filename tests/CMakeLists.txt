@@ -91,6 +91,7 @@ add_executable(ParagonPR7STests
     FavouriteFoldersTests.cpp
     Speed0179Tests.cpp
     AutoHearTests.cpp
+    ExpressionControllerTests.cpp
     Speed0173Tests.cpp
     MediaBaySpeedTests.cpp
     Speed0113Tests.cpp

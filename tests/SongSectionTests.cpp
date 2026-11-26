@@ -10422,7 +10422,7 @@ TEST_CASE ("0.237.0: round nine's shared options", "[sections][types][shared237]
     }
 }
 
-TEST_CASE ("0.238.0: round nine's swung types, on a triplet grid in 4/4", "[sections][types][swing238]")
+TEST_CASE ("0.239.0: round nine's swung types, on a triplet grid in 4/4", "[sections][types][swing238]")
 {
     const ComposerContext c;
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)

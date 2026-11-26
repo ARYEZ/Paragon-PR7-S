@@ -11259,7 +11259,7 @@ namespace pr7s
             }
     }
 
-    std::vector<Controller> Studio::effectControllers (const std::vector<LineNote>& notes, int bendRange, double bpm)
+    std::vector<Controller> Studio::effectControllers (const std::vector<LineNote>& notes, int bendRange, double bpm, int swellCc, int vibratoCc)
     {
         // Each group of notes with an effect starting together (a stab's two notes): its controllers.
         using E = LineNote::Effect;
@@ -11288,7 +11288,7 @@ namespace pr7s
         auto anySwell = false;
         for (const auto& n : notes)
             anySwell = anySwell || (! n.keyswitch && n.effect == E::swell);
-        if (anySwell)
+        if (anySwell && swellCc > 0)
         {
             std::vector<double> starts;
             for (const auto& n : notes)
@@ -11304,11 +11304,11 @@ namespace pr7s
                 if (n.effect == E::swell)
                 {
                     const auto peak = juce::jlimit (1, 127, juce::roundToInt (110.0f * (n.amount > 0.0f ? n.amount : 1.0f)));
-                    out.push_back ({ Controller::Type::cc, 11, n.beat, 0, false });
-                    out.push_back ({ Controller::Type::cc, 11, n.beat + juce::jmin (1.5, juce::jmax (0.05, n.length) * 0.6), peak, true });
+                    out.push_back ({ Controller::Type::cc, swellCc, n.beat, 0, false });
+                    out.push_back ({ Controller::Type::cc, swellCc, n.beat + juce::jmin (1.5, juce::jmax (0.05, n.length) * 0.6), peak, true });
                 }
                 else
-                    out.push_back ({ Controller::Type::cc, 11, n.beat, 110, false });
+                    out.push_back ({ Controller::Type::cc, swellCc, n.beat, 110, false });
             }
         }
         const auto range = (double) juce::jmax (1, bendRange);
@@ -11476,18 +11476,46 @@ namespace pr7s
                 out.push_back ({ Controller::Type::pitchbend, 0, g.at + (end - g.at) * 0.9, down, true });
                 out.push_back ({ Controller::Type::pitchbend, 0, end, 8192, false });
             }
-            else
+            else if (vibratoCc > 0)
             {
                 const auto peak = juce::jlimit (1, 127, juce::roundToInt (96.0f * (g.amount > 0.0f ? g.amount : 1.0f)));
-                out.push_back ({ Controller::Type::cc, 1, g.at, 0, false });
+                out.push_back ({ Controller::Type::cc, vibratoCc, g.at, 0, false });
                 // (0.133.0, the owner's Van Halen solos: vibrato starts about 15 % into a held note, every one)
-                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.15, 0, false });
-                out.push_back ({ Controller::Type::cc, 1, g.at + (end - g.at) * 0.65, peak, true });
-                out.push_back ({ Controller::Type::cc, 1, end, 0, false });
+                out.push_back ({ Controller::Type::cc, vibratoCc, g.at + (end - g.at) * 0.15, 0, false });
+                out.push_back ({ Controller::Type::cc, vibratoCc, g.at + (end - g.at) * 0.65, peak, true });
+                out.push_back ({ Controller::Type::cc, vibratoCc, end, 0, false });
             }
         }
         std::stable_sort (out.begin(), out.end(), [] (const Controller& a, const Controller& b) { return a.start < b.start; });
         return out;
+    }
+
+    void Studio::restControllers (std::vector<Controller>& controllers, double length, int swellCc, int vibratoCc)
+    {
+        if (controllers.empty() || length <= 0.0)
+            return;
+        // A 128th of a beat before the end (so it plays inside the part), after anything already there.
+        auto at = juce::jmax (0.0, length - 1.0 / 128.0);
+        for (const auto& c : controllers)
+            if (c.start < length)
+                at = juce::jmax (at, c.start);
+        auto bent = false, swelled = false, vibrato = false;
+        for (const auto& c : controllers)
+        {
+            bent = bent || c.type == Controller::Type::pitchbend;
+            if (c.type == Controller::Type::cc)
+            {
+                vibrato = vibrato || (vibratoCc > 0 && c.number == vibratoCc);
+                swelled = swelled || (swellCc > 0 && c.number == swellCc && c.number != vibratoCc);
+            }
+        }
+        if (bent)
+            controllers.push_back ({ Controller::Type::pitchbend, 0, at, 8192, false });
+        if (vibrato)
+            controllers.push_back ({ Controller::Type::cc, vibratoCc, at, 0, false });
+        if (swelled)
+            controllers.push_back ({ Controller::Type::cc, swellCc, at, 127, false });
+        std::stable_sort (controllers.begin(), controllers.end(), [] (const Controller& a, const Controller& b) { return a.start < b.start; });
     }
 
     Part Studio::partFromIdea (const LineIdea& idea, double start, double length, const juce::String& name) const
@@ -11502,13 +11530,18 @@ namespace pr7s
         auto profile = profileFor (use);
         if (! profile.has_value() && use == ProfileUse::lead)
             profile = profileFor (ProfileUse::guitar);
+        auto swellCc = 11, vibratoCc = 1;
         if (profile.has_value())
+        {
             range = profile->bendRange;
+            swellCc = profile->swellCc;
+            vibratoCc = profile->vibratoCc;
+        }
         auto notes = idea.notes;
         fitBends (notes, range);
         for (const auto& n : notes)
             part.notes.push_back ({ n.beat, n.length, n.pitch, n.velocity });
-        part.controllers = effectControllers (notes, range, project.bpmAt (start));
+        part.controllers = effectControllers (notes, range, project.bpmAt (start), swellCc, vibratoCc);
         // (0.219.0) The idea's own controller moves (a synth part's filter sweeps and pumping level).
         if (! idea.controls.empty())
         {
@@ -11519,6 +11552,7 @@ namespace pr7s
             std::stable_sort (part.controllers.begin(), part.controllers.end(),
                               [] (const Controller& a, const Controller& b) { return a.start < b.start; });
         }
+        restControllers (part.controllers, length, swellCc, vibratoCc);   // (0.238.0)
         return part;
     }
 
