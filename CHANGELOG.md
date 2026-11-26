@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.243.0
+
+Round ten, part four: six intros and eleven outros from your 56 songs (shapes only, our own names, all in 4/4). Each comes before DRONING and the list's last type.
+
+**Intros:**
+- **TWO GUITARS INTERLOCK, NO DRUMS:** two clean guitars interlocking on the chords (one on the beats, one between, on the lane's second track), the bass and drums out.
+- **A CAPPELLA HOOK, THEN THE BAND:** nothing under the sung hook; the guitar, bass and a snare pickup (or stick clicks) come on the last bar's 4.
+- **PAD ALONE, THEN THE BASS PEDAL, THEN THE BAND:** a pad alone, the bass in on the key's root a third of the way in, the band for the last third.
+- **PIANO ONE-NOTE PEDAL INTRO:** the piano repeating one note in sixteenths (strings holding it), a clean note and a kick from halfway.
+- **INSTRUMENTAL VERSE ON A BROKEN TRIAD:** the verse's groove with a guitar breaking each triad off the one.
+- **A KIT HIT ON THE AND OF FOUR:** the hats counting (or silence), then the whole band hitting the last bar's and of 4.
+
+**Outros:**
+- **VAMP TO A FADE:** the last chords looped, every lane getting quieter bar by bar (the drums with a fill every four, or ride and shaker sixteenths with a stop bar every four).
+- **RIFF VAMP ON THE RELATIVE MINOR:** a new two-bar sixteenth pentatonic riff on the key's relative minor, the bass doubling, syncopated keys, a new groove with the kick off the beat.
+- **SOLO OVER SNARE QUARTERS, BASS CLIMBING:** the snare on every quarter, the bass a step higher each bar, chords rung for a solo.
+- **ONE HIT A BAR TO THE END:** the band hits each bar's 1 and lets go.
+- **EVERY BEAT HIT, THEN THE GUITAR ALONE:** everyone on every beat for the first half, then the guitar alone.
+- **STRINGS SIXTEENTHS, ENDING ON THE FOUR:** strings in sixteenths over whole-note bass and a tom roll, the last bar on the key's four chord.
+- **ENDS ON FLAT-SIX TO FLAT-SEVEN:** the last two bars the key's flat six and flat seven, the last struck once and held: it doesn't resolve.
+- **TOM BUILD INTO A DOUBLE-TIME CODA:** a tom build with hits on 3, then double time (a unison eighth riff), a snare stop to end.
+- **MAJOR TONIC TO END:** a pedal and strings building over a tom roll, the last chord the key's tonic as a major chord (in a minor key, the bright ending).
+- **HAND PERCUSSION, BAND OUT:** congas and bongos (or congas and a shaker) and one soft pad note.
+- **THE KIT THINS, THE LAST CHORD RINGS:** the kit thinning to the kick on 1 and the ride, the guitar thinning with it, the last chord held.
+
+The outros that end on fixed chords (flat six and flat seven, the major tonic, the four) play those whatever the block's chords are: that's the point of them. Not checked here: how it sounds, by ear.
+
 ## 0.242.0
 
 Round ten, part three: fourteen types for the other sections from your 56 songs (shapes only, our own names, all in 4/4).
