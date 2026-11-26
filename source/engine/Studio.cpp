@@ -158,6 +158,7 @@ namespace pr7s
         library = std::make_unique<ProjectLibrary> (settings.get());
         multiCoreAudio = withDevices;
         applyMultiCore();
+        engine.setDelayCompensation (getDelayCompensation());   // (0.247.0)
 
         newProject();
         startTimerHz (30);
@@ -177,6 +178,23 @@ namespace pr7s
         }
         softwareDrawing = on;
         SessionLog::note (on ? "Drawing: with the processor (SETTINGS)" : "Drawing: with the graphics card");
+    }
+
+    bool Studio::getDelayCompensation() const
+    {
+        return settings == nullptr || settings->getBoolValue ("delayCompensation", true);
+    }
+
+    void Studio::setDelayCompensation (bool on)
+    {
+        if (settings != nullptr)
+        {
+            settings->setValue ("delayCompensation", on);
+            settings->saveIfNeeded();
+        }
+        engine.setDelayCompensation (on);
+        SessionLog::note (on ? "Delay compensation: on" : "Delay compensation: off (SETTINGS)");
+        announce();
     }
 
     bool Studio::getMultiCoreAudio() const
@@ -4137,11 +4155,13 @@ namespace pr7s
 
     double Studio::recordingLatency() const
     {
+        // (0.247.0) And the plug-ins' delay: the song was heard that much later, so it was played that much later.
+        const auto plugins = (double) engine.getTotalLatency() / juce::jmax (1.0, engine.getSampleRate());
         if (latencyOverride)
-            return *latencyOverride;
+            return *latencyOverride + plugins;
         if (auto* device = devices.getCurrentAudioDevice())
-            return (double) (device->getInputLatencyInSamples() + device->getOutputLatencyInSamples()) / juce::jmax (1.0, device->getCurrentSampleRate());
-        return 0.0;
+            return (double) (device->getInputLatencyInSamples() + device->getOutputLatencyInSamples()) / juce::jmax (1.0, device->getCurrentSampleRate()) + plugins;
+        return plugins;
     }
 
     std::vector<Insert>* Studio::insertsOf (int busId)
@@ -9907,6 +9927,15 @@ namespace pr7s
             sinceReport = 0;
             return keepGoing (progress);
         };
+        // (0.247.0) The plug-ins' delay: everything comes out that late, so that much is played and left out first.
+        for (auto skip = (juce::int64) engine.refreshLatency(); skip > 0;)
+        {
+            if (renderCancelled)
+                return false;
+            const auto length = (int) juce::jmin ((juce::int64) blockSize, skip);
+            engine.render (block, length);
+            skip -= length;
+        }
         for (juce::int64 done = 0; done < job.total;)
         {
             if (renderCancelled)

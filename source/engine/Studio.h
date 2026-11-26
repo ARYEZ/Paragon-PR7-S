@@ -140,6 +140,10 @@ namespace pr7s
         // Multi-core audio (0.34.5): tracks processed side by side on the computer's cores (settings
         // `multiCoreAudio`, on; tests without devices: off). Off: everything on the audio thread, for a
         // plug-in that doesn't like being run beside others. The output is the same either way.
+        // (0.247.0) Delay compensation (settings `delayCompensation`, default on): every path lined up by
+        // the plug-ins' delays. Off: as before 0.247.0 (a plug-in's delay plays late).
+        bool getDelayCompensation() const;
+        void setDelayCompensation (bool);
         bool getMultiCoreAudio() const;
         void setMultiCoreAudio (bool);
         // (0.190.0) How many helper threads beside the audio thread while multi-core audio is on: 0 automatic
@@ -1146,6 +1150,7 @@ namespace pr7s
         // The interface's delay, in and out: recordings are moved earlier by it,
         // so they land where they were played. Tests set it; else the device's.
         void setLatencyForTests (double seconds) { latencyOverride = seconds; }
+        double getRecordingLatencyForTests() const { return recordingLatency(); }   // (0.247.0)
 
         //======================================================================
         // The mixer: each track's inserts and the master's (`busId`: a

@@ -27,7 +27,8 @@ namespace Windows
         // foot, was hidden under the finish row before 0.8.5), what the buffer
         // is and how to raise it, RELOAD DRIVER, and the finish.
         class SettingsContent final : public juce::Component,
-                                      private juce::ChangeListener
+                                      private juce::ChangeListener,
+                                      private juce::Timer
         {
         public:
             SettingsContent (pr7s::Studio& studioToUse, std::function<void()> toggleSpanToUse, std::function<bool()> isSpanningToUse)
@@ -109,6 +110,18 @@ namespace Windows
                     Windows::applyDrawing (softwareDrawing.getToggleState());
                 };
                 addAndMakeVisible (softwareDrawing);
+                // (0.247.0) Delay compensation, on unless switched off here; it says what the plug-ins add.
+                delayCompensation.setColour (juce::ToggleButton::textColourId, ParagonColours::text);
+                delayCompensation.setColour (juce::ToggleButton::tickColourId, ParagonColours::accent);
+                delayCompensation.setToggleState (studio.getDelayCompensation(), juce::dontSendNotification);
+                delayCompensation.setTooltip ("Plug-ins that look ahead or oversample play their sound late. On: every track, group, "
+                                              "FX channel and send is held back to meet the latest, so everything stays together "
+                                              "(the whole mix comes out that much later; recordings and exports are put back by it). "
+                                              "Off: as before, a plug-in's delay plays late.");
+                delayCompensation.onClick = [this] { studio.setDelayCompensation (delayCompensation.getToggleState()); refreshDelay(); };
+                addAndMakeVisible (delayCompensation);
+                refreshDelay();
+                startTimerHz (2);
                 studio.getDeviceManager().addChangeListener (this);
                 refreshBuffer();
                 // (0.71.0, the owner asked) In the Hub's look, as PLUGINS: the pearl header, the panel; Bebas.
@@ -119,7 +132,7 @@ namespace Windows
                 setSize (600 + HubFrame::extraWidth - 24, 712 + HubFrame::extraHeight - 24);
             }
 
-            ~SettingsContent() override { studio.getDeviceManager().removeChangeListener (this); }
+            ~SettingsContent() override { stopTimer(); studio.getDeviceManager().removeChangeListener (this); }
 
             void resized() override
             {
@@ -144,7 +157,12 @@ namespace Windows
                     multiCore.setBounds (row);
                 }
                 bottom.removeFromTop (8);
-                softwareDrawing.setBounds (bottom.removeFromTop (28));
+                {
+                    auto row = bottom.removeFromTop (28);
+                    softwareDrawing.setBounds (row.removeFromLeft (row.getWidth() / 2 - 4));
+                    row.removeFromLeft (8);
+                    delayCompensation.setBounds (row);
+                }
                 note.setBounds (bottom.withTrimmedTop (8));
                 viewport.setBounds (area.withTrimmedBottom (8));
                 // The selector sets its own height; its width is the viewport's.
@@ -172,12 +190,24 @@ namespace Windows
                                                                                       : juce::String (": off, everything on one core")));
             }
 
+            void refreshDelay()
+            {
+                const auto samples = studio.getEngine().getTotalLatency();
+                const auto ms = (double) samples * 1000.0 / juce::jmax (1.0, studio.getEngine().getSampleRate());
+                delayCompensation.setButtonText (! studio.getDelayCompensation() ? juce::String ("DELAY COMPENSATION: OFF")
+                                                 : samples == 0 ? juce::String ("DELAY COMPENSATION: NOTHING TO LINE UP")
+                                                 : "DELAY COMPENSATION: " + juce::String (ms, 1) + " MS");
+            }
+            juce::String getDelayText() const { return delayCompensation.getButtonText(); }
+            juce::ToggleButton& getDelayKey() { return delayCompensation; }
+
             juce::String getBufferText() const { return bufferText.getText(); }
             bool isReloadShown() const { return reload.isVisible(); }
             void clickReload() { if (reload.onClick) reload.onClick(); }   // (triggerClick waits for the message loop)
 
         private:
             void changeListenerCallback (juce::ChangeBroadcaster*) override { refreshBuffer(); }
+            void timerCallback() override { refreshDelay(); }
 
             void refreshBuffer()
             {
@@ -202,7 +232,7 @@ namespace Windows
             juce::TextButton reload;
             juce::ComboBox finish;
             juce::TextButton span;
-            juce::ToggleButton multiCore, softwareDrawing;
+            juce::ToggleButton multiCore, softwareDrawing, delayCompensation;
             juce::ComboBox helperBox;   // (0.190.0)
             std::function<void()> toggleSpan;
             std::function<bool()> isSpanning;

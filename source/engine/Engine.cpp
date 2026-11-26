@@ -329,6 +329,14 @@ namespace pr7s
         track.midiRoom = juce::jmax (track.midiRoom, room);
         track.effectMidi.ensureSize (room);   // (0.34.5: each track's own: effects may run on several cores at once)
         track.preFaderCopy.setSize (2, maxBlockSize);
+        // (0.247.0) Delay compensation's history: room for the longest hold and a block.
+        track.postHistory.setSize (2, mostDelay + maxBlockSize);
+        track.preHistory.setSize (2, mostDelay + maxBlockSize);
+        track.delayed.setSize (2, maxBlockSize);
+        for (auto* history : { &track.postHistory, &track.preHistory })
+            for (int channel = 0; channel < 2; ++channel)
+                juce::FloatVectorOperations::clear (history->getWritePointer (channel), history->getNumSamples());
+        track.historyPos = 0;
         track.left.reset (sampleRate, gainRampSeconds);
         track.right.reset (sampleRate, gainRampSeconds);
         track.left.setCurrentAndTargetValue (track.gainLeft);
@@ -341,6 +349,129 @@ namespace pr7s
             if (track->id == id)
                 return track.get();
         return nullptr;
+    }
+
+    Engine::TrackState* Engine::destinationOf (const TrackState& track) const noexcept
+    {
+        // Where mixTrackOut sends its sound: its group or FX channel, else the master (nullptr).
+        if (track.output == 0)
+            return nullptr;
+        auto* to = findTrack (track.output);
+        return to != nullptr && to->role != TrackState::Role::source && to != &track ? to : nullptr;
+    }
+
+    namespace
+    {
+        // What a run of slots delays the sound by (each loaded, playing plug-in's own report).
+        template <typename Slots>
+        int slotsLatency (const Slots& slots, int from, int to) noexcept
+        {
+            auto sum = 0;
+            for (int i = juce::jmax (0, from); i < juce::jmin (to, (int) slots.size()); ++i)
+                if (const auto& slot = slots[(size_t) i]; slot.plugin != nullptr && ! slot.bypass)
+                    sum += juce::jmax (0, slot.plugin->getLatencySamples());
+            return sum;
+        }
+
+        // A track's sound of `delay` samples ago, from its history (the block just written at `pos`).
+        void readBack (const juce::AudioBuffer<float>& history, int pos, int delay, int numSamples, juce::AudioBuffer<float>& into) noexcept
+        {
+            const auto size = history.getNumSamples();
+            auto start = (pos - delay) % size;
+            if (start < 0)
+                start += size;
+            const auto first = juce::jmin (numSamples, size - start);
+            for (int channel = 0; channel < 2; ++channel)
+            {
+                juce::FloatVectorOperations::copy (into.getWritePointer (channel), history.getReadPointer (channel, start), first);
+                if (first < numSamples)
+                    juce::FloatVectorOperations::copy (into.getWritePointer (channel, first), history.getReadPointer (channel), numSamples - first);
+            }
+        }
+
+        void writeHistory (juce::AudioBuffer<float>& history, int pos, const juce::AudioBuffer<float>& from, int numSamples) noexcept
+        {
+            const auto size = history.getNumSamples();
+            const auto first = juce::jmin (numSamples, size - pos);
+            for (int channel = 0; channel < 2; ++channel)
+            {
+                juce::FloatVectorOperations::copy (history.getWritePointer (channel, pos), from.getReadPointer (channel), first);
+                if (first < numSamples)
+                    juce::FloatVectorOperations::copy (history.getWritePointer (channel), from.getReadPointer (channel, first), numSamples - first);
+            }
+        }
+    }
+
+    void Engine::planLatency() noexcept
+    {
+        // (0.247.0) Each path's delay, in the order the block mixes them (tracks, then channels from the
+        // deepest): a channel's input comes when the latest of what feeds it does; each feeder is held back
+        // to meet it. Audio thread (or under the lock), nothing allocated.
+        const auto on = compensate.load();
+        for (auto& track : tracks)
+            track->arrival = 0;
+        masterArrival = 0;
+        for (int pass = 0; pass < deepestChannel + 2; ++pass)
+        {
+            const auto height = deepestChannel - (pass - 1);
+            for (auto& t : tracks)
+            {
+                auto& track = *t;
+                if (pass == 0 ? track.role != TrackState::Role::source : track.role == TrackState::Role::source || track.height != height)
+                    continue;
+                track.latencyIn = track.role == TrackState::Role::source ? 0 : track.arrival;
+                auto pre = 0, post = 0;
+                if (on)
+                {
+                    if (track.instrument != nullptr && track.role == TrackState::Role::source && ! track.audio && ! track.frozen)
+                        pre += juce::jmax (0, track.instrument->getLatencySamples());
+                    pre += slotsLatency (track.inserts, 0, track.preFader);
+                    post = slotsLatency (track.inserts, track.preFader, Project::maxInserts);
+                }
+                track.ownLatency = pre + post;
+                track.latencyPre = track.latencyIn + pre;
+                track.latencyOut = track.latencyPre + post;
+                if (auto* to = destinationOf (track))
+                    to->arrival = juce::jmax (to->arrival, track.latencyOut);
+                else
+                    masterArrival = juce::jmax (masterArrival, track.latencyOut);
+                for (const auto& send : track.sends)
+                    if (send.target != 0)
+                        if (auto* fx = findTrack (send.target); fx != nullptr && fx->role == TrackState::Role::fx && fx != &track)
+                            fx->arrival = juce::jmax (fx->arrival, send.preFader ? track.latencyPre : track.latencyOut);
+            }
+        }
+        auto any = false;
+        for (auto& t : tracks)
+        {
+            auto& track = *t;
+            const auto* to = destinationOf (track);
+            track.delayOut = juce::jlimit (0, mostDelay, (to != nullptr ? to->arrival : masterArrival) - track.latencyOut);
+            any = any || track.delayOut > 0;
+            for (int s = 0; s < Project::maxSends; ++s)
+            {
+                const auto& send = track.sends[(size_t) s];
+                const auto* fx = send.target != 0 ? findTrack (send.target) : nullptr;
+                track.delaySend[(size_t) s] = fx == nullptr ? 0 : juce::jlimit (0, mostDelay, fx->arrival - (send.preFader ? track.latencyPre : track.latencyOut));
+                any = any || track.delaySend[(size_t) s] > 0;
+            }
+        }
+        anyDelay = any;
+        totalLatency = masterArrival + (on ? slotsLatency (masterInserts, 0, Project::maxInserts) : 0);
+    }
+
+    int Engine::refreshLatency()
+    {
+        const juce::ScopedLock sl (lock);
+        planLatency();
+        return totalLatency.load();
+    }
+
+    std::pair<int, int> Engine::getTrackLatency (int trackId) const
+    {
+        if (const auto* track = findTrack (trackId))
+            return { track->ownLatency, track->delayOut };
+        return {};
     }
 
     //==========================================================================
@@ -1630,10 +1761,26 @@ namespace pr7s
         if (! track->playedThisBlock)
             return;
         const auto numSamples = block.numSamples;
-        runSends (*track, true, numSamples, block.blockBeat, track->preFaderCopy);   // the sends before the fader
-        runSends (*track, false, numSamples, block.blockBeat, track->buffer);       // the sends after it
+        // (0.247.0) Delay compensation: its sound kept, then read back as late as each path needs.
+        const auto keep = anyDelay && track->postHistory.getNumSamples() >= mostDelay + numSamples;
+        if (keep)
+        {
+            writeHistory (track->postHistory, track->historyPos, track->buffer, numSamples);
+            if (std::any_of (track->sends.begin(), track->sends.end(), [] (const auto& send) { return send.preFader && send.target != 0; }))
+                writeHistory (track->preHistory, track->historyPos, track->preFaderCopy, numSamples);
+        }
+        runSends (*track, true, numSamples, block.blockBeat, track->preFaderCopy, keep);   // the sends before the fader
+        runSends (*track, false, numSamples, block.blockBeat, track->buffer, keep);       // the sends after it
         const auto* left = track->buffer.getReadPointer (0);
         const auto* right = track->buffer.getReadPointer (1);
+        if (keep && track->delayOut > 0)
+        {
+            readBack (track->postHistory, track->historyPos, track->delayOut, numSamples, track->delayed);
+            left = track->delayed.getReadPointer (0);
+            right = track->delayed.getReadPointer (1);
+        }
+        if (keep)
+            track->historyPos = (track->historyPos + numSamples) % track->postHistory.getNumSamples();
 
         // To its group (a track routed to one), else the master.
         auto* out = &master;
@@ -1838,15 +1985,18 @@ namespace pr7s
                 // accented, by the signature in force there (0.45.0).
                 if (settings.click)
                 {
+                    // (0.247.0) Held back with the music by the plug-ins' delay, so it stays on the beat heard.
+                    const auto late = (juce::int64) totalLatency.load();
+                    const auto from = clock - late, to = end - late;
                     const auto& map = settings.signatures;
-                    auto pos = map.positionOf (timing.beatAt ((double) clock));
+                    auto pos = map.positionOf (juce::jmax (0.0, timing.beatAt ((double) from)));
                     for (auto guard = 0; numTicks < (int) ticks.size() && guard < 4096; ++guard)
                     {
                         const auto at = toSamples (map.beatOf (pos.bar, pos.beat, 0.0));
-                        if (at >= end)
+                        if (at >= to)
                             break;
-                        if (at >= clock)
-                            ticks[(size_t) numTicks++] = { done + (int) (at - clock), pos.beat == 0 };
+                        if (at >= from)
+                            ticks[(size_t) numTicks++] = { done + (int) (at - from), pos.beat == 0 };
                         if (++pos.beat >= map.segmentOfBar (pos.bar).event.numerator)
                             pos.beat = 0, ++pos.bar;
                     }
@@ -1868,7 +2018,8 @@ namespace pr7s
                             const auto* raw = message.getRawData();
                             // (A drum map's I-note recorded as its sound's pitch, as the manual's.)
                             const auto data1 = message.isNoteOnOrOff() && recordingTrack != nullptr ? recordingTrack->drumIn[(size_t) (raw[1] & 0x7f)] : raw[1];
-                            recordedEvents[(size_t) at] = { timing.beatAt ((double) (clock + metadata.samplePosition - done)), raw[0],
+                            // (0.247.0) Played to what was heard: the song comes out late by the plug-ins' delay.
+                            recordedEvents[(size_t) at] = { timing.beatAt ((double) (clock + metadata.samplePosition - done - totalLatency.load())), raw[0],
                                                             data1, message.getRawDataSize() > 2 ? raw[2] : (juce::uint8) 0,
                                                             cycleCount.load() };
                         }
@@ -1929,6 +2080,7 @@ namespace pr7s
         // channel is mixed once everything routed or sent to it is in: its `height`, worked out in update).
         // (0.34.5) Each pass's own work on the cores side by side, then their sums in order.
         const BlockContext block { numSamples, spans.data(), numSpans, &timing, nowPlaying, blockBeat, liveId };
+        planLatency();   // (0.247.0)
         for (int pass = 0; pass < deepestChannel + 2; ++pass)
         {
             const auto height = deepestChannel - (pass - 1);
@@ -2189,7 +2341,7 @@ namespace pr7s
         return mix;
     }
 
-    void Engine::runSends (TrackState& track, bool preFader, int numSamples, double beat, const juce::AudioBuffer<float>& source)
+    void Engine::runSends (TrackState& track, bool preFader, int numSamples, double beat, const juce::AudioBuffer<float>& source, bool held)
     {
         // Each send that's on, to its FX channel: its level (or its lane's, while
         // R is on) ramped across the block from where it was, so moves don't click.
@@ -2218,9 +2370,16 @@ namespace pr7s
                 send.lastGain = gain;
                 continue;
             }
+            // (0.247.0) Held back to meet the FX channel's other inputs.
+            const auto* sound = &source;
+            if (held && track.delaySend[(size_t) s] > 0)
+            {
+                readBack (preFader ? track.preHistory : track.postHistory, track.historyPos, track.delaySend[(size_t) s], numSamples, track.delayed);
+                sound = &track.delayed;
+            }
             for (int channel = 0; channel < 2; ++channel)
             {
-                const auto* from = source.getReadPointer (channel);
+                const auto* from = sound->getReadPointer (channel);
                 auto* to = fx->bus.getWritePointer (channel);
                 if (juce::exactlyEqual (gain, send.lastGain))
                     for (int i = 0; i < numSamples; ++i)   // (0.34.1: not moving, one gain: the ramp below gives exactly it)

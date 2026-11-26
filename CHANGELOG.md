@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.247.0
+
+**Plug-in delay compensation** (the first step towards the built-in channel strip, as you chose: compensation first).
+
+Some plug-ins play their sound late: a look-ahead limiter waits a few milliseconds to see what's coming, oversampling and linear-phase filters take time too. Until now the studio played that late sound as it came, so a track through such a plug-in landed behind the others. The same sound on two tracks (a snare's top and bottom mics, a doubled guitar) with a late plug-in on one comb-filtered, a thin, phasey sound.
+
+- **Every path lined up:** each track, group channel, FX channel and send is held back so they all meet the latest one, through groups into groups and sends into FX channels (a send before the fader meets the FX channel's other inputs at its own place). Each plug-in tells the studio how late it is; the studio works it out again every block, so a plug-in that changes its delay is followed at once. A bypassed plug-in counts for nothing.
+- **The whole mix comes out that much later.** That's how compensation works, and why:
+  - **The click** is held back with the music, so it stays on the beat you hear.
+  - **Recordings** (audio and MIDI) are put back by it: you played along to what you heard, so the takes land where you meant them.
+  - **Exports**, Render in Place and Freeze leave it out: an export starts exactly on its first beat, as before.
+- **SETTINGS: DELAY COMPENSATION**, on to start with. It shows how much the plug-ins add, in milliseconds, or that there's nothing to line up. Switched off, it plays as before 0.247.0, for playing live through a slow plug-in.
+- **Not done:** the play bar doesn't move back by the delay (at a few milliseconds you won't see it), and there is no "constrain" mode that skips compensation only while recording. The longest hold is 32,768 samples (0.68 s at 48 kHz); a path later than that is held back as far as it goes.
+
+Not checked here: real plug-ins' reported delays (tested with a test plug-in that reports its own exactly), or how it sounds, by ear.
+
 ## 0.246.0
 
 Round ten, part seven: six solo styles from your 56 songs' solos (shapes only, our own names), and the SECTIONS row's numbers fitted into their boxes.

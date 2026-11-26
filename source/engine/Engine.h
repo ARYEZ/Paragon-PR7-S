@@ -100,6 +100,19 @@ namespace pr7s
         // (playing or not). Message thread; false: no such track.
         bool sendToInstrument (int trackId, const juce::MidiMessage&);
         int getEditorSolo() const noexcept { return editorSolo; }
+        // (0.247.0) Delay compensation (as the other DAW's): every path to the master (tracks, groups, FX
+        // returns, sends) held back so the plug-ins' delays (what each reports) line everything up; worked out
+        // each block from what the plug-ins report now (bypassed ones count for nothing). Off: as before.
+        void setDelayCompensation (bool on) noexcept { compensate = on; }
+        bool getDelayCompensation() const noexcept { return compensate.load(); }
+        // The plug-ins' whole delay to the output (samples, as of the last block): what everything comes out
+        // late by. Recordings and exports are put back by it. Any thread.
+        int getTotalLatency() const noexcept { return totalLatency.load(); }
+        // Worked out now, under the lock (an export's start, before any block). Not on the audio thread.
+        int refreshLatency();
+        // A track's own way: the plug-ins on it (samples) and what its output is held back by (tests, the screen).
+        std::pair<int, int> getTrackLatency (int trackId) const;
+        static constexpr int mostDelay = 32768;   // the longest a path is held back (samples; beyond: as far as it goes)
         int getLockRetriesWon() const noexcept { return lockRetriesWon.load(); }   // (0.190.0)
         int getEventBuilds() const noexcept { return eventBuilds; }   // (0.34.2, tests) tracks' event lists built so far
         int getClipBuilds() const noexcept { return clipBuilds; }     // (0.57.2, tests) audio tracks' clip lists built
@@ -447,6 +460,14 @@ namespace pr7s
             // sound before its fader for pre-fader sends, whether it played and how loud.
             juce::MidiBuffer effectMidi;
             juce::AudioBuffer<float> preFaderCopy;
+            // (0.247.0) Delay compensation: when its input, its pre-fader tap and its output come, behind the
+            // song (samples); a channel's latest arrival; what its output and each send are held back by; the
+            // sound it made lately (after the fader, and before it for pre-fader sends) to read back from.
+            int latencyIn = 0, latencyPre = 0, latencyOut = 0, arrival = 0, ownLatency = 0;
+            int delayOut = 0;
+            std::array<int, Project::maxSends> delaySend {};
+            juce::AudioBuffer<float> postHistory, preHistory, delayed;
+            int historyPos = 0;
             bool playedThisBlock = false;
             float blockPeak = 0.0f;
         };
@@ -496,7 +517,7 @@ namespace pr7s
         const float* inputChannel (int channel, int offset) const noexcept;
         void playClips (TrackState&, juce::int64 clock, int offset, int length, const Timing&);
         static void placeClip (Clip&, const Timing&);   // (0.34.1) its samples, worked out once
-        void runSends (TrackState&, bool preFader, int numSamples, double beat, const juce::AudioBuffer<float>& from);
+        void runSends (TrackState&, bool preFader, int numSamples, double beat, const juce::AudioBuffer<float>& from, bool held = false);
 
         // (0.34.5) A block's work, split in two. A track's own work (its instrument or clips, its
         // inserts, fader and pan) touches nothing of any other track's, so tracks of one kind run
@@ -652,6 +673,13 @@ namespace pr7s
         float masterBoostGain = 1.0f, masterBoostNow = 1.0f;   // (0.78.0)
         // (0.46.0) The spectrum's tap and Auto Listen.
         std::atomic<int> spectrumBus { -1 }, listenBus { -1 };
+        // (0.247.0) Delay compensation (audio thread: planLatency each block).
+        std::atomic<bool> compensate { true };
+        std::atomic<int> totalLatency { 0 };
+        int masterArrival = 0;
+        bool anyDelay = false;   // (audio thread) something is held back this block: the tracks keep their history
+        void planLatency() noexcept;
+        TrackState* destinationOf (const TrackState&) const noexcept;
         std::atomic<int> exportBus { 0 };   // (0.51.0) a channel export: only this channel reaches the output (0: all)
         static constexpr int spectrumRingSize = 32768;
         juce::AbstractFifo spectrumFifo { spectrumRingSize };
