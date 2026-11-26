@@ -2,6 +2,33 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.242.0
+
+Round ten, part three: fourteen types for the other sections from your 56 songs (shapes only, our own names, all in 4/4).
+
+**Pre-choruses** (after HELD HORN LINE OVER THE RIDE GALLOP, before the verse types):
+- **HALF-BAR CHANGES INTO A 3+2+3 STOP:** chords changing every half bar (the next chord arriving early), the last bar three held hits on 1, the and of 2 and 4 with the whole band and a crash.
+- **STOP-TIME HITS AND FILLS:** a bar of the chord with the bass and kick on 1, the and of 2, the and of 3 and 4, then a bar left to a drum fill (or toms); soft dyads and a pickup to end.
+- **TRIADS CLIMBING BY STEP:** the keys' triads climbing a scale step at a time (a new one every three eighths, or in half notes), the bass climbing and walking down to end, toms or snares on the e's of the last bar.
+- **VERSE RIFF, THE HATS DO THE BUILD:** the verse's guitar and bass unchanged, the hats alone building from quarters to eighths to sixteenths (or open hats joining).
+
+**Post-chorus / interlude:** **ANTHEM HITS ON TWO, THREE-AND, FOUR-AND**: one chord a bar hit by the whole band on 2, the and of 3 and the and of 4, root eighths under it, the last chord held two bars.
+
+**Bridges** (before CREEP, OPEN CHORDS and DRONING):
+- **QUIET BRIDGE, THEN A SNARE-ON-FOUR REBUILD:** soft clean dyads, the bass and drums out for the first half, then the kick back with the snare only on 4, then the backbeat and a snare fill.
+- **UNISON PICKUPS INTO EACH DOWNBEAT:** the guitar and bass in unison on a four-note run into each bar, then held, brass answering, crashes on 1, 2 and 3 to end.
+- **TWO-CHORD VAMP, OCTAVE BASS:** the bass carries it in octaves on a syncopated figure, the guitar only stabbing on 4.
+- **BOLERO CRESCENDO:** no backbeat, a dotted ostinato on the guitar and bass with the floor tom and tambourine (or congas) on its rhythm, everything louder bar by bar, up a fourth for the last quarter.
+- **TONIC PEDAL, ONE CHORD HELD:** the key's root on the bass and its chord on the keys whatever the chords are, one long guitar note every four bars, a snare build to end.
+- **HITS BAR, EIGHTHS BAR OVER A PEDAL:** two-bar cycles of hits on 1, 3, 4 and its and, then eighths, over the key's root on the bass.
+
+**Breakdowns** (before HEAVY CHUG and STACCATO CHUG):
+- **DRUMS AND VOICES BREAKDOWN:** the band out but the groove (claps on 2 and 4, or the floor tom on the beats) for the voices.
+- **SUNG CHORUS OVER TOMS:** toms alone, then the kit with a cowbell and the bass returning, a bar of snare sixteenths to end.
+- **HIT, THEN THE HOOK ALONE:** the band hits a chord and holds it, then the keys' hook alone.
+
+Also fixed: two of 0.241.0's new tests looped over notes of a temporary that was already gone. They passed here by luck but could fail on Windows; the music was never affected. Not checked here: how it sounds, by ear.
+
 ## 0.241.0
 
 Round ten, part two: twelve chorus types from your 56 songs (shapes only, our own names, all in 4/4). They come at the end of the chorus list.

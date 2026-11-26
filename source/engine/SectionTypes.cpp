@@ -93,7 +93,12 @@ namespace pr7s
                      // (0.236.0) Round nine (the owner's 17 industrial songs; shapes only, our names).
                      { "RING ONCE, THE BASS MOVES THE CHANGES", "The key's chord struck once and left to ring while the bass moves the changes in eighths under it", RiffFlavour::openChords, {}, pre },
                      { "GAPPED QUARTERS OVER THE DISCO HAT", "Short power chords on 1, 2 and 4 with a gap on 3, over four on the floor and disco hats: closed on the beat, open on the and", RiffFlavour::openChords, {}, pre },
-                     { "HELD HORN LINE OVER THE RIDE GALLOP", "A brassy note held from the and of 2, a step lower each bar, over power-chord eighths and a galloping ride", RiffFlavour::openChords, {}, pre } };
+                     { "HELD HORN LINE OVER THE RIDE GALLOP", "A brassy note held from the and of 2, a step lower each bar, over power-chord eighths and a galloping ride", RiffFlavour::openChords, {}, pre },
+                     // (0.242.0) Round ten (the owner's 56 songs; shapes only, our names).
+                     { "HALF-BAR CHANGES INTO A 3+2+3 STOP", "Chords changing every half bar, the next one arriving early, the last bar three held hits on 1, the and of 2 and 4 with the band", RiffFlavour::openChords, {}, pre },
+                     { "STOP-TIME HITS AND FILLS", "A bar of the chord and the bass and kick on 1, the and of 2, the and of 3 and 4, then a bar left to a drum fill; soft dyads and a pickup to end", RiffFlavour::openChords, {}, pre },
+                     { "TRIADS CLIMBING BY STEP", "The keys' triads in eighths climbing a scale step at a time into the chorus, the bass climbing under them, toms on the e's to end", RiffFlavour::openChords, {}, pre },
+                     { "VERSE RIFF, THE HATS DO THE BUILD", "The verse's guitar and bass unchanged; the hats alone build, from quarters to eighths to sixteenths", RiffFlavour::openChords, {}, pre } };
             for (auto& t : sectionTypesFor ("Verse"))   // (0.118.0: the whole verse list, its new types too)
                 types.push_back (std::move (t));
             return types;
@@ -141,7 +146,9 @@ namespace pr7s
                 { "BASS BREAK, KICK ON THE QUARTERS", "The bass alone in sixteenth pairs over the kick on the quarters and closed hats, no snare, then a unison fill", r, {}, i },
                 { "ALTERNATING BLAST UNDER TREMOLO CHORDS", "Tremolo-picked chords a bar each, the snare on the eighths and the kick between them, then kick sixteenths, a kick roll and two stabs", r, {}, i },
                 // (0.215.0) Round eight (the owner's 67 songs; shapes only, our names).
-                { "LOW PEDAL EVERY THIRD SIXTEENTH, CHROMATIC PAIRS ABOVE", "The key's low root on a 3+3+2 grid, chromatic pairs an octave up between, the bass on every sixteenth, the ride's bell on the eighths", r, {}, i } };
+                { "LOW PEDAL EVERY THIRD SIXTEENTH, CHROMATIC PAIRS ABOVE", "The key's low root on a 3+3+2 grid, chromatic pairs an octave up between, the bass on every sixteenth, the ride's bell on the eighths", r, {}, i },
+                // (0.242.0) Round ten.
+                { "ANTHEM HITS ON TWO, THREE-AND, FOUR-AND", "One chord a bar hit on 2, the and of 3 and the and of 4 by the whole band, root eighths under it, the last chord held two bars", r, {}, i } };
             const auto before = sectionTypesFor (base == "Post-Chorus" ? juce::String ("Chorus") : juce::String ("Bridge"));
             types.insert (types.end(), before.begin(), before.end());
             return types;
@@ -569,6 +576,13 @@ namespace pr7s
                          { "RISING FIFTHS ON 1, 1-A, 2-AND, BAND OUT", "The band out: low fifths on 1, the a of 1 and the and of 2 rising up the key, the kick and an open hat with them, the kit back after four bars", r, {}, b },
                          // (0.236.0) Round nine (the owner's 17 industrial songs; shapes only, our names).
                          { "LOOP ALONE, THEN THE KEYS, THEN THE BASS", "A drum loop that never fills plays alone, the keys come in after a quarter, the bass from halfway, a guitar chord only at the end", r, {}, b },
+                         // (0.242.0) Round ten (the owner's 56 songs; shapes only, our names).
+                         { "QUIET BRIDGE, THEN A SNARE-ON-FOUR REBUILD", "Soft clean dyads with the bass and drums out, then the kick back with the snare only on 4, then the backbeat and a snare fill", r, {}, b },
+                         { "UNISON PICKUPS INTO EACH DOWNBEAT", "The guitars and the bass in unison on a four-note pickup into each bar, then held, brass answering, a crash on 1, 2 and 3 to end", r, {}, b },
+                         { "TWO-CHORD VAMP, OCTAVE BASS", "The bass carries a vamp in octaves on a syncopated figure, the guitar only stabbing on 4, a snare pickup every other bar", r, {}, b },
+                         { "BOLERO CRESCENDO", "No backbeat: a dotted ostinato on the guitar and bass, floor tom and tambourine on its rhythm, the keys joining, everything louder bar by bar, up a fourth to end", r, {}, b },
+                         { "TONIC PEDAL, ONE CHORD HELD", "The key's root on the bass's eighths and its chord held on the keys whatever the chords, one long guitar note every four bars, a snare build to end", r, {}, b },
+                         { "HITS BAR, EIGHTHS BAR OVER A PEDAL", "Two-bar cycles of power-chord hits on 1, 3, 4 and its and, then a bar of eighths, over the key's root held on the bass", r, {}, b },
                          creep, open, droning };
             }
             case 4:
@@ -623,6 +637,10 @@ namespace pr7s
                          { "STABS EVERY OTHER BAR OVER A CLICK", "Short stabs on 1 and its and every other bar with the bass and a kick, nothing between but a click", r, {}, d },
                          { "BASS PULSE UNDER HELD CHORDS, DRUMS OUT", "The drums out: the bass pulsing even eighths under chords held two bars", r, {}, d },
                          { "STOMP ALONE, THEN THE PULSE", "A stomp beat alone with claps, then the guitar's and the bass's muted eighths from halfway", r, {}, d },
+                         // (0.242.0) Round ten (the owner's 56 songs; shapes only, our names).
+                         { "DRUMS AND VOICES BREAKDOWN", "The band out but one chord: the groove alone for the voices, with claps or the floor tom on the beats", r, {}, d },
+                         { "SUNG CHORUS OVER TOMS", "Toms alone under the voices, then the kit with a cowbell on 2 and 4 and the bass returning, a bar of snare sixteenths to end", r, {}, d },
+                         { "HIT, THEN THE HOOK ALONE", "The band hits a chord and holds it a bar, then the keys' hook alone over silence", r, {}, d },
                          heavy, staccato };
             }
             case 5:
@@ -1863,6 +1881,35 @@ namespace pr7s
                   { "CLIMBING VOICES OVER THE PEDAL", "THE CHORDS OVER THE PEDAL" }, { "KICK ON THE BASS, NO CYMBALS", "KICK ON THE BASS, QUARTER HATS" }, {} },
                 { "UNISON LOW SIXTEENTHS OVER A TOM GROOVE", { "LOW SIXTEENTHS ON THE THREE-BAR PLAN", "LOW SIXTEENTHS ON THE CHORDS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "THREE-BAR TOM GROOVE, NO CYMBALS", "THREE-BAR TOM GROOVE, HATS ON THE BEATS" }, {} },
+                // (0.242.0) Round ten's pre-choruses, post-chorus, bridges and breakdowns.
+                { "HALF-BAR CHANGES INTO A 3+2+3 STOP", { "HALF-BAR CHORDS, THE LAST BAR 3+2+3", "HALF-BAR EIGHTHS, THE LAST BAR 3+2+3" }, { "HALF-BAR ROOTS, THE LAST BAR 3+2+3", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "BUILDING EIGHTHS, THE LAST BAR 3+2+3", "SNARE QUARTERS BUILDING, THE LAST BAR 3+2+3" }, {} },
+                { "STOP-TIME HITS AND FILLS", { "CHORD ON ONE HELD, THEN A BAR OUT", "CHORD ON ONE, PUSH ON TWO-AND" }, { "WITH THE KICK: ONE, TWO-AND, THREE-AND, FOUR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "STOP TIME: A HIT BAR, THEN A FILL BAR", "STOP TIME, TOMS IN THE FILL BAR" }, {} },
+                { "TRIADS CLIMBING BY STEP", { "OUT", "SINGLE-NOTE ANSWERS TO THE KEYS" }, { "ROOT EIGHTHS CLIMBING, A WALK DOWN TO END", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "TRIAD EIGHTHS CLIMBING BY STEP", "TRIADS CLIMBING, HALF NOTES" }, { "EIGHTH HATS, TOMS ON THE E'S TO END", "BACKBEAT, A SNARE FILL ON THE E'S TO END" }, {} },
+                { "VERSE RIFF, THE HATS DO THE BUILD", { "THE VERSE'S MUTED EIGHTHS", "THE VERSE'S RUNG CHORDS" }, { "ROOT EIGHTHS UNDER THE BUILD", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HATS FROM QUARTERS TO EIGHTHS TO SIXTEENTHS", "OPEN HATS JOINING BY BARS" }, {} },
+                { "ANTHEM HITS ON TWO, THREE-AND, FOUR-AND", { "TRIADS ON TWO, THREE-AND, FOUR-AND", "POWER CHORDS ON TWO, THREE-AND, FOUR-AND" }, { "ROOT EIGHTHS ON THE ANTHEM HITS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "THE ANTHEM TRIADS HELD", "SILENT" }, { "BACKBEAT, KICK QUARTERS, A STOP AFTER TWO", "BACKBEAT, OPEN HATS" }, {} },
+                { "QUIET BRIDGE, THEN A SNARE-ON-FOUR REBUILD", { "SOFT CLEAN DYAD EIGHTHS", "SOFT DYADS, POWER CHORDS IN THE LAST QUARTER" }, { "OUT, THEN IN WITH THE REBUILD", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "OUT, THEN SNARE ON FOUR, THEN THE BACKBEAT", "OUT, THEN THE BACKBEAT" }, {} },
+                { "UNISON PICKUPS INTO EACH DOWNBEAT", { "A UNISON PICKUP RUN INTO EACH BAR, THEN HELD", "THE PICKUP RUN EVERY OTHER BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "BRASS ANSWERS IN EIGHTHS", "SILENT" }, { "KICK ON ONE AND THE A OF TWO, TAMBOURINE", "BACKBEAT, CRASHES TO END" }, {} },
+                { "TWO-CHORD VAMP, OCTAVE BASS", { "A STAB ON FOUR EVERY OTHER BAR", "RUNG CHORDS, A STAB ON FOUR" }, { "OCTAVES IN A SYNCOPATED FIGURE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "BACKBEAT, A SNARE PICKUP EVERY OTHER BAR", "RIDE BACKBEAT, A SNARE PICKUP" }, {} },
+                { "BOLERO CRESCENDO", { "THE DOTTED OSTINATO, GROWING", "THE OSTINATO, CHORDS FROM HALFWAY" }, { "THE DOTTED OSTINATO", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "IN AT A QUARTER, A HIGH LINE FROM HALFWAY", "SILENT" }, { "NO BACKBEAT: FLOOR TOM AND TAMBOURINE ON THE OSTINATO, GROWING", "THE OSTINATO ON CONGAS, A ROLL EVERY FOUR" }, {} },
+                { "TONIC PEDAL, ONE CHORD HELD", { "ONE LONG NOTE EVERY FOUR BARS", "THE TONIC CHORD RUNG EVERY TWO BARS" }, { "TONIC EIGHTHS, BEATS ACCENTED", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "THE TONIC CHORD HELD THROUGHOUT", "THE TONIC CHORD, A SECOND VOICE STEPPING" }, { "FULL GROOVE, A SNARE BUILD IN THE LAST BAR", "FULL GROOVE, CRASH EVERY EIGHT" }, {} },
+                { "HITS BAR, EIGHTHS BAR OVER A PEDAL", { "HITS ON ONE, THREE, FOUR AND FOUR-AND, THEN EIGHTHS", "HITS ON ONE, THREE, FOUR AND FOUR-AND" }, { "THE TONIC PEDAL UNDER THE HITS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "BACKBEAT UNDER THE HITS, OPEN HAT ON FOUR-AND", "THE KICK WITH THE HITS" }, {} },
+                { "DRUMS AND VOICES BREAKDOWN", { "OUT", "ONE CHORD ON THE FIRST BAR" }, { "OUT", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "ONE HELD PAD" }, { "THE GROOVE ALONE, CLAPS ON TWO AND FOUR", "THE GROOVE ALONE, FLOOR TOM ON THE BEATS" }, {} },
+                { "SUNG CHORUS OVER TOMS", { "OUT", "BACK FOR THE LAST BAR" }, { "OUT, THEN ROOTS ON ONE AND THREE FROM HALFWAY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "TOMS, THEN KIT AND COWBELL, A SNARE BAR", "TOMS THROUGHOUT" }, {} },
+                { "HIT, THEN THE HOOK ALONE", { "A HIT HELD, THEN OUT", "A HIT HELD EVERY FOUR BARS" }, { "THE HIT HELD WITH THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "THE HOOK ALONE AFTER THE HIT", "THE HOOK, AN OCTAVE UP" }, { "A HIT AND A CRASH, THEN OUT", "A HIT EVERY FOUR BARS, HATS BETWEEN" }, {} },
                 // (0.241.0) Round ten's choruses.
                 { "POWER BALLAD CHORUS", { "A FULL CHORD RUNG EACH BAR", "CHORDS ON ONE AND THREE, THE LAST BAR SPLIT" }, { "ONE, TWO-AND, THREE, A WALK ON FOUR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "ORGAN TRIAD HELD, A VOICE MOVING ON THREE", "PIANO BROKEN TRIAD UNDER THE CHORUS" }, { "BALLAD CHORUS: KICK ONE, TWO-AND, THREE", "BALLAD CHORUS ON THE RIDE" }, {},
