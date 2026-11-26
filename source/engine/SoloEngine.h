@@ -69,7 +69,9 @@ namespace pr7s
                                  holdPedalTwinStorm, panelsOverTheChug, sequenceThenTwinArpeggios, trillThenHold, wahWaves,
                                  majorRubOverMinorRiff, octaveLeapsAndCries, lateCallsBentHome, cellsUpShakeTheTop, stopTimeDoubleStops,
                                  pickupIntoChordStabs, bluesCurlsUnderTheTonic, pickupQuarterBreak, unpluggedPentatonicStream, tripletHammerFallingTune,
-                                 tuneAnOctaveDown, riffOnAWarpedBar, sungTwiceTurned, seesawAndRing, fourBendsAndOut };
+                                 tuneAnOctaveDown, riffOnAWarpedBar, sungTwiceTurned, seesawAndRing, fourBendsAndOut,
+                                 // (0.246.0) round ten's songs
+                                 slideBluesCalls, twinMelodyInOctaves, cleanScoopedBallad, eighthHookOnTheChanges, tremoloThenFlurry, heldBendsAnsweredByBursts };
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",

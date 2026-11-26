@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.246.0
+
+Round ten, part seven: six solo styles from your 56 songs' solos (shapes only, our own names), and the SECTIONS row's numbers fitted into their boxes.
+
+- **SLIDE BLUES CALLS:** two-bar calls, each opening with a note slid into, a few eighths, and a bend landing on the chord's root or fifth.
+- **TWIN MELODY IN OCTAVES:** a stepping melody with its octave on the lane's second track, quarters first and eighths later, the landings bent or held.
+- **CLEAN SCOOPED BALLAD:** the same kind of melody, alone, each phrase opening with a scoop up into its note.
+- **EIGHTH-NOTE HOOK ON THE CHANGES:** one six-eighth hook moved onto each bar's chord; every fourth bar a bent root held instead.
+- **TREMOLO, THEN A FLURRY:** one high note picked over and over for the first three eighths of the solo, a flurry down the scale, then bent calls to the end.
+- **HELD BENDS ANSWERED BY BURSTS:** a held bend, then a burst of sixteenths answering it, in turn.
+- **The SECTIONS row's numbers** (your report: too big, sticking out of their boxes) are now drawn at a size that fits the box, and shrunk further when a number is wider than its box.
+
+The sounds can't be checked by ear here.
+
 ## 0.245.0
 
 Round ten, part six: shared options from your 56 songs, offered under every section type (shapes only, our own names). Eight of them are round ten's types' own options, now offered everywhere as they play.

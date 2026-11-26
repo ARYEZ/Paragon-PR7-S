@@ -245,8 +245,15 @@ void ArrangeView::paintSections (juce::Graphics& g, const Timeline::Row& row)
             g.setColour (tint.withAlpha (isSelected || dragged ? 1.0f : 0.7f));
             g.drawRoundedRectangle (numberBox.reduced (0.5f), 3.0f, 1.0f);
             g.setColour (juce::Colours::white);
-            g.setFont (ParagonLookAndFeel::titleFont (numberBox.getHeight() * 0.95f));
-            g.drawText (juce::String (shown[(size_t) i].number), numberBox, juce::Justification::centred, false);
+            // (0.246.0, the owner: the numbers stood out of their boxes) titleFont draws Bebas 1.3x the asked height:
+            // asked for 0.6 of the box, the figures fill about three quarters of it, and shrink to fit its width.
+            juce::Font font (ParagonLookAndFeel::titleFont (numberBox.getHeight() * 0.6f));
+            const auto number = juce::String (shown[(size_t) i].number);
+            const auto wide = juce::GlyphArrangement::getStringWidth (font, number);
+            if (wide > numberBox.getWidth() - 4.0f && wide > 0.0f)
+                font = font.withHeight (font.getHeight() * (numberBox.getWidth() - 4.0f) / wide);
+            g.setFont (font);
+            g.drawText (number, numberBox, juce::Justification::centred, false);
             text.setLeft (numberBox.getRight() + 6.0f);
         }
         if (text.getWidth() < 14.0f)

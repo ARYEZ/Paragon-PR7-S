@@ -79,7 +79,9 @@ namespace pr7s
                             threesBlocks, riffTalk, riffDoubleStop, tremoloTalk, stutterBreak, twinThirds, swayingThirds, stillCell,
                             // (0.207.0, the round-six songs' solos) each writes the whole solo and its own last note
                             holdPedalTwin, panelsChug, sequenceTwinArps, trillHold, wahWaves, majorRub, octaveCries, lateCalls, cellsUp, stopTime,
-                            chordStabs, bluesCurls, pickupQuarter, unpluggedStream, tripletHammer, tuneDown, warpedRiff, sungTwice, seesaw, fourBends };   // (0.136.0: sixteenth runs landing on held tension notes bent into the chord)   // (0.134.0: bent into the root and dived; a low dyad squealed up; tremolo dyads over a pedal)   // (0.133.0 round two: held notes stepping down the chord, each in a beat early)   // (0.133.0: harmonics dived stepping down; thirds climbing into a dived double stop)   // (0.129.0: trilled, then fallen off)
+                            chordStabs, bluesCurls, pickupQuarter, unpluggedStream, tripletHammer, tuneDown, warpedRiff, sungTwice, seesaw, fourBends,
+                            // (0.246.0, round ten's solos)
+                            slideCalls, twinOctaves, scoopBallad, hookChanges, tremoloFlurry, bendsBursts };   // (0.136.0: sixteenth runs landing on held tension notes bent into the chord)   // (0.134.0: bent into the root and dived; a low dyad squealed up; tremolo dyads over a pedal)   // (0.133.0 round two: held notes stepping down the chord, each in a beat early)   // (0.133.0: harmonics dived stepping down; thirds climbing into a dived double stop)   // (0.129.0: trilled, then fallen off)
         struct Profile
         {
             bool sixth = false, ninth = false, flatFive = false, majorOnMajor = false, curls = false;
@@ -1313,6 +1315,31 @@ namespace pr7s
                                     "two quicker phrases slid into from below, the peak climbing to the octave, and out on power chords in "
                                     "sixteenths";
                     break;
+                // (0.246.0) Round ten's songs' solos (shapes only; our names).
+                case SoloStyle::slideBluesCalls:
+                    p.writer = Writer::slideCalls; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Two-bar calls: a note slid into, a few eighths around the blues scale (more as the solo goes), then a bent landing on the chord's root or fifth";
+                    break;
+                case SoloStyle::twinMelodyInOctaves:
+                    p.writer = Writer::twinOctaves; p.lastAsWritten = true; p.legato = false;
+                    p.description = "A sung melody stepping through the key, quarters first and eighths later, every note doubled an octave by a second guitar (the lane's second track), landings bent or held";
+                    break;
+                case SoloStyle::cleanScoopedBallad:
+                    p.writer = Writer::scoopBallad; p.lastAsWritten = true; p.legato = false;
+                    p.description = "A slow ballad melody: each phrase scooped into from below, steps through the key, a bent or held landing on the chord";
+                    break;
+                case SoloStyle::eighthHookOnTheChanges:
+                    p.writer = Writer::hookChanges; p.lastAsWritten = true; p.legato = false;
+                    p.description = "One six-eighth hook moved onto every bar's chord, every fourth bar a bent root held instead";
+                    break;
+                case SoloStyle::tremoloThenFlurry:
+                    p.writer = Writer::tremoloFlurry; p.lastAsWritten = true; p.legato = false;
+                    p.description = "One high note picked over and over for the first three eighths of the solo, a bar's flurry down the scale, then bent calls to the end";
+                    break;
+                case SoloStyle::heldBendsAnsweredByBursts:
+                    p.writer = Writer::bendsBursts; p.lastAsWritten = true; p.legato = false;
+                    p.description = "A held bend into the chord, answered by a burst of sixteenths falling down the scale and a bent landing, the bursts longer as the solo goes";
+                    break;
                 case SoloStyle::automatic: break;
             }
             if (p.notesPerBeat <= 0.0f)
@@ -1509,7 +1536,8 @@ namespace pr7s
                                                   SoloStyle::wahWaves, SoloStyle::majorRubOverMinorRiff, SoloStyle::octaveLeapsAndCries, SoloStyle::lateCallsBentHome,
                                                   SoloStyle::cellsUpShakeTheTop, SoloStyle::stopTimeDoubleStops, SoloStyle::pickupIntoChordStabs, SoloStyle::bluesCurlsUnderTheTonic,
                                                   SoloStyle::pickupQuarterBreak, SoloStyle::unpluggedPentatonicStream, SoloStyle::tripletHammerFallingTune, SoloStyle::tuneAnOctaveDown,
-                                                  SoloStyle::riffOnAWarpedBar, SoloStyle::sungTwiceTurned, SoloStyle::seesawAndRing, SoloStyle::fourBendsAndOut };
+                                                  SoloStyle::riffOnAWarpedBar, SoloStyle::sungTwiceTurned, SoloStyle::seesawAndRing, SoloStyle::fourBendsAndOut,
+                                                  SoloStyle::slideBluesCalls, SoloStyle::twinMelodyInOctaves, SoloStyle::cleanScoopedBallad, SoloStyle::eighthHookOnTheChanges, SoloStyle::tremoloThenFlurry, SoloStyle::heldBendsAnsweredByBursts };
         return all;
     }
 
@@ -1637,6 +1665,12 @@ namespace pr7s
             case SoloStyle::sungTwiceTurned: return "SUNG TWICE, TURNED";
             case SoloStyle::seesawAndRing: return "SEESAW AND RING";
             case SoloStyle::fourBendsAndOut: return "FOUR BENDS AND OUT";
+            case SoloStyle::slideBluesCalls: return "SLIDE BLUES CALLS";
+            case SoloStyle::twinMelodyInOctaves: return "TWIN MELODY IN OCTAVES";
+            case SoloStyle::cleanScoopedBallad: return "CLEAN SCOOPED BALLAD";
+            case SoloStyle::eighthHookOnTheChanges: return "EIGHTH-NOTE HOOK ON THE CHANGES";
+            case SoloStyle::tremoloThenFlurry: return "TREMOLO, THEN A FLURRY";
+            case SoloStyle::heldBendsAnsweredByBursts: return "HELD BENDS ANSWERED BY BURSTS";
         }
         return "BY STYLE";
     }
@@ -1815,6 +1849,12 @@ namespace pr7s
                 case SoloStyle::sungTwiceTurned: return "Sung Twice, Turned";
                 case SoloStyle::seesawAndRing: return "Seesaw And Ring";
                 case SoloStyle::fourBendsAndOut: return "Four Bends And Out";
+                case SoloStyle::slideBluesCalls: return "Slide Blues Calls";
+                case SoloStyle::twinMelodyInOctaves: return "Twin Melody In Octaves";
+                case SoloStyle::cleanScoopedBallad: return "Clean Scooped Ballad";
+                case SoloStyle::eighthHookOnTheChanges: return "Eighth-Note Hook On The Changes";
+                case SoloStyle::tremoloThenFlurry: return "Tremolo, Then A Flurry";
+                case SoloStyle::heldBendsAnsweredByBursts: return "Held Bends Answered By Bursts";
                 case SoloStyle::automatic: break;
             }
             return "By Style";
@@ -4560,6 +4600,12 @@ namespace pr7s
             case Writer::sungTwice:
             case Writer::seesaw:
             case Writer::fourBends:
+            case Writer::slideCalls:
+            case Writer::twinOctaves:
+            case Writer::scoopBallad:
+            case Writer::hookChanges:
+            case Writer::tremoloFlurry:
+            case Writer::bendsBursts:
             {
                 using E = LineNote::Effect;
                 const auto bpb = beatsPerBar;
@@ -5933,6 +5979,147 @@ namespace pr7s
                         quick (at (22.0), at (30.0), b3, 12, octave);
                     endAt = juce::jmin (total - 2.5, juce::jmax (at (30.5), landB3 + 1.0));
                     endPitch = b3;
+                }
+                // (0.246.0) Round ten's solos (the owner's 56 songs: arena rock, ballads; shapes only, our names).
+                else if (p.writer == Writer::slideCalls || p.writer == Writer::bendsBursts)
+                {
+                    // Calls: a note slid into, a few eighths (a burst of sixteenths for BURSTS), a bent landing on the chord.
+                    const auto bursts = p.writer == Writer::bendsBursts;
+                    const auto pool = scaleOn (minorT, { 0, 3, 5, bursts ? 7 : 6, 7, 10 });
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    const auto phrases = juce::jmax (1, (int) std::floor (endAt / (2.0 * bpb) + 1.0e-6));
+                    for (int ph = 0; ph < phrases; ++ph)
+                    {
+                        const auto x0 = ph * 2.0 * bpb + (ph % 2 == 1 ? 0.5 : 1.0);
+                        const auto stop = juce::jmin (endAt, (ph + 1) * 2.0 * bpb) - 0.02;
+                        if (x0 >= stop - 1.0)
+                            continue;
+                        auto pitch = nearPc (chordAt (x0).chord.root, mid + 2.0 * (ph % 3));
+                        if (bursts && ph % 2 == 0)
+                        {
+                            bentUp (x0, juce::jmin (2.0, stop - x0) - 0.02, pitch, 2, false);
+                            continue;
+                        }
+                        held (x0, 0.98, pitch, bursts ? E::vibrato : E::slideIn, bursts ? p.vibrato : 2.0f);
+                        auto x = x0 + 1.0;
+                        const auto count = bursts ? juce::jmin (8, 4 + 2 * ph) : juce::jmin (6, 3 + ph);
+                        const auto step = bursts ? g : 0.5;
+                        for (int i = 0; i < count && x < stop - 1.5; ++i, x += step)
+                        {
+                            pitch = stepIn (pool, pitch, r.nextFloat() < (bursts ? 0.75f : 0.5f) ? -1 : 1);
+                            plain (x, step - 0.02, pitch, i == 0);
+                        }
+                        const auto& c = chordAt (x).chord;
+                        const auto aim = nearPc (ph % 2 == 0 ? c.root : c.root + 7, (double) pitch);
+                        if (stop - x >= 0.75)
+                            bentUp (x, juce::jmin (2.5, stop - x), aim, 2, false);
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::twinOctaves || p.writer == Writer::scoopBallad || p.writer == Writer::hookChanges)
+                {
+                    const auto twin = p.writer == Writer::twinOctaves, scoop = p.writer == Writer::scoopBallad;
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 14.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    const auto octave = [&] (int pitch) { return pitch + 12 <= high ? pitch + 12 : pitch - 12; };
+                    const auto note = [&] (double at, double length, int pitch, bool accent, E effect, float amount)
+                    {
+                        if (twin)
+                            duet (at, length, pitch, octave (pitch), accent, effect, amount);
+                        else
+                            put (at, length, pitch, tAt (at), accent, effect, amount, false);
+                    };
+                    if (p.writer == Writer::hookChanges)
+                    {
+                        // One six-eighth hook moved onto each bar's chord (its first note the chord's root); every
+                        // fourth bar a bent root held instead; the first two bars only the hook's first four notes.
+                        const int shape[] { 0, 1, 2, 1, 0, -1 };
+                        for (int bar = 0; bar < bars && bar * bpb < endAt - 1.0; ++bar)
+                        {
+                            const auto o = bar * bpb;
+                            const auto root = nearPc (chordAt (o).chord.root, mid);
+                            if (bar % 4 == 3)
+                            {
+                                bentUp (o + 0.5, juce::jmin (3.0, endAt - o - 0.5) - 0.02, root, 2, false);
+                                continue;
+                            }
+                            const auto n = bar < 2 ? 4 : 6;
+                            for (int i = 0; i < n; ++i)
+                                plain (o + 0.5 + i * 0.5, i == n - 1 ? 1.0 : 0.48, stepIn (pool, root, shape[i]), i == 0);
+                        }
+                    }
+                    else
+                    {
+                        // Two-bar phrases: a scooped (SCOOPED) or plain opener, steps through the key on quarters, then
+                        // eighths as the solo goes, a bent or held landing on the chord's root or fifth.
+                        const auto phrases = juce::jmax (1, (int) std::floor (endAt / (2.0 * bpb) + 1.0e-6));
+                        auto pitch = nearPc (chordAt (0.0).chord.root, mid);
+                        for (int ph = 0; ph < phrases; ++ph)
+                        {
+                            const auto o = ph * 2.0 * bpb;
+                            const auto stop = juce::jmin (endAt, o + 2.0 * bpb) - 0.02;
+                            auto x = o + (ph % 2 == 0 ? 0.5 : 1.0);
+                            const auto step = ph * 2 < phrases ? 1.0 : 0.5;   // (quarters first, eighths later)
+                            const auto count = step > 0.75 ? 3 : 5;
+                            for (int i = 0; i < count && x < stop - 2.0; ++i, x += step)
+                            {
+                                pitch = stepIn (pool, pitch, r.nextFloat() < 0.6f ? 1 : -1);
+                                pitch = juce::jlimit (low + 5, high - 13, pitch);
+                                if (i == 0 && scoop)
+                                    note (x, step - 0.02, pitch, true, E::scoop, 2.0f);
+                                else
+                                    note (x, step - 0.02, pitch, i == 0, E::none, 0.0f);
+                            }
+                            const auto& c = chordAt (x).chord;
+                            const auto aim = nearPc (ph % 2 == 0 ? c.root : c.root + 7, (double) pitch);
+                            if (stop - x >= 0.75)
+                            {
+                                if (ph % 2 == 1 && aim - 2 >= low)
+                                    note (x, stop - x, aim - 2, true, E::bend, 2.0f);
+                                else
+                                    note (x, stop - x, aim, true, E::vibrato, p.vibrato);
+                            }
+                            pitch = aim;
+                        }
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                    if (twin)   // (the last note doubled too)
+                        put (endAt, total - endAt, octave (endPitch), 0.9f, false, E::vibrato, p.vibrato, true);
+                }
+                else if (p.writer == Writer::tremoloFlurry)
+                {
+                    // One high note picked over and over (on the instrument's shortest note) for the first three eighths
+                    // of the solo, a bar's flurry down the scale, then bent calls to the end.
+                    const auto pool = scaleOn (minorT, { 0, 3, 5, 7, 10 });
+                    const auto mid = (double) low + 14.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    const auto tremoloEnd = std::floor (bars * 3.0 / 8.0 + 1.0e-6) * bpb;
+                    const auto note = nearPc (minorT + 7, mid + 5.0);
+                    const auto step = juce::jmax (g, 0.25);
+                    for (auto x = 0.0; x < tremoloEnd - 1.0e-6; x += step)
+                        plain (x, step - 0.02, note, std::abs (std::fmod (x, 1.0)) < 1.0e-6);
+                    auto pitch = note;
+                    auto x = tremoloEnd;
+                    for (int i = 0; i < 12 && x < endAt - 1.5; ++i, x += step)
+                    {
+                        pitch = stepIn (pool, pitch, -1);
+                        plain (x, step - 0.02, pitch, i % 4 == 0);
+                    }
+                    auto ph = 0;
+                    while (x < endAt - 3.0)
+                    {
+                        const auto& c = chordAt (x).chord;
+                        const auto aim = nearPc (ph % 2 == 0 ? c.root : c.root + 7, mid);
+                        bentUp (x, 1.98, aim, 2, false);
+                        x += 2.0;
+                        for (int i = 0; i < 3 && x < endAt - 1.0; ++i, x += 0.5)
+                            plain (x, 0.48, stepIn (pool, aim, -(i + 1)), i == 0);
+                        x += 1.0;
+                        ++ph;
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
                 }
                 endAt = juce::jlimit (0.0, juce::jmax (0.0, total - 0.25), endAt);
                 clear (endAt);

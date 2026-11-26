@@ -38,7 +38,8 @@ namespace
     bool busyFirstOrFlat207 (SoloStyle s)
     {
         return s == SoloStyle::trillThenHold || s == SoloStyle::wahWaves || s == SoloStyle::cellsUpShakeTheTop || s == SoloStyle::stopTimeDoubleStops
-            || s == SoloStyle::unpluggedPentatonicStream || s == SoloStyle::seesawAndRing || s == SoloStyle::panelsOverTheChug;
+            || s == SoloStyle::unpluggedPentatonicStream || s == SoloStyle::seesawAndRing || s == SoloStyle::panelsOverTheChug
+            || s == SoloStyle::tremoloThenFlurry;   // (0.246.0: the tremolo first, as its song)
     }
 
     // (0.207.0) The last note (as sounded) round six's styles choose over amBars (A minor; the last chord E major), as
@@ -77,7 +78,7 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 120);   // (0.207.0: twenty more; 0.162.0: eight more; 0.136.0: seven more) (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more; 0.135.0: twenty-one more)
+    REQUIRE (soloStyles().size() == 126);   // (0.207.0: twenty more; 0.162.0: eight more; 0.136.0: seven more) (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more; 0.135.0: twenty-one more)
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
@@ -522,7 +523,7 @@ namespace
 
 TEST_CASE ("0.116.0: the new solo styles are there, with our names", "[solo][solostyles][solo116]")
 {
-    REQUIRE (soloStyles().size() == 120);   // (0.207.0: twenty more; 0.162.0: eight more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
+    REQUIRE (soloStyles().size() == 126);   // (0.207.0: twenty more; 0.162.0: eight more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
     for (const auto* name : { "SINGING BENDS", "SHUFFLE CONVERSATION", "SLOW BUILD WITH RAKES", "FALLING MAJOR MELODY", "SUNG IN THE GAPS",
                               "ROLLING SEQUENCES", "LAID-BACK SWEET BENDS", "THEME EVERY ROUND", "TWO SPEEDS", "LICK TWICE TO END" })
         CHECK (soloStyleNamed (name) != SoloStyle::automatic);
@@ -2224,7 +2225,7 @@ namespace
 
 TEST_CASE ("0.207.0: round six's solo styles are there, with our names and BY STYLE's metalcore takes", "[solo][solostyles][solo207]")
 {
-    REQUIRE (soloStyles().size() == 120);
+    REQUIRE (soloStyles().size() == 126);
     for (const auto* name : { "HOLD, PEDAL, TWIN, STORM", "PANELS OVER THE CHUG", "SEQUENCE SOLO, THEN TWIN ARPEGGIOS", "TRILL, THEN HOLD",
                               "WAH WAVES", "MAJOR RUB OVER A MINOR RIFF", "OCTAVE LEAPS & CRIES", "LATE CALLS, BENT HOME",
                               "CELLS UP, SHAKE THE TOP", "STOP-TIME DOUBLE STOPS", "PICKUP INTO CHORD STABS, RUNS TO LAND",
@@ -2642,3 +2643,52 @@ TEST_CASE ("0.207.0: the shimmer, the fast shake and the bend let back down as p
     CHECK (back[3].start < 2.0 - 1.0e-6);
 }
 
+
+TEST_CASE ("0.246.0: round ten's solo styles", "[solo][solostyles][solo246]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    const SoloStyle styles[] { SoloStyle::slideBluesCalls, SoloStyle::twinMelodyInOctaves, SoloStyle::cleanScoopedBallad,
+                               SoloStyle::eighthHookOnTheChanges, SoloStyle::tremoloThenFlurry, SoloStyle::heldBendsAnsweredByBursts };
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        INFO ("variation " << variation);
+        const auto count = [] (const LineIdea& idea, auto&& test)
+        {
+            auto c = 0;
+            for (const auto& n : idea.notes)
+                c += test (n) ? 1 : 0;
+            return c;
+        };
+        // Slides open the calls.
+        CHECK (count (composeSolo (SoloStyle::slideBluesCalls, spans, 4.0, tuning, {}, variation),
+                      [] (const LineNote& n) { return n.effect == LineNote::Effect::slideIn; }) >= 4);
+        // The twin: every played note has its octave on the second track.
+        {
+            const auto solo = composeSolo (SoloStyle::twinMelodyInOctaves, spans, 4.0, tuning, {}, variation);
+            const auto played = count (solo, [] (const LineNote& n) { return ! n.harmony; });
+            const auto twin = count (solo, [] (const LineNote& n) { return n.harmony; });
+            CHECK (twin >= played - 2);
+        }
+        // Scoops in the ballad.
+        CHECK (count (composeSolo (SoloStyle::cleanScoopedBallad, spans, 4.0, tuning, {}, variation),
+                      [] (const LineNote& n) { return n.effect == LineNote::Effect::scoop; }) >= 4);
+        // The tremolo: the first bars one pitch.
+        {
+            const auto solo = composeSolo (SoloStyle::tremoloThenFlurry, spans, 4.0, tuning, {}, variation);
+            std::set<int> pitches;
+            for (const auto& n : solo.notes)
+                if (n.beat < 20.0)
+                    pitches.insert (n.pitch);
+            CHECK (pitches.size() == 1u);
+        }
+        // Bursts of sixteenths after held bends.
+        CHECK (count (composeSolo (SoloStyle::heldBendsAnsweredByBursts, spans, 4.0, tuning, {}, variation),
+                      [] (const LineNote& n) { return n.effect == LineNote::Effect::bend; }) >= 4);
+    }
+    for (const auto s : styles)
+    {
+        CHECK (soloStyleNamed (soloStyleName (s)) == s);
+        CHECK (soloGroupOrder().contains (soloGroupOf (s)));
+    }
+}
