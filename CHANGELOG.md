@@ -2,6 +2,26 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.240.0
+
+Round ten, part one: thirteen verse types from the 56 songs you uploaded (80s arena rock, power ballads, acoustic versions, 70s rock and 90s alt-rock). Shapes only, our own names, everything in 4/4. They sit in the verse list before DRONING and SPARSE; each lane's options are listed under the type.
+
+- **PIANO BALLAD VERSE:** the piano's root on 1 and a broken triad in eighths over it (or with the whole chord on the last eighth); the drums and bass out until halfway, then a soft kick on 1 and the roots (or a soft sixteenth snare texture); a clean dyad every other bar.
+- **POWER-BALLAD VERSE, GUITAR ANSWERS:** piano whole-note chords (or with a pickup on 4), the bass on whole notes walking in every fourth bar, a ballad kick and sidestick, and a clean guitar answering in the gap at the end of every two bars.
+- **BAND HIT EVERY FOUR BARS UNDER THE PIANO:** piano dyads in eighths carry it; the guitar, bass, kick and a crash hit together on 1 and its and of every fourth bar, then silence.
+- **LOOP VERSE, BASS CLIMB EVERY BAR:** a loop that never fills, a chord rung then muted, the bass holding each root and climbing by step into the next.
+- **CHORD ON ONE, MUTED EIGHTH PEDAL:** a dyad or power chord on 1, then the low root muted on the eighths, an organ stab with it, four on the floor under the ride.
+- **RIFF BAR, HITS BAR:** two-bar cycles of a muted sixteenth pedal in groups of six, six and four, then wide chord hits on 1, 3 and 4.
+- **QUIET VERSE: MUTED DYADS, NO SNARE:** muted dyads, a quiet busy bass, hats and the pedal hat, no snare at all.
+- **BASS AND STRINGS STABS IN TURN UNDER PIANO EIGHTHS:** piano triads on every eighth, the bass stabbing the front of the bar and the strings the back, guitars and drums out (or cymbal swells).
+- **PIANO HALF NOTES, BASS STEPPING BY INVERSIONS:** wide piano half notes, the bass moving to the nearest chord tone instead of jumping to each root, half time with the snare on 3.
+- **TOM-GROOVE VERSE, BROKEN POWER CHORDS:** the floor tom and kick carry the groove with no snare or hats, the power chord broken into eighths.
+- **CHUNK BAR, SINGLE-NOTE ANSWER BAR:** power-chord chunks on 1, its and and 2, then a bar of single notes answering.
+- **PEDAL EIGHTHS, A TRIAD PULSE IN THE SECOND HALF:** the muted low root throughout, a high triad pulse from halfway.
+- **FOUR ON THE FLOOR, ONE CHIMING NOTE:** one high note chimed in eighths across the changes (a second guitar breaking the triads off the one, on the lane's second track), the kick and hat on every quarter, no snare, a tom run every four bars.
+
+Next in this round: the choruses, the other sections, intros and outros, transitions and shared options, then solos. Not checked here: how it sounds, by ear.
+
 ## 0.239.0
 
 Round nine's swung types: the last part of the 17 industrial songs. Until now every type was written on straight sixteenths; these two sit on a triplet grid instead, twelve triplet eighths a bar, still in 4/4 (no meter change). Shapes only, our own names. Each is a verse type and a chorus type.
