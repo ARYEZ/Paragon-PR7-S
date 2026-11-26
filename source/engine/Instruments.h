@@ -49,6 +49,10 @@ namespace pr7s
         // a sixteenth apart in a row (0: any).
         double shortestNote = 0.25;
         int chugRun = 0;
+        // (0.180.0, the owner: ARCHITECT's swells and vibrato turned an instrument's sound down part way through a
+        // song) The controllers ARCHITECT writes for a swell (from nothing up) and for vibrato (the mod wheel's
+        // depth): CC 11 (expression) and CC 1 (the mod wheel) as most libraries map them; 0: not written at all.
+        int swellCc = 11, vibratoCc = 1;
         std::vector<Keyswitch> keyswitches;
         bool forBass = false, forGuitar = false, forLead = false;
         std::optional<GuitarVelocities> velocities;    // (guitars: the layers this library uses)

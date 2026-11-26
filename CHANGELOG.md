@@ -2,6 +2,23 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.180.0
+
+ARCHITECT's swells and vibrato no longer leak into the next part, and you choose which controllers they move (you found a riff after one with swells turning your instrument most of the way down, with every PR7-G preset).
+
+**What was happening.** For a lead or clean guitar, ARCHITECT writes MIDI controllers into the part, sent to the instrument on that track (never to the effects after it: PR7-S passes no MIDI to inserts):
+- a **swell**: CC 11 (expression) from 0 up over the note's first beat and a half; once a part has a swell, every other note starts CC 11 at 110;
+- **vibrato**: CC 1 (the mod wheel) up to 96 over a held note and back to 0;
+- **bends, dives, slides and the rest**: pitch bend.
+
+A controller stays where it was last set until another one comes. So whatever a part left behind carried on into the next part, and what CC 11 and CC 1 do depends on how the instrument maps them (volume, its own effects, something else).
+
+**What changed.**
+- **Every ARCHITECT part ends at rest.** A 128th of a beat before its end, whatever its notes moved goes back: the swell controller to full (127), the vibrato controller to 0, pitch bend to the centre. Only what the part used is reset. Parts you made before this still have no reset at their end: build or ROLL them again to get it.
+- **SWELL CC and VIBRATO CC on each instrument** (HUB > INSTRUMENTS, under SHORTEST NOTE): the controller numbers ARCHITECT uses on that instrument, 11 and 1 to start (profiles saved before keep those), or OFF to write none. Type a number 1-127 or OFF. The lead lane uses the lead's instrument (else the guitar's), the clean guitar and rhythm lanes the guitar's, the bass the bass's.
+
+Not checked here: what CC 11 and CC 1 do in your own libraries (Shreddage, Kontakt instruments). That mapping is in each instrument's own settings; set the numbers to match, or OFF.
+
 ## 0.179.0
 
 Quicker with a big groove library (you asked: "do all of it so long as it doesn't negatively affect the experience"). Nothing you see or hear is different: the same grooves, the same counts, the same parts, sooner. Timed here with a made-up library of 100,000 grooves (your own disk and folders will give other numbers).

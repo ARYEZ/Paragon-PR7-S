@@ -382,7 +382,13 @@ namespace pr7s
         // back to 0 as it ends, a bend as pitch bend up a whole step by the instrument's bend range (the
         // INSTRUMENTS profile on the idea's lane, else 2 semitones) and back to none as it ends.
         Part partFromIdea (const LineIdea&, double start, double length, const juce::String& name) const;
-        static std::vector<Controller> effectControllers (const std::vector<LineNote>&, int bendRange, double bpm = 0.0);   // (0.116.0: bends rise in about 0.19 s at bpm; 0: a quarter beat)
+        static std::vector<Controller> effectControllers (const std::vector<LineNote>&, int bendRange, double bpm = 0.0,
+                                                           int swellCc = 11, int vibratoCc = 1);   // (0.116.0: bends rise in about 0.19 s at bpm; 0: a quarter beat)
+        // (0.180.0) `swellCc` / `vibratoCc`: the controllers for swells and vibrato (the instrument profile's; 0: none).
+        // (0.180.0, the owner's report: a riff after one with swells or vibrato played on with the instrument turned
+        // down) Every controller a part's notes moved, put back at rest just before `length` (the part's end): the
+        // swell controller full (127), the vibrato controller 0, pitch bend centred. Nothing carries into what follows.
+        static void restControllers (std::vector<Controller>&, double length, int swellCc = 11, int vibratoCc = 1);
         static void fitBends (std::vector<LineNote>&, int bendRange);   // (0.66.0) bends past the range made smaller
         // (0.57.0) BUILD SECTION: each idea onto the track named after its part (Drums, Bass, Guitar,
         // Lead Guitar, Piano, Melody: an instrument track of that name is reused, so section after
