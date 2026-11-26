@@ -2218,7 +2218,12 @@ namespace pr7s
                      "TAMBOURINE ON THE ANDS, SNARE ON THREE", "HALF TIME, KICK ON TWO AND ITS AND, A PICKUP EVERY BAR", "SNARE ON TWO, THREE-E AND FOUR, CRASH EIGHTHS",
                      "KICK STREAM, TOMS, SNARE ON THE LATE ANDS", "KICK AND SNARE TOGETHER, TOMS ANSWER", "GHOSTS EITHER SIDE OF THREE",
                      "SNARE SIXTEENTHS AROUND TWO AND FOUR", "SNARE ON TWO, TWO-A, THREE-AND AND FOUR", "GROOVE BAR, FILL BAR",
-                     "SNARE FOUR-STROKES ON TWO AND FOUR", "GHOST PAIRS INTO THE BACKBEAT AND THE ONE" };
+                     "SNARE FOUR-STROKES ON TWO AND FOUR", "GHOST PAIRS INTO THE BACKBEAT AND THE ONE",
+                     // (0.237.0) Round nine (the owner's 17 industrial songs); three are other types' own, shared as they are.
+                     "SNARE ON THE DOTS, KICKS BETWEEN", "HATS IN THREES", "CRASH QUARTERS, KICK 2+3+3", "TWO-SOUND SIXTEENTH LOOP, NO FILLS",
+                     "KICK EIGHTHS, TOMS ON ONE, TWO AND FOUR", "KICK EIGHTHS, TOMS IN THE BACK HALF", "KICK DOUBLED BY THE FLOOR TOM, BUSY",
+                     "TOM LOOP, MOVING SNARE CELL", "SPLASH QUARTERS, A ROLL EVERY EIGHT",
+                     "MACHINE LOOP, HOLES FILLED", "DISCO HAT: CLOSED ON THE BEAT, GHOST ON THE E, OPEN ON THE AND" };
         if (layer == ComposerLayer::bass)   // (0.160.0) round four's bass versions: put in front of LOCKED WITH THE KICK
             return { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                      "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
@@ -2230,7 +2235,9 @@ namespace pr7s
                      "WALK-UPS EVERY SECOND BAR",
                      // (0.218.0) Round eight (the owner's 67 songs).
                      "OFF THE ONE, THE NEXT ROOT HELD FROM THREE", "EIGHT-NOTE SIXTEENTH OSTINATO ON THE KEY'S ROOT", "FUNK BASS, TWO SIXTEENTH CLUSTERS",
-                     "HELD FROM TWO-AND", "EIGHTHS WITH A FIVE-SIXTEENTH RUN", "ROOT, A BURST, THEN OCTAVE EIGHTHS" };
+                     "HELD FROM TWO-AND", "EIGHTHS WITH A FIVE-SIXTEENTH RUN", "ROOT, A BURST, THEN OCTAVE EIGHTHS",
+                     // (0.237.0) Round nine; ROOT AND FLAT SEVEN ROCKING is a type's own, shared as it is.
+                     "DRONE PULSE, THEN THE RIFF", "ROOT AND FLAT SEVEN ROCKING" };
         if (layer == ComposerLayer::guitar)   // (0.158.0) round four's riff kinds
             return { "CHUGS, THEN THREE CHORDS", "HIT, THEN BURSTS ON TWO AND FOUR", "PUSHED POWER CHORDS WITH A FLAT-TWO STAB",
                      "ROOT TWICE, TRITONE PUSHED IN", "SUS2 SPLIT BETWEEN TWO GUITARS", "TONIC WALL UNDER MOVING CHORDS",
@@ -2266,7 +2273,11 @@ namespace pr7s
                     "HIGH TREMOLO FOR HALF, THEN ROOT EIGHTHS", "TWO SHAPES IN EIGHTHS, HOLES MOVING", "CHORD, ROOT RUN, FLAT-FIVE TAIL",
                     "THREE CHORD HITS, A LINE DOWN", "CHROMATIC POWER CHORDS ROUND THE ROOT IN SIXTEENTHS", "PEDAL AND FALLING TOP, ROCKING",
                     "OPEN TOP STRINGS OVER A MOVING LOW NOTE", "WHOLE-STEP-UNDER BRACKET CHORDS", "ROOT, FLAT THREE, FOUR, FLAT FIVE WALK",
-                    "HIGH THREE-NOTE CELLS OVER THE RIFF", "DYADS STRUCK THREE TIMES, STEPPING DOWN" };
+                    "HIGH THREE-NOTE CELLS OVER THE RIFF", "DYADS STRUCK THREE TIMES, STEPPING DOWN",
+                    // (0.237.0) Round nine (the owner's 17 industrial songs); HIGH NOTE ON TWO AND FOUR is a type's own, shared as it is.
+                    "POWER-CHORD BAR, BROKEN-OCTAVE BAR", "LOW CHUG ON THE BASS FIGURE", "CHORD, HIGH NOTE, MINOR DYAD IN EIGHTHS",
+                    "TRIAD STABS ON TWO AND FOUR", "HOLED SINGLE-NOTE LINE, OCTAVE HELD EVERY FOURTH BAR", "TAKES OVER THE KEYS' OSTINATO",
+                    "HIGH NOTE ON TWO AND FOUR" };
         if (layer == ComposerLayer::chords)
             return { "SYNTH BASS SIXTEENTHS", "STRINGS ON THE QUARTERS", "PIANO ARPEGGIO IN 3+3+2", "PIZZICATO ARPEGGIO", "TIMPANI ROLL RISER",
                      // (0.155.0) Round four.
@@ -2292,7 +2303,11 @@ namespace pr7s
                      // (0.218.0) Round eight (the owner's 67 songs).
                      "FALLING SCALE EIGHTHS, A HELD TOP", "PIANO STABS IN 3+2+3", "PULSE ON EVERY EIGHTH BUT THE ONE",
                      "OFF-BEAT BELLS, FOUR VOICES ROTATING", "DYAD PICKUP PHRASE EVERY FOUR BARS", "BROKEN TRIAD EACH HALF BAR",
-                     "SIXTEEN-SIXTEEN-EIGHTH CELL, FIXED NOTES", "LEFT HAND HELD, RIGHT-HAND FIVE-NOTE RUN EACH HALF" };
+                     "SIXTEEN-SIXTEEN-EIGHTH CELL, FIXED NOTES", "LEFT HAND HELD, RIGHT-HAND FIVE-NOTE RUN EACH HALF",
+                     // (0.237.0) Round nine (the owner's 17 industrial songs); LOW BOOMS AND NOISE STABS is a type's own, shared as it is.
+                     "SAW DOUBLES THE GUITAR CHUG", "NOISE HITS ON TWO AND FOUR", "ORCHESTRA HIT BURSTS", "MUSIC BOX UP-ARPEGGIO",
+                     "THE BAR'S ROOT IN EIGHTHS, HIGH", "SYNTH CALLS ON 2, 3, 3-AND, 4-AND", "TRITONE SEESAW IN EIGHTHS",
+                     "QUARTER-NOTE CHORD-TONE CYCLE, HIGH", "LOW BOOMS AND NOISE STABS" };
         return {};
     }
 
@@ -2484,6 +2499,14 @@ namespace pr7s
             { "ALL-LANE SIXTEENTH CELL, KICK AND OPEN HAT QUARTERS", "The last bar the guitar, the bass and the keys on one sixteenth cell (root, root, the seventh and the octave high), the kick and an open hat on the quarters" },
             { "EIGHTHS TO BEAT THREE, THEN SILENCE", "The last bar the chord on the first five eighths, then silence until the next section, the kick and a crash only on 1" },
             { "THREE EVEN STRUMS FALLING", "The last bar three chords held five, six and five sixteenths, falling from the key's flat six to its five and four" },
+            // (0.237.0) Round nine (the owner's 17 industrial songs; shapes only, our names).
+            { "QUARTER-NOTE TRIPLET HITS INTO THE NEXT", "The last bar's second half three hits as quarter-note triplets, the kick and snare with them" },
+            { "KICK AND OPEN HAT ON THE LAST EIGHTH", "Everything stops an eighth early; the next chord pushed onto the last eighth with a kick and an open hat" },
+            { "KICK SIXTEENTHS FOR THE LAST HALF BAR", "The band plays on; the kick on every sixteenth for the last half bar, getting louder" },
+            { "TWO BARS CLIMBING A HALF STEP", "The last two bars the band in eighths, the second bar a half step higher, the kick under every eighth" },
+            { "FEEDBACK RING IN", "The last bar the band out but one high guitar note left to feed back, a soft crash and a held keys note" },
+            { "KICK THREE, SNARE BURSTS", "The last bar the band and the kick on 1, 2 and 3, then a sixteenth snare burst on 4" },
+            { "SNARE ON EVERY BEAT INTO THE STOP", "The last two bars the band, the kick and the snare on every beat, the last beat left silent" },
         };
         return list;
     }

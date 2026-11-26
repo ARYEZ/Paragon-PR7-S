@@ -2338,7 +2338,7 @@ namespace
 TEST_CASE ("0.104.0: transitions: the last bar written for each, the melody untouched", "[sections][transitions]")
 {
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 14 + 21 + 27 + 6 + 15 + 10 + 15);   // (0.199.0: ten more; 0.186.0: fifteen more; 0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
+    REQUIRE (list.size() == 14 + 21 + 27 + 6 + 15 + 10 + 15 + 7);   // (0.199.0: ten more; 0.186.0: fifteen more; 0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
     CHECK (list.front().name == noTransition);
     CHECK_FALSE (sectionTransitionNamed ("NONE").has_value());
     CHECK_FALSE (sectionTransitionNamed ("").has_value());
@@ -5027,7 +5027,7 @@ TEST_CASE ("0.154.0: round four's 27 transitions", "[sections][transitions][tran
                                             "TOM RUMBLE BARS", "HALF-STEP BURST BAR", "RIFF ALONE, TWO BARS", "UNISON SIXTEENTHS BAR",
                                             "SIXTEENTH SWELL, CUT SHORT", "SIX-SIXTEENTH TURNAROUND", "DROP TO KEYS AND LEAD", "CUT AT THE HALF BAR" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 35 + names.size() + 6 + 15 + 10 + 15);   // (0.172.0: six more; 0.186.0: fifteen more; 0.199.0: ten more)
+    REQUIRE (list.size() == 35 + names.size() + 6 + 15 + 10 + 15 + 7);   // (0.172.0: six more; 0.186.0: fifteen more; 0.199.0: ten more)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (list[35 + i].name == names[i]);
     const auto plain = withTransition (noTransition);
@@ -5142,10 +5142,10 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const auto drums = extraApproaches (ComposerLayer::drums);
     const auto keys = extraApproaches (ComposerLayer::chords);
-    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7 + 11 + 1 + 10 + 20);   // (0.218.0: twenty more)   // (0.199.0: ten more)   // (0.195.0: one more)   // (0.193.0: eleven more)   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
-    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6 + 5 + 1 + 8);   // (0.218.0: eight more)   // (0.199.0: one more)   // (0.193.0: five more)   // (0.186.0: six more)
-    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3 + 2 + 46);   // (0.217.0: 46 more)   // (0.193.0: two more)   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
-    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4 + 6);   // (0.218.0: six more)   // (0.193.0: four more)   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
+    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7 + 11 + 1 + 10 + 20 + 11);   // (0.218.0: twenty more)   // (0.199.0: ten more)   // (0.195.0: one more)   // (0.193.0: eleven more)   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
+    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6 + 5 + 1 + 8 + 9);   // (0.218.0: eight more)   // (0.199.0: one more)   // (0.193.0: five more)   // (0.186.0: six more)
+    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3 + 2 + 46 + 7);   // (0.217.0: 46 more)   // (0.193.0: two more)   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4 + 6 + 2);   // (0.218.0: six more)   // (0.193.0: four more)   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
 
     // Under STANDARD (no named type) nothing is added.
     {
@@ -6272,7 +6272,7 @@ TEST_CASE ("0.160.0: round four's bass versions, in front of LOCKED WITH THE KIC
     const char* names[] = { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                             "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
                             "DOTTED FIGURE WITH THE KICK" };
-    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4 + 6);   // (0.218.0: six more)   // (0.186.0: two more; 0.193.0: four more)
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4 + 6 + 2);   // (0.218.0: six more)   // (0.186.0: two more; 0.193.0: four more)
     // Under every named type whose bass ends with LOCKED WITH THE KICK: there, just in front of it; else not at all.
     auto typed = 0;
     for (const auto* section : { "Verse", "Chorus", "Bridge", "Breakdown", "Intro", "Outro", "Pre-Chorus" })
@@ -7464,7 +7464,7 @@ TEST_CASE ("0.186.0: round six's transitions", "[sections][trans186]")
                             "CHORD RUNG A BAR, LAST-16TH KICK PICKUP", "UNISON HITS, THEN HELD SILENCE", "BAND HIT HELD TWO AND A HALF BEATS, RIDE PICKUP",
                             "SNARE SIXTEENTHS ON THREE INTO THE CHANGE" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 68 + std::size (names) + 10 + 15);   // (0.199.0: ten more)
+    REQUIRE (list.size() == 68 + std::size (names) + 10 + 15 + 7);   // (0.199.0: ten more)
     for (size_t i = 0; i < std::size (names); ++i)
         CHECK (list[68 + i].name == names[i]);
     const auto none = withTransition ({});
@@ -8979,7 +8979,7 @@ TEST_CASE ("0.199.0: round seven's transitions", "[sections][transitions][trans1
                             "STOP AFTER TWO BEATS", "HATS ALONE BREAK", "DRUMS ALONE, BLAST, THEN THREE CHORDS", "CHROMATIC POWER-CHORD FALL",
                             "PUSHED STRUM STUTTER", "OFF-EIGHTH KICKS INTO A STOP" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 83 + std::size (names) + 15);   // (0.216.0: fifteen more)
+    REQUIRE (list.size() == 83 + std::size (names) + 15 + 7);   // (0.216.0: fifteen more)
     for (size_t i = 0; i < std::size (names); ++i)
         CHECK (list[83 + i].name == names[i]);
     // Every lane with the acoustic on (it strums with the band where the shape is a strum).
@@ -9665,7 +9665,7 @@ TEST_CASE ("0.216.0: round eight's intros and transitions", "[sections][transiti
                             "SIXTEENTH PAIRS ON EVERY BEAT", "A BAR OF DYAD TREMOLO, THEN THE CHORD HELD", "ALL-LANE SIXTEENTH CELL, KICK AND OPEN HAT QUARTERS",
                             "EIGHTHS TO BEAT THREE, THEN SILENCE", "THREE EVEN STRUMS FALLING" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 93 + std::size (names));
+    REQUIRE (list.size() == 93 + std::size (names) + 7);
     for (size_t i = 0; i < std::size (names); ++i)
         CHECK (list[93 + i].name == names[i]);
     const auto with = [] (const juce::String& name)
@@ -10289,5 +10289,135 @@ TEST_CASE ("0.236.0: round nine's other sections, every lane's options a differe
             if (n.beat >= 28.0)
                 ++last;
         CHECK (last == 2);
+    }
+}
+
+TEST_CASE ("0.237.0: round nine's transitions", "[sections][transitions][trans237]")
+{
+    const char* names[] = { "QUARTER-NOTE TRIPLET HITS INTO THE NEXT", "KICK AND OPEN HAT ON THE LAST EIGHTH", "KICK SIXTEENTHS FOR THE LAST HALF BAR",
+                            "TWO BARS CLIMBING A HALF STEP", "FEEDBACK RING IN", "KICK THREE, SNARE BURSTS", "SNARE ON EVERY BEAT INTO THE STOP" };
+    const auto& list = sectionTransitions();
+    REQUIRE (list.size() == 108 + std::size (names));
+    for (size_t i = 0; i < std::size (names); ++i)
+        CHECK (list[108 + i].name == names[i]);
+    const auto with = [] (const juce::String& name)
+    {
+        ComposerState s;
+        s.transition = name;
+        s.lane (ComposerLayer::acoustic).on = true;
+        return composeLayers (s, cleanSpans(), ComposerContext {});
+    };
+    const std::array<ComposerLayer, 5> lanes { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::drums, ComposerLayer::acoustic };
+    const auto none = with ({});
+    std::set<juce::String> seen;
+    for (const auto* name : names)
+    {
+        INFO (name);
+        REQUIRE (sectionTransitionNamed (name).has_value());
+        CHECK (transitionGroupOrder().contains (transitionGroupOf (name)));
+        const auto all = with (name);
+        auto changed = false;
+        juce::String k;
+        for (const auto l : lanes)
+        {
+            changed = changed || ! sameNotes (all[(size_t) l], none[(size_t) l]);
+            for (const auto& n : all[(size_t) l].notes)
+            {
+                k << (int) l << ":" << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << ";";
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+                CHECK (n.length > 0.0);
+                if (n.beat < 24.0 - 1.0e-6)
+                    CHECK (std::find_if (none[(size_t) l].notes.begin(), none[(size_t) l].notes.end(),
+                                         [&n] (const LineNote& o) { return o.beat == n.beat && o.pitch == n.pitch; })
+                           != none[(size_t) l].notes.end());
+            }
+        }
+        CHECK (changed);
+        CHECK (seen.insert (k).second);
+        CHECK (sameNotes (all[(size_t) ComposerLayer::melody], none[(size_t) ComposerLayer::melody]));
+    }
+    // The triplet hits: three kicks in the last half bar, two beats over three.
+    {
+        const auto all = with ("QUARTER-NOTE TRIPLET HITS INTO THE NEXT");
+        std::vector<double> kicks;
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.pitch == GmDrum::kick && n.beat >= 30.0 - 1.0e-6)
+                kicks.push_back (n.beat);
+        REQUIRE (kicks.size() == 3);
+        CHECK (kicks[0] == Catch::Approx (30.0));
+        CHECK (kicks[1] == Catch::Approx (30.0 + 2.0 / 3.0));
+        CHECK (kicks[2] == Catch::Approx (30.0 + 4.0 / 3.0));
+    }
+    // The climb: the second of the last two bars a half step over the first.
+    {
+        const auto all = with ("TWO BARS CLIMBING A HALF STEP");
+        int first = 999, second = 999;
+        for (const auto& n : all[(size_t) ComposerLayer::bass].notes)
+        {
+            if (n.beat >= 24.0 && n.beat < 28.0)
+                first = std::min (first, n.pitch);
+            if (n.beat >= 28.0)
+                second = std::min (second, n.pitch);
+        }
+        CHECK ((second - first == 1 || second - first == -11));
+    }
+    // The stop: nothing starts on the last beat.
+    {
+        const auto all = with ("SNARE ON EVERY BEAT INTO THE STOP");
+        for (const auto l : lanes)
+            for (const auto& n : all[(size_t) l].notes)
+                CHECK (n.beat < 31.0 - 1.0e-6);
+    }
+}
+
+TEST_CASE ("0.237.0: round nine's shared options", "[sections][types][shared237]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    for (const auto& [l, count] : std::vector<std::pair<ComposerLayer, int>> { { ComposerLayer::guitar, 7 }, { ComposerLayer::drums, 11 },
+                                                                               { ComposerLayer::bass, 2 }, { ComposerLayer::chords, 9 } })
+    {
+        const auto extras = extraApproaches (l);
+        REQUIRE (extras.size() >= count);
+        juce::StringArray added;
+        for (int i = extras.size() - count; i < extras.size(); ++i)
+            added.add (extras[i]);
+        for (const auto& [section, type] : std::vector<std::pair<juce::String, juce::String>> { { "Chorus", "DRIVING" }, { "Verse", "CLEAN VERSE" } })
+        {
+            ComposerState s;
+            applySectionType (s, section, type);
+            const auto all = sectionApproaches (s, l);
+            if (all.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (all[all.size() - 1] == "LOCKED WITH THE KICK");
+            std::set<juce::String> seen;
+            for (int i = 0; i < all.size(); ++i)
+            {
+                auto t = s;
+                t.lane (l).approach = i;
+                const auto layers = composeLayers (t, spans, c);
+                const auto& idea = layers[(size_t) l];
+                juce::String k;
+                for (const auto& n : idea.notes)
+                    k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << (n.harmony ? "h" : "") << ";";
+                if (added.contains (all[i]))
+                {
+                    INFO (type << " " << all[i]);
+                    CHECK_FALSE (baseSectionApproaches (s, l).contains (all[i]));
+                    CHECK (! idea.notes.empty());
+                    CHECK (idea.description.isNotEmpty());
+                    for (const auto& n : idea.notes)
+                    {
+                        CHECK (n.length > 0.0);
+                        CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+                    }
+                    CHECK (seen.count (k) == 0);
+                }
+                seen.insert (k);
+            }
+            for (const auto& name : added)
+                CHECK (all.contains (name));
+        }
     }
 }
