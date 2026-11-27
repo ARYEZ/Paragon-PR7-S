@@ -2,6 +2,30 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.250.0
+
+Round eleven begins: you uploaded 61 more songs, and six readers went through them for their shapes only. Nothing from them is copied, and they aren't in the app or the repo. This release adds the first 17 verse types from them, with our own names. They go in the Verse list before DRONING and SPARSE. Each lane gets its own choices, and the bass's last choice is always LOCKED WITH THE KICK.
+
+- **THREE SNARES AFTER A LONE KICK:** the kick only on 1 with a pickup, the snare on 2, 3 and 4, and floor tom pickups. The guitars are out and the keys rock a minor third.
+- **PICKED SEVENTHS OVER A FALLING LINE:** an acoustic picks chord tones while the bass falls a half step a bar under the same chord. The hats and ride are split.
+- **ONE KEY NOTE IN 3+3+2, A STEP LOWER EACH BAR:** one keys note in threes and twos, a scale step lower each bar. The bass plays the same rhythm.
+- **LOW OCTAVE EIGHTHS UNDER A SHAKER:** the guitar's low root and octave on the eighths, climbing two notes every other bar, with shaker sixteenths.
+- **SIX-BEAT RIFF ACROSS THE BAR:** a six-beat power-chord riff in 4/4, so it lands two beats later each bar and meets the bar line again every three bars.
+- **FIFTH AND FOURTH ROCKING OVER THE PEDAL:** a low pedal under fifth and fourth dyads in turn. The bar's last hit is a half step up.
+- **FOUR ON, TWO OFF, UNISON SIXTEENTHS:** sixteenths in groups of four split by two rests, with the last group a half step away and pairs in the fourth bar.
+- **MUTED EIGHTHS, STRUMS WITH AN OPEN-STRING TAIL:** half time. Soft muted eighths, and an acoustic that strums three times, then plays the open strings on 4 and its and.
+- **CHROMATIC BASS CLIMB, KICK EVERY OTHER BAR:** the bass climbs by half steps in sixteenths over two bars.
+- **STABS, THEN A PICKED RUN IN THE SAME BAR:** stabs in the first half of the bar, then single notes through the chord's colours.
+- **TWO TOMS FOR THE BACKBEAT, ROCKING TOP:** two toms in place of the snare and no cymbals. A clean top note rocks a half step.
+- **TWO KICKS UNDER RINGING DYADS AND SHAKER:** only two kicks a bar, under clean sus dyads ringing on the eighths.
+- **3+3 GROUPS, BEAT FOUR LEFT OPEN:** the kit in two threes with an open hat on 4. The acoustic picks root, root, fifth twice and rings over 4.
+- **STICK LOOP, BASS ROOT PAIRS:** no kit, just sticks and cabasa. The bass plays its root and octave on 1 and its and.
+- **CHORD ON ONE, THE NEXT PUSHED ON FOUR, DOTTED LINE OVER:** each next chord is struck on 4 and tied over the bar line, with the keys on dotted eighths.
+- **BASS GROOVE, GUITAR ONLY ON THE PICKUPS:** a held two-bar bass groove, with three muted guitar pickups every other bar.
+- **PIANO EIGHTHS AND PIZZICATO OCTAVES, NO BACKBEAT:** piano chords on the beats, with no kick or snare.
+
+Next come the rest of the verses, then choruses, the other sections, intros and outros, transitions and shared options, and solos.
+
 ## 0.249.0
 
 **STRIP PRESETS, and PR7-C's factory presets on the channel strip** (your answer: presets of the strip's own, PR7-C kept as a plug-in).
