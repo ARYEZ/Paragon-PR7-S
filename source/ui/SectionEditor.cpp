@@ -212,7 +212,7 @@ SectionEditor::SectionEditor (pr7s::Studio& s, int id) : studio (s), blockId (id
     };
 
     addAndMakeVisible (*strip);
-    for (auto* k : std::initializer_list<juce::TextButton*> { &addKey, &rollKey, &clearKey, &openKey, &moreKey })
+    for (auto* k : std::initializer_list<juce::TextButton*> { &addKey, &rollKey, &clearKey, &rollMusicKey, &openKey, &moreKey })
     {
         ChordUi::styleKey (*k);
         addAndMakeVisible (*k);
@@ -221,6 +221,9 @@ SectionEditor::SectionEditor (pr7s::Studio& s, int id) : studio (s), blockId (id
     clearKey.onClick = [this] { clearChords(); };
     rollKey.setTooltip ("New chords in the key, drawn chord to chord toward the likely ones; the section's name gives them their feel");
     rollKey.onClick = [this] { rollChords ((juce::uint32) juce::Random::getSystemRandom().nextInt()); };
+    rollMusicKey.setTooltip ("The section's music built again: a new take on every lane (riffs, beats, bass, keys), its type and options kept, "
+                             "the drums another groove from the ones that fit. Linked copies follow. Undo takes it back.");
+    rollMusicKey.onClick = [this] { rollMusic ((juce::uint32) juce::Random::getSystemRandom().nextInt()); };
     openKey.onClick = [this] { if (onOpen && getIndex() >= 0) onOpen (getIndex()); };
     moreKey.onClick = [this] { if (onMore && getIndex() >= 0) onMore (getIndex()); };
     setSize (width, height);
@@ -426,6 +429,13 @@ bool SectionEditor::rollChords (juce::uint32 seed)
     return done;
 }
 
+bool SectionEditor::rollMusic (juce::uint32 seed)
+{
+    const auto done = studio.rollSongSection (getIndex(), seed);
+    refresh();
+    return done;
+}
+
 void SectionEditor::clearChords()
 {
     chords.clear();
@@ -531,12 +541,12 @@ void SectionEditor::resized()
     strip->setBounds (r.removeFromTop (110));
     hint.setBounds (r.removeFromTop (22));
     auto keys = r.removeFromBottom (32);
-    for (auto* k : std::initializer_list<juce::TextButton*> { &addKey, &rollKey, &clearKey })
+    for (auto* k : std::initializer_list<juce::TextButton*> { &addKey, &rollKey, &clearKey, &rollMusicKey })
     {
-        k->setBounds (keys.removeFromLeft (k == &rollKey ? 110 : 130));
+        k->setBounds (keys.removeFromLeft (k == &rollKey ? 110 : k == &rollMusicKey ? 150 : 130));
         keys.removeFromLeft (8);
     }
     moreKey.setBounds (keys.removeFromRight (110));
     keys.removeFromRight (8);
-    openKey.setBounds (keys.removeFromRight (220));
+    openKey.setBounds (keys.removeFromRight (juce::jmin (220, keys.getWidth())));
 }

@@ -55,6 +55,8 @@ namespace pr7s
         xml->setAttribute ("minor", minor ? 1 : 0);
         if (keyIndex >= 0)
             xml->setAttribute ("key", keyIndex);
+        if (group.isNotEmpty())
+            xml->setAttribute ("group", group);
         for (const auto& b : blocks)
         {
             auto* e = xml->createNewChildElement ("Block");
@@ -66,6 +68,12 @@ namespace pr7s
                 e->setAttribute ("type", b.type);
             if (b.transition.isNotEmpty())
                 e->setAttribute ("transition", b.transition);
+            if (b.parts.isNotEmpty())
+                e->setAttribute ("parts", b.parts);
+            if (b.kick != 0)
+                e->setAttribute ("kick", b.kick);
+            if (b.snare != 0)
+                e->setAttribute ("snare", b.snare);
             for (const auto& c : b.chords)
             {
                 auto* ce = e->createNewChildElement ("Chord");
@@ -86,6 +94,7 @@ namespace pr7s
         bp.bpm = juce::jlimit (0.0, 400.0, xml.getDoubleAttribute ("bpm", 0.0));
         bp.minor = xml.getIntAttribute ("minor", 1) != 0;
         bp.keyIndex = xml.getIntAttribute ("key", -1);
+        bp.group = xml.getStringAttribute ("group");
         if (bp.keyIndex >= (int) Key::all().size())
             bp.keyIndex = -1;
         for (auto* e : xml.getChildWithTagNameIterator ("Block"))
@@ -96,6 +105,9 @@ namespace pr7s
             b.link = juce::jmax (0, e->getIntAttribute ("link", 0));
             b.type = e->getStringAttribute ("type");
             b.transition = e->getStringAttribute ("transition");
+            b.parts = e->getStringAttribute ("parts");
+            b.kick = e->getIntAttribute ("kick", 0) & 0xffff;
+            b.snare = e->getIntAttribute ("snare", 0) & 0xffff;
             for (auto* ce : e->getChildWithTagNameIterator ("Chord"))
                 if (const auto chord = Chord::fromText (ce->getStringAttribute ("chord")))
                 {
@@ -114,7 +126,7 @@ namespace pr7s
 
     bool Blueprint::operator== (const Blueprint& o) const
     {
-        return name == o.name && description == o.description && bpm == o.bpm && minor == o.minor && keyIndex == o.keyIndex
+        return name == o.name && description == o.description && group == o.group && bpm == o.bpm && minor == o.minor && keyIndex == o.keyIndex
             && blocks == o.blocks;
     }
 
@@ -140,6 +152,25 @@ namespace pr7s
             b.chords.push_back ({ Chord { step.offset, step.type, step.tension, step.bassOffset }, step.bars });
         }
         return b;
+    }
+
+    juce::String blueprintPartName (int layer)
+    {
+        static const char* names[] { "chords", "melody", "bass", "guitar", "lead", "drums", "clean", "acoustic" };
+        return juce::isPositiveAndBelow (layer, 8) ? juce::String (names[layer]) : juce::String();
+    }
+
+    std::vector<std::pair<int, juce::String>> blueprintParts (const juce::String& text)
+    {
+        std::vector<std::pair<int, juce::String>> out;
+        for (const auto& item : juce::StringArray::fromTokens (text, "|", ""))
+        {
+            const auto name = item.upToFirstOccurrenceOf ("=", false, false).trim().toLowerCase();
+            for (int l = 0; l < 8; ++l)
+                if (name == blueprintPartName (l))
+                    out.emplace_back (l, item.fromFirstOccurrenceOf ("=", false, false).trim());
+        }
+        return out;
     }
 
     juce::File defaultBlueprintFolder()

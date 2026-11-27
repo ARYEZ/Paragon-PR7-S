@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.262.0
+
+Blueprints rebuilt, as you asked: many more of them, a proper picker, and every section filled with music the moment one loads.
+
+- **133 new blueprints**, read from your song files for their form only:
+  - Each keeps its song's sections in order, their lengths in bars, which ones repeat (as linked copies), the chords as steps of the key, and the tempo.
+  - None of the songs' notes are copied, and they're named in our own words (by tempo, mode and what the form does), never by the songs'.
+  - With the first ten that makes 143.
+- **Loading a blueprint builds every section** (BUILD THE MUSIC, on by default):
+  - Each section gets the section type and the option on each lane that play most like that section of the song: where its kick and snare fall, how busy and how held its guitar and bass are, and which instruments play.
+  - This was measured, not copied: every type and every option was composed and measured (about 445,000 measurements), then compared with each song section.
+  - The drums take the groove from your library whose kick and snare sit nearest the song's.
+  - Linked copies get the same music. Tracks are found by your ARCHITECT TRACKS names (or made).
+  - Undo takes the music back.
+- **ROLL MUSIC** in a section's editor (right-click a block): a new take of that section on every lane. It sometimes draws another of the lane's options too, and the drums another of the grooves that fit. Linked copies follow; it builds an unbuilt section too.
+- **ARCHITECT opens a built section as it was built** (its lanes, options and takes), so ROLL and BUILD INTO carry on from what's there.
+- **The picker:**
+  - Grouped by the kind of song each comes from (alt rock, riff metal, nu-metal, pop-rock, hard rock, punk, metalcore, industrial, acoustic, power ballads, prog, ballads, grunge and more).
+  - Search (names, descriptions, section types), filters for the group, length, tempo and major or minor.
+  - A star on each row to keep favourites (a FAVOURITES group).
+- **The first ten's plain riff sections** now have section types that suit them.
+
+What to know:
+
+- The matching works from measures, so some picks will be closer to the song than others. ROLL any section you don't like.
+- With no groove library the drums are the type's own, as before.
+- Nothing here could be checked by ear.
+
 ## 0.261.0
 
 The duplicate check you asked for: every section type, every lane and every option in its menu composed over the same chords (675 types, about 258,000 parts) and compared note for note.

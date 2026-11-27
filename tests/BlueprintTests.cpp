@@ -14,7 +14,7 @@ using namespace pr7s;
 TEST_CASE ("BLUEPRINTS 0.152.0: our blueprints are whole: known sections, types, transitions, keys, chords filling each block", "[blueprints]")
 {
     const auto& all = factoryBlueprints();
-    REQUIRE (all.size() == 10);
+    REQUIRE (all.size() >= 100);   // (0.262.0: the first ten, then the many from the songs)
     juce::StringArray names;
     for (const auto& bp : all)
     {

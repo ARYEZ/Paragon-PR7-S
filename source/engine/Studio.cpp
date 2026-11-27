@@ -13065,6 +13065,12 @@ namespace pr7s
                               + juce::String (start, 2) + " to " + juce::String (end, 2));
             changed();
         }
+        toneWrittenTracks (plan);
+        return used;
+    }
+
+    void Studio::toneWrittenTracks (const std::vector<std::pair<int, const LineIdea*>>& plan)
+    {
         // (0.204.0) The guitar lanes' tracks get PR7-G with a tone (one already there is left alone).
         lastTones.clear();
         std::set<int> toned;
@@ -13088,7 +13094,6 @@ namespace pr7s
                 lastTones.addIfNotAlreadyThere ("KEYS: " + lastPatch + " ON PR7-K");
         if (sectionTonesWritten > 0)
             changed();
-        return used;
     }
 
     void Studio::noteBuiltSection (const BuiltSection& section)
@@ -16862,6 +16867,260 @@ namespace pr7s
         chordTrackChanged();
         for (const auto i : shortened)
             setSongSectionTransition (i, bp.blocks[(size_t) i].transition);
+        return true;
+    }
+
+    //==========================================================================
+    // Building the whole row (0.262.0)
+    namespace
+    {
+        // A groove's kick or snare as the sixteenths of a bar it hits in most bars (a bit a sixteenth).
+        int stepsOfHits (const std::vector<float>& hits, double length)
+        {
+            const auto bars = juce::jmax (1, (int) std::lround (length / 4.0));
+            std::array<int, 16> count {};
+            for (const auto h : hits)
+                if (h >= 0.0f && (length <= 0.0 || h < length))
+                    ++count[(size_t) (((int) std::lround (std::fmod ((double) h, 4.0) * 4.0)) % 16)];
+            auto mask = 0;
+            for (int s = 0; s < 16; ++s)
+                if (count[(size_t) s] * 10 >= bars * 4)   // (in 40 % of the bars or more)
+                    mask |= 1 << s;
+            return mask;
+        }
+
+        double likeness (int a, int b)
+        {
+            const auto both = juce::countNumberOfBits ((juce::uint32) (a & b)), either = juce::countNumberOfBits ((juce::uint32) (a | b));
+            return either == 0 ? 1.0 : (double) both / (double) either;
+        }
+    }
+
+    ComposerState Studio::blockState (int index, const Blueprint* bp, juce::uint32 seed) const
+    {
+        const auto& block = project.songSections.blocks[(size_t) index];
+        ComposerState state;
+        state.key = getSongSectionKey (index);
+        state.fromChordTrack = true;
+        state.bars = block.bars;
+        state.lane (ComposerLayer::drums).style = juce::jlimit (0, (int) drumSections().size() - 1, composerSectionFor (block.name));
+        applySectionType (state, block.name, block.type);
+        state.lane (ComposerLayer::melody).on = false;   // (the singer's: ours would sit where the vocal goes)
+        if (sectionBaseOf (block.name) == "Solo")
+            state.lane (ComposerLayer::lead).on = true;
+        // The song's own lanes and options, when the blueprint says what played there.
+        if (bp != nullptr && juce::isPositiveAndBelow (index, (int) bp->blocks.size()))
+        {
+            const auto parts = blueprintParts (bp->blocks[(size_t) index].parts);
+            if (! parts.empty())
+            {
+                for (const auto l : composerLayers())
+                    state.lane (l).on = false;
+                for (const auto& [layer, option] : parts)
+                {
+                    const auto l = (ComposerLayer) layer;
+                    state.lane (l).on = true;
+                    if (option.isNotEmpty())
+                        state.lane (l).approach = sectionApproaches (state, l).indexOf (option, true);
+                }
+            }
+        }
+        // A take of each lane from the seed (linked copies are built once, so they match).
+        juce::Random random ((juce::int64) seed * 7919 + block.id * 131 + 17);
+        for (const auto l : composerLayers())
+            state.lane (l).variation = random.nextInt (10000);
+        return state;
+    }
+
+    bool Studio::writeSongSection (int index, ComposerState state, const GroovePick& pick, std::vector<std::pair<int, LineIdea>>& written)
+    {
+        auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        const auto place = getSongSectionPlace (index);
+        if (! place.has_value())
+            return false;
+        const auto chords = sectionChords (*place);
+        if (chords.empty())
+            return false;
+        std::vector<ChordSpan> spans;
+        for (const auto& c : chords)
+            spans.push_back ({ place->start + c.beat, place->start + c.beat + c.length, c.chord, chordTrackKeyAt (place->start + c.beat) });
+        state.bars = blocks[(size_t) index].bars;
+        state.transition = blocks[(size_t) index].transition;
+        state.fromChordTrack = true;
+        auto context = getComposerContext (place->start);
+        if (const auto riff = getSongSectionRiff (index); riff.has_value() && isSongSectionRiffPlayed (index))
+            context.myRiff = tileRiff (*riff, spans.back().end - spans.front().start, context.beatsPerBar);
+        // The drums lane's library groove: the one whose kick and snare are nearest the song's (or, rolled, another of
+        // the best few).
+        if (state.lane (ComposerLayer::drums).on && state.libraryDrums && (pick.kick != 0 || pick.snare != 0 || pick.roll))
+        {
+            const auto pool = composerGroovePool (state, spans, context);
+            std::vector<std::pair<double, size_t>> scored;
+            juce::Random random ((juce::int64) pick.seed * 31 + 7);
+            for (size_t g = 0; g < pool.size() && g < 120; ++g)
+            {
+                if (pool[g].rhythm == nullptr && (pick.kick != 0 || pick.snare != 0))
+                    continue;
+                auto score = 0.0;
+                if (pool[g].rhythm != nullptr && (pick.kick != 0 || pick.snare != 0))
+                    score = 0.6 * likeness (stepsOfHits (pool[g].rhythm->kicks, pool[g].rhythm->lengthBeats), pick.kick)
+                          + 0.4 * likeness (stepsOfHits (pool[g].rhythm->snares, pool[g].rhythm->lengthBeats), pick.snare);
+                if (pick.roll)
+                    score += 0.15 * random.nextDouble();   // (another of the near ones each time)
+                if (pick.roll && pool[g].file.getFullPathName() == state.libraryGroove)
+                    score -= 10.0;
+                scored.push_back ({ score, g });
+            }
+            if (! scored.empty())
+            {
+                std::stable_sort (scored.begin(), scored.end(), [] (const auto& a, const auto& b) { return a.first > b.first; });
+                state.libraryGroove = pool[scored.front().second].file.getFullPathName();
+            }
+        }
+        const auto linked = project.songSections.linkedWith (index);
+        std::vector<SectionPlace> places;
+        for (const auto i : linked)
+            if (const auto p = getSongSectionPlace (i))
+                places.push_back (*p);
+        const auto clearIn = [&] (Track& track)
+        {
+            for (const auto& p : places)
+                track.parts.erase (std::remove_if (track.parts.begin(), track.parts.end(), [&] (const Part& part)
+                                   { return part.start >= p.start - 1.0e-9 && part.end() <= p.end + 1.0e-9; }), track.parts.end());
+        };
+        std::map<int, std::vector<int>> tracksOf;   // the block's own tracks for each lane first
+        for (const auto& lane : blocks[(size_t) index].lanes)
+            if (project.findTrack (lane.track) != nullptr)
+                tracksOf[lane.layer].push_back (lane.track);
+        std::vector<std::pair<int, int>> lanes;   // (layer, track)
+        for (const auto l : composerLayers())
+        {
+            const auto layer = (int) l;
+            auto tracks = tracksOf[layer];
+            if (! state.lane (l).on)
+            {
+                for (const auto t : tracks)   // (a lane that played here before and doesn't now: its parts here go)
+                    if (auto* track = project.findTrack (t); track != nullptr && ! track->frozen)
+                        clearIn (*track);
+                continue;
+            }
+            const auto idea = composeLayer (l, state, spans, context);
+            if (idea.notes.empty())
+                continue;
+            const auto part = composerPartOf (l);
+            if (tracks.empty())
+                tracks = findIdeaTracks (part);
+            if (tracks.empty())
+                if (const auto id = addIdeaTrack (part); id != 0)
+                    tracks.push_back (id);
+            for (size_t k = 0; k < tracks.size(); ++k)
+            {
+                levelEmptyTrack (tracks[k], part);
+                auto* track = project.findTrack (tracks[k]);
+                if (track == nullptr || track->frozen)
+                    continue;
+                const auto copy = doubledCopy (idea, (int) k, spans.front().start, (int) tracks.size());
+                clearIn (*track);
+                for (size_t p = 0; p < places.size(); ++p)
+                {
+                    const auto from = spans.front().start + (places[p].start - place->start);
+                    if (copy.notes.empty())
+                        continue;
+                    track->parts.push_back (partFromIdea (copy, from, places[p].end - from,
+                                                          sectionLabel (blocks, linked[p]) + ": " + copy.style));
+                    track->parts.back().id = 0;
+                    linkForPr7d (tracks[k], copy, track->parts.back());
+                }
+                lanes.emplace_back (layer, tracks[k]);
+                written.emplace_back (tracks[k], copy);
+            }
+        }
+        const auto recipe = state.toString();
+        for (size_t p = 0; p < linked.size(); ++p)
+        {
+            auto& b = blocks[(size_t) linked[p]];
+            b.recipe = recipe;
+            b.lanes.clear();
+            for (const auto& [layer, track] : lanes)
+                b.lanes.push_back ({ layer, track, p < places.size() ? trackMark (places[p], track) : 0 });
+        }
+        return true;
+    }
+
+    int Studio::buildSongSections (const Blueprint* bp, juce::uint32 seed)
+    {
+        const auto count = (int) project.songSections.blocks.size();
+        std::set<int> linksDone;
+        std::vector<std::pair<int, LineIdea>> written;
+        auto built = 0;
+        for (int i = 0; i < count; ++i)
+        {
+            const auto link = project.songSections.blocks[(size_t) i].link;
+            if (link > 0 && ! linksDone.insert (link).second)
+                continue;   // (written with its first copy)
+            GroovePick pick;
+            pick.seed = seed + (juce::uint32) i;
+            if (bp != nullptr && i < (int) bp->blocks.size())
+            {
+                pick.kick = bp->blocks[(size_t) i].kick;
+                pick.snare = bp->blocks[(size_t) i].snare;
+            }
+            if (writeSongSection (i, blockState (i, bp, seed), pick, written))
+                built += (int) project.songSections.linkedWith (i).size();
+        }
+        if (built == 0)
+            return 0;
+        SessionLog::note ("Built every section of the row: " + juce::String (built) + " blocks, " + juce::String ((int) written.size()) + " parts");
+        linksReset = true;    // (the copies were written alike: nothing to copy)
+        chordsReset = true;   // (nor to rewrite)
+        changed();
+        std::vector<std::pair<int, const LineIdea*>> plan;
+        for (const auto& [track, idea] : written)
+            plan.emplace_back (track, &idea);
+        toneWrittenTracks (plan);
+        return built;
+    }
+
+    bool Studio::rollSongSection (int index, juce::uint32 seed)
+    {
+        const auto& blocks = project.songSections.blocks;
+        if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+            return false;
+        auto state = blocks[(size_t) index].recipe.isNotEmpty() ? ComposerState::fromString (blocks[(size_t) index].recipe)
+                                                                 : blockState (index, nullptr, seed);
+        juce::Random random ((juce::int64) seed * 104729 + 3);
+        for (const auto l : composerLayers())
+        {
+            auto& lane = state.lane (l);
+            if (lane.locked || ! lane.on)
+                continue;
+            lane.variation = random.nextInt (10000);
+            // Another of the lane's options too, now and then (some types write the same notes whatever the take: a new
+            // take alone would change nothing there). LOCKED WITH THE KICK and the like stay as they are.
+            const auto options = sectionApproaches (state, l);
+            if (options.size() >= 2 && (lane.approach < 0 || random.nextFloat() < 0.6f))
+            {
+                auto next = random.nextInt (options.size());
+                if (next == lane.approach)
+                    next = (next + 1) % options.size();
+                lane.approach = next;
+            }
+        }
+        GroovePick pick;
+        pick.roll = state.libraryGroove.isNotEmpty();
+        pick.seed = seed;
+        std::vector<std::pair<int, LineIdea>> written;
+        if (! writeSongSection (index, state, pick, written))
+            return false;
+        linksReset = true;
+        chordsReset = true;
+        changed();
+        std::vector<std::pair<int, const LineIdea*>> plan;
+        for (const auto& [track, idea] : written)
+            plan.emplace_back (track, &idea);
+        toneWrittenTracks (plan);
         return true;
     }
 

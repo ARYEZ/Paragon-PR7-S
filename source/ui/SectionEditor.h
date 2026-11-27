@@ -44,6 +44,8 @@ public:
     // (0.208.0) ROLL: the block's chords drawn anew in its key (Studio::rollSectionChords): another roll each time.
     bool rollChords (juce::uint32 seed);
     juce::TextButton& getRollKey() { return rollKey; }
+    bool rollMusic (juce::uint32 seed);   // (0.262.0) Studio::rollSongSection on this block
+    juce::TextButton& getRollMusicKey() { return rollMusicKey; }
     juce::Rectangle<int> getChordBounds (int i) const;   // (in this component)
     juce::ComboBox& getNameBox() { return nameBox; }
     juce::ComboBox& getTypeBox() { return typeBox; }
@@ -66,6 +68,7 @@ private:
     std::unique_ptr<Strip> strip;
     juce::TextButton addKey { "+ CHORD" }, clearKey { "CLEAR CHORDS" }, openKey { "OPEN IN THE ARCHITECT" }, moreKey { "MORE..." };
     DiceKey rollKey { "ROLL" };   // (0.209.0: a die, in the accent)
+    DiceKey rollMusicKey { "ROLL MUSIC" };   // (0.262.0: a new take of the section's music, its types and options kept)
     bool refreshing = false;
 
     double beatsPerBar() const;

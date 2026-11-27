@@ -1465,6 +1465,18 @@ namespace pr7s
         // track untouched) and the tempo (the fixed tempo, or a tempo track with one event). The music already in the
         // song stays where it is (nothing is moved). One undo step (a SHORT BAR transition adds one each).
         bool applyBlueprint (const Blueprint&, const Key&, bool withChords, bool withTempo);
+        // (0.262.0, the owner: "when a blue print is loaded each section should be fully populated with riffs and beats
+        // ... Then the user can hit roll to get more unique riffs and beats") Every block of the row built at once, as
+        // BUILD INTO does for one: each block's type, its lanes and their options (a blueprint's `parts`: what played in
+        // the song's section), the drums lane's library groove the one whose kick and snare sit nearest the song's
+        // (a blueprint's `kick` / `snare`), each lane a take drawn from `seed`. Linked copies get the same music. The
+        // tracks are found by ARCHITECT TRACKS' names (else made). One change (adding a track is a step of its own, as
+        // BUILD's). The blocks built (0: no chords in the row).
+        int buildSongSections (const Blueprint* = nullptr, juce::uint32 seed = 1);
+        // A block built again with a new take on every lane that's on (its recipe's types and options kept; the drums
+        // a new library groove from the ones that fit), its linked copies too. An unbuilt block is built as
+        // buildSongSections would. One undo step. False: no such block, or no chords in it.
+        bool rollSongSection (int index, juce::uint32 seed);
         // This song's row as a blueprint (its chords from the chord track, in the song's key; the tempo at bar 1).
         Blueprint makeBlueprint (const juce::String& name) const;
         // Ours, then the owner's (from the folder, A to Z).
@@ -1883,6 +1895,12 @@ namespace pr7s
         juce::File blueprintFolder;   // (tests; else defaultBlueprintFolder())
         juce::File stripPresetFolder; // (tests; else defaultStripPresetFolder())
         std::vector<ChordEvent> sectionChords (const SectionPlace&) const;
+        // (0.262.0) What writeSongSection does to the drums lane's library groove.
+        struct GroovePick { int kick = 0, snare = 0; bool roll = false; juce::uint32 seed = 1; };
+        bool writeSongSection (int index, ComposerState, const GroovePick&, std::vector<std::pair<int, LineIdea>>& written);
+        ComposerState blockState (int index, const Blueprint*, juce::uint32 seed) const;
+        void toneWrittenTracks (const std::vector<std::pair<int, const LineIdea*>>&);
+
         juce::int64 trackMark (const SectionPlace&, int trackId) const;
         void rewriteChangedSections();     // before syncLinkedSections in changed()
         void noteSectionChords();          // after it

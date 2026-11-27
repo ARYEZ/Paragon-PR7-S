@@ -578,6 +578,17 @@ void ComposerPage::targetSection (int blockId)
     const auto place = getTargetPlace();
     setSection (pr7s::drumSections()[(size_t) pr7s::composerSectionFor (blocks[(size_t) index].name)]);   // (refreshes)
     applyBlockType();
+    // (0.262.0) A built block (a blueprint's, or BUILD INTO's): its lanes, options and takes as it was built, so ROLL
+    // and BUILD INTO carry on from what's there.
+    if (const auto& recipe = blocks[(size_t) index].recipe; recipe.isNotEmpty())
+    {
+        auto built = pr7s::ComposerState::fromString (recipe);
+        built.fromChordTrack = true;
+        state = built;
+        for (auto& t : taken)
+            t.reset();
+        refresh();
+    }
     if (place.has_value())
     {
         status = "Composing " + pr7s::sectionLabel (blocks, index) + " (bars " + juce::String (place->firstBar + 1) + " to "

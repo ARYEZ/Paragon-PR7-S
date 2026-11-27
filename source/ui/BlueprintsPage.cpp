@@ -64,6 +64,31 @@ BlueprintsPage::BlueprintsPage (pr7s::Studio& s) : studio (s)
     tempoKey.setToggleState (true, juce::dontSendNotification);
     tempoKey.setTooltip ("On: the song takes the blueprint's tempo.");
     addAndMakeVisible (tempoKey);
+    musicKey.setToggleState (true, juce::dontSendNotification);
+    musicKey.setTooltip ("On: every section is built straight away (riffs, beats, bass, keys), each with the types and options that play "
+                         "most like the song it's from, the drums a groove from your library nearest its beat. ROLL a section "
+                         "(its editor, or ARCHITECT) for another take. Off: only the layout.");
+    addAndMakeVisible (musicKey);
+    searchBox.setTextToShowWhenEmpty ("SEARCH", ParagonColours::textDim);
+    searchBox.onTextChange = [this] { refreshRows(); };
+    addAndMakeVisible (searchBox);
+    lengthBox.addItem ("ANY LENGTH", 1);
+    lengthBox.addItem ("SHORT (UNDER 64 BARS)", 2);
+    lengthBox.addItem ("MEDIUM (64-100 BARS)", 3);
+    lengthBox.addItem ("LONG (OVER 100 BARS)", 4);
+    tempoBox.addItem ("ANY TEMPO", 1);
+    tempoBox.addItem ("SLOW (UNDER 95)", 2);
+    tempoBox.addItem ("MID (95-140)", 3);
+    tempoBox.addItem ("FAST (OVER 140)", 4);
+    modeBox.addItem ("MAJOR AND MINOR", 1);
+    modeBox.addItem ("MINOR", 2);
+    modeBox.addItem ("MAJOR", 3);
+    for (auto* b : { &groupBox, &lengthBox, &tempoBox, &modeBox })
+    {
+        b->setSelectedId (1, juce::dontSendNotification);
+        b->onChange = [this] { refreshRows(); };
+        addAndMakeVisible (*b);
+    }
     useKey.onClick = [this] { use(); };
     addAndMakeVisible (useKey);
     saveKey.onClick = [this] { askName(); };
@@ -84,7 +109,17 @@ void BlueprintsPage::refreshList()
 {
     const auto keepName = juce::isPositiveAndBelow (chosen, (int) blueprints.size()) ? blueprints[(size_t) chosen].name : juce::String();
     blueprints = studio.getBlueprints();
-    list.updateContent();
+    const auto group = groupBox.getText();
+    groupBox.clear (juce::dontSendNotification);
+    groupBox.addItem ("ALL GROUPS", 1);
+    groupBox.addItem (favouritesGroup, 2);
+    auto id = 3;
+    for (const auto& g : getGroups())
+        groupBox.addItem (g, id++);
+    groupBox.setText (group.isNotEmpty() ? group : juce::String ("ALL GROUPS"), juce::dontSendNotification);
+    if (groupBox.getSelectedId() == 0)
+        groupBox.setSelectedId (1, juce::dontSendNotification);
+    refreshRows();
     auto row = 0;
     for (int i = 0; i < (int) blueprints.size(); ++i)
         if (blueprints[(size_t) i].name == keepName)
@@ -104,7 +139,9 @@ void BlueprintsPage::choose (int row)
     }
     const auto changedRow = row != chosen;
     chosen = row;
-    list.selectRow (row, true, true);
+    for (int r = 0; r < (int) rows.size(); ++r)
+        if (rows[(size_t) r].blueprint == row)
+            list.selectRow (r, true, true);
     if (changedRow)
     {
         const auto& bp = blueprints[(size_t) row];
@@ -144,6 +181,121 @@ pr7s::Key BlueprintsPage::getKey() const
 
 void BlueprintsPage::setWithChords (bool on) { chordsKey.setToggleState (on, juce::dontSendNotification); repaint(); }
 void BlueprintsPage::setWithTempo (bool on)  { tempoKey.setToggleState (on, juce::dontSendNotification); }
+void BlueprintsPage::setWithMusic (bool on)  { musicKey.setToggleState (on, juce::dontSendNotification); }
+
+juce::String BlueprintsPage::groupOf (const pr7s::Blueprint& bp) const
+{
+    return bp.factory ? (bp.group.isNotEmpty() ? bp.group.toUpperCase() : juce::String ("OUR FIRST TEN")) : juce::String (myGroup);
+}
+
+juce::StringArray BlueprintsPage::getGroups() const
+{
+    juce::StringArray groups;
+    for (const auto& bp : blueprints)
+        groups.addIfNotAlreadyThere (groupOf (bp));
+    groups.sortNatural();
+    if (groups.contains (myGroup))   // (yours last)
+    {
+        groups.removeString (myGroup);
+        groups.add (myGroup);
+    }
+    return groups;
+}
+
+bool BlueprintsPage::isFavourite (int blueprint) const
+{
+    return juce::isPositiveAndBelow (blueprint, (int) blueprints.size())
+        && studio.getOptionMemory().isFavourite ("blueprint", blueprints[(size_t) blueprint].name);
+}
+
+void BlueprintsPage::setFavourite (int blueprint, bool on)
+{
+    if (! juce::isPositiveAndBelow (blueprint, (int) blueprints.size()))
+        return;
+    studio.setOptionFavourite ("blueprint", blueprints[(size_t) blueprint].name, on);
+    refreshRows();
+}
+
+bool BlueprintsPage::passes (const pr7s::Blueprint& bp) const
+{
+    const auto group = groupBox.getSelectedId() > 1 ? groupBox.getText() : juce::String();
+    if (group == favouritesGroup)
+    {
+        if (! studio.getOptionMemory().isFavourite ("blueprint", bp.name))
+            return false;
+    }
+    else if (group.isNotEmpty() && groupOf (bp) != group)
+        return false;
+    const auto bars = bp.totalBars();
+    switch (lengthBox.getSelectedId())
+    {
+        case 2: if (bars >= 64) return false; break;
+        case 3: if (bars < 64 || bars > 100) return false; break;
+        case 4: if (bars <= 100) return false; break;
+        default: break;
+    }
+    switch (tempoBox.getSelectedId())
+    {
+        case 2: if (bp.bpm <= 0.0 || bp.bpm >= 95.0) return false; break;
+        case 3: if (bp.bpm < 95.0 || bp.bpm > 140.0) return false; break;
+        case 4: if (bp.bpm <= 140.0) return false; break;
+        default: break;
+    }
+    if ((modeBox.getSelectedId() == 2 && ! bp.minor) || (modeBox.getSelectedId() == 3 && bp.minor))
+        return false;
+    juce::String words = bp.name + " " + bp.description + " " + groupOf (bp);
+    for (const auto& b : bp.blocks)
+        words << " " << b.name << " " << b.type;
+    for (const auto& w : juce::StringArray::fromTokens (searchBox.getText(), " ", ""))
+        if (w.isNotEmpty() && ! words.containsIgnoreCase (w))
+            return false;
+    return true;
+}
+
+std::vector<int> BlueprintsPage::getShown() const
+{
+    std::vector<int> out;
+    for (const auto& r : rows)
+        if (r.blueprint >= 0)
+            out.push_back (r.blueprint);
+    return out;
+}
+
+void BlueprintsPage::refreshRows()
+{
+    rows.clear();
+    for (const auto& g : getGroups())
+    {
+        auto headed = false;
+        for (int i = 0; i < (int) blueprints.size(); ++i)
+            if (groupOf (blueprints[(size_t) i]) == g && passes (blueprints[(size_t) i]))
+            {
+                if (! headed)
+                    rows.push_back ({ -1, g });
+                headed = true;
+                rows.push_back ({ i, {} });
+            }
+    }
+    list.updateContent();
+    list.deselectAllRows();
+    for (int r = 0; r < (int) rows.size(); ++r)
+        if (rows[(size_t) r].blueprint == chosen && chosen >= 0)
+            list.selectRow (r, true, true);
+    list.repaint();
+}
+
+void BlueprintsPage::setSearch (const juce::String& s) { searchBox.setText (s, false); refreshRows(); }
+void BlueprintsPage::setGroup (const juce::String& g)
+{
+    if (g.isEmpty())
+        groupBox.setSelectedId (1, juce::dontSendNotification);
+    else
+        groupBox.setText (g, juce::dontSendNotification);
+    refreshRows();
+}
+void BlueprintsPage::setLength (Length l) { lengthBox.setSelectedId ((int) l + 1, juce::dontSendNotification); refreshRows(); }
+void BlueprintsPage::setTempo (Tempo v)   { tempoBox.setSelectedId ((int) v + 1, juce::dontSendNotification); refreshRows(); }
+void BlueprintsPage::setMode (Mode m)     { modeBox.setSelectedId ((int) m + 1, juce::dontSendNotification); refreshRows(); }
 
 bool BlueprintsPage::use()
 {
@@ -152,14 +304,22 @@ bool BlueprintsPage::use()
     const auto bp = blueprints[(size_t) chosen];
     const auto key = getKey();
     const auto chords = chordsKey.getToggleState(), tempo = tempoKey.getToggleState();
+    const auto music = musicKey.getToggleState() && chords && bp.hasChords();
     juce::Component::SafePointer<BlueprintsPage> safe (this);
-    auto apply = [safe, bp, key, chords, tempo] (bool yes)
+    auto apply = [safe, bp, key, chords, tempo, music] (bool yes)
     {
         if (safe == nullptr || ! yes)
             return;
         if (safe->studio.applyBlueprint (bp, key, chords, tempo))
         {
             safe->status = "USED: " + bp.name.toUpperCase() + " IN " + keyName (key) + ". UNDO TAKES IT BACK.";
+            if (music)
+            {
+                const auto built = safe->studio.buildSongSections (&bp, (juce::uint32) juce::Random::getSystemRandom().nextInt (1 << 30) + 1u);
+                if (built > 0)
+                    safe->status = "USED: " + bp.name.toUpperCase() + " IN " + keyName (key) + ", " + juce::String (built)
+                                 + " SECTIONS BUILT. ROLL ONE FOR ANOTHER TAKE; UNDO TAKES THE MUSIC BACK.";
+            }
             if (safe->onUsed)
                 safe->onUsed();
         }
@@ -330,6 +490,20 @@ void BlueprintsPage::resized()
     auto left = area.removeFromLeft (listWidth);
     saveKey.setBounds (left.removeFromBottom (32));
     left.removeFromBottom (8);
+    searchBox.setBounds (left.removeFromTop (28));
+    left.removeFromTop (6);
+    {
+        auto row = left.removeFromTop (26);
+        groupBox.setBounds (row.removeFromLeft (row.getWidth() / 2 - 3));
+        row.removeFromLeft (6);
+        modeBox.setBounds (row);
+        left.removeFromTop (6);
+        row = left.removeFromTop (26);
+        lengthBox.setBounds (row.removeFromLeft (row.getWidth() / 2 - 3));
+        row.removeFromLeft (6);
+        tempoBox.setBounds (row);
+    }
+    left.removeFromTop (8);
     list.setBounds (left);
     area.removeFromLeft (gap);
     auto controls = area.removeFromTop (32);
@@ -339,8 +513,9 @@ void BlueprintsPage::resized()
     controls.removeFromRight (8);
     keyBox.setBounds (controls.removeFromLeft (240));
     controls.removeFromLeft (12);
-    chordsKey.setBounds (controls.removeFromLeft (110));
-    tempoKey.setBounds (controls.removeFromLeft (110));
+    chordsKey.setBounds (controls.removeFromLeft (100));
+    tempoKey.setBounds (controls.removeFromLeft (100));
+    musicKey.setBounds (controls.removeFromLeft (170));
     area.removeFromTop (gap);
     stripArea = area.removeFromTop (64);
     area.removeFromTop (gap);
@@ -349,12 +524,37 @@ void BlueprintsPage::resized()
 
 void BlueprintsPage::paintListBoxItem (int row, juce::Graphics& g, int width, int height, bool selected)
 {
-    if (! juce::isPositiveAndBelow (row, (int) blueprints.size()))
+    if (! juce::isPositiveAndBelow (row, (int) rows.size()))
         return;
-    const auto& bp = blueprints[(size_t) row];
+    const auto& item = rows[(size_t) row];
+    if (item.blueprint < 0)
+    {
+        g.fillAll (pageColour);
+        ParagonColours::setFill (g, ParagonColours::accent, juce::Rectangle<float> (10.0f, (float) height - 4.0f, (float) width - 20.0f, 2.0f));
+        g.fillRect (10, height - 4, width - 20, 2);
+        g.setColour (ParagonColours::text);
+        g.setFont (ParagonLookAndFeel::titleFont (18.0f));
+        g.drawText (item.heading, 10, 0, width - 20, height - 6, juce::Justification::bottomLeft, true);
+        return;
+    }
+    const auto& bp = blueprints[(size_t) item.blueprint];
     ParagonColours::setFill (g, selected ? ParagonColours::accentDim : row % 2 == 0 ? juce::Colour (0xff131015) : pageColour, juce::Rectangle<float> ((float) (0), (float) (0), (float) (width), (float) (height)));
     g.fillRect (0, 0, width, height);
     auto r = juce::Rectangle<int> (0, 0, width, height).reduced (10, 4);
+    // The star (a click on it: a favourite or not).
+    const auto star = r.removeFromLeft (starWidth).toFloat();
+    juce::Path p;
+    p.addStar (star.getCentre(), 5, 4.0f, 9.0f, 0.0f);
+    if (isFavourite (item.blueprint))
+    {
+        ParagonColours::setFill (g, ParagonColours::accent, star);
+        g.fillPath (p);
+    }
+    else
+    {
+        g.setColour (ParagonColours::textDim.withAlpha (0.6f));
+        g.strokePath (p, juce::PathStrokeType (1.2f));
+    }
     g.setColour (ParagonColours::text);
     g.setFont (font (17.0f));
     g.drawText (bp.name.toUpperCase(), r.removeFromTop (r.getHeight() / 2 + 2), juce::Justification::centredLeft, true);
@@ -363,14 +563,30 @@ void BlueprintsPage::paintListBoxItem (int row, juce::Graphics& g, int width, in
     juce::String sub = juce::String (bp.blocks.size()) + " SECTIONS, " + juce::String (bp.totalBars()) + " BARS";
     if (bp.bpm > 0.0)
         sub << ", " << juce::String (bp.bpm, 0) << " BPM";
-    sub << (bp.factory ? "  -  OURS" : "  -  YOURS");
+    sub << (bp.minor ? ", MINOR" : ", MAJOR");
     g.drawText (sub, r, juce::Justification::centredLeft, true);
+}
+
+void BlueprintsPage::listBoxItemClicked (int row, const juce::MouseEvent& e)
+{
+    if (! juce::isPositiveAndBelow (row, (int) rows.size()) || rows[(size_t) row].blueprint < 0)
+        return;
+    if (e.x < 10 + starWidth)
+        setFavourite (rows[(size_t) row].blueprint, ! isFavourite (rows[(size_t) row].blueprint));
 }
 
 void BlueprintsPage::selectedRowsChanged (int row)
 {
-    if (row >= 0 && row != chosen)
-        choose (row);
+    if (! juce::isPositiveAndBelow (row, (int) rows.size()))
+        return;
+    if (rows[(size_t) row].blueprint < 0)   // (a heading: the blueprint under it)
+    {
+        if (row + 1 < (int) rows.size())
+            list.selectRow (row + 1);
+        return;
+    }
+    if (rows[(size_t) row].blueprint != chosen)
+        choose (rows[(size_t) row].blueprint);
 }
 
 BlueprintsWindow::BlueprintsWindow (pr7s::Studio& studio)

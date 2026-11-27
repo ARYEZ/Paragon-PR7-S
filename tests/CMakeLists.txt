@@ -111,6 +111,8 @@ add_executable(ParagonPR7STests
     DroningBandTests.cpp
     SongSectionTests.cpp
     BlueprintDumpTests.cpp
+    BlueprintFeelTests.cpp
+    BlueprintBuildTests.cpp
     DuplicateAuditTests.cpp
     ChordRollTests.cpp
     InsertSilenceTests.cpp

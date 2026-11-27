@@ -31,12 +31,21 @@ namespace pr7s
         juce::String type;               // a section type of that name (empty: STANDARD)
         juce::String transition;         // into the next (empty: NONE)
         std::vector<BlueprintChord> chords;   // end to end from the block's start (none: no chords there)
+        // (0.262.0, the owner: "when a blue print is loaded each section should be fully populated with riffs and beats
+        // that are inspired by the song") What plays there, measured from the song's section (never its notes): the
+        // lanes that play and the option each takes, "drums=NAME|guitar=|bass=NAME" (a lane named: on; empty after
+        // `=`: AUTOMATIC; a lane left out: off; empty text: the type's own lanes), and the song's kick and snare on the
+        // sixteenths of a bar (a bit a sixteenth: where they hit in most bars), which the drums lane's library groove
+        // is chosen by.
+        juce::String parts;
+        int kick = 0, snare = 0;
         bool operator== (const BlueprintBlock&) const = default;
     };
 
     struct Blueprint
     {
         juce::String name, description;
+        juce::String group;              // (0.262.0) the kind of song it's from (the picker's groups); empty: MY BLUEPRINTS
         double bpm = 0.0;                // 0: no tempo of its own
         bool minor = true;               // the mode its chords are written in
         int keyIndex = -1;               // a key it suits (an index into Key::all()); -1: none
@@ -61,6 +70,9 @@ namespace pr7s
     // A block for a table: chords as numerals in the blueprint's mode ("i:2 VI:2 III VII"; parseNumeral's language).
     BlueprintBlock blueprintBlock (const juce::String& name, int bars, int link, const juce::String& type,
                                    const juce::String& transition, const juce::String& numerals, bool minor);
+    // (0.262.0) A block's `parts` read: layer -> its option (empty: AUTOMATIC). None (empty text): nothing said.
+    std::vector<std::pair<int, juce::String>> blueprintParts (const juce::String&);
+    juce::String blueprintPartName (int layer);   // "chords", "melody", "bass", "guitar", "lead", "drums", "clean", "acoustic"
 
     // The owner's: Documents/Paragon PR7-S/Blueprints, .pr7blueprint files.
     juce::File defaultBlueprintFolder();
