@@ -2,6 +2,29 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.253.0
+
+The other 16 of round eleven's choruses, from your songs (shapes only, our own names). They go after part one's at the end of the Chorus list.
+
+- **ONE CHORD A BAR, TIED OVER EVERY OTHER:** A chord a bar in eighths, every other bar the last chord tied over its 1 before the new one comes in, crash quarters.
+- **OCTAVE LEAP, CLIMB TO THE FLAT SEVEN:** Guitar and bass in unison single notes over the tonic: the root, its octave, then a climb through the fifth and sixth to the flat seven.
+- **TRIPLE STABS UNDER A HORN LINE:** Muted unison stabs of two sixteenths and an eighth on 1 and 2-and, a horn line on the keys, four on the floor.
+- **TWO-BAR BROKEN BACKBEAT UNDER HELD PUSHES:** Chords held between pushes on 1, 2-and, 3, 4 and 4-and over a two-bar broken backbeat and accented sixteenth hats.
+- **SUS CHORD PICKED OVER THE BALLAD KICK:** A clean chord with its second in place of the third, picked in threes and twos, over a ballad kick and the ride.
+- **HALF TIME, KICK BURSTS WITH THE CHUGS:** Half time: root chugs with a push on 4-and, then two power chords, the kick bursting with them, the snare on 3.
+- **RIFF PAIR, A TOM RUN CLOSING EVERY SECOND BAR:** Two-bar cells: a low root riff, then pushed chords, a tom run closing the second bar.
+- **LOW-HIGH OCTAVE CHUGS IN THREES:** Groups of three sixteenths, the low root then its high octave held, three times, then five sixteenths on the fourth's power chord.
+- **TWICE-STRUCK OCTAVE ARPEGGIO BALLAD:** A synth arpeggio in octaves striking each chord tone twice, a pushed piano figure, clean chords on 1 and 3.
+- **PUSHED CHORD BAR THRICE, OCTAVE RUN BAR:** Three bars of a pushed chord rhythm, then a bar running the root in low and high octaves.
+- **FOUR ON THE FLOOR, HORN ANSWER EVERY OTHER BAR:** Four on the floor with open hats on the beats, quarter power chords, a horn answer of rising chord tones every other bar.
+- **ROOT BURST, THEN TWO CHORDS SWAPPING:** A burst on the root, two sixteenths on the fifth, then two chords swapping in sixteenths to 4-and.
+- **GALLOP OVER A 3+3+2 KICK:** A gallop on every beat over a kick in threes and twos, strings holding the chord with a hook on top.
+- **HALF TIME, THE ONE LEFT OUT EVERY OTHER BAR:** Half time with the crash on every quarter: every other bar the band and the kick leave beat 1 out.
+- **KICK ON ONE, TWO-AND AND THREE-AND, ARPEGGIO ABOVE:** A kick on 1, 2-and and 3-and under a sixteenth synth arpeggio and a slap bass figure, two or three picked guitar notes a bar.
+- **ROLLING PIANO OCTAVES UNDER CHOPPED STABS:** Piano octaves broken on the sixteenths under short muted chord stabs, a busy kick and a tambourine.
+
+Next: the pre-choruses, post-choruses and interludes, bridges and breakdowns.
+
 ## 0.252.0
 
 Round eleven's first 11 chorus types, from your songs (shapes only, our own names). They go at the end of the Chorus list, and each lane gets its own options.
