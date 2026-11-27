@@ -14299,11 +14299,12 @@ namespace pr7s
                     }
                     else if (n == "SIDESTICK BURSTS OF FIVE ON ONE AND THREE")
                     {
-                        text ("Sidestick bursts of five sixteenths on 1 and 3, the kick on the quarters, closed hat sixteenths, the pedal hat on 2 and 4");
+                        // (0.261.0: rewritten: it played exactly as a type's own option in the same menu)
+                        text ("Sidestick bursts of five sixteenths on 1 and 3, the kick on 1 and 3 only, open hat eighths, a snare on 4");
                         play (b, "xxxxx---xxxxx---", GmDrum::sideStick, 0.6f);
-                        play (b, quarters, GmDrum::kick, 0.82f);
-                        play (b, "xxxxxxxxxxxxxxxx", GmDrum::closedHat, 0.32f);
-                        play (b, backbeat, GmDrum::pedalHat, 0.44f);
+                        play (b, "x-------x-------", GmDrum::kick, 0.82f);
+                        play (b, "x-x-x-x-x-x-x-x-", GmDrum::openHat, 0.3f);
+                        play (b, "------------x---", GmDrum::snare, 0.7f);
                     }
                     else if (n == "BALLAD KICK, A PICKUP INTO THREE, SIXTEENTH HATS")
                     {
@@ -37443,8 +37444,14 @@ namespace pr7s
                 }
                 else if (n == "LAYERED DOUBLE KICK")
                 {
-                    out.description = "The double kick on every sixteenth, the snare on 2 and 4, a china on every quarter";
-                    each ([&] (int b) { r.kit (out, b, "xxxxxxxxxxxxxxxx", Round3::backbeat, GmDrum::china, Round3::quarters); });
+                    // (0.261.0: rewritten: it played exactly as DOUBLE KICK and KICK ON EVERY SIXTEENTH in the same menus)
+                    out.description = "The double kick in pairs with a gap after each (two on, one off), the floor tom layered on 1 and 3, "
+                                      "the snare on 2 and 4, a china on the ands";
+                    each ([&] (int b)
+                    {
+                        r.kit (out, b, "xx-xx-xx-xx-xx-x", Round3::backbeat, GmDrum::china, Round3::offEighths);
+                        r.each16 ("x-------x-------", b * bpb, [&] (double t, int) { r.hit (out, t, GmDrum::tomFloor, 0.7f); });
+                    });
                 }
                 else if (n == "THE STOMP JOINS")
                 {

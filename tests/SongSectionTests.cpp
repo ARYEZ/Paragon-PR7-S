@@ -6215,7 +6215,9 @@ TEST_CASE ("0.159.0: round four's new versions of styles we have", "[sections][t
         CHECK (sectionApproaches (v, ComposerLayer::chords).contains ("TONIC EIGHTH PULSE"));
     }
     // The shapes.
-    CHECK (stepsOf (play (ComposerLayer::drums, "LAYERED DOUBLE KICK"), GmDrum::kick, 2).size() == 16);
+    // (0.261.0: rewritten as pairs with a gap, the floor tom on 1 and 3: it was a copy of DOUBLE KICK)
+    CHECK (stepsOf (play (ComposerLayer::drums, "LAYERED DOUBLE KICK"), GmDrum::kick, 2) == std::set<int> { 0, 1, 3, 4, 6, 7, 9, 10, 12, 13, 15 });
+    CHECK (stepsOf (play (ComposerLayer::drums, "LAYERED DOUBLE KICK"), GmDrum::tomFloor, 2) == std::set<int> { 0, 8 });
     CHECK (stepsOf (play (ComposerLayer::drums, "DISPLACED SNARE, RIDE BELL"), GmDrum::snare, 1) == std::set<int> { 3, 9, 15 });
     {
         // The snare creeps in: none in the first quarter, a backbeat by the last.

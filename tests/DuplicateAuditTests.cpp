@@ -60,7 +60,7 @@ namespace
     }
 }
 
-TEST_CASE ("0.261.0: the duplicate audit (every type, lane and option)", "[.dupaudit]")
+TEST_CASE ("0.261.0: the duplicate audit (every type, lane and option)", "[dupaudit]")
 {
     const ComposerContext c;
     const auto spans = auditSpans();
@@ -109,17 +109,18 @@ TEST_CASE ("0.261.0: the duplicate audit (every type, lane and option)", "[.dupa
             {
                 const auto& name = names[(int) o];
                 const auto own = (int) o < base;
-                // A shared option is the same under every type: audit it once (under the first type that lists it).
-                if (! own && ! extrasDone[(int) l].insert (name).second)
-                    continue;
                 ++composed;
                 const auto k = notesKey (choices[o]);
                 if (k.isEmpty() || generic (name))
                     continue;
+                // Within one list every name counts, shared options too (they sit in the same menu as the type's own).
                 if (const auto it = here.find (k); it != here.end() && it->second != name)
                     withinType.add (composerLayerName (l) + " | " + type + " | " + it->second + "  ==  " + name);
                 else
                     here[k] = name;
+                // Across types a shared option is audited once (under the first type that lists it).
+                if (! own && ! extrasDone[(int) l].insert (name).second)
+                    continue;
                 byNotes[(int) l][k].insert ({ name, type });
                 if (l != ComposerLayer::drums)
                     byRhythm[(int) l][rhythmKey (choices[o])].insert (name);
@@ -160,4 +161,7 @@ TEST_CASE ("0.261.0: the duplicate audit (every type, lane and option)", "[.dupa
         juce::File (out).replaceWithText (report);
     INFO (report.substring (0, 4000));
     CHECK (composed > 0);
+    // No menu offers two names for the same notes (shared options included: they sit in every type's menu).
+    INFO (withinType.joinIntoString ("\n"));
+    CHECK (withinType.isEmpty());
 }

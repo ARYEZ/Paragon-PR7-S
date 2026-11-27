@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.261.0
+
+The duplicate check you asked for: every section type, every lane and every option in its menu composed over the same chords (675 types, about 258,000 parts) and compared note for note.
+
+- **No menu offers two names for the same notes any more.** Three did, all drum options shared under every type:
+  - **LAYERED DOUBLE KICK** played exactly as DRONING's DOUBLE KICK and LATE-CHANGE CLIMB's KICK ON EVERY SIXTEENTH. It's rewritten: the double kick in pairs with a gap after each, the floor tom layered on 1 and 3, the snare on 2 and 4, a china on the ands.
+  - **SIDESTICK BURSTS OF FIVE ON ONE AND THREE** played exactly as another type's own SIDESTICK BURSTS, SIXTEENTH HATS, FOUR ON THE FLOOR. It's rewritten: the same sidestick bursts with the kick on 1 and 3 only, open hat eighths and a snare on 4.
+  - Each keeps its place in the list, so a song that chose it opens on the same choice (now playing the new part).
+- **A permanent check:** the test suite now composes every option of every type and fails if two names in one menu write the same notes, so later rounds can't add copies.
+
+Left as they are, on purpose:
+
+- **Plain support parts that match across different types** (about a hundred: held pads, roots on 1 and 3, root eighths, bass out until halfway). They're never in the same menu as each other: each is the plain part its own type needs, under a name that says what it does there.
+- **Verse SPARSE and Outro STABS** come out the same on their first take, because SPARSE starts on stabs. SPARSE also offers octaves and chords let ring, so they aren't the same idea.
+
 ## 0.260.0
 
 Round eleven's solos, from the solos in your songs (shapes only, our own names): eight more SOLO STYLES (133 with BY STYLE), at the end of the lead lane's solo list:
