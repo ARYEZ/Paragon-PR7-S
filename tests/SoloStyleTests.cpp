@@ -39,7 +39,8 @@ namespace
     {
         return s == SoloStyle::trillThenHold || s == SoloStyle::wahWaves || s == SoloStyle::cellsUpShakeTheTop || s == SoloStyle::stopTimeDoubleStops
             || s == SoloStyle::unpluggedPentatonicStream || s == SoloStyle::seesawAndRing || s == SoloStyle::panelsOverTheChug
-            || s == SoloStyle::tremoloThenFlurry;   // (0.246.0: the tremolo first, as its song)
+            || s == SoloStyle::tremoloThenFlurry   // (0.246.0: the tremolo first, as its song)
+            || s == SoloStyle::dottedRepeatsWholeTone || s == SoloStyle::repeatedNotesDownTheScale;   // (0.260.0: busiest first, as their songs)
     }
 
     // (0.207.0) The last note (as sounded) round six's styles choose over amBars (A minor; the last chord E major), as
@@ -78,7 +79,7 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 126);   // (0.207.0: twenty more; 0.162.0: eight more; 0.136.0: seven more) (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more; 0.135.0: twenty-one more)
+    REQUIRE (soloStyles().size() == 134);   // (0.207.0: twenty more; 0.162.0: eight more; 0.136.0: seven more) (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more; 0.135.0: twenty-one more)
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
@@ -523,7 +524,7 @@ namespace
 
 TEST_CASE ("0.116.0: the new solo styles are there, with our names", "[solo][solostyles][solo116]")
 {
-    REQUIRE (soloStyles().size() == 126);   // (0.207.0: twenty more; 0.162.0: eight more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
+    REQUIRE (soloStyles().size() == 134);   // (0.207.0: twenty more; 0.162.0: eight more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
     for (const auto* name : { "SINGING BENDS", "SHUFFLE CONVERSATION", "SLOW BUILD WITH RAKES", "FALLING MAJOR MELODY", "SUNG IN THE GAPS",
                               "ROLLING SEQUENCES", "LAID-BACK SWEET BENDS", "THEME EVERY ROUND", "TWO SPEEDS", "LICK TWICE TO END" })
         CHECK (soloStyleNamed (name) != SoloStyle::automatic);
@@ -2225,7 +2226,7 @@ namespace
 
 TEST_CASE ("0.207.0: round six's solo styles are there, with our names and BY STYLE's metalcore takes", "[solo][solostyles][solo207]")
 {
-    REQUIRE (soloStyles().size() == 126);
+    REQUIRE (soloStyles().size() == 134);
     for (const auto* name : { "HOLD, PEDAL, TWIN, STORM", "PANELS OVER THE CHUG", "SEQUENCE SOLO, THEN TWIN ARPEGGIOS", "TRILL, THEN HOLD",
                               "WAH WAVES", "MAJOR RUB OVER A MINOR RIFF", "OCTAVE LEAPS & CRIES", "LATE CALLS, BENT HOME",
                               "CELLS UP, SHAKE THE TOP", "STOP-TIME DOUBLE STOPS", "PICKUP INTO CHORD STABS, RUNS TO LAND",
@@ -2685,6 +2686,61 @@ TEST_CASE ("0.246.0: round ten's solo styles", "[solo][solostyles][solo246]")
         // Bursts of sixteenths after held bends.
         CHECK (count (composeSolo (SoloStyle::heldBendsAnsweredByBursts, spans, 4.0, tuning, {}, variation),
                       [] (const LineNote& n) { return n.effect == LineNote::Effect::bend; }) >= 4);
+    }
+    for (const auto s : styles)
+    {
+        CHECK (soloStyleNamed (soloStyleName (s)) == s);
+        CHECK (soloGroupOrder().contains (soloGroupOf (s)));
+    }
+}
+
+
+TEST_CASE ("0.260.0: round eleven's solo styles", "[solo][solostyles][solo260]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    const SoloStyle styles[] { SoloStyle::fifthSeesawInThrees, SoloStyle::chromaticSighsDown, SoloStyle::tuneInQuartersFourTimes,
+                               SoloStyle::unisonTwinRunsDown, SoloStyle::stutterTrillClimb, SoloStyle::repeatedNotesDownTheScale,
+                               SoloStyle::dottedRepeatsWholeTone, SoloStyle::triadCellsQuarterWalk };
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        INFO ("variation " << variation);
+        // The unison twin: every played note has the same note on the second track.
+        {
+            const auto solo = composeSolo (SoloStyle::unisonTwinRunsDown, spans, 4.0, tuning, {}, variation);
+            auto played = 0, twin = 0;
+            for (const auto& n : solo.notes)
+            {
+                if (! n.harmony)
+                {
+                    ++played;
+                    twin += std::any_of (solo.notes.begin(), solo.notes.end(), [&n] (const LineNote& o)
+                                         { return o.harmony && o.pitch == n.pitch && std::abs (o.beat - n.beat) < 1.0e-6; }) ? 1 : 0;
+                }
+            }
+            CHECK (twin >= played - 1);
+        }
+        // The tune in quarters: the first bar four notes on the beats.
+        {
+            const auto solo = composeSolo (SoloStyle::tuneInQuartersFourTimes, spans, 4.0, tuning, {}, variation);
+            std::vector<double> at;
+            for (const auto& n : solo.notes)
+                if (n.beat < 4.0 - 1.0e-6)
+                    at.push_back (n.beat);
+            CHECK (at == std::vector<double> { 0.0, 1.0, 2.0, 3.0 });
+        }
+        // The whole-tone climb: whole steps between its six notes.
+        {
+            const auto solo = composeSolo (SoloStyle::dottedRepeatsWholeTone, spans, 4.0, tuning, {}, variation);
+            std::vector<int> climb;
+            for (const auto& n : solo.notes)
+                if (n.beat >= 56.0 - 1.0e-6 && n.beat < 60.0 - 1.0e-6)
+                    climb.push_back (n.pitch);
+            REQUIRE (climb.size() >= 4u);
+            for (size_t i = 1; i < climb.size(); ++i)
+                if (climb[i] - climb[i - 1] != 0)
+                    CHECK (climb[i] - climb[i - 1] == 2);
+        }
     }
     for (const auto s : styles)
     {

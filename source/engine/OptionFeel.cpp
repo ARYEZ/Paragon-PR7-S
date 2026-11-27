@@ -283,6 +283,15 @@ namespace pr7s
         // (0.207.0) Round six's styles by what they are (their names would put several in the wrong place).
         switch (style)
         {
+            // (0.260.0) round eleven's styles
+            case SoloStyle::fifthSeesawInThrees: case SoloStyle::chromaticSighsDown: case SoloStyle::tuneInQuartersFourTimes:
+                return "MELODIC";
+            case SoloStyle::unisonTwinRunsDown: case SoloStyle::repeatedNotesDownTheScale: case SoloStyle::triadCellsQuarterWalk:
+                return "FAST RUNS & CELLS";
+            case SoloStyle::stutterTrillClimb:
+                return "TREMOLO & TRILLS";
+            case SoloStyle::dottedRepeatsWholeTone:
+                return "OTHER";
             // (0.246.0) round ten's styles
             case SoloStyle::slideBluesCalls:
                 return "BENDS";

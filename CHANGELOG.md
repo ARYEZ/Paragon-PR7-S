@@ -2,6 +2,21 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.260.0
+
+Round eleven's solos, from the solos in your songs (shapes only, our own names): eight more SOLO STYLES (133 with BY STYLE), at the end of the lead lane's solo list:
+
+- **FIFTH SEESAW IN THREES, A REPEATED-NOTE TAG:** Two notes a fourth apart, the chord's root over its fifth, on a 3+3+2 grid, each two-bar phrase ending in a pickup and five sixteenths on the next chord's fifth, tighter later.
+- **CHROMATIC SIGHS DOWN THE CHORDS:** Eighth notes: each bar a high chord tone sighing down by half steps to the next chord tone and rocking there, the second half higher with a note under each downbeat.
+- **THE TUNE IN QUARTERS, OVER AND OVER:** A plain four-bar tune in quarter notes stepping up from the tonic, two notes on 3 and 4, one held with a slow vibrato, played again and again.
+- **UNISON TWIN, RUNS DOWN, FOURTHS TO CLOSE:** Two guitars in exact unison (the second on the lane's second track): a pickup into a held note, held notes answered by quick sixteenth groups, scale runs down each a step lower, falling fourth pairs to close.
+- **STUTTER BAR, HALF-STEP TRILL, CLIMB HOME:** Short spaced phrases answered by a second guitar's held notes, then a bar stuttering on one note, two bars of a half-step trill in dotted groups and a short climb.
+- **REPEATED NOTES DOWN THE SCALE, ROCKING ANSWER:** Each scale note struck three times in sixteenths, stepping down from the key's octave for two bars, answered by a fourth rocked for two.
+- **DOTTED REPEATS, A WHOLE-TONE CLIMB:** One note repeated in a dotted grouping, then the same a half step lower, sparse fragments over a second guitar's held notes, a whole-tone climb in dotted eighths.
+- **TRIAD CELLS, A QUARTER WALK DOWN:** Five-note triad cells in sixteenths each half bar, a top line over a pedal, a line in eighths, four quarters walking down, a sixteenth line, every eight bars.
+
+That finishes round eleven. Next: a full check of every section type and option for duplicates (notes that come out the same under different names), with a test so new rounds can't add copies.
+
 ## 0.259.0
 
 Round eleven's shared options, from your songs (shapes only, our own names). These are offered under every section type, at the end of each lane's list. Ten of them are this round's section types' own options, now shared exactly as they play there.

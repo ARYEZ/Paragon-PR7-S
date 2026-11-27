@@ -81,7 +81,9 @@ namespace pr7s
                             holdPedalTwin, panelsChug, sequenceTwinArps, trillHold, wahWaves, majorRub, octaveCries, lateCalls, cellsUp, stopTime,
                             chordStabs, bluesCurls, pickupQuarter, unpluggedStream, tripletHammer, tuneDown, warpedRiff, sungTwice, seesaw, fourBends,
                             // (0.246.0, round ten's solos)
-                            slideCalls, twinOctaves, scoopBallad, hookChanges, tremoloFlurry, bendsBursts };   // (0.136.0: sixteenth runs landing on held tension notes bent into the chord)   // (0.134.0: bent into the root and dived; a low dyad squealed up; tremolo dyads over a pedal)   // (0.133.0 round two: held notes stepping down the chord, each in a beat early)   // (0.133.0: harmonics dived stepping down; thirds climbing into a dived double stop)   // (0.129.0: trilled, then fallen off)
+                            slideCalls, twinOctaves, scoopBallad, hookChanges, tremoloFlurry, bendsBursts,
+                            // (0.260.0, round eleven's solos)
+                            fifthSeesaw, chromaticSighs, tuneInQuarters, unisonTwinRuns, stutterTrill, repeatedDown, dottedRepeats, triadCells };   // (0.136.0: sixteenth runs landing on held tension notes bent into the chord)   // (0.134.0: bent into the root and dived; a low dyad squealed up; tremolo dyads over a pedal)   // (0.133.0 round two: held notes stepping down the chord, each in a beat early)   // (0.133.0: harmonics dived stepping down; thirds climbing into a dived double stop)   // (0.129.0: trilled, then fallen off)
         struct Profile
         {
             bool sixth = false, ninth = false, flatFive = false, majorOnMajor = false, curls = false;
@@ -1340,6 +1342,39 @@ namespace pr7s
                     p.writer = Writer::bendsBursts; p.lastAsWritten = true; p.legato = false;
                     p.description = "A held bend into the chord, answered by a burst of sixteenths falling down the scale and a bent landing, the bursts longer as the solo goes";
                     break;
+                // (0.260.0) Round eleven's songs' solos (shapes only; our names).
+                case SoloStyle::fifthSeesawInThrees:
+                    p.writer = Writer::fifthSeesaw; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Two notes a fourth apart, the chord's root over its fifth, on a 3+3+2 grid, each two-bar phrase ending in a pickup and five sixteenths on the next chord's fifth, tighter later";
+                    break;
+                case SoloStyle::chromaticSighsDown:
+                    p.writer = Writer::chromaticSighs; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Eighth notes: each bar a high chord tone sighing down by half steps to the next chord tone and rocking there, the second half higher with a note under each downbeat";
+                    break;
+                case SoloStyle::tuneInQuartersFourTimes:
+                    p.writer = Writer::tuneInQuarters; p.lastAsWritten = true; p.legato = false;
+                    p.description = "A plain four-bar tune in quarter notes stepping up from the tonic, two notes on 3 and 4, one held with a slow vibrato, played again and again";
+                    break;
+                case SoloStyle::unisonTwinRunsDown:
+                    p.writer = Writer::unisonTwinRuns; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Two guitars in exact unison: a pickup into a held note, held notes answered by quick sixteenth groups, scale runs down each a step lower, falling fourth pairs to close";
+                    break;
+                case SoloStyle::stutterTrillClimb:
+                    p.writer = Writer::stutterTrill; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Short spaced phrases answered by a second guitar's held notes, then a bar stuttering on one note, two bars of a half-step trill in dotted groups and a short climb";
+                    break;
+                case SoloStyle::repeatedNotesDownTheScale:
+                    p.writer = Writer::repeatedDown; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Each scale note struck three times in sixteenths, stepping down from the key's octave for two bars, answered by a fourth rocked for two";
+                    break;
+                case SoloStyle::dottedRepeatsWholeTone:
+                    p.writer = Writer::dottedRepeats; p.lastAsWritten = true; p.legato = false;
+                    p.description = "One note repeated in a dotted grouping, then the same a half step lower, sparse fragments over a second guitar's held notes, a whole-tone climb in dotted eighths";
+                    break;
+                case SoloStyle::triadCellsQuarterWalk:
+                    p.writer = Writer::triadCells; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Five-note triad cells in sixteenths each half bar, a top line over a pedal, a line in eighths, four quarters walking down, a sixteenth line, every eight bars";
+                    break;
                 case SoloStyle::automatic: break;
             }
             if (p.notesPerBeat <= 0.0f)
@@ -1537,7 +1572,8 @@ namespace pr7s
                                                   SoloStyle::cellsUpShakeTheTop, SoloStyle::stopTimeDoubleStops, SoloStyle::pickupIntoChordStabs, SoloStyle::bluesCurlsUnderTheTonic,
                                                   SoloStyle::pickupQuarterBreak, SoloStyle::unpluggedPentatonicStream, SoloStyle::tripletHammerFallingTune, SoloStyle::tuneAnOctaveDown,
                                                   SoloStyle::riffOnAWarpedBar, SoloStyle::sungTwiceTurned, SoloStyle::seesawAndRing, SoloStyle::fourBendsAndOut,
-                                                  SoloStyle::slideBluesCalls, SoloStyle::twinMelodyInOctaves, SoloStyle::cleanScoopedBallad, SoloStyle::eighthHookOnTheChanges, SoloStyle::tremoloThenFlurry, SoloStyle::heldBendsAnsweredByBursts };
+                                                  SoloStyle::slideBluesCalls, SoloStyle::twinMelodyInOctaves, SoloStyle::cleanScoopedBallad, SoloStyle::eighthHookOnTheChanges, SoloStyle::tremoloThenFlurry, SoloStyle::heldBendsAnsweredByBursts,
+                                                  SoloStyle::fifthSeesawInThrees, SoloStyle::chromaticSighsDown, SoloStyle::tuneInQuartersFourTimes, SoloStyle::unisonTwinRunsDown, SoloStyle::stutterTrillClimb, SoloStyle::repeatedNotesDownTheScale, SoloStyle::dottedRepeatsWholeTone, SoloStyle::triadCellsQuarterWalk };
         return all;
     }
 
@@ -1671,6 +1707,14 @@ namespace pr7s
             case SoloStyle::eighthHookOnTheChanges: return "EIGHTH-NOTE HOOK ON THE CHANGES";
             case SoloStyle::tremoloThenFlurry: return "TREMOLO, THEN A FLURRY";
             case SoloStyle::heldBendsAnsweredByBursts: return "HELD BENDS ANSWERED BY BURSTS";
+            case SoloStyle::fifthSeesawInThrees: return "FIFTH SEESAW IN THREES, A REPEATED-NOTE TAG";
+            case SoloStyle::chromaticSighsDown: return "CHROMATIC SIGHS DOWN THE CHORDS";
+            case SoloStyle::tuneInQuartersFourTimes: return "THE TUNE IN QUARTERS, OVER AND OVER";
+            case SoloStyle::unisonTwinRunsDown: return "UNISON TWIN, RUNS DOWN, FOURTHS TO CLOSE";
+            case SoloStyle::stutterTrillClimb: return "STUTTER BAR, HALF-STEP TRILL, CLIMB HOME";
+            case SoloStyle::repeatedNotesDownTheScale: return "REPEATED NOTES DOWN THE SCALE, ROCKING ANSWER";
+            case SoloStyle::dottedRepeatsWholeTone: return "DOTTED REPEATS, A WHOLE-TONE CLIMB";
+            case SoloStyle::triadCellsQuarterWalk: return "TRIAD CELLS, A QUARTER WALK DOWN";
         }
         return "BY STYLE";
     }
@@ -1855,6 +1899,14 @@ namespace pr7s
                 case SoloStyle::eighthHookOnTheChanges: return "Eighth-Note Hook On The Changes";
                 case SoloStyle::tremoloThenFlurry: return "Tremolo, Then A Flurry";
                 case SoloStyle::heldBendsAnsweredByBursts: return "Held Bends Answered By Bursts";
+                case SoloStyle::fifthSeesawInThrees: return "Fifth Seesaw In Threes, A Repeated-Note Tag";
+                case SoloStyle::chromaticSighsDown: return "Chromatic Sighs Down The Chords";
+                case SoloStyle::tuneInQuartersFourTimes: return "The Tune In Quarters, Over And Over";
+                case SoloStyle::unisonTwinRunsDown: return "Unison Twin, Runs Down, Fourths To Close";
+                case SoloStyle::stutterTrillClimb: return "Stutter Bar, Half-Step Trill, Climb Home";
+                case SoloStyle::repeatedNotesDownTheScale: return "Repeated Notes Down The Scale, Rocking Answer";
+                case SoloStyle::dottedRepeatsWholeTone: return "Dotted Repeats, A Whole-Tone Climb";
+                case SoloStyle::triadCellsQuarterWalk: return "Triad Cells, A Quarter Walk Down";
                 case SoloStyle::automatic: break;
             }
             return "By Style";
@@ -4606,6 +4658,14 @@ namespace pr7s
             case Writer::hookChanges:
             case Writer::tremoloFlurry:
             case Writer::bendsBursts:
+            case Writer::fifthSeesaw:
+            case Writer::chromaticSighs:
+            case Writer::tuneInQuarters:
+            case Writer::unisonTwinRuns:
+            case Writer::stutterTrill:
+            case Writer::repeatedDown:
+            case Writer::dottedRepeats:
+            case Writer::triadCells:
             {
                 using E = LineNote::Effect;
                 const auto bpb = beatsPerBar;
@@ -6118,6 +6178,296 @@ namespace pr7s
                             plain (x, 0.48, stepIn (pool, aim, -(i + 1)), i == 0);
                         x += 1.0;
                         ++ph;
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                // (0.260.0) Round eleven's songs' solos (shapes only; our names).
+                else if (p.writer == Writer::fifthSeesaw)
+                {
+                    // Two notes a fourth apart (the chord's root above, its fifth below) on a 3+3+2 grid, each two-bar phrase
+                    // ending in a three-note pickup and five sixteenths on the next chord's fifth; later phrases tighter.
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    auto ph = 0;
+                    for (auto o = 0.0; o < endAt - 1.0e-6; o += 2.0 * bpb, ++ph)
+                    {
+                        const auto& c = chordAt (o).chord;
+                        const auto top = nearPc (c.root + (take % 2 == 0 ? 0 : 7), mid + 5.0);
+                        const auto bottom = top - 5;
+                        const char* grid = ph >= 2 ? "x--x--x-x--x--x-" : "x--x--x---x-x--x";
+                        for (int k = 0, h = 0; k < 16; ++k)
+                            if (grid[k] == 'x')
+                                plain (o + scaled (k * 0.25), 0.23, h++ % 2 == 0 ? top : bottom, k == 0);
+                        const auto second = o + bpb;
+                        if (second >= endAt - 1.0e-6)
+                            break;
+                        const auto& nc = chordAt (o + 2.0 * bpb).chord;
+                        const auto tag = nearPc (nc.root + 7, mid + 3.0);
+                        for (int k = 0; k < 3; ++k)
+                            plain (second + scaled ((8 + k) * 0.25), 0.23, stepIn (pool, tag, k - 3), k == 0);
+                        for (int k = 11; k < 16; ++k)
+                            plain (second + scaled (k * 0.25), 0.23, tag, k == 11);
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::chromaticSighs)
+                {
+                    // Eighths: each bar a top chord tone, then half steps down to the next chord tone and a pair rocked;
+                    // the second half from a higher chord tone, a dyad on each downbeat.
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    for (int bar = 0; bar * bpb < endAt - 1.0e-6; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        const auto later = bar >= bars / 2;
+                        const auto tones = triadOf (o);
+                        const auto top = nearPc (tones[(size_t) ((take + (later ? 2 : 1)) % 3)], mid + (later ? 9.0 : 5.0));
+                        auto pitch = top;
+                        std::vector<int> line { top, top - 1, top - 2 };
+                        const auto landing = stepIn (pool, top - 2, -1);
+                        const int rocks[3] { 1, -1, 2 };
+                        const auto rock = stepIn (pool, landing, rocks[variationSeed % 7 % 3]);
+                        line.push_back (landing);
+                        line.push_back (rock);
+                        line.push_back (landing);
+                        line.push_back (rock);
+                        line.push_back (landing);
+                        for (int i = 0; i < 8 && o + i * 0.5 < endAt - 1.0e-6; ++i)
+                        {
+                            pitch = line[(size_t) i];
+                            plain (o + scaled (i * 0.5), 0.46, pitch, i == 0);
+                            if (later && i == 0)
+                                plain (o, 0.46, nearPc (tones[0], pitch - 5.0), false);
+                        }
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::tuneInQuarters)
+                {
+                    // A four-bar tune in quarters (up from the tonic; two notes on 3 and 4; two more; one held from 2), played
+                    // again and again, the last time only its first half; held notes with a slow vibrato.
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    const auto base = stepIn (pool, nearPc (minorT, mid + 3.0), take % 2 == 0 ? 0 : 2);
+                    for (auto o = 0.0; o < endAt - 1.0e-6; o += 4.0 * bpb)
+                    {
+                        const int bar1[4] { 0, 0, 1, 2 };
+                        for (int i = 0; i < 4; ++i)
+                            plain (o + scaled (i), 0.95, stepIn (pool, base, bar1[i]), i == 0);
+                        const int two[2][2] { { 4, 3 }, { 1, 2 } };
+                        for (int b = 0; b < 2; ++b)
+                            for (int i = 0; i < 2; ++i)
+                                plain (o + (b + 1) * bpb + scaled (2 + i), 0.95, stepIn (pool, base, two[b][i]), i == 0);
+                        held (o + 3 * bpb + scaled (1), bpb - scaled (1) - 0.02, base, E::vibrato, p.vibrato);
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::unisonTwinRuns)
+                {
+                    // Two guitars in exact unison (the second on the lane's second track): a pickup into a held note, held
+                    // notes answered by quick sixteenth groups, then scale runs down, each starting a step lower, and falling
+                    // fourth pairs before the end.
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    const auto both = [&] (double at, double length, int pitch, bool accent, E effect)
+                    {
+                        put (at, length, pitch, tAt (at), accent, effect, effect == E::vibrato ? p.vibrato : 0.0f, false);
+                        put (at, length, pitch, tAt (at), false, effect, effect == E::vibrato ? p.vibrato : 0.0f, true);
+                    };
+                    const auto tonic = nearPc (minorT + (take % 2 == 0 ? 7 : 3), mid + 5.0);
+                    for (int k = 0; k < 3; ++k)
+                        both (scaled (k * 0.25), 0.23, stepIn (pool, tonic, k - 3), k == 0, E::none);
+                    both (scaled (0.75), bpb - scaled (0.75) - 0.02, tonic, true, E::vibrato);
+                    const auto fourthsAt = juce::jmax (bpb, endAt - bpb);
+                    auto top = stepIn (pool, tonic, 3);
+                    for (int bar = 1; bar * bpb < fourthsAt - 1.0e-6; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        if (bar < 3)
+                        {
+                            both (o, scaled (0.5) - 0.02, stepIn (pool, tonic, bar), true, E::vibrato);
+                            const int at[] { 6, 7, 8, 12, 13, 14, 15 };
+                            int h = 0;
+                            for (const auto k : at)
+                                both (o + scaled (k * 0.25), 0.23, stepIn (pool, tonic, 2 - (h++ % 4)), k == 8 || k == 14, E::none);
+                        }
+                        else
+                        {
+                            for (int k = 0; k < 12; ++k)
+                                both (o + scaled (k * 0.25), 0.23, stepIn (pool, top, -k), k == 0, E::none);
+                            both (o + scaled (3.0), bpb - scaled (3.0) - 0.02, stepIn (pool, top, -12), true, E::vibrato);
+                            top = stepIn (pool, top, -1);
+                        }
+                    }
+                    auto f = stepIn (pool, tonic, 2);
+                    for (int i = 0; i < 4 && fourthsAt + i * scaled (1) < endAt - 1.0e-6; ++i)
+                    {
+                        both (fourthsAt + scaled (i), 0.46, f, i == 0, E::none);
+                        both (fourthsAt + scaled (i) + scaled (0.5), 0.46, f + 5, false, E::none);
+                        f = stepIn (pool, f, -1);
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::stutterTrill)
+                {
+                    // Spacious short phrases from 1-and with a second guitar's held answers (the lane's second track), then a
+                    // stutter bar on one note, two bars of a half-step trill in dotted groups (the second a step down) and a
+                    // short climb.
+                    const auto pool = scaleOn (minorT, { 0, 3, 5, 7, 10 });
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    const auto half = juce::jmax (1, bars / 2);
+                    for (int bar = 0; bar < half && bar * bpb < endAt - 1.0e-6; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        if (bar % 2 == 0)
+                        {
+                            const auto start = nearPc (minorT + (take % 2 == 0 ? 7 : 3), mid + 3.0);
+                            const auto count = 3 + (bar + take) % 4;
+                            for (int i = 0; i < count; ++i)
+                                plain (o + scaled (0.5 + i * 0.5), 0.46, stepIn (pool, start, (i % 2 == 0 ? 1 : -1) * (i / 2)), i == 0);
+                        }
+                        else
+                            put (o, bpb - 0.02, nearPc (triadOf (o)[1], mid), tAt (o), false, E::vibrato, p.vibrato, true);
+                    }
+                    const auto stutterAt = half * bpb;
+                    const auto note = nearPc (minorT + 7, mid + 7.0);
+                    if (stutterAt < endAt - 1.0e-6)
+                        for (int k = 0; k < 16; ++k)
+                            if (juce::String ("xx--x-xx--x-xx-x")[k] == 'x')
+                                plain (stutterAt + scaled (k * 0.25), 0.23, note, k % 4 == 0);
+                    for (int b = 1; b <= 2; ++b)
+                    {
+                        const auto o = stutterAt + b * bpb;
+                        if (o >= endAt - 1.0e-6)
+                            break;
+                        const auto t = stepIn (pool, note, 1 - b);
+                        for (int k = 0; k < 16; ++k)
+                        {
+                            const auto pos = k % 3;
+                            if (pos < 2)
+                                plain (o + scaled (k * 0.25), 0.23, pos == 0 ? t : t - 1, pos == 0);
+                        }
+                    }
+                    const auto climbAt = stutterAt + 3 * bpb;
+                    if (climbAt < endAt - 1.0e-6)
+                        for (int i = 0; i < 4; ++i)
+                            plain (climbAt + scaled (i < 3 ? i * 0.25 : 2.25), i < 3 ? 0.23 : 1.7, stepIn (pool, note, i), i == 3);
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::repeatedDown)
+                {
+                    // Four-bar blocks: two bars of each scale note struck three times in sixteenths, stepping down from the
+                    // key's octave; then two bars of a fourth rocked (the fifth and the root under it), three sixteenths up
+                    // into the next block.
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    for (auto o = 0.0; o < endAt - 1.0e-6; o += 4.0 * bpb)
+                    {
+                        auto pitch = nearPc (minorT, mid + 12.0 - take);
+                        for (int beat = 0; beat < 8 && o + beat < endAt - 1.0e-6; ++beat)
+                        {
+                            for (int k = 0; k < 3; ++k)
+                                plain (o + scaled (beat + k * 0.25), 0.23, pitch, k == 0);
+                            pitch = stepIn (pool, pitch, -1);
+                        }
+                        const auto fifth = nearPc (minorT + 7, mid + 5.0), root = fifth - 7;
+                        for (int b = 2; b < 4; ++b)
+                        {
+                            const auto bo = o + b * bpb;
+                            int h = 0;
+                            static const char* const answers[3] { "x-xx-xx-------xx", "x-x-xx-x------xx", "xx-x-xx-------xx" };
+                            const juce::String answer (answers[variationSeed % 7 % 3]);
+                            for (int k = 0; k < 16; ++k)
+                                if (answer[k] == 'x')
+                                {
+                                    const auto upInto = k >= 14 && b == 3;
+                                    plain (bo + scaled (k * 0.25), 0.23, upInto ? stepIn (pool, fifth, k - 13) : (h++ % 2 == 0 ? fifth : root), k == 0);
+                                }
+                        }
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::dottedRepeats)
+                {
+                    // One note repeated in a dotted grouping for two bars (the second a half step lower), sparse fragments
+                    // answered by a second guitar's held notes, then a whole-tone climb in dotted eighths.
+                    const auto pool = scaleOn (minorT, { 0, 3, 5, 7, 10 });
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    const auto note = nearPc (minorT + (take % 2 == 0 ? 7 : 10), mid + 5.0);
+                    for (int b = 0; b < 2 && b * bpb < endAt - 1.0e-6; ++b)
+                        for (int k = 0; k < 16; ++k)
+                            if (juce::String ("x--x--x--xx-----")[k] == 'x')
+                                plain (b * bpb + scaled (k * 0.25), 0.23, note - b, k == 0);
+                    const auto climbAt = juce::jmax (2.0 * bpb, endAt - bpb);
+                    for (int bar = 2; bar * bpb < climbAt - 1.0e-6; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        switch ((bar + take) % 3)
+                        {
+                            case 0: held (o, 1.5, stepIn (pool, note, 2), E::vibrato, p.vibrato); break;
+                            case 1:
+                                for (int i = 0; i < 3; ++i)
+                                    plain (o + scaled (1.0 + i * 0.25), 0.23, stepIn (pool, note, 1 - i), i == 0);
+                                break;
+                            default:
+                                plain (o + scaled (3.25), 0.23, stepIn (pool, note, -1), false);
+                                plain (o + scaled (3.5), 0.48, note, true);
+                                break;
+                        }
+                        put (o + scaled (2.0), bpb * 0.5 - 0.02, nearPc (triadOf (o)[0], mid), tAt (o), false, E::vibrato, p.vibrato, true);
+                    }
+                    const auto root = nearPc (chordAt (climbAt).chord.root, mid);
+                    for (int i = 0; i < 6 && climbAt + scaled (i * 0.75) < endAt - 1.0e-6; ++i)
+                        plain (climbAt + scaled (i * 0.75), 0.7, root - 2 + 2 * i, i == 0);
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::triadCells)
+                {
+                    // An eight-bar plan: three bars of five-note triad cells in sixteenths each half bar, a bar of a top line
+                    // stepping over a pedal, a bar of a line in eighths, four quarters walking down, a sixteenth line.
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    endAt = juce::jmax (0.0, total - juce::jmin (bpb, 4.0));
+                    for (int bar = 0; bar * bpb < endAt - 1.0e-6; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        const auto step = bar % 8;
+                        const auto tones = triadOf (o);
+                        const auto root = nearPc (tones[0], mid + (take % 2) * 3.0);
+                        if (step < 3)
+                            for (int h = 0; h < 2; ++h)
+                            {
+                                const auto r = nearPc (tones[0], root + h * 3.0);
+                                static constexpr int cells[3][5] { { 0, 1, 2, 3, 2 }, { 0, 2, 1, 3, 1 }, { 2, 1, 0, 3, 0 } };
+                                const auto* cell = cells[variationSeed % 7 % 3];
+                                for (int k = 0; k < 5; ++k)
+                                {
+                                    const auto t = cell[k] == 3 ? r + 12 : nearPc (tones[(size_t) cell[k]], r + 3.0);
+                                    plain (o + scaled (h * 2.0 + k * 0.25), 0.23, t, k == 0);
+                                }
+                            }
+                        else if (step == 3)
+                        {
+                            const auto pedal = root - 5;
+                            for (int k = 0; k < 16; ++k)
+                                plain (o + scaled (k * 0.25), 0.23, k % 2 == 0 ? pedal : stepIn (pool, root, k / 4), k % 4 == 0);
+                        }
+                        else if (step == 4)
+                            for (int i = 0; i < 8; ++i)
+                                plain (o + scaled (i * 0.5), 0.46, stepIn (pool, root, (i < 4 ? i : 7 - i)), i == 0);
+                        else if (step == 5)
+                            for (int i = 0; i < 4; ++i)
+                                held (o + scaled (i), 0.95, stepIn (pool, root, 3 - i), i == 3 ? E::vibrato : E::none, i == 3 ? p.vibrato : 0.0f);
+                        else
+                            for (int k = 0; k < 16; ++k)
+                                plain (o + scaled (k * 0.25), 0.23, stepIn (pool, root, step == 6 ? (k < 8 ? k : 15 - k) : 6 - k / 2), k == 0);
                     }
                     endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
                 }
