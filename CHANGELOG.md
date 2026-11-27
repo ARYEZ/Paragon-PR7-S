@@ -2,6 +2,39 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.251.0
+
+The rest of round eleven's verses: 22 more types from your 61 songs, read for their shapes only and given our own names. They go after part one's, before DRONING and SPARSE.
+
+**A fix from 0.250.0:** the acoustic options of three verse types were filed under the lead lane, so the acoustic lane stayed off and the lead's menu showed acoustic parts. The three are PICKED SEVENTHS OVER A FALLING LINE, MUTED EIGHTHS, STRUMS WITH AN OPEN-STRING TAIL and 3+3 GROUPS, BEAT FOUR LEFT OPEN. They now switch the acoustic lane on and play there. A test checks every acoustic-led verse of this round.
+
+- **TWO BARS OF RIFF, TWO OF KICK UNDER THE VOICE:** Two bars of a three-chord riff, then two bars of only the kick under the voice, a power chord pushed on 4 into the next.
+- **SIX-BAR RIFF, FOUR THE SAME AND TWO TO ANSWER:** A single-note riff doubled in octaves over six bars: four the same, then two answering on the fourth, crossing the four-bar phrases.
+- **CHORD RUNG, THREE EIGHTHS INTO THE NEXT:** An open chord struck on 1 and left to ring, then three eighths into the next, the bass in the same rhythm, brushed drums.
+- **DOTTED SYNTH BASS UNDER SIXTEENTH CHUGS:** Muted sixteenth chugs with accents over a dotted synth bass line (root, octave, flat seven, five, four, five), four on the floor.
+- **SIDESTICK BURSTS OVER FOUR ON THE FLOOR:** Four on the floor with sidestick bursts and sixteenth hats, an acoustic picking open strings, quiet muted chug runs.
+- **SHUFFLED HALF-BAR CHORDS WITH A MUTED SCRATCH:** A shuffle: a chord each half bar, struck twice, a muted scratch on the last triplet before the next.
+- **NYLON DYAD FLICKS OVER A BALLAD KICK:** A nylon guitar flicking a high fifth-and-octave dyad, a clean guitar seesawing two dyads, a ballad kick under a soft pad.
+- **TONIC HELD, THEN EIGHTHS ON THE OTHER THREE:** A bar on the tonic chord, then a bar of eighths through three more chords, the last held to the bar line.
+- **TWO GALLOP BARS, TWO BARS OF RING:** Two bars of a galloping root riff with the kick doubling it, then a high triad rung and a near-empty bar.
+- **SHORT CHORD STABS ON TWO, TWO-AND AND FOUR:** Muted full chords stabbed short on 2, its and and 4, piano syncopations under them, a tambourine on the quarters.
+- **SLAP OCTAVE BASS UNDER A SIXTEENTH ARPEGGIO:** A slap bass figure from root to octave and back under a synth arpeggio on every sixteenth, the kick on 1 only.
+- **SIXTEENTH BASS RIFF, A RUN TO THE BAR LINE:** The bass's sixteenth riff with a run to every bar line, a guitar dyad on 1 and three hits after it, hand drums.
+- **THE CHANGE PUSHED, THE NEXT DOWNBEAT EMPTY:** Two-bar cells: the next chord pushed in on the and of 4, the downbeat after it left empty, guitar and bass together.
+- **CANON LINES OVER A LAID-BACK SIXTEENTH KIT:** Two clean guitars on one falling sixteenth line, the second an eighth behind, over a laid-back sixteenth kit.
+- **ONE GUITAR'S EIGHTHS, A PEDAL HAT, THEN A DOUBLE:** A staged verse: one guitar's power-chord eighths, the pedal hat from halfway, a second guitar doubling from three quarters.
+- **TWO HELD EIGHTHS, FOUR SIXTEENTHS:** Each half bar the chord on two held eighths, then another chord in four sixteenths.
+- **OCTAVE STABS OVER DOUBLE-KICK PAIRS:** Root octave stabs in a pushed rhythm over double-kick pairs, the last group a step under.
+- **TWO-SHAPE SIXTEENTH SEESAW, BASS ROCKING UNDER:** Ten sixteenths seesawing between the root shape and the one a step up, then a held chord, the bass rocking under.
+- **SIXTEENTH CALL, DOTTED ANSWER:** A bar of sixteenth power chords calling, then a bar answering on dotted eighths from beat 3.
+- **KICK PICKUPS INTO EVERY BEAT, OCTAVE PICKUPS:** A kick sixteenth before every beat, quarter power chords, a clean second guitar's octaves with the same pickups.
+- **SHAKER SIXTEENTHS, CHORDS UNDER ONE TOP NOTE:** No kick or snare: shaker sixteenths and quarter hats, held keys chords that all keep one top note.
+- **HALF-NOTE CHORDS, KICK ON ONE AND TWO-AND:** Power chords with the third added in half notes, the kick on 1 and 2-and, open hats on the quarters.
+
+Two of them use a swung, triplet grid in 4/4: SHUFFLED HALF-BAR CHORDS WITH A MUTED SCRATCH, and the six-bar riff, which crosses the four-bar phrases on purpose. That's still no meter change.
+
+Next: round eleven's choruses.
+
 ## 0.250.0
 
 Round eleven begins: you uploaded 61 more songs, and six readers went through them for their shapes only. Nothing from them is copied, and they aren't in the app or the repo. This release adds the first 17 verse types from them, with our own names. They go in the Verse list before DRONING and SPARSE. Each lane gets its own choices, and the bass's last choice is always LOCKED WITH THE KICK.
