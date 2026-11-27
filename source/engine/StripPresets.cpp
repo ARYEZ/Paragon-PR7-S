@@ -136,7 +136,10 @@ namespace pr7s
             if (auto p = loadStripPreset (f))
                 list.push_back (std::move (*p));
         std::sort (list.begin(), list.end(), [] (const StripPreset& a, const StripPreset& b)
-                   { return a.name.compareNatural (b.name) < 0; });
+                   {
+                       const auto byName = a.name.compareNatural (b.name);
+                       return byName != 0 ? byName < 0 : a.file.getFileName().compareNatural (b.file.getFileName()) < 0;
+                   });
         return list;
     }
 
@@ -148,8 +151,9 @@ namespace pr7s
         auto file = folder.getChildFile (clean + ".pr7strip");
         for (int n = 2; ! replace && file.exists(); ++n)
             file = folder.getChildFile (clean + " " + juce::String (n) + ".pr7strip");
+        // Named as its file: a second "My Bus" is "My Bus 2" in the menu too.
         juce::XmlElement xml ("StripPreset");
-        xml.setAttribute ("name", name.trim());
+        xml.setAttribute ("name", replace ? name.trim() : file.getFileNameWithoutExtension());
         xml.addChildElement (strip.limited().toXml().release());
         if (! xml.writeTo (file))
             return std::nullopt;

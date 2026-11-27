@@ -394,6 +394,7 @@ TEST_CASE ("STRIP PRESETS 0.249.0: applied as one undo step keeping the console 
     const auto& mine = presets[factoryStripPresets().size()];
     CHECK_FALSE (mine.factory);
     CHECK (mine.name == "My Bus");
+    CHECK (presets[factoryStripPresets().size() + 1].name == "My Bus 2");
     CHECK (mine.strip == *studio.getChannelStrip (id));
 
     // The menu: ours and yours chosen by their ids.
