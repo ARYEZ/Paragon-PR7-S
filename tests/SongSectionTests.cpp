@@ -2775,11 +2775,11 @@ TEST_CASE ("0.109.0: a breakdown's own types, every lane's options a different p
     const std::vector<juce::String> names { "CHROMATIC CRAWL", "HIT & HOLD, THEN CARPET", "CHUG & SQUEAL", "DOTTED TRITONE PUSH", "TRIPLET CLUSTER",
                                             "GAPPED SIXTEENTHS", "THREES & TWOS", "CALL & CHUG", "HALF-TIME OPEN CHORDS", "OFF-BEAT GALLOPS" };
     const auto breakdown = sectionTypesFor ("Breakdown");
-    REQUIRE (breakdown.size() == names.size() + 6 + 4 + 5 + 4 + 3 + 5 + 2 + 2 + 3);   // (0.197.0: five more)   // (0.184.0: three more)   // (0.142.0: five more)   // (0.122.0: four more after them)
+    REQUIRE (breakdown.size() == names.size() + 6 + 4 + 5 + 4 + 3 + 5 + 2 + 2 + 3 + 12);   // (0.197.0: five more)   // (0.184.0: three more)   // (0.142.0: five more)   // (0.122.0: four more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (breakdown[i].name == names[i]);
-    CHECK (breakdown[names.size() + 6 + 9 + 4 + 3 + 5 + 2 + 3].name == "HEAVY CHUG");   // (the old two kept after them)
-    CHECK (breakdown[names.size() + 6 + 10 + 4 + 3 + 5 + 2 + 3].name == "STACCATO CHUG");
+    CHECK (breakdown[names.size() + 6 + 9 + 4 + 3 + 5 + 2 + 3 + 12].name == "HEAVY CHUG");   // (the old two kept after them)
+    CHECK (breakdown[names.size() + 6 + 10 + 4 + 3 + 5 + 2 + 3 + 12].name == "STACCATO CHUG");
     CHECK_FALSE (sectionTypeNamed ("Verse", "CALL & CHUG").has_value());
     for (const auto& name : names)
         CHECK (sectionTypeCalled (name)->band == SectionType::Band::breakdown);
@@ -7365,7 +7365,7 @@ TEST_CASE ("0.184.0: round six's bridge and breakdown types, every lane's option
     }
     for (size_t i = 0; i < breakdowns.size(); ++i)
     {
-        CHECK (breakdown[breakdown.size() - 3 - 6 - 2 - 2 - 5 - breakdowns.size() + i].name == breakdowns[i]);   // (before 0.197.0's five, then HEAVY CHUG, STACCATO CHUG)
+        CHECK (breakdown[breakdown.size() - 12 - 3 - 6 - 2 - 2 - 5 - breakdowns.size() + i].name == breakdowns[i]);   // (before 0.197.0's five, then HEAVY CHUG, STACCATO CHUG)
         checkType ("Breakdown", breakdowns[i], SectionType::Band::breakdown);
     }
 
@@ -8413,7 +8413,7 @@ TEST_CASE ("0.197.0: round seven's bridge and breakdown types, every lane's opti
     const auto breakdown = sectionTypesFor ("Breakdown");
     CHECK (bridge[bridge.size() - 22 - 6 - 1 - 3 - 12 - bridges.size() - 1].name == "RIDE AND BASS SIXTEENTHS UNDER A CLEAN ARPEGGIO");
     CHECK (bridge[bridge.size() - 3].name == "CREEP");
-    CHECK (breakdown[breakdown.size() - 3 - 6 - 2 - 2 - breakdowns.size() - 1].name == "HALF-STEP FALL OVER THE OPEN ROOT");
+    CHECK (breakdown[breakdown.size() - 12 - 3 - 6 - 2 - 2 - breakdowns.size() - 1].name == "HALF-STEP FALL OVER THE OPEN ROOT");
     CHECK (breakdown[breakdown.size() - 2].name == "HEAVY CHUG");
     const auto key = [] (const LineIdea& idea)
     {
@@ -8430,7 +8430,7 @@ TEST_CASE ("0.197.0: round seven's bridge and breakdown types, every lane's opti
     }
     for (size_t i = 0; i < breakdowns.size(); ++i)
     {
-        CHECK (breakdown[breakdown.size() - 3 - 6 - 2 - 2 - breakdowns.size() + i].name == breakdowns[i]);   // (before HEAVY CHUG, STACCATO CHUG)
+        CHECK (breakdown[breakdown.size() - 12 - 3 - 6 - 2 - 2 - breakdowns.size() + i].name == breakdowns[i]);   // (before HEAVY CHUG, STACCATO CHUG)
         all.push_back ({ "Breakdown", breakdowns[i] });
     }
     CHECK (sectionTypeNamed ("Middle 8", "TOM CARPET, SNARE ON THE OFF-BEATS").has_value());
@@ -10762,7 +10762,7 @@ TEST_CASE ("0.242.0: round ten's pre-choruses, post-chorus, bridges and breakdow
     for (size_t i = 0; i < bridges.size(); ++i)
         CHECK (bridge[bridge.size() - 3 - 22 - bridges.size() + i].name == bridges[i]);
     for (size_t i = 0; i < breakdowns.size(); ++i)
-        CHECK (breakdown[breakdown.size() - 2 - breakdowns.size() + i].name == breakdowns[i]);
+        CHECK (breakdown[breakdown.size() - 2 - 12 - breakdowns.size() + i].name == breakdowns[i]);
 
     const auto key = [] (const LineIdea& idea)
     {
@@ -11750,5 +11750,90 @@ TEST_CASE ("0.255.0: round eleven's bridges, every lane's options a different pa
         applySectionType (s, "Bridge", "DOTTED SINGLE NOTES OVER THE ARPEGGIO");
         CHECK (s.lane (ComposerLayer::acoustic).on);
         CHECK (! composeLayers (s, spans, c)[(size_t) ComposerLayer::acoustic].notes.empty());
+    }
+}
+
+
+TEST_CASE ("0.256.0: round eleven's breakdowns, every lane's options a different part", "[sections][types][breakdown256]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> breakdowns {
+        "SNARE PAIRS ON THE HALF-STEP CELL",
+        "UNISON STAB BAR, BLAST BAR, IN TURN",
+        "ONE CHORD RUNG FOUR BARS, SYNCOPATED HALF TIME",
+        "KICK ONE BAR, SNARE THE NEXT, CRASH QUARTERS",
+        "DOTTED SNARE OVER SIXTEENTH KICKS",
+        "FOUR CHUGS, THEN SIX BEATS RUNG",
+        "TOMS AND KICK ON THE HITS, NO CYMBALS",
+        "BAND HITS ON SNARE AND CRASH, NO KICK",
+        "DRUMS OUT, DOTTED SYNTH BASS AND A HIGH THIRD",
+        "SYNCOPATED CHUG, GHOST SNARES",
+        "FOUR-SIXTEENTH BURST ON ONE, THEN SILENCE",
+        "HOOK OVER HELD ROOTS, KICK ON ONE AND FOUR-AND" };
+    const auto breakdown = sectionTypesFor ("Breakdown");
+    for (size_t i = 0; i < breakdowns.size(); ++i)
+        CHECK (breakdown[breakdown.size() - 2 - breakdowns.size() + i].name == breakdowns[i]);
+    CHECK (breakdown[breakdown.size() - 2].name == "HEAVY CHUG");
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << (n.harmony ? "h" : "") << ";";
+        return k;
+    };
+    for (const auto& type : breakdowns)
+    {
+        INFO (type);
+        REQUIRE (sectionTypeCalled (type).has_value());
+        ComposerState s;
+        applySectionType (s, "Breakdown", type);
+        REQUIRE (s.sectionType == type);
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                const auto name = sectionApproaches (s, l)[(int) o];
+                INFO (composerLayerName (l) << " " << o << " " << name);
+                CHECK (seen.insert (key (choices[o])).second);
+                if (name != "OUT" && name != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+    }
+    const auto layersOf = [&] (const juce::String& type)
+    {
+        ComposerState s;
+        applySectionType (s, "Breakdown", type);
+        return composeLayers (s, spans, c);
+    };
+    // No kick: the drums only snare and crash (and toms).
+    {
+        const auto layers = layersOf ("BAND HITS ON SNARE AND CRASH, NO KICK");
+        CHECK (! layers[(size_t) ComposerLayer::drums].notes.empty());
+        for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
+            CHECK (n.pitch != GmDrum::kick);
+    }
+    // No cymbals or snare: only kick and toms.
+    {
+        const auto layers = layersOf ("TOMS AND KICK ON THE HITS, NO CYMBALS");
+        for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
+            CHECK ((n.pitch == GmDrum::kick || n.pitch == GmDrum::tomFloor || n.pitch == GmDrum::tomMid));
+    }
+    // The drums out for the first half.
+    {
+        const auto layers = layersOf ("DRUMS OUT, DOTTED SYNTH BASS AND A HIGH THIRD");
+        for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
+            CHECK (n.beat >= 16.0 - 1.0e-6);
     }
 }

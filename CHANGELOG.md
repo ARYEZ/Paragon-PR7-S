@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.256.0
+
+Round eleven's breakdowns, from your songs (shapes only, our own names). There are 12, and they go in the Breakdown list just before HEAVY CHUG and STACCATO CHUG:
+
+- **SNARE PAIRS ON THE HALF-STEP CELL:** The low root and the half step above in cells of three sixteenths, the snare in pairs every six sixteenths and the kick in the gaps.
+- **UNISON STAB BAR, BLAST BAR, IN TURN:** A bar of unison stabs with kick, crash and china on them, then a bar of the same chords as sixteenth singles over a blast.
+- **ONE CHORD RUNG FOUR BARS, SYNCOPATED HALF TIME:** One power chord struck and rung four bars, the bass pushing round the root and the flat three, a syncopated half-time kick.
+- **KICK ONE BAR, SNARE THE NEXT, CRASH QUARTERS:** Quarter power chords all through, the kick on 1 one bar and the snare on 1 the next, a crash on every quarter.
+- **DOTTED SNARE OVER SIXTEENTH KICKS:** Sixteenth kicks under a snare on 1, 2-and and 4, the guitar and bass tremolo on the root with the flat seven, a stutter cell every fourth pair of bars.
+- **FOUR CHUGS, THEN SIX BEATS RUNG:** Two-bar cells: four chugs with kick and crash, then the power chord rung for six beats over kick quarters.
+- **TOMS AND KICK ON THE HITS, NO CYMBALS:** Muted power-chord hits on 1, 2-a, 3 and 3-and, the kick and floor tom on exactly them, no snare and no cymbals.
+- **BAND HITS ON SNARE AND CRASH, NO KICK:** Every lane hitting together in a two-bar figure, the drums only snare and crash on the hits, no kick.
+- **DRUMS OUT, DOTTED SYNTH BASS AND A HIGH THIRD:** The drums out at first: a dotted octave bass riff and a high root and third on the keys, the chug and four on the floor from halfway.
+- **SYNCOPATED CHUG, GHOST SNARES:** Held power chords one bar, root chugs from 1-and the next, a syncopated kick and the snare on 3 with ghost notes.
+- **FOUR-SIXTEENTH BURST ON ONE, THEN SILENCE:** Four sixteenths on the root and a chord on 2, then the bar left silent, pushed chords into the next every fourth bar.
+- **HOOK OVER HELD ROOTS, KICK ON ONE AND FOUR-AND:** The root on 1 and the fifth on 4-and held under a hook on the keys, the kick on 1 and 4-and, open hats, the backbeat in the second half.
+
+Next: round eleven's intros and outros.
+
 ## 0.255.0
 
 Round eleven's bridges, from your songs (shapes only, our own names). There are 22, and they go in the Bridge list just before CREEP, OPEN CHORDS and DRONING:
