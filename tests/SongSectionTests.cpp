@@ -3119,14 +3119,14 @@ TEST_CASE ("0.111.0: intro and outro types, every lane's options a different par
                                              "FALLING OCTAVE PEDAL",   // (0.117.0)
                                              "EVERY OTHER BAR EMPTY", "SINGLE-NOTE BAR, CHORD BAR" };   // (0.124.0)
     const auto intro = sectionTypesFor ("Intro");
-    REQUIRE (intro.size() == intros.size() + 3 + 8 + 8 + 6 + 7 + 2 + 2 + 6);   // (0.143.0: eight more; 0.151.0: eight; 0.185.0: six; 0.198.0: seven)
+    REQUIRE (intro.size() == intros.size() + 3 + 8 + 8 + 6 + 7 + 2 + 2 + 6 + 13);   // (0.143.0: eight more; 0.151.0: eight; 0.185.0: six; 0.198.0: seven)
     for (size_t i = 0; i < intros.size(); ++i)
         CHECK (intro[i].name == intros[i]);
-    CHECK (intro[intros.size() + 3 + 8 + 8 + 6 + 7 + 2 + 6].name == "DRONING");
+    CHECK (intro[intros.size() + 3 + 8 + 8 + 6 + 7 + 2 + 6 + 13].name == "DRONING");
     for (const auto* name : { "Outro", "Ending", "Coda", "Tag" })
     {
         const auto outro = sectionTypesFor (name);
-        REQUIRE (outro.size() == outros.size() + 2 + 8 + 4 + 2 + 5 + 2 + 11);   // (0.143.0: eight more; 0.151.0: four; 0.185.0: two; 0.198.0: five)
+        REQUIRE (outro.size() == outros.size() + 2 + 8 + 4 + 2 + 5 + 2 + 11 + 6);   // (0.143.0: eight more; 0.151.0: four; 0.185.0: two; 0.198.0: five)
         for (size_t i = 0; i < outros.size(); ++i)
             CHECK (outro[i].name == outros[i]);
     }
@@ -5931,8 +5931,8 @@ TEST_CASE ("0.185.0: round six's intro and outro types, every lane's options a d
     const std::vector<juce::String> outros { "HORN LINE ALONE, CRASH ON ONE", "TWO ROOTS AND A RUNG CHORD" };
     const auto intro = sectionTypesFor ("Intro");
     const auto outro = sectionTypesFor ("Outro");
-    REQUIRE (intro.size() == 31 + 3 + 6 + 7 + 2 + 2 + 6);   // (0.198.0: seven more)
-    REQUIRE (outro.size() == 24 + 2 + 2 + 5 + 2 + 11);   // (0.198.0: five more)
+    REQUIRE (intro.size() == 31 + 3 + 6 + 7 + 2 + 2 + 6 + 13);   // (0.198.0: seven more)
+    REQUIRE (outro.size() == 24 + 2 + 2 + 5 + 2 + 11 + 6);   // (0.198.0: five more)
     for (size_t i = 0; i < intros.size(); ++i)
     {
         CHECK (intro[31 + i].name == intros[i]);   // (after 0.151.0's)
@@ -8711,9 +8711,9 @@ TEST_CASE ("0.198.0: round seven's intro and outro types, every lane's options a
     const std::set<juce::String> withLead { "NYLON DOUBLES THE INTRO, THEN LEAVES" };
     const auto intro = sectionTypesFor ("Intro");
     const auto outro = sectionTypesFor ("Outro");
-    CHECK (intro[intro.size() - 6 - 3 - 2 - 2 - intros.size() - 1].name == "TWO ROOTS AND A RUNG CHORD");
+    CHECK (intro[intro.size() - 13 - 6 - 3 - 2 - 2 - intros.size() - 1].name == "TWO ROOTS AND A RUNG CHORD");
     CHECK (intro[intro.size() - 2].name == "DRONING");
-    CHECK (outro[outro.size() - 11 - 2 - 2 - outros.size() - 1].name == "TWO ROOTS AND A RUNG CHORD");
+    CHECK (outro[outro.size() - 6 - 11 - 2 - 2 - outros.size() - 1].name == "TWO ROOTS AND A RUNG CHORD");
     CHECK (outro[outro.size() - 2].name == "DRONING");
     const auto key = [] (const LineIdea& idea)
     {
@@ -8725,12 +8725,12 @@ TEST_CASE ("0.198.0: round seven's intro and outro types, every lane's options a
     std::vector<std::pair<juce::String, juce::String>> all;   // (section, type)
     for (size_t i = 0; i < intros.size(); ++i)
     {
-        CHECK (intro[intro.size() - 6 - 3 - 2 - 2 - intros.size() + i].name == intros[i]);   // (before 0.216.0's two, DRONING, OPEN CHORDS)
+        CHECK (intro[intro.size() - 13 - 6 - 3 - 2 - 2 - intros.size() + i].name == intros[i]);   // (before 0.216.0's two, DRONING, OPEN CHORDS)
         all.push_back ({ "Intro", intros[i] });
     }
     for (size_t i = 0; i < outros.size(); ++i)
     {
-        CHECK (outro[outro.size() - 11 - 2 - 2 - outros.size() + i].name == outros[i]);   // (before DRONING, STABS)
+        CHECK (outro[outro.size() - 6 - 11 - 2 - 2 - outros.size() + i].name == outros[i]);   // (before DRONING, STABS)
         all.push_back ({ "Outro", outros[i] });
     }
     CHECK (sectionTypeNamed ("Ending", "STRUM OFF THE ONE TO THE END").has_value());
@@ -10871,9 +10871,9 @@ TEST_CASE ("0.243.0: round ten's intros and outros", "[sections][types][bookend2
     const auto intro = sectionTypesFor ("Intro");
     const auto outro = sectionTypesFor ("Outro");
     for (size_t i = 0; i < intros.size(); ++i)
-        CHECK (intro[intro.size() - 2 - intros.size() + i].name == intros[i]);
+        CHECK (intro[intro.size() - 2 - 13 - intros.size() + i].name == intros[i]);
     for (size_t i = 0; i < outros.size(); ++i)
-        CHECK (outro[outro.size() - 2 - outros.size() + i].name == outros[i]);
+        CHECK (outro[outro.size() - 2 - 6 - outros.size() + i].name == outros[i]);
 
     const auto key = [] (const LineIdea& idea)
     {
@@ -11835,5 +11835,99 @@ TEST_CASE ("0.256.0: round eleven's breakdowns, every lane's options a different
         const auto layers = layersOf ("DRUMS OUT, DOTTED SYNTH BASS AND A HIGH THIRD");
         for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
             CHECK (n.beat >= 16.0 - 1.0e-6);
+    }
+}
+
+
+TEST_CASE ("0.257.0: round eleven's intros and outros, every lane's options a different part", "[sections][types][bookend257]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> intros {
+        "THE RIFF, A KICK ON ONE, THEN EVERYONE",
+        "ONE BAND HIT, THEN THE ARPEGGIO ALONE",
+        "SLOW CHROMATIC DESCENT, HIGH DYAD PEDAL OVER",
+        "PICKED SIXTEENTH FIGURE UNDER A HIGH DYAD STAB",
+        "KEYS CHORD EIGHTHS ALONE, THEN THE PICKUP",
+        "SNARE ON EVERY CHUG, THEN THE KICK",
+        "THE RIFF ALONE, QUARTER HITS, A TOM FILL",
+        "TWO-SIXTEENTH STAB OVER HAND PERCUSSION",
+        "HELD CHORD OVER HAT SIXTEENTHS, THEN THE RIFF ALONE",
+        "HIGH NOTE IN THREES AND A FOUR",
+        "INNER LINE OVER A HELD ROOT, FOUR ON THE FLOOR",
+        "PAD BAR, PIANO OCTAVE ANSWER BAR",
+        "BRASS HOOK OVER HELD STRINGS, NO DRUMS" };
+    const std::vector<juce::String> outros {
+        "WHOLE-BAR CHORDS OVER A BASS ON ONE, THREE AND FOUR",
+        "EIGHTHS ON ONE AND FIVE IN TURN",
+        "THE RIFF, THREE HITS AND OUT",
+        "GUITAR ALONE, THEN THREE HITS RUNG TWICE",
+        "OCTAVE TREMOLO CREEPING UP",
+        "SNARE QUARTERS, KICK ON THREE-AND AND FOUR-AND" };
+    const auto intro = sectionTypesFor ("Intro");
+    const auto outro = sectionTypesFor ("Outro");
+    for (size_t i = 0; i < intros.size(); ++i)
+        CHECK (intro[intro.size() - 2 - intros.size() + i].name == intros[i]);
+    for (size_t i = 0; i < outros.size(); ++i)
+        CHECK (outro[outro.size() - 2 - outros.size() + i].name == outros[i]);
+    CHECK (intro[intro.size() - 2].name == "DRONING");
+    CHECK (outro[outro.size() - 2].name == "DRONING");
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << (n.harmony ? "h" : "") << ";";
+        return k;
+    };
+    std::vector<std::pair<juce::String, juce::String>> all;
+    for (const auto& n : intros) all.push_back ({ "Intro", n });
+    for (const auto& n : outros) all.push_back ({ "Outro", n });
+    for (const auto& [section, type] : all)
+    {
+        INFO (type);
+        REQUIRE (sectionTypeCalled (type).has_value());
+        ComposerState s;
+        applySectionType (s, section, type);
+        REQUIRE (s.sectionType == type);
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                const auto name = sectionApproaches (s, l)[(int) o];
+                INFO (composerLayerName (l) << " " << o << " " << name);
+                CHECK (seen.insert (key (choices[o])).second);
+                if (name != "OUT" && name != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+    }
+    // The three hits and out: nothing after beat 3 of the last bar.
+    {
+        ComposerState s;
+        applySectionType (s, "Outro", "THE RIFF, THREE HITS AND OUT");
+        const auto layers = composeLayers (s, spans, c);
+        for (const auto l : { ComposerLayer::guitar, ComposerLayer::drums })
+            for (const auto& n : layers[(size_t) l].notes)
+                CHECK (n.beat < 31.0 + 1.0e-6);
+    }
+    // The keys alone: no guitar, the drums only in the last bar.
+    {
+        ComposerState s;
+        applySectionType (s, "Intro", "KEYS CHORD EIGHTHS ALONE, THEN THE PICKUP");
+        const auto layers = composeLayers (s, spans, c);
+        CHECK (layers[(size_t) ComposerLayer::guitar].notes.empty());
+        CHECK (! layers[(size_t) ComposerLayer::chords].notes.empty());
+        for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
+            CHECK (n.beat >= 28.0 - 1.0e-6);
     }
 }

@@ -2,6 +2,37 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.257.0
+
+Round eleven's intros and outros, from your songs (shapes only, our own names).
+
+**Intro** (13, before DRONING and OPEN CHORDS):
+
+- **THE RIFF, A KICK ON ONE, THEN EVERYONE:** The guitar's muted riff alone, then the bass's root and a lone kick on 1 joining halfway, a held high note to end.
+- **ONE BAND HIT, THEN THE ARPEGGIO ALONE:** One band hit rung, a kick and crash, a lone bass note, then a clean sixteenth arpeggio alone in two octaves.
+- **SLOW CHROMATIC DESCENT, HIGH DYAD PEDAL OVER:** The bass alone falling a half step at a time, power chords joining on the same roots, a high root-and-fifth dyad on the eighths to finish.
+- **PICKED SIXTEENTH FIGURE UNDER A HIGH DYAD STAB:** One guitar alone: a high two-note stab, a rest, then a picked sixteenth figure round the low root and fifth.
+- **KEYS CHORD EIGHTHS ALONE, THEN THE PICKUP:** The keys alone on chord eighths with the bass note falling under them, the drums out but a pickup on the last bar.
+- **SNARE ON EVERY CHUG, THEN THE KICK:** Root chugs with a chord on 4-and, the snare on exactly every guitar hit, the kick joining on 1 and 3 from halfway.
+- **THE RIFF ALONE, QUARTER HITS, A TOM FILL:** Four-bar cycles: the riff alone for two bars, a bar of band hits on the quarters, then a sixteenth snare-and-tom fill.
+- **TWO-SIXTEENTH STAB OVER HAND PERCUSSION:** Two sixteenths on beat 1 with the kick and crash, the rest of the bar silent but congas in sixteenths.
+- **HELD CHORD OVER HAT SIXTEENTHS, THEN THE RIFF ALONE:** The low tonic chord held over closed-hat sixteenths, then the riff alone over open-hat eighths, a snare pickup into the band.
+- **HIGH NOTE IN THREES AND A FOUR:** One high root note on 3+3+3+3+4 sixteenths, held every fourth bar, the band out.
+- **INNER LINE OVER A HELD ROOT, FOUR ON THE FLOOR:** A clean low root held while a second note moves in half notes, root quarters on the bass, four on the floor with open hats.
+- **PAD BAR, PIANO OCTAVE ANSWER BAR:** A sus chord held on a pad, then a bar of the piano in octaves falling through four notes, in turn.
+- **BRASS HOOK OVER HELD STRINGS, NO DRUMS:** Strings holding the chord a bar with a short hook on top, a bass pedal, the drums out but a tom pickup in the last bars.
+
+**Outro** (6, before DRONING and STABS):
+
+- **WHOLE-BAR CHORDS OVER A BASS ON ONE, THREE AND FOUR:** A chord a bar on one guitar, power chords on 1, 3 and 4 on the other and the bass, a half-time beat under crash quarters, one hit to end.
+- **EIGHTHS ON ONE AND FIVE IN TURN:** The tonic in eighths from the and of 1, then the fifth in eighths, in turn to the end, long high notes over it, the last bar rung.
+- **THE RIFF, THREE HITS AND OUT:** The riff over kick quarters, then the last bar's hits on 2, 2-and and 3 and nothing after.
+- **GUITAR ALONE, THEN THREE HITS RUNG TWICE:** The guitar alone, then three band hits on 1, 3 and 4-and rung a bar, twice, the last chord held to the end.
+- **OCTAVE TREMOLO CREEPING UP:** Root octaves in sixteenths climbing a half step every two beats, kick sixteenths and crash quarters under them, a hit to end.
+- **SNARE QUARTERS, KICK ON THREE-AND AND FOUR-AND:** The snare on every quarter, the kick only on 3-and and 4-and, hats on the ands, a slap bass figure and a keys arpeggio.
+
+Next: round eleven's transitions and shared options, then its solos.
+
 ## 0.256.0
 
 Round eleven's breakdowns, from your songs (shapes only, our own names). There are 12, and they go in the Breakdown list just before HEAVY CHUG and STACCATO CHUG:
