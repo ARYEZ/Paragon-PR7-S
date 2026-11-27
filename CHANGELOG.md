@@ -2,6 +2,37 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.255.0
+
+Round eleven's bridges, from your songs (shapes only, our own names). There are 22, and they go in the Bridge list just before CREEP, OPEN CHORDS and DRONING:
+
+- **HELD CLUSTERS, RIDE ROLLS ONLY:** Three-note close clusters held a bar or two, no kick or snare, only ride rolls swelling in sixteenths.
+- **RUNG SEVENTHS, SNARE ON ONE ONLY:** A seventh chord struck once and rung two bars, an arpeggio up in the fourth bar, the snare on 1 only and the kick on 3 and 4-and.
+- **DOTTED SINGLE NOTES OVER THE ARPEGGIO:** An acoustic's ringing sixteenth arpeggio, high single chord tones over it on a dotted quarter then quarters.
+- **HIGH AND LOW TRIADS IN SIXTEENTHS:** The chord's high triad and low triad in turn in sixteenths, one high then two low, the kick on the quarters and no snare.
+- **QUARTER CHORDS ROCKING BY HALF STEPS:** Power chords on the quarters rocking a half and a whole step round the root, the snare on every beat and the kick between.
+- **ROOT, FIFTH, FOURTH EIGHTH CELL, HALF TIME:** An eighth cell of root, fifth and fourth with a gap, a strummed chord rung every other bar, a half-time beat.
+- **3+3+2 CHUG UNDER A FALLING OCTAVE LINE:** The root and the flat two on a 3+3+2 kick, a second guitar's octave chords falling a half step a bar from halfway.
+- **OPEN ADD-NINE ARPEGGIO, DOTTED CRASHES:** Open add-nine shapes picked in eighths, a chord a bar, crashes on 1, 2-and and 4.
+- **NO DOWNBEAT, SNARE RUN INTO FOUR:** Octave pairs falling a step every three sixteenths, the kick only on 2 and 3, a snare run into beat 4.
+- **BASS WALK, THEN TOMS, THE KIT, A TREMOLO WALL:** Four stages: the bass alone walking a two-chord pair, then floor toms, then the kick and picked dyads, then a tremolo wall.
+- **CLEAN RIFF, KICK EVERY THREE BEATS:** The chords picked quietly over a kick every three beats across the bar lines, quarter hats, no snare until a hit at the end.
+- **PIANO ROCKING, A UNISON CLIMB IN EACH BAR'S SECOND HALF:** Piano rocking the low root and the chord, the bass and strings holding the root then climbing into the next chord.
+- **BASS RIFF OVER KICK QUARTERS, THEN TOMS, THEN THE ROLL:** A walking bass riff alone over kick quarters, then toms under it, then a snare roll building into the next section.
+- **RIDE GALLOP ALONE OVER QUARTER CHORDS:** No kick or snare, the ride in a gallop over quarter power chords stepping down two bars a chord, long held tones above.
+- **THREE PUSHED HITS, A BAR OF RIDE:** The band on three pushed hits (1, 2-and, 4-and) with the kick and crash, then a bar of only the ride.
+- **CLEAN EIGHTH ARPEGGIO, SNARE ON TWO, THREE-AND, FOUR, FOUR-AND:** A clean root, fifth and octave in eighths over a kick on 1, 1-and, 2-and and 3 and a snare on 2, 3-and, 4 and 4-and.
+- **SHARP-FOUR ARPEGGIO, A HELD CHORD BAR:** A bar of an arpeggio falling from the raised fourth to the root, then the tonic chord held a bar, over the ride.
+- **HELD POWER CHORD, OCTAVE PICKUP INTO EACH BAR:** A power chord held each bar, an octave pair on the last sixteenths into the next, root eighths under.
+- **KIT IN EIGHTHS, THEN CRASH HITS AND TOM BARS:** Kick, snare and floor tom together on every eighth, then pairs of a crash-hit bar and a tom bar, the bass walking into the hits.
+- **SNARE ON TWO ONLY, TOM PAIR ON THREE-AND AND FOUR:** The snare on 2 only, a floor tom pair on 3-and and 4, the band pushing each change in on the and of 4.
+- **EVERYTHING ON THREE-AND AND FOUR-AND:** The kick, the bass and the strings only on 3-and and 4-and, the snare on 2, sixteenth hats.
+- **A NOTE CLIMBING A STEP A BEAT OVER A HELD OCTAVE:** One guitar holding the key's fifth in octaves, a second climbing a scale step every beat in sixteenths.
+
+DOTTED SINGLE NOTES OVER THE ARPEGGIO switches the acoustic guitar lane on.
+
+Next: round eleven's breakdowns.
+
 ## 0.254.0
 
 Round eleven's pre-choruses and post-choruses / interludes, from your songs (shapes only, our own names).
