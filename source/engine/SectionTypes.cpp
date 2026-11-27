@@ -529,7 +529,19 @@ namespace pr7s
                          { "ORCHESTRAL PULSE, NO SNARE", "No snare: the kick on the eighths under ride and pedal hat, string stabs on 1, the and of 2 and 3, a run up into every bar", r, {}, c },
                          { "TWO-BAR STAB CHORUS", "Short stabs on 1 and the and of 2, then on 1 and 3, piano triads on the eighths under them, the ride bell on the quarters", r, {}, c },
                          { "BALLAD CHORUS, MUTED SIXTEENTHS THROUGH THE CHORD", "Two palm-muted sixteenth runs a bar through each chord's notes over a ballad groove, the keys lifting on 2, its and and 3", r, {}, c },
-                         { "HELD CHORDS UNDER PIANO TRIADS", "Power chords held under the piano's eighth triads, pushes on the and of 3 and the and of 4, the bass leaving beat 3 empty", r, {}, c } };
+                         { "HELD CHORDS UNDER PIANO TRIADS", "Power chords held under the piano's eighth triads, pushes on the and of 3 and the and of 4, the bass leaving beat 3 empty", r, {}, c },
+                         // (0.252.0) Round eleven's choruses, part one (shapes only, our names).
+                         { "HELD CHORDS OVER THE STOMP, STABS AROUND THE BEATS", "Wide chords held a bar over a stomp of a lone kick and snares on 2, 3 and 4, high octave dyads on every sixteenth but the beats", r, {}, c },
+                         { "RING ON ONE, PUSHES ON TWO-A AND THREE-AND", "A power chord rung on 1, then pushed hits on 2, 2-a, 3-and, 4 and 4-e, each held to the next, the kick with them", r, {}, c },
+                         { "FOUR CHORDS IN THE FIRST HALF, PEDAL BAR ANSWERS", "Four chords on the eighths of beats 1 and 2 with the back half silent, then a bar of low root pedal answering", r, {}, c },
+                         { "QUARTER CHORDS, PUSH ON FOUR-AND, CRASH QUARTERS", "Half time: power chords on every quarter with the next pushed on 4-and, the crash on every quarter, an acoustic on the same quarters", r, {}, c },
+                         { "EIGHTH CHORDS MOVING BY THIRDS AND HALF STEPS", "Guitar and bass in unison on one power chord a bar in eighths, the kick in pairs and the snare on every and", r, {}, c },
+                         { "PHRYGIAN STABS OVER A DOUBLE-KICK PEDAL", "Root sixteenths with the flat two's power chord struck on 1, 3 and 4-and, the kick on every sixteenth", r, {}, c },
+                         { "ROLLING SNARE BAR, BACKBEAT BAR, STRUMMED EIGHTHS", "Chords strummed on every eighth over a bar of rolling snares on 2, 3, 4 and its and, then a plain backbeat bar", r, {}, c },
+                         { "CHORDS AND KICKS ON THE ANDS", "Power chords only on the ands with a kick and open hat on each, closed hats on the beats, a picked bar every other", r, {}, c },
+                         { "UNISON SIXTEENTH RIFF, KICK ON THE A'S", "Guitar and bass in a sixteenth unison riff, the next chord in its last four, the kick on 1 and the a's of 1, 2 and 3", r, {}, c },
+                         { "CRASH WASH OVER TRITONE STABS", "The root, then power chords on the flat five in a pushed figure, a walk back into the root in the second bar, the crash in broken sixteenths", r, {}, c },
+                         { "HOOK IN BLOCK CHORDS OVER ROOT EIGHTHS", "A hook played as close triads moving together in eighths over the bass's root on every eighth, a fill every eight bars", r, {}, c } };
             }
             case 3:
             {
@@ -2032,6 +2044,29 @@ namespace pr7s
                   { "KEYS ON TWO, TWO-AND, THREE", "ELECTRIC PIANO QUARTERS" }, { "BALLAD GROOVE, KICK ON ONE AND THE A OF FOUR", "BALLAD GROOVE, A TOM PICKUP AT THE PHRASE ENDS" }, {} },
                 { "HELD CHORDS UNDER PIANO TRIADS", { "HELD CHORD, PUSHES ON THREE-AND AND FOUR-AND", "HELD CHORD, ONE PUSH ON FOUR-AND" }, { "EIGHTHS WITH BEAT THREE EMPTY", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "PIANO EIGHTH TRIADS UNDER THE PUSHES", "HELD PADS" }, { "OPEN HAT ON TWO, THREE AND FOUR", "BALLAD RIDE ON THE ANDS" }, {} },
+                // (0.252.0) Round eleven's choruses, part one.
+                { "HELD CHORDS OVER THE STOMP, STABS AROUND THE BEATS", { "HIGH OCTAVE DYADS ON EVERY SIXTEENTH BUT THE BEATS", "OUT" }, { "ROOTS HELD", "ROOT EIGHTHS", "LOCKED WITH THE KICK" },
+                  { "WIDE HELD CHORDS, A BAR EACH", "HELD PADS" }, { "THE STOMP, HATS ON TWO AND FOUR, A HIT ON THREE TO START", "THE STOMP, CRASH ON ONE" }, {} },
+                { "RING ON ONE, PUSHES ON TWO-A AND THREE-AND", { "RING ON ONE, PUSHES THROUGH THE BAR", "RING ON ONE, PUSHES, THE NEXT CHORD HALFWAY" }, { "ROOTS WITH THE KICK", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ONE, TWO-A, THREE-AND, FOUR-E, RIDE FROM ONE-AND", "THE PUSHED KICK, CLOSED EIGHTHS" }, {} },
+                { "FOUR CHORDS IN THE FIRST HALF, PEDAL BAR ANSWERS", { "FOUR CHORDS ON THE EIGHTHS, THEN A PEDAL BAR", "FOUR CHORDS, THEN THE PEDAL MUTED" }, { "FOUR ROOTS, THEN ROOT AND TENTH SIXTEENTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "A HELD HIGH NOTE", "SILENT" }, { "SYNCOPATED KICK, SNARE PAIRS ROUND THE BACKBEAT, OPEN EIGHTHS", "BACKBEAT, OPEN EIGHTHS" }, {} },
+                { "QUARTER CHORDS, PUSH ON FOUR-AND, CRASH QUARTERS", { "QUARTER POWER CHORDS, THE NEXT PUSHED ON FOUR-AND", "QUARTER POWER CHORDS, A SECOND GUITAR AN OCTAVE UP" }, { "ROOT QUARTERS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "WHOLE-NOTE CHORDS", "HELD PADS" }, { "HALF TIME: KICK ONE AND TWO, SNARE THREE, CRASH QUARTERS", "HALF TIME: KICK ONE AND TWO, SNARE THREE, RIDE QUARTERS" }, {}, { "THE SAME QUARTERS, STRUMMED" } },
+                { "EIGHTH CHORDS MOVING BY THIRDS AND HALF STEPS", { "ONE POWER CHORD A BAR IN EIGHTHS", "POWER CHORDS IN EIGHTHS, OCTAVES ON TOP" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK IN PAIRS, SNARE ON EVERY AND, OPEN EIGHTHS", "KICK IN PAIRS, BACKBEAT" }, {} },
+                { "PHRYGIAN STABS OVER A DOUBLE-KICK PEDAL", { "ROOT SIXTEENTHS, THE FLAT TWO STRUCK ON ONE, THREE AND FOUR-AND", "ROOT SIXTEENTHS, THE MINOR THIRD'S HALF BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "A HELD HIGH FIFTH" }, { "KICK ON EVERY SIXTEENTH, SNARE ONE, THREE AND FOUR-AND, CHINA EIGHTHS", "KICK ON EVERY SIXTEENTH, BACKBEAT" }, {} },
+                { "ROLLING SNARE BAR, BACKBEAT BAR, STRUMMED EIGHTHS", { "CHORDS STRUMMED ON EVERY EIGHTH, THE HALF STEP ROCKING ON TOP", "CHORDS STRUMMED ON EVERY EIGHTH" }, { "ROOT EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "A ROLLING SNARE BAR, THEN A BACKBEAT BAR", "THE BACKBEAT BAR EVERY BAR" }, {} },
+                { "CHORDS AND KICKS ON THE ANDS", { "POWER CHORDS ON THE ANDS, A PICKED BAR EVERY OTHER", "POWER CHORDS ON THE ANDS" }, { "WITH THE GUITAR'S ANDS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "AN OCTAVE LINE ON THE ANDS", "SILENT" }, { "KICK AND OPEN HAT ON EVERY AND, BACKBEAT", "KICK ON EVERY AND, CLOSED HATS ON THE BEATS" }, {} },
+                { "UNISON SIXTEENTH RIFF, KICK ON THE A'S", { "SIXTEENTH UNISON RIFF, THE NEXT CHORD IN THE LAST FOUR", "THE SIXTEENTH RIFF ON ONE CHORD" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "A LEADING-TONE GRACE ON TWO-A AND FOUR-A", "HELD PADS" }, { "KICK ONE, ONE-A, TWO-A AND THREE-A, ACCENTED RIDE", "THE SAME KICK ON THE A'S, CLOSED EIGHTHS" }, {} },
+                { "CRASH WASH OVER TRITONE STABS", { "ROOT, THEN TRITONE STABS, A WALK BACK IN THE SECOND BAR", "ROOT AND TRITONE STABS EVERY BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "AN OCTAVE STAB WITH EACH HIT", "SILENT" }, { "CRASH IN BROKEN SIXTEENTHS, KICK WITH THE STABS", "CHINA IN BROKEN SIXTEENTHS, KICK WITH THE STABS" }, {} },
+                { "HOOK IN BLOCK CHORDS OVER ROOT EIGHTHS", { "THE HOOK IN CLOSE TRIADS", "A CHORD HELD A BAR" }, { "ROOT EIGHTHS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "THE HOOK IN CLOSE TRIADS, IN EIGHTHS", "HELD PADS" }, { "KICK ONE, THREE AND THREE-AND, HAT KNOCKS, A FILL EVERY EIGHT", "KICK ONE, THREE AND THREE-AND, CLOSED EIGHTHS" }, {} },
                 // (0.251.0) Round eleven's verses, part two.
                 { "TWO BARS OF RIFF, TWO OF KICK UNDER THE VOICE", { "TWO BARS OF POWER CHORDS, TWO OUT, A PUSH ON FOUR", "TWO BARS OF POWER CHORDS, TWO OUT" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "TWO BARS OF BEAT, TWO OF KICK QUARTERS", "TWO BARS OF BEAT, TWO OF KICK AND HATS" }, {} },

@@ -2,6 +2,24 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.252.0
+
+Round eleven's first 11 chorus types, from your songs (shapes only, our own names). They go at the end of the Chorus list, and each lane gets its own options.
+
+- **HELD CHORDS OVER THE STOMP, STABS AROUND THE BEATS:** Wide chords held a bar over a stomp of a lone kick and snares on 2, 3 and 4, high octave dyads on every sixteenth but the beats.
+- **RING ON ONE, PUSHES ON TWO-A AND THREE-AND:** A power chord rung on 1, then pushed hits on 2, 2-a, 3-and, 4 and 4-e, each held to the next, the kick with them.
+- **FOUR CHORDS IN THE FIRST HALF, PEDAL BAR ANSWERS:** Four chords on the eighths of beats 1 and 2 with the back half silent, then a bar of low root pedal answering.
+- **QUARTER CHORDS, PUSH ON FOUR-AND, CRASH QUARTERS:** Half time: power chords on every quarter with the next pushed on 4-and, the crash on every quarter, an acoustic on the same quarters.
+- **EIGHTH CHORDS MOVING BY THIRDS AND HALF STEPS:** Guitar and bass in unison on one power chord a bar in eighths, the kick in pairs and the snare on every and.
+- **PHRYGIAN STABS OVER A DOUBLE-KICK PEDAL:** Root sixteenths with the flat two's power chord struck on 1, 3 and 4-and, the kick on every sixteenth.
+- **ROLLING SNARE BAR, BACKBEAT BAR, STRUMMED EIGHTHS:** Chords strummed on every eighth over a bar of rolling snares on 2, 3, 4 and its and, then a plain backbeat bar.
+- **CHORDS AND KICKS ON THE ANDS:** Power chords only on the ands with a kick and open hat on each, closed hats on the beats, a picked bar every other.
+- **UNISON SIXTEENTH RIFF, KICK ON THE A'S:** Guitar and bass in a sixteenth unison riff, the next chord in its last four, the kick on 1 and the a's of 1, 2 and 3.
+- **CRASH WASH OVER TRITONE STABS:** The root, then power chords on the flat five in a pushed figure, a walk back into the root in the second bar, the crash in broken sixteenths.
+- **HOOK IN BLOCK CHORDS OVER ROOT EIGHTHS:** A hook played as close triads moving together in eighths over the bass's root on every eighth, a fill every eight bars.
+
+Next: the other 16 choruses.
+
 ## 0.251.0
 
 The rest of round eleven's verses: 22 more types from your 61 songs, read for their shapes only and given our own names. They go after part one's, before DRONING and SPARSE.
