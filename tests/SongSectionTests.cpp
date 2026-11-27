@@ -2338,7 +2338,7 @@ namespace
 TEST_CASE ("0.104.0: transitions: the last bar written for each, the melody untouched", "[sections][transitions]")
 {
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 14 + 21 + 27 + 6 + 15 + 10 + 15 + 7 + 16);   // (0.199.0: ten more; 0.186.0: fifteen more; 0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
+    REQUIRE (list.size() == 14 + 21 + 27 + 6 + 15 + 10 + 15 + 7 + 16 + 38);   // (0.199.0: ten more; 0.186.0: fifteen more; 0.172.0: six more)   // (0.144.0: 21 more; 0.154.0: 27 more)
     CHECK (list.front().name == noTransition);
     CHECK_FALSE (sectionTransitionNamed ("NONE").has_value());
     CHECK_FALSE (sectionTransitionNamed ("").has_value());
@@ -5027,7 +5027,7 @@ TEST_CASE ("0.154.0: round four's 27 transitions", "[sections][transitions][tran
                                             "TOM RUMBLE BARS", "HALF-STEP BURST BAR", "RIFF ALONE, TWO BARS", "UNISON SIXTEENTHS BAR",
                                             "SIXTEENTH SWELL, CUT SHORT", "SIX-SIXTEENTH TURNAROUND", "DROP TO KEYS AND LEAD", "CUT AT THE HALF BAR" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 35 + names.size() + 6 + 15 + 10 + 15 + 7 + 16);   // (0.172.0: six more; 0.186.0: fifteen more; 0.199.0: ten more)
+    REQUIRE (list.size() == 35 + names.size() + 6 + 15 + 10 + 15 + 7 + 16 + 38);   // (0.172.0: six more; 0.186.0: fifteen more; 0.199.0: ten more)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (list[35 + i].name == names[i]);
     const auto plain = withTransition (noTransition);
@@ -7464,7 +7464,7 @@ TEST_CASE ("0.186.0: round six's transitions", "[sections][trans186]")
                             "CHORD RUNG A BAR, LAST-16TH KICK PICKUP", "UNISON HITS, THEN HELD SILENCE", "BAND HIT HELD TWO AND A HALF BEATS, RIDE PICKUP",
                             "SNARE SIXTEENTHS ON THREE INTO THE CHANGE" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 68 + std::size (names) + 10 + 15 + 7 + 16);   // (0.199.0: ten more)
+    REQUIRE (list.size() == 68 + std::size (names) + 10 + 15 + 7 + 16 + 38);   // (0.199.0: ten more)
     for (size_t i = 0; i < std::size (names); ++i)
         CHECK (list[68 + i].name == names[i]);
     const auto none = withTransition ({});
@@ -8979,7 +8979,7 @@ TEST_CASE ("0.199.0: round seven's transitions", "[sections][transitions][trans1
                             "STOP AFTER TWO BEATS", "HATS ALONE BREAK", "DRUMS ALONE, BLAST, THEN THREE CHORDS", "CHROMATIC POWER-CHORD FALL",
                             "PUSHED STRUM STUTTER", "OFF-EIGHTH KICKS INTO A STOP" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 83 + std::size (names) + 15 + 7 + 16);   // (0.216.0: fifteen more)
+    REQUIRE (list.size() == 83 + std::size (names) + 15 + 7 + 16 + 38);   // (0.216.0: fifteen more)
     for (size_t i = 0; i < std::size (names); ++i)
         CHECK (list[83 + i].name == names[i]);
     // Every lane with the acoustic on (it strums with the band where the shape is a strum).
@@ -9665,7 +9665,7 @@ TEST_CASE ("0.216.0: round eight's intros and transitions", "[sections][transiti
                             "SIXTEENTH PAIRS ON EVERY BEAT", "A BAR OF DYAD TREMOLO, THEN THE CHORD HELD", "ALL-LANE SIXTEENTH CELL, KICK AND OPEN HAT QUARTERS",
                             "EIGHTHS TO BEAT THREE, THEN SILENCE", "THREE EVEN STRUMS FALLING" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 93 + std::size (names) + 7 + 16);
+    REQUIRE (list.size() == 93 + std::size (names) + 7 + 16 + 38);
     for (size_t i = 0; i < std::size (names); ++i)
         CHECK (list[93 + i].name == names[i]);
     const auto with = [] (const juce::String& name)
@@ -10297,7 +10297,7 @@ TEST_CASE ("0.237.0: round nine's transitions", "[sections][transitions][trans23
     const char* names[] = { "QUARTER-NOTE TRIPLET HITS INTO THE NEXT", "KICK AND OPEN HAT ON THE LAST EIGHTH", "KICK SIXTEENTHS FOR THE LAST HALF BAR",
                             "TWO BARS CLIMBING A HALF STEP", "FEEDBACK RING IN", "KICK THREE, SNARE BURSTS", "SNARE ON EVERY BEAT INTO THE STOP" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 108 + std::size (names) + 16);
+    REQUIRE (list.size() == 108 + std::size (names) + 16 + 38);
     for (size_t i = 0; i < std::size (names); ++i)
         CHECK (list[108 + i].name == names[i]);
     const auto with = [] (const juce::String& name)
@@ -10970,7 +10970,7 @@ TEST_CASE ("0.244.0: round ten's transitions", "[sections][transitions][trans244
                             "BAND HITS FROM TWO-AND", "KEYS GLISSANDO INTO THE DOWNBEAT", "EVERYTHING ON ONE, HELD", "BALLAD TOM FILL BAR",
                             "ROOT SIXTEENTHS BUILD", "STOP, TWO HITS ON FOUR", "TWO BARS OF KIT ALONE" };
     const auto& list = sectionTransitions();
-    REQUIRE (list.size() == 115 + std::size (names));
+    REQUIRE (list.size() == 115 + std::size (names) + 38);
     for (size_t i = 0; i < std::size (names); ++i)
         CHECK (list[115 + i].name == names[i]);
     const auto with = [] (const juce::String& name)
@@ -11929,5 +11929,109 @@ TEST_CASE ("0.257.0: round eleven's intros and outros, every lane's options a di
         CHECK (! layers[(size_t) ComposerLayer::chords].notes.empty());
         for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
             CHECK (n.beat >= 28.0 - 1.0e-6);
+    }
+}
+
+
+TEST_CASE ("0.258.0: round eleven's transitions", "[sections][transitions][trans258]")
+{
+    const char* names[] = {
+                            "BAND OUT FROM THREE-AND, THE BASS RINGS ACROSS",
+                            "FLOOR TOMS, THEN A CRASH SIXTEENTH RUSH",
+                            "KICK AND CRASH SIXTEENTHS, NO SNARE",
+                            "KICK AND CRASH EIGHTHS, NO SNARE",
+                            "SNARE AND CRASH ON ONE-AND AND TWO-AND",
+                            "DOTTED KICKS INTO TWO SNARE SIXTEENTHS",
+                            "DRUMS OUT, THEN SNARE SIXTEENTHS FROM TWO-A",
+                            "KICK AND TOM PAIRS, THEN THREE DOTTED HITS",
+                            "QUARTER HITS, THEN A TOM PICKUP",
+                            "CHORD RUNG, THE CYMBALS KEEP TIME",
+                            "FLAT-TWO SIXTEENTHS IN UNISON",
+                            "SNARE AND TOM EIGHTHS SWELLING, TWO BARS",
+                            "KICK AND SNARE IN UNISON SIXTEENTHS",
+                            "KICK QUARTERS ALONE, A BAND HIT ON FOUR",
+                            "TWO HELD CHORDS A HALF STEP APART, DRUMS OUT",
+                            "A SIXTEENTH ARPEGGIO BAR, THEN THE CHORD RUNG",
+                            "ONE HIT, THEN A LONE SNARE ON FOUR",
+                            "SNARE AND TOM SIXTEENTHS, TWO KICKS UNDER",
+                            "SNARE IN THREES, THEN A SIXTEENTH ROLL",
+                            "SNARE, THEN TOMS, THEN KICK SIXTEENTHS",
+                            "THREE BAND HITS ON TWO, THREE AND FOUR",
+                            "A BASS-ALONE BAR AFTER A TOM PICKUP",
+                            "SNARE AND OPEN HAT QUARTERS, A HIT AND STOP",
+                            "SNARE GALLOP ALONE, BAND OUT",
+                            "KIT IN EIGHTHS, A TOM ROLL TO THE CHANGE",
+                            "KICK AND TOMS IN THREES, A SNARE TAG",
+                            "THE BASS SLIDES DOWN ALONE, A SNARE BREAK BAR",
+                            "THREE DOTTED HITS, THEN SILENCE",
+                            "KICK PAIRS UNDER A SIXTEENTH CHORD BURST",
+                            "FOUR CRASH QUARTERS, THEN A HELD CHORD",
+                            "SYNCOPATED HIT BAR, A LONE SNARE AND TOM ON FOUR",
+                            "BAND EIGHTHS FROM ONE-AND, TOMS WITH THEM",
+                            "TWO-BAR ROLL IN THREES",
+                            "THREE DOTTED-QUARTER TOM HITS",
+                            "TOM SIXTEENTHS, KICK PAIRS IN THE GAPS",
+                            "CHORD PAIRS WITH THE SNARE, A SIXTEENTH RUN IN",
+                            "A BAR AND A HALF OF SNARE SIXTEENTHS",
+                            "ONE HELD HIT, THEN A HALF-BAR SNARE FILL" };
+    const auto& list = sectionTransitions();
+    REQUIRE (list.size() == 131 + std::size (names));
+    for (size_t i = 0; i < std::size (names); ++i)
+        CHECK (list[131 + i].name == names[i]);
+    const auto with = [] (const juce::String& name)
+    {
+        ComposerState s;
+        s.transition = name;
+        s.lane (ComposerLayer::acoustic).on = true;
+        return composeLayers (s, cleanSpans(), ComposerContext {});
+    };
+    const std::array<ComposerLayer, 5> lanes { ComposerLayer::chords, ComposerLayer::bass, ComposerLayer::guitar, ComposerLayer::drums, ComposerLayer::acoustic };
+    const auto none = with ({});
+    std::set<juce::String> seen;
+    for (const auto* name : names)
+    {
+        INFO (name);
+        REQUIRE (sectionTransitionNamed (name).has_value());
+        CHECK (transitionGroupOrder().contains (transitionGroupOf (name)));
+        const auto all = with (name);
+        auto changed = false;
+        juce::String k;
+        for (const auto l : lanes)
+        {
+            changed = changed || ! sameNotes (all[(size_t) l], none[(size_t) l]);
+            for (const auto& n : all[(size_t) l].notes)
+            {
+                k << (int) l << ":" << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << ";";
+                CHECK (n.beat + n.length <= 32.0 + 1.0e-6);
+                CHECK (n.length > 0.0);
+                CHECK (n.pitch > 0);
+                if (n.beat < 24.0 - 1.0e-6)
+                    CHECK (std::find_if (none[(size_t) l].notes.begin(), none[(size_t) l].notes.end(),
+                                         [&n] (const LineNote& o) { return o.beat == n.beat && o.pitch == n.pitch; })
+                           != none[(size_t) l].notes.end());
+            }
+        }
+        CHECK (changed);
+        CHECK (seen.insert (k).second);
+        CHECK (sameNotes (all[(size_t) ComposerLayer::melody], none[(size_t) ComposerLayer::melody]));
+    }
+    // Two held chords a half step apart: the guitar's last two bars on E then F (A minor's five and flat six), no drums there.
+    {
+        const auto all = with ("TWO HELD CHORDS A HALF STEP APART, DRUMS OUT");
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            CHECK (n.beat < 24.0 - 1.0e-6);
+        std::set<int> classes;
+        for (const auto& n : all[(size_t) ComposerLayer::guitar].notes)
+            if (n.beat >= 24.0 - 1.0e-6)
+                classes.insert (n.pitch % 12);
+        CHECK (classes.count (4) == 1);
+        CHECK (classes.count (5) == 1);
+    }
+    // One hit and a lone snare on four: the last bar's drums only on 1 and 4.
+    {
+        const auto all = with ("ONE HIT, THEN A LONE SNARE ON FOUR");
+        for (const auto& n : all[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 28.0 - 1.0e-6)
+                CHECK ((std::abs (n.beat - 28.0) < 1.0e-6 || std::abs (n.beat - 31.0) < 1.0e-6));
     }
 }
