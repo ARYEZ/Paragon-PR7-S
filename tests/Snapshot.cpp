@@ -2217,3 +2217,50 @@ TEST_CASE ("Snapshot: BLUEPRINTS (0.152.0; PARAGON_SNAPSHOT_BLUEPRINT: which, fr
     }
     juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
 }
+
+#include "ui/StripEditor.h"
+
+TEST_CASE ("Snapshot: the channel strip (0.248.0; PARAGON_SNAPSHOT_STRIP=inspector for the Inspector's section)", "[.][snapshot-strip]")
+{
+    const auto path = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT", "strip.png");
+    const auto finish = juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_FINISH", {});
+    Finish::set (finish == "black" ? Finish::Type::pearlBlack : finish == "neon" ? Finish::Type::pearlWhiteNeon : Finish::Type::pearlWhite, false);
+    ParagonLookAndFeel lookAndFeel;
+    juce::LookAndFeel::setDefaultLookAndFeel (&lookAndFeel);
+    {
+        pr7s::Studio studio (false);
+        const auto id = studio.getProject().tracks[0].id;
+        pr7s::ChannelStrip strip;
+        strip.gate.on = true;
+        strip.gate.thresholdDb = -46.0f;
+        strip.comp = { true, -20.0f, 4.0f, 8.0f, 250.0f, false, 3.0f, 3, 1 };
+        strip.sat = { true, 9.0f, 35.0f, false, 80.0f };
+        strip.colour = { true, 30.0f, 10.0f, 17, false };
+        strip.stereo.widthOn = true;
+        strip.stereo.width = 120.0f;
+        studio.setChannelStrip (id, strip);
+        juce::Image image;
+        if (juce::SystemStats::getEnvironmentVariable ("PARAGON_SNAPSHOT_STRIP", {}) == "inspector")
+        {
+            MainView view (studio);
+            view.setSize (1500, 1000);
+            studio.dispatchPendingMessages();
+            auto& inspector = view.getInspector();
+            for (auto section : { Inspector::Section::routing, Inspector::Section::chords, Inspector::Section::inserts, Inspector::Section::sends,
+                                  Inspector::Section::fader, Inspector::Section::quick })
+                inspector.setFolded (section, true);
+            studio.dispatchPendingMessages();
+            image = view.createComponentSnapshot (view.getLocalArea (&inspector, inspector.getLocalBounds()), true, 1.0f);
+        }
+        else
+        {
+            StripEditor editor (studio, id);
+            editor.setSize (StripEditor::preferredWidth, StripEditor::preferredHeight);
+            image = editor.createComponentSnapshot (editor.getLocalBounds(), true, 1.0f);
+        }
+        juce::File (path).deleteFile();
+        juce::FileOutputStream out { juce::File (path) };
+        juce::PNGImageFormat().writeImageToStream (image, out);
+    }
+    juce::LookAndFeel::setDefaultLookAndFeel (nullptr);
+}

@@ -2,6 +2,31 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.248.0
+
+**The CHANNEL STRIP: PR7-C's console modules on every channel and the master** (your handoff and answers: compensation first, then these modules, in PR7-C's fixed order, in the Inspector and a window of its own). PR7-C stays a plug-in for your other DAWs.
+
+What it is: the parts of PR7-C the studio's channel didn't already have, copied from PR7-C 0.5.0's own sound code unchanged (so they sound as PR7-C does), in PR7-C's order around the studio's channel EQ:
+
+- **GATE / EXP** with its **SC FILTER**: THRESHOLD (-30 for very quiet sources), RANGE, RATIO for the expander, FAST / MED / SLOW, HOLD, RELEASE (or LINEAR). The SC FILTER shapes only what the gate and compressor listen to, never the sound; **EDGE** makes them listen harder to the harsh upper mids, **LISTEN** lets you hear what they hear.
+- **COMPRESSOR**: VCA, OPTO, FET and **MODERN** (with its CLEAN / 2ND / 2ND + 3RD distortion), THRESHOLD, RATIO (SOFT to infinite), ATTACK, RELEASE, AUTO, MAKE UP; **LINK** works both sides together.
+- *(then the channel's own EQ, where PR7-C's EQ sits)*
+- **SATURATION**: DRIVE (the level kept), HARMONICS (2nd to 3rd), VCA CLIP, MIX.
+- **CONSOLE COLOUR**: THD, V GAIN (the noise floor) and the **console channel** (1 to 72, each with its own small differences; ANALOG gives the right side the next channel). **RANDOM CH.** gives this strip a channel no other strip in the song uses, or (the strip's menu) re-rolls every strip.
+- **MONO MAKER** and **STEREO WIDTH**.
+
+Where it is:
+
+- **The Inspector's CHANNEL STRIP section** (between INSERTS and EQUALIZERS): GATE, COMP, SAT, COLOUR and WIDTH switch each module on or off right there; **EDIT** opens the strip's window with every control. Right-click the section's title for the strip's menu (every module off, back to how it starts, random console channels).
+- **The mixer**: right-click a channel (or the master) for **Channel Strip...**.
+- A knob's drag is heard as it moves and is one undo step when you let go; the strip is saved with the song, undone, in the Edit History, and carried by track presets.
+
+The delay: while any module is on, the strip delays the sound a constant 7 samples (0.15 ms at 48 kHz; PR7-C's own, from its saturation's and THD's oversampling). 0.247.0's delay compensation lines everything up by it, so a snare's top and bottom mics, one through the strip, still meet. All off, the strip isn't there at all: the sound passes untouched.
+
+Every behaviour is PR7-C's design (modelled on a classic British console channel; MODERN inspired by a modern studio compressor; the saturation inspired by a harmonics generator): the amounts are our guesses, never tuned by ear. Next (0.249.0): strip presets, PR7-C's factory presets brought over where their parts fit.
+
+Not checked here: how it sounds, by ear.
+
 ## 0.247.0
 
 **Plug-in delay compensation** (the first step towards the built-in channel strip, as you chose: compensation first).

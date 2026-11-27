@@ -871,6 +871,8 @@ namespace pr7s
                 t->addChildElement (track.eq.toXml().release());   // (0.43.0)
             if (! track.boost.isFlat())
                 t->addChildElement (track.boost.toXml().release());   // (0.78.0)
+            if (! track.strip.isDefault())
+                t->addChildElement (track.strip.toXml().release());   // (0.248.0)
             if (track.followVoicing)
                 t->addChildElement (track.followVoicing->toXml ("TrackVoicing").release());
             if (track.pitchbendUp != 2 || track.pitchbendDown != 2 || track.pitchbendSnap || track.pitchbendGrid)
@@ -978,6 +980,8 @@ namespace pr7s
             master->addChildElement (masterEq.toXml().release());
         if (! masterBoost.isFlat())
             master->addChildElement (masterBoost.toXml().release());
+        if (! masterStrip.isDefault())
+            master->addChildElement (masterStrip.toXml().release());
         lanesToXml (masterAutomation, *master);
         master->setAttribute ("automationOpen", masterAutomationOpen);
         master->setAttribute ("automationRead", masterRead);
@@ -1200,6 +1204,8 @@ namespace pr7s
                 track.eq = ChannelEq::fromXml (*eq);
             if (const auto* boost = t->getChildByName ("Booster"))
                 track.boost = Booster::fromXml (*boost);
+            if (const auto* strip = t->getChildByName ("Strip"))
+                track.strip = ChannelStrip::fromXml (*strip);
             track.performPattern = t->getStringAttribute ("performPattern");
             if (const auto* voicing = t->getChildByName ("TrackVoicing"))
                 track.followVoicing = VoicingSettings::fromXml (*voicing);
@@ -1382,6 +1388,8 @@ namespace pr7s
                 project.masterEq = ChannelEq::fromXml (*eq);
             if (const auto* boost = master->getChildByName ("Booster"))
                 project.masterBoost = Booster::fromXml (*boost);
+            if (const auto* strip = master->getChildByName ("Strip"))
+                project.masterStrip = ChannelStrip::fromXml (*strip);
             project.masterAutomation = lanesFromXml (*master);
             project.masterAutomationOpen = master->getBoolAttribute ("automationOpen");
             project.masterRead = master->getBoolAttribute ("automationRead");

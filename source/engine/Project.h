@@ -10,6 +10,7 @@
 #include "FollowChords.h"
 #include "TempoMap.h"
 #include "Eq.h"
+#include "ChannelStrip.h"
 #include "Signature.h"
 #include "Markers.h"
 #include "SongSections.h"
@@ -508,6 +509,7 @@ namespace pr7s
         // (0.43.0) The channel EQ and Pre section (audio-carrying channels: all but MIDI-only).
         ChannelEq eq;
         Booster boost;   // (0.78.0)
+        ChannelStrip strip;   // (0.248.0) PR7-C's modules round the EQ
         // (0.44.0) A pattern it performs over the chord track while the song plays (a pattern's
         // name; empty: none), beside its own parts.
         juce::String performPattern;
@@ -581,6 +583,7 @@ namespace pr7s
         int masterPreFaderSlots = 16;
         ChannelEq masterEq;                   // (0.43.0)
         Booster masterBoost;                  // (0.78.0)
+        ChannelStrip masterStrip;             // (0.248.0)
         std::vector<AutomationLane> masterAutomation;   // volume and the master's effects
         // The Automation panel's settings (0.28.0; saved with the song, not undo steps).
         struct AutomationSettings

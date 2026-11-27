@@ -424,10 +424,13 @@ void MixerView::Strip::mouseDown (const juce::MouseEvent& e)
         {
             juce::PopupMenu menu;
             menu.addItem (1, "Channel EQ...");
+            menu.addItem (2, "Channel Strip...", owner.onOpenStrip != nullptr);
             menu.showMenuAsync (juce::PopupMenu::Options(), [safe = juce::Component::SafePointer<MixerView> (&owner)] (int chosen)
             {
                 if (safe != nullptr && chosen == 1 && safe->onOpenEq)
                     safe->onOpenEq (pr7s::Engine::masterBus);
+                if (safe != nullptr && chosen == 2 && safe->onOpenStrip)
+                    safe->onOpenStrip (pr7s::Engine::masterBus);
             });
         }
         return;
@@ -645,6 +648,7 @@ void MixerView::showLinkMenu (int trackId)
     juce::PopupMenu menu, included;
     // (0.43.0) The channel's EQ, first.
     menu.addItem (50, "Channel EQ...", onOpenEq != nullptr);
+    menu.addItem (51, "Channel Strip...", onOpenStrip != nullptr && ! track->isFolder());
     menu.addSeparator();
     menu.addSectionHeader ("LINK");
     menu.addItem (1, "Link Selected Channels...", selected.size() >= 2);
@@ -667,6 +671,8 @@ void MixerView::showLinkMenu (int trackId)
         auto& studio = safe->studio;
         if (chosen == 50 && safe->onOpenEq)
             safe->onOpenEq (trackId);
+        if (chosen == 51 && safe->onOpenStrip)
+            safe->onOpenStrip (trackId);
         if (chosen == 1)
             LinkGroupPage::show (*safe, studio, 0, studio.getSelectedTracks());
         else if (chosen == 2 || chosen == 3)

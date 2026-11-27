@@ -587,6 +587,7 @@ namespace pr7s
         project.masterVolumeDb = state.masterVolumeDb;
         project.masterEq = state.masterEq;
         project.masterBoost = state.masterBoost;
+        project.masterStrip = state.masterStrip;   // (0.248.0)
         for (auto& track : project.tracks)
             if (const auto* then = state.findTrack (track.id))
             {
@@ -613,6 +614,7 @@ namespace pr7s
                 track.followVoicing = then->followVoicing;
                 track.eq = then->eq;                             // (0.43.0)
                 track.boost = then->boost;                       // (0.78.0)
+                track.strip = then->strip;                       // (0.248.0)
                 track.performPattern = then->performPattern;     // (0.44.0)
                 track.folder = then->folder;                     // (0.50.0)
                 track.folderGroup = then->folderGroup;
@@ -5232,6 +5234,85 @@ namespace pr7s
         changed (undoable);
     }
 
+    const ChannelStrip* Studio::getChannelStrip (int busId) const
+    {
+        if (busId == Engine::masterBus)
+            return &project.masterStrip;
+        const auto* track = project.findTrack (busId);
+        return track != nullptr && ! track->isFolder() ? &track->strip : nullptr;
+    }
+
+    void Studio::setChannelStrip (int busId, const ChannelStrip& strip, bool undoable)
+    {
+        // (0.248.0) As the EQ and BOOSTER: a drag's steps not undoable (only the mix updated), the release one step.
+        const auto limited = strip.limited();
+        auto* target = busId == Engine::masterBus ? &project.masterStrip : nullptr;
+        if (target == nullptr)
+            if (auto* track = project.findTrack (busId); track != nullptr && ! track->isFolder())
+                target = &track->strip;
+        if (target == nullptr || (*target == limited && ! undoable))
+            return;
+        const auto wasInUse = target->inUse();
+        *target = limited;
+        mixOnly (! undoable && wasInUse == limited.inUse());   // (in or out of use: the delay changes, a full update)
+        changed (undoable);
+    }
+
+    float Studio::getStripReductionDb (int busId, bool compressor) const
+    {
+        return engine.getStripReduction (busId, compressor);
+    }
+
+    void Studio::randomiseConsoleChannels (std::optional<int> busId)
+    {
+        // (0.248.0, PR7-C's RANDOM CH.) ONE (a bus): a channel no other channel strip in the song uses (ANALOG
+        // takes its channel and the next), never its own; ALL (none): every strip whose colour is on, in turn,
+        // each avoiding those given out before it. Nothing free: any other channel. One undo step.
+        std::vector<ChannelStrip*> strips;
+        strips.push_back (&project.masterStrip);
+        for (auto& t : project.tracks)
+            if (! t.isFolder())
+                strips.push_back (&t.strip);
+        auto* only = busId ? (*busId == Engine::masterBus ? &project.masterStrip : nullptr) : nullptr;
+        if (busId && only == nullptr)
+            if (auto* t = project.findTrack (*busId); t != nullptr && ! t->isFolder())
+                only = &t->strip;
+        if (busId && only == nullptr)
+            return;
+        std::array<bool, ChannelStrip::consoleChannels + 1> taken {};
+        const auto take = [&taken] (const ChannelStrip& s)
+        {
+            taken[(size_t) s.colour.channel] = true;
+            if (! s.colour.digital)
+                taken[(size_t) (s.colour.channel % ChannelStrip::consoleChannels + 1)] = true;
+        };
+        if (only != nullptr)
+            for (auto* s : strips)
+                if (s != only && s->colour.on)
+                    take (*s);
+        juce::Random random;
+        const auto give = [&] (ChannelStrip& s)
+        {
+            juce::Array<int> free;
+            for (int c = 1; c <= ChannelStrip::consoleChannels; ++c)
+                if (c != s.colour.channel && ! taken[(size_t) c] && (s.colour.digital || ! taken[(size_t) (c % ChannelStrip::consoleChannels + 1)]))
+                    free.add (c);
+            if (free.isEmpty())
+                for (int c = 1; c <= ChannelStrip::consoleChannels; ++c)
+                    if (c != s.colour.channel)
+                        free.add (c);
+            s.colour.channel = free[random.nextInt (free.size())];
+            take (s);
+        };
+        if (only != nullptr)
+            give (*only);
+        else
+            for (auto* s : strips)
+                if (s->colour.on)
+                    give (*s);
+        changed (true);
+    }
+
     double Studio::getEqResponseDb (int busId, double frequency, bool withPre) const
     {
         const auto* eq = getChannelEq (busId);
@@ -5687,6 +5768,7 @@ namespace pr7s
             t.midiChannel = preset.midiChannel;
             t.preFaderSlots = preset.preFaderSlots;
             t.boost = preset.boost;   // (0.78.0)
+            t.strip = preset.strip;   // (0.248.0)
             t.eq = preset.eq;   // (0.43.0: the manual's "Loading Inserts and EQ from Track Presets")
             if (t.isAudio())
             {

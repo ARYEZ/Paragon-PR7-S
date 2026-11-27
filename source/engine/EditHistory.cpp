@@ -103,6 +103,7 @@ namespace pr7s
             if (! sameInserts (a.inserts, b.inserts)) found.add ("Inserts", name);
             if (! (a.eq == b.eq))               found.add ("Channel EQ", name);
             if (! (a.boost == b.boost))         found.add ("Booster", name);
+            if (! (a.strip == b.strip))         found.add ("Channel Strip", name);
             if (a.instrument.getName() != b.instrument.getName()) found.add ("Change Instrument", name + ": " + b.instrument.getName());
             if (a.folder != b.folder)           found.add ("Track Folder", name);
             if (a.midiChannel != b.midiChannel) found.add ("MIDI Channel", name);
@@ -149,6 +150,8 @@ namespace pr7s
             found.add ("Channel EQ", "Master");
         if (! (before.masterBoost == after.masterBoost))
             found.add ("Booster", "Master");
+        if (! (before.masterStrip == after.masterStrip))
+            found.add ("Channel Strip", "Master");
         if (! sameInserts (before.masterInserts, after.masterInserts))
             found.add ("Inserts", "Master");
         if (before.masterAutomation != after.masterAutomation)

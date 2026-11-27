@@ -18,6 +18,7 @@
 #include "ui/ChordPadsView.h"
 #include "ui/KeyEditor.h"
 #include "ui/Inspector.h"
+#include "ui/StripEditor.h"
 #include "ui/InfoLine.h"
 #include "ui/ScaledHolder.h"
 #include "ui/MixerView.h"
@@ -117,7 +118,9 @@ public:
     BlueprintsWindow* getBlueprintsWindow() noexcept { return blueprintsWindow.get(); }
     void openKeyCheck();   // (0.84.0) KEY CHECK: notes and chords outside the key
     KeyCheckWindow* getKeyCheckWindow() noexcept { return keyCheckWindow.get(); }
-    void openEq (int busId);   // (0.43.0) the EQ window on a channel (one window: moved to another channel)
+    void openEq (int busId);
+    void openStrip (int busId);   // (0.248.0) the CHANNEL STRIP window on a channel (one window)
+    StripWindow* getStripWindow() noexcept { return stripWindow.get(); }   // (0.43.0) the EQ window on a channel (one window: moved to another channel)
     EqWindow* getEqWindow() noexcept { return eqWindow.get(); }   // the progression library (0.40.0): opened, or brought to the front
     ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
     void openComposer();   // (0.58.0) THE COMPOSER
@@ -335,6 +338,7 @@ private:
     std::unique_ptr<ComposerWindow> composerWindow;
     std::unique_ptr<BandRecordWindow> bandRecordWindow;
     std::unique_ptr<EqWindow> eqWindow;
+    std::unique_ptr<StripWindow> stripWindow;
     std::unique_ptr<MediaBayWindow> mediaBayWindow;
     std::unique_ptr<MediaRack> mediaRack;
     std::unique_ptr<RightZoneEdge> rightZoneEdge;

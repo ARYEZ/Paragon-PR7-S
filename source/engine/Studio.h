@@ -143,6 +143,12 @@ namespace pr7s
         // (0.247.0) Delay compensation (settings `delayCompensation`, default on): every path lined up by
         // the plug-ins' delays. Off: as before 0.247.0 (a plug-in's delay plays late).
         bool getDelayCompensation() const;
+        // (0.248.0) The CHANNEL STRIP (PR7-C's modules) of a channel or the master (0); none for a folder.
+        const ChannelStrip* getChannelStrip (int busId) const;
+        void setChannelStrip (int busId, const ChannelStrip&, bool undoable = true);
+        float getStripReductionDb (int busId, bool compressor) const;   // the gate's or compressor's, dB
+        // RANDOM CH.: a bus's console channel to one no other strip uses, or (none) every strip whose colour is on.
+        void randomiseConsoleChannels (std::optional<int> busId);
         void setDelayCompensation (bool);
         bool getMultiCoreAudio() const;
         void setMultiCoreAudio (bool);

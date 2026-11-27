@@ -49,6 +49,7 @@ add_executable(ParagonPR7STests
     SoloTests.cpp
     SoloStyleTests.cpp
     DelayCompensationTests.cpp
+    ChannelStripTests.cpp
     GroupRoutingTests.cpp
     NewSongTests.cpp
     SpeedTests.cpp

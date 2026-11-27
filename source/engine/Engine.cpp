@@ -211,6 +211,8 @@ namespace pr7s
         }
         masterEq.setDesign (designEq (masterEqSettings, sampleRate));
         masterEq.reset();
+        masterStrip.prepare (sampleRate, maxBlockSize);   // (0.248.0)
+        masterStripRan = false;
     }
 
     void Engine::setLiveInputFilter (const juce::String& deviceName)
@@ -337,6 +339,10 @@ namespace pr7s
             for (int channel = 0; channel < 2; ++channel)
                 juce::FloatVectorOperations::clear (history->getWritePointer (channel), history->getNumSamples());
         track.historyPos = 0;
+        if (track.strip == nullptr)
+            track.strip = std::make_unique<StripProcessor>();
+        track.strip->prepare (sampleRate, maxBlockSize);   // (0.248.0)
+        track.stripRan = false;
         track.left.reset (sampleRate, gainRampSeconds);
         track.right.reset (sampleRate, gainRampSeconds);
         track.left.setCurrentAndTargetValue (track.gainLeft);
@@ -426,6 +432,8 @@ namespace pr7s
                     if (track.instrument != nullptr && track.role == TrackState::Role::source && ! track.audio && ! track.frozen)
                         pre += juce::jmax (0, track.instrument->getLatencySamples());
                     pre += slotsLatency (track.inserts, 0, track.preFader);
+                    if (! track.frozen && track.stripSettings.inUse())
+                        pre += ChannelStrip::latencySamples;   // (0.248.0: the strip's constant delay)
                     post = slotsLatency (track.inserts, track.preFader, Project::maxInserts);
                 }
                 track.ownLatency = pre + post;
@@ -457,7 +465,38 @@ namespace pr7s
             }
         }
         anyDelay = any;
-        totalLatency = masterArrival + (on ? slotsLatency (masterInserts, 0, Project::maxInserts) : 0);
+        totalLatency = masterArrival + (on ? slotsLatency (masterInserts, 0, Project::maxInserts)
+                                                 + (masterStripSettings.inUse() ? ChannelStrip::latencySamples : 0) : 0);
+    }
+
+    void Engine::stripDynamics (StripProcessor& strip, const ChannelStrip& settings, bool& ran, juce::AudioBuffer<float>& sound, int numSamples) noexcept
+    {
+        if (! settings.inUse())
+        {
+            ran = false;
+            return;
+        }
+        if (! ran)
+            strip.reset();   // (back in use: afresh, as PR7-C after a prepare; nothing allocated)
+        ran = true;
+        strip.processDynamics (sound.getArrayOfWritePointers(), juce::jmin (2, sound.getNumChannels()), numSamples, settings);
+    }
+
+    void Engine::stripTone (StripProcessor& strip, const ChannelStrip& settings, bool ran, juce::AudioBuffer<float>& sound, int numSamples) noexcept
+    {
+        if (ran && settings.inUse())
+            strip.processTone (sound.getArrayOfWritePointers(), juce::jmin (2, sound.getNumChannels()), numSamples, settings);
+    }
+
+    float Engine::getStripReduction (int busId, bool compressor) const
+    {
+        const auto* strip = busId == masterBus ? &masterStrip : nullptr;
+        if (strip == nullptr)
+            if (const auto* track = findTrack (busId))
+                strip = track->strip.get();
+        if (strip == nullptr)
+            return 0.0f;
+        return compressor ? strip->getCompReductionDb() : strip->getGateReductionDb();
     }
 
     int Engine::refreshLatency()
@@ -1145,6 +1184,7 @@ namespace pr7s
             masterEq.setDesign (*masterDesign);
         }
         masterBoostGain = project.masterBoost.gain();   // (0.78.0)
+        masterStripSettings = project.masterStrip;      // (0.248.0)
         masterAutomated = masterLanesMix;
         for (size_t pi = 0; pi < prepared.size(); ++pi)
             if (auto& p = prepared[pi]; auto* track = findTrack (p.id))
@@ -1186,6 +1226,7 @@ namespace pr7s
                         track->eq.setDesign (*designs[pi]);
                     }
                     track->boostGain = t->boost.gain();   // (0.78.0)
+                    track->stripSettings = t->strip;      // (0.248.0)
                     track->output = t->output;
                     for (int s = 0; s < Project::maxSends; ++s)
                     {
@@ -1272,6 +1313,7 @@ namespace pr7s
             masterEq.setDesign (*masterDesign);
         }
         masterBoostGain = project.masterBoost.gain();
+        masterStripSettings = project.masterStrip;
         for (size_t ti = 0; ti < project.tracks.size(); ++ti)
             if (const auto& t = project.tracks[ti]; auto* track = findTrack (t.id))
             {
@@ -1287,6 +1329,7 @@ namespace pr7s
                     track->eq.setDesign (*designs[ti]);
                 }
                 track->boostGain = t.boost.gain();
+                track->stripSettings = t.strip;
                 for (int s = 0; s < Project::maxSends; ++s)
                 {
                     auto& send = track->sends[(size_t) s];
@@ -1675,8 +1718,13 @@ namespace pr7s
         if (! track->frozen)
             track->eq.processPre (sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
         runInserts (track->inserts, sound, numSamples, 0, track->preFader, track->effectMidi);
+        // (0.248.0) The CHANNEL STRIP round the EQ: its gate and compressor before it, its tone after.
+        if (! track->frozen && track->strip != nullptr)
+            stripDynamics (*track->strip, track->stripSettings, track->stripRan, sound, numSamples);
         if (! track->frozen)
             track->eq.processEq (sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
+        if (! track->frozen && track->strip != nullptr)
+            stripTone (*track->strip, track->stripSettings, track->stripRan, sound, numSamples);
         if (! track->frozen)
             applyBoost (sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples, track->boostNow, track->boostGain);
         afterEq (track->id, sound.getArrayOfWritePointers(), sound.getNumChannels(), numSamples);
@@ -2129,7 +2177,9 @@ namespace pr7s
         const auto masterStarted = juce::Time::getHighResolutionTicks();
         masterEq.processPre (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
         runInserts (masterInserts, master, numSamples, 0, masterPreFader, effectMidi);
+        stripDynamics (masterStrip, masterStripSettings, masterStripRan, master, numSamples);
         masterEq.processEq (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
+        stripTone (masterStrip, masterStripSettings, masterStripRan, master, numSamples);
         applyBoost (master.getArrayOfWritePointers(), master.getNumChannels(), numSamples, masterBoostNow, masterBoostGain);
         afterEq (masterBus, master.getArrayOfWritePointers(), master.getNumChannels(), numSamples);
         const auto outputs = juce::jmin (2, output.getNumChannels());

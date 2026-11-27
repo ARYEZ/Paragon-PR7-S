@@ -186,6 +186,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     keyEditor.onOpenInstrument = [this] (int trackId) { openInstrumentWindow (trackId); };   // (0.31.0: the editors' INSTRUMENT)
     inspector.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     inspector.onOpenEq = [this] (int busId) { openEq (busId); };
+    inspector.onOpenStrip = [this] (int busId) { openStrip (busId); };   // (0.248.0)
     inspector.onFindPlugins = [this] { openPlugins(); };
     // RENDER (0.17.1): the whole track, Render in Place as last time (the track menu's "as last time").
     inspector.onRender = [this] (int trackId)
@@ -340,6 +341,7 @@ MainView::MainView (pr7s::Studio& studioToUse)
     };
     mixer.onOpenEffect = [this] (int busId, int slot) { openEffectWindow (busId, slot); };
     mixer.onOpenEq = [this] (int busId) { openEq (busId); };
+    mixer.onOpenStrip = [this] (int busId) { openStrip (busId); };   // (0.248.0)
     mixer.onFindPlugins = [this] { openPlugins(); };
     if (auto* settings = studio.getSettings())
     {
@@ -2506,6 +2508,21 @@ void MainView::openLineIdeas (std::vector<int> chordEvents, bool buildSection)
     suite.showIdeas (std::move (spans));
 }
 
+void MainView::openStrip (int busId)
+{
+    // (0.248.0) The CHANNEL STRIP window: one, moved to another channel as the EQ's.
+    if (stripWindow != nullptr)
+    {
+        stripWindow->getEditor().setBus (busId);
+        stripWindow->toFront (true);
+        return;
+    }
+    stripWindow = std::make_unique<StripWindow> (studio, busId);
+    stripWindow->onClose = [this] { juce::MessageManager::callAsync ([safe = juce::Component::SafePointer<MainView> (this)] { if (safe != nullptr) safe->stripWindow.reset(); }); };
+    stripWindow->centreAroundComponent (this, stripWindow->getWidth(), stripWindow->getHeight());
+    stripWindow->setVisible (true);
+}
+
 void MainView::openEq (int busId)
 {
     if (eqWindow != nullptr)
@@ -2967,6 +2984,7 @@ void MainView::showHubAlone()
     composerWindow.reset();
     bandRecordWindow.reset();
     eqWindow.reset();
+    stripWindow.reset();
     mediaBayWindow.reset();
     for (auto* zone : zones())
         if (zone->window != nullptr)

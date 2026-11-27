@@ -5,6 +5,7 @@
 #include <juce_audio_utils/juce_audio_utils.h>
 
 #include "AudioWorkers.h"
+#include "ChannelStripDsp.h"
 #include "LevelMeterSource.h"
 #include "Project.h"
 
@@ -112,6 +113,9 @@ namespace pr7s
         int refreshLatency();
         // A track's own way: the plug-ins on it (samples) and what its output is held back by (tests, the screen).
         std::pair<int, int> getTrackLatency (int trackId) const;
+        // (0.248.0) A channel's (or the master's) CHANNEL STRIP gain reduction, dB: the gate's or the compressor's.
+        // Message thread (reads the modules' atomics).
+        float getStripReduction (int busId, bool compressor) const;
         static constexpr int mostDelay = 32768;   // the longest a path is held back (samples; beyond: as far as it goes)
         int getLockRetriesWon() const noexcept { return lockRetriesWon.load(); }   // (0.190.0)
         int getEventBuilds() const noexcept { return eventBuilds; }   // (0.34.2, tests) tracks' event lists built so far
@@ -464,6 +468,11 @@ namespace pr7s
             // song (samples); a channel's latest arrival; what its output and each send are held back by; the
             // sound it made lately (after the fader, and before it for pre-fader sends) to read back from.
             int latencyIn = 0, latencyPre = 0, latencyOut = 0, arrival = 0, ownLatency = 0;
+            // (0.248.0) The CHANNEL STRIP: as set (copied under the lock), at work (made in prepareTrack), and
+            // whether it ran last block (coming back into use, it starts afresh).
+            ChannelStrip stripSettings;
+            std::unique_ptr<StripProcessor> strip;
+            bool stripRan = false;
             int delayOut = 0;
             std::array<int, Project::maxSends> delaySend {};
             juce::AudioBuffer<float> postHistory, preHistory, delayed;
@@ -671,6 +680,12 @@ namespace pr7s
         int editorSolo = 0;           // (0.78.0) setEditorSolo
         EqProcessor masterEq;
         float masterBoostGain = 1.0f, masterBoostNow = 1.0f;   // (0.78.0)
+        ChannelStrip masterStripSettings;   // (0.248.0)
+        StripProcessor masterStrip;
+        bool masterStripRan = false;
+        // The strip's two halves on a channel's sound (audio thread): round its EQ.
+        static void stripDynamics (StripProcessor&, const ChannelStrip&, bool& ran, juce::AudioBuffer<float>&, int numSamples) noexcept;
+        static void stripTone (StripProcessor&, const ChannelStrip&, bool ran, juce::AudioBuffer<float>&, int numSamples) noexcept;
         // (0.46.0) The spectrum's tap and Auto Listen.
         std::atomic<int> spectrumBus { -1 }, listenBus { -1 };
         // (0.247.0) Delay compensation (audio thread: planLatency each block).

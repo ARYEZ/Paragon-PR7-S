@@ -1,6 +1,7 @@
 #include "Inspector.h"
 #include "FollowSetupPage.h"
 #include "ui/TrackActions.h"
+#include "ui/StripEditor.h"
 
 #include "ui/AutomationKeys.h"
 #include "ui/ParagonLookAndFeel.h"
@@ -17,9 +18,9 @@ namespace
         return percent == 0 ? juce::String ("C") : (pan < 0.0 ? "L " : "R ") + juce::String (percent);
     }
 
-    constexpr const char* sectionNames[] = { "basics", "routing", "chords", "inserts", "eq", "boost", "sends", "fader", "quick" };
+    constexpr const char* sectionNames[] = { "basics", "routing", "chords", "inserts", "strip", "eq", "boost", "sends", "fader", "quick" };
     constexpr const char* defaultFolded = "routing,chords,sends,fader,quick";   // (0.78.2)
-    constexpr const char* sectionTitles[] = { "", "ROUTING", "CHORDS", "INSERTS", "EQUALIZERS", "BOOSTER", "SENDS", "FADER", "QUICK CONTROLS" };
+    constexpr const char* sectionTitles[] = { "", "ROUTING", "CHORDS", "INSERTS", "CHANNEL STRIP", "EQUALIZERS", "BOOSTER", "SENDS", "FADER", "QUICK CONTROLS" };
     constexpr int headerHeight = 22, rowHeight = 22, gap = 4, slotHeight = 17, slotGap = 2, faderHeight = 300, margin = 6;
     const juce::Colour panelColour { 0xff0d0a0e }, slotColour { 0xff0b090c }, postFaderColour { 0xff1c1108 };
 }
@@ -80,6 +81,8 @@ public:
     {
         if (e.mods.isPopupMenu() && section == Section::quick)
             owner.showQuickControlsMenu();
+        else if (e.mods.isPopupMenu() && section == Section::strip)   // (0.248.0: the strip's menu)
+            StripEditor::showMenu (owner.studio, owner.trackId, this);
         else if (e.mods.isPopupMenu() && section == Section::eq)   // (the manual: presets from the EQ section's header)
             EqEditor::showPresetMenu (owner.studio, owner.trackId, this);
         else if (getLocalBounds().contains (e.getPosition()) && ! e.mods.isPopupMenu())
@@ -262,6 +265,45 @@ Inspector::Inspector (pr7s::Studio& studioToUse) : studio (studioToUse)
             studio.setChannelEq (trackId, e);
         }
     };
+    // (0.248.0) CHANNEL STRIP: PR7-C's modules, each on or off here; EDIT for every control.
+    {
+        const char* names[] = { "GATE", "COMP", "SAT", "COLOUR", "WIDTH", "EDIT" };
+        const char* tips[] = { "The channel strip's gate / expander on or off (its settings: EDIT)",
+                               "The channel strip's compressor on or off (VCA, OPTO, FET or MODERN: EDIT)",
+                               "The channel strip's saturation on or off (DRIVE, HARMONICS: EDIT)",
+                               "The channel strip's console colour on or off (THD, the noise, its console channel: EDIT)",
+                               "The channel strip's stereo width on or off (and MONO MAKER: EDIT)",
+                               "The whole channel strip: gate, sidechain filter, compressor, saturation, console colour, mono maker and width" };
+        for (int i = 0; i < 6; ++i)
+        {
+            auto& k = stripKeys[(size_t) i];
+            k.setButtonText (names[i]);
+            k.setTooltip (tips[i]);
+            k.getProperties().set (ParagonLookAndFeel::pedalButtonProperty, true);
+            k.setWantsKeyboardFocus (false);
+            content.addAndMakeVisible (k);
+            k.onClick = [this, i]
+            {
+                if (i == 5)
+                {
+                    if (onOpenStrip)
+                        onOpenStrip (trackId);
+                    return;
+                }
+                const auto* strip = studio.getChannelStrip (trackId);
+                if (strip == nullptr)
+                    return;
+                auto s = *strip;
+                if (i == 0) s.gate.on = ! s.gate.on;
+                if (i == 1) s.comp.on = ! s.comp.on;
+                if (i == 2) s.sat.on = ! s.sat.on;
+                if (i == 3) s.colour.on = ! s.colour.on;
+                if (i == 4) s.stereo.widthOn = ! s.stereo.widthOn;
+                studio.setChannelStrip (trackId, s);
+                refreshStrip();
+            };
+        }
+    }
     eqEdit.setTooltip ("The whole EQ: the four bands, the low and high cuts, gain and phase, presets");
     eqEdit.onClick = [this] { if (onOpenEq) onOpenEq (trackId); };
     // (0.71.0, the owner asked) The EQ's presets right here: our starting points, yours, save, reset.
@@ -547,6 +589,16 @@ void Inspector::setFolded (Section section, bool shouldFold)
         header->repaint();
     if (const auto* eq = studio.getChannelEq (trackId))
         eqBypass.setToggleState (eq->bypass, juce::dontSendNotification);
+    refreshStrip();
+}
+
+void Inspector::refreshStrip()
+{
+    const auto* strip = studio.getChannelStrip (trackId);
+    const bool on[] = { strip != nullptr && strip->gate.on, strip != nullptr && strip->comp.on, strip != nullptr && strip->sat.on,
+                        strip != nullptr && strip->colour.on, strip != nullptr && strip->stereo.widthOn, false };
+    for (int i = 0; i < 6; ++i)
+        stripKeys[(size_t) i].setToggleState (on[i], juce::dontSendNotification);
 }
 
 juce::Component& Inspector::getHeader (Section section)
@@ -700,6 +752,7 @@ void Inspector::refresh()
     for (auto& header : headers)
         header->repaint();
     booster.refresh();   // (0.78.0: an undo or a preset shows at once, not on its next tick)
+    refreshStrip();      // (0.248.0)
     if (master)
     {
         AutomationKeys::refresh (read, write, studio, trackId);
@@ -984,7 +1037,7 @@ void Inspector::layout()
         const auto section = (Section) i;
         auto& header = *headers[(size_t) i];
         // The master (0.9.12): its basics (R W, volume), inserts and fader.
-        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq || section == Section::boost
+        const auto applies = master ? section == Section::basics || section == Section::inserts || section == Section::fader || section == Section::eq || section == Section::boost || section == Section::strip
                                     : t != nullptr && (section != Section::sends || studio.getProject().hasOutput (*t))   // (0.60.0: FX channels send too)
                                           && (section != Section::chords || t->kind == pr7s::Track::Kind::instrument)   // (0.36.0: MIDI only)
                                           && (section == Section::basics || ! t->isFolder() || t->folderGroup);   // (0.50.0: a folder: its basics)
@@ -1132,6 +1185,18 @@ void Inspector::layout()
             }
             case Section::boost:
                 place (booster, row (booster.getPreferredHeight (w - 2 * margin)));
+                break;
+            case Section::strip:
+                for (int r = 0; r < 2; ++r)
+                {
+                    auto line = row (rowHeight);
+                    const auto third = (line.getWidth() - 6) / 3;
+                    for (int c = 0; c < 3; ++c)
+                    {
+                        place (stripKeys[(size_t) (r * 3 + c)], c < 2 ? line.removeFromLeft (third) : line);
+                        line.removeFromLeft (3);
+                    }
+                }
                 break;
             case Section::sends:
                 for (auto& send : sendSlots)
