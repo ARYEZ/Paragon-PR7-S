@@ -155,6 +155,7 @@ public:
     // BUILD go to its start, LENGTH is its bars (the chords cut at its end), SECTION its kind's. Kept until another
     // block is chosen, `clearTargetSection`, or the block is gone.
     void targetSection (int blockId);
+    int getTargetBlock() const noexcept { return targetBlock; }   // (0.263.0; 0: none)
     // (0.94.0, the owner's section types) TYPE: the section's type (engine/SectionTypes.h; "STANDARD": none). On a
     // block of the SECTIONS row it's the block's (built: built again at once, or after asking when HUB SETTINGS says
     // so); else the composer's own. `setApproach`: a lane's approach within the type (-1 automatic).
@@ -214,6 +215,11 @@ public:
     std::vector<pr7s::LibraryGroove> sectionGrooves() const;   // the section's list (the one chosen by hand left out of the key)
     std::vector<OptionBrowser::Option> libraryGrooveOptions (bool withParts = true) const;
     bool fillGrooveOption (OptionBrowser::Option&) const;   // (0.179.0) a pending groove's part made (and kept)
+    // (0.263.0) The type's options listed by name at once (a list of a hundred or more), each one's part made when the
+    // browser asks (fillApproachOption), from the state the list was made from.
+    struct ApproachSource { pr7s::ComposerLayer layer; pr7s::ComposerState state; std::vector<pr7s::ChordSpan> spans; pr7s::ComposerContext context; };
+    mutable std::shared_ptr<const ApproachSource> approachSource;
+    bool fillApproachOption (OptionBrowser::Option&) const;
     // (0.178.0) A groove option's folder; the favourite folder holding it (none: not in one); marked or unmarked
     // (the browser's list made again when given).
     juce::File grooveFolderOf (int grooveOptionId) const;
@@ -371,6 +377,9 @@ private:
     std::vector<pr7s::RiffFind> riffsShown;   // what the riff browser lists (its ids are indices into it)
     void finishRiffSearch();
     int targetBlock = 0;   // (0.90.0) the SECTIONS row's block composed (its id; 0: none)
+    // (0.263.0) The lanes as they were before a built block's recipe was loaded: put back when an unbuilt block is
+    // targeted next (it took the last built block's lanes, so a verse opened looking like the bridge before it).
+    std::optional<pr7s::ComposerState> beforeRecipe;
     // (0.221.0) The targeted block's chords on the chord track as last seen: when they change (the block editor, the
     // chord track) or another block is aimed at, ARCHITECT reads them (CHORDS FROM: CHORD TRACK).
     int seenChordsBlock = 0;

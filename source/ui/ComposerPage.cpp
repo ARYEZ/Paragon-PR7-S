@@ -43,6 +43,7 @@ ComposerPage::ComposerPage (pr7s::Studio& s) : studio (s)
     // (0.206.0) The song's own state and riff.
     seenGeneration = studio.getSongGeneration();
     state = pr7s::ComposerState::fromString (studio.getComposerState());
+    beforeRecipe.reset();
     studio.setComposerRiffBlock (0);   // (0.226.0: no block chosen yet: the song's loose riff)
     useMyRiff = studio.getComposerRiff().has_value() && studio.isComposerRiffPlayed();
     fromRiff = studio.getComposerRiff().has_value() && studio.areComposerChordsFromRiff();
@@ -582,12 +583,27 @@ void ComposerPage::targetSection (int blockId)
     // and BUILD INTO carry on from what's there.
     if (const auto& recipe = blocks[(size_t) index].recipe; recipe.isNotEmpty())
     {
+        if (! beforeRecipe.has_value())
+            beforeRecipe = state;
         auto built = pr7s::ComposerState::fromString (recipe);
         built.fromChordTrack = true;
         state = built;
         for (auto& t : taken)
             t.reset();
         refresh();
+    }
+    else if (beforeRecipe.has_value())
+    {
+        // (0.263.0, the owner: a verse opened after the bridge showed the bridge) An unbuilt block starts from the
+        // lanes as they were before a built one's were loaded, with its own section, type and chords.
+        auto loose = *beforeRecipe;
+        beforeRecipe.reset();
+        loose.fromChordTrack = true;
+        state = loose;
+        for (auto& t : taken)
+            t.reset();
+        setSection (pr7s::drumSections()[(size_t) pr7s::composerSectionFor (blocks[(size_t) index].name)]);
+        applyBlockType();
     }
     if (place.has_value())
     {
@@ -2823,6 +2839,18 @@ std::vector<OptionBrowser::Option> ComposerPage::libraryGrooveOptions (bool with
     return grooveOptionsKept;
 }
 
+bool ComposerPage::fillApproachOption (OptionBrowser::Option& o) const
+{
+    if (approachSource == nullptr || o.id < approachId || o.id >= grooveId)
+        return false;
+    const auto& from = *approachSource;
+    o.idea = pr7s::composerApproachChoice (from.layer, from.state, from.spans, from.context, o.id - approachId);
+    o.description = o.idea.description;
+    o.measure = pr7s::measureOption (o.idea, from.context.beatsPerBar, from.layer == ComposerLayer::drums);
+    o.pending = false;
+    return true;
+}
+
 bool ComposerPage::fillGrooveOption (OptionBrowser::Option& o) const
 {
     const auto i = o.id - grooveId;
@@ -2886,12 +2914,30 @@ std::vector<OptionBrowser::Option> ComposerPage::laneOptionsOwn (ComposerLayer l
     if (showsLibraryGrooves (l))
         return libraryGrooveOptions (withParts);
     std::vector<OptionBrowser::Option> out;
-    const auto choices = pr7s::composerChoices (l, state, spans, context);
     const auto drums = l == ComposerLayer::drums;
     const auto bpb = context.beatsPerBar;
     const auto approaches = pr7s::sectionApproaches (state, l);
     const auto ownNames = pr7s::baseSectionApproaches (state, l);   // (0.160.0: by name: the bass's shared options sit in front of its own last)
-    if (pr7s::sectionTypeWritesLane (l, state, context))
+    const auto typeWrites = pr7s::sectionTypeWritesLane (l, state, context);
+    if (typeWrites && ! withParts)
+    {
+        // (0.263.0) Names only: the short menu and the browser list them at once; the browser makes each one's part
+        // when it shows it (fillApproachOption), as the grooves (they were all made on every click: a hundred or more).
+        approachSource = std::make_shared<const ApproachSource> (ApproachSource { l, state, spans, context });
+        for (int i = 0; i < approaches.size(); ++i)
+        {
+            OptionBrowser::Option o;
+            o.id = approachId + i;
+            o.name = approaches[i];
+            o.group = ownNames.contains (approaches[i]) ? typeOwnGroup : songsGroup;
+            o.drums = drums;
+            o.pending = ! spans.empty();
+            out.push_back (std::move (o));
+        }
+        return out;
+    }
+    const auto choices = pr7s::composerChoices (l, state, spans, context);
+    if (typeWrites)
     {
         // The type's options, each a different part (composerChoices made one each, in this order).
         for (int i = 0; i < approaches.size(); ++i)
@@ -2977,6 +3023,12 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
     }
     auto browser = std::make_unique<OptionBrowser> (title, laneOptions (l, false), chosen, studio.getOptionMemory(), optionsKeyFor (l));
     browser->setAutoHear (true);   // (0.180.0, the owner: a highlighted option plays at once, in time with the song)
+    {
+        // (0.179.0 grooves, 0.263.0 the type's options) The list at once; the parts made a few a frame.
+        juce::Component::SafePointer<ComposerPage> filler (this);
+        browser->onFill = [filler] (OptionBrowser::Option& o)
+        { return filler != nullptr && (filler->fillGrooveOption (o) || filler->fillApproachOption (o)); };
+    }
     if (withFills && ! fills.empty())
     {
         browser->setGroupOrder ({ pr7s::grooveFillsGroup, fillsGroup, favouriteFoldersGroup, toontrackGroup, otherPacksGroup });
@@ -2988,8 +3040,6 @@ std::unique_ptr<OptionBrowser> ComposerPage::makeOptionBrowser (ComposerLayer l)
         if (! withFills)
             browser->setGroupOrder ({ favouriteFoldersGroup, toontrackGroup, otherPacksGroup });
         // (0.179.0) The list at once; the grooves' parts made a few a frame (the chosen first, then those in view).
-        juce::Component::SafePointer<ComposerPage> filler (this);
-        browser->onFill = [filler] (OptionBrowser::Option& o) { return filler != nullptr && filler->fillGrooveOption (o); };
         // (0.178.0) Right-click a groove: its folder marked (or unmarked) as a favourite, the list made again.
         juce::Component::SafePointer<ComposerPage> page (this);
         auto* shown = browser.get();
@@ -3131,7 +3181,7 @@ void ComposerPage::useOption (ComposerLayer l, int id)
         status = "Drums: " + g.name + " (" + g.folder + ")";
         return;
     }
-    const auto options = laneOptions (l);
+    const auto options = laneOptions (l, false);   // (0.263.0: the names are enough)
     for (const auto& o : options)
         if (o.id == id)
             studio.noteOptionUsed (optionsKeyFor (l), o.name);

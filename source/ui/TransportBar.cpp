@@ -371,7 +371,9 @@ void TransportBar::paint (juce::Graphics& g)
         return true;
     };
 
-    // The badge: the PR7-S mark and what it is, printed in red.
+    // The badge: the PR7-S mark and what it is, printed in red. (0.263.0: only when the redraw reaches it; the
+    // screens' 30 Hz strips drew and stroked the mark for JUCE to clip away.)
+    if (redrawn.intersects (badge.expanded (8.0f)))
     {
         auto b = badge;
         Logo::drawMark (g, b.removeFromTop (b.getHeight() * 0.62f).reduced (0.0f, 6.0f), juce::Justification::centredLeft,
@@ -383,6 +385,7 @@ void TransportBar::paint (juce::Graphics& g)
     }
 
     // The keys' shortcuts.
+    if (redrawn.intersects (keysArea.getUnion (autoScrollStamp).expanded (4.0f)))
     {
         auto keys = keysArea;
         // Under each key, its shortcut on the computer's keyboard (AUTO-SCROLL's: F).

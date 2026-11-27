@@ -143,6 +143,7 @@ add_executable(ParagonPR7STests
     AutoSaveTests.cpp
     Speed0190Tests.cpp
     Speed0191Tests.cpp
+    Speed0263Tests.cpp
     PerfTests.cpp
     Snapshot.cpp)
 

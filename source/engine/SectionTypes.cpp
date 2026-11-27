@@ -4,6 +4,7 @@
 #include "engine/LaneWorlds.h"
 #include <map>
 #include <mutex>
+#include <tuple>
 
 namespace pr7s
 {
@@ -2789,7 +2790,7 @@ namespace pr7s
         return out;
     }
 
-    juce::StringArray baseSectionApproaches (const ComposerState& s, ComposerLayer layer)
+    static juce::StringArray baseSectionApproachesUncached (const ComposerState& s, ComposerLayer layer)
     {
         // (0.219.0) A lane in another WORLD lists that world's parts, whatever the type.
         if (layer == ComposerLayer::chords && s.lane (layer).world == (int) LaneWorld::cyberpunk)
@@ -3002,11 +3003,25 @@ namespace pr7s
         }
     }
 
-    juce::StringArray sectionApproaches (const ComposerState& s, ComposerLayer layer)
+    // (0.263.0) Both lists depend only on the type, the layer, the riff flavour, written riffs and the keys' world:
+    // kept per those (they were built again from about a hundred names on every call, many times per compose).
+    using ApproachKey = std::tuple<juce::String, int, int, bool, bool, bool>;
+    static ApproachKey approachKey (const ComposerState& s, ComposerLayer layer, bool full)
+    {
+        return { s.sectionType, (int) layer, s.riffFlavour, s.writtenRiffs,
+                 layer == ComposerLayer::chords && s.lane (layer).world == (int) LaneWorld::cyberpunk, full };
+    }
+
+    static juce::StringArray keptApproaches (const ComposerState& s, ComposerLayer layer, bool full);
+
+    juce::StringArray baseSectionApproaches (const ComposerState& s, ComposerLayer layer) { return keptApproaches (s, layer, false); }
+    juce::StringArray sectionApproaches (const ComposerState& s, ComposerLayer layer) { return keptApproaches (s, layer, true); }
+
+    static juce::StringArray sectionApproachesUncached (const ComposerState& s, ComposerLayer layer)
     {
         if (layer == ComposerLayer::chords && s.lane (layer).world == (int) LaneWorld::cyberpunk)   // (0.219.0)
             return cyberpunkKeysOptions();
-        auto names = baseSectionApproaches (s, layer);
+        auto names = baseSectionApproachesUncached (s, layer);
         if (names.isEmpty() || ! sectionTypeCalled (s.sectionType).has_value())
             return names;
         // (0.160.0) The bass's go in front of LOCKED WITH THE KICK, which stays last (the composer finds it there);
@@ -3024,6 +3039,22 @@ namespace pr7s
         for (const auto& n : extraApproaches (layer))
             names.addIfNotAlreadyThere (n);
         return names;
+    }
+
+    static juce::StringArray keptApproaches (const ComposerState& s, ComposerLayer layer, bool full)
+    {
+        static std::recursive_mutex lock;
+        static std::map<ApproachKey, juce::StringArray> kept;
+        const auto key = approachKey (s, layer, full);
+        const std::lock_guard<std::recursive_mutex> l (lock);
+        auto found = kept.find (key);
+        if (found == kept.end())
+        {
+            if (kept.size() > 4096)
+                kept.clear();
+            found = kept.emplace (key, full ? sectionApproachesUncached (s, layer) : baseSectionApproachesUncached (s, layer)).first;
+        }
+        return found->second;   // (a copy, under the lock)
     }
 
     juce::String approachName (const ComposerState& s, ComposerLayer layer)

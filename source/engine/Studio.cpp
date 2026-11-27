@@ -9316,10 +9316,18 @@ namespace pr7s
     {
         if (settings == nullptr)
             return optionMemoryHere;
-        OptionMemory m;
-        m.favourites = OptionMemory::fromText (settings->getValue ("optionFavourites"));
-        m.recent = OptionMemory::fromText (settings->getValue ("optionRecent"));
-        return m;
+        // (0.263.0) Parsed again only when the texts changed (the pickers asked once per row painted).
+        const auto favourites = settings->getValue ("optionFavourites");
+        const auto recent = settings->getValue ("optionRecent");
+        if (! optionMemoryRead || favourites != optionFavouritesRead || recent != optionRecentRead)
+        {
+            optionMemoryKept.favourites = OptionMemory::fromText (favourites);
+            optionMemoryKept.recent = OptionMemory::fromText (recent);
+            optionFavouritesRead = favourites;
+            optionRecentRead = recent;
+            optionMemoryRead = true;
+        }
+        return optionMemoryKept;
     }
 
     void Studio::saveOptionMemory (const OptionMemory& m)
@@ -12489,6 +12497,36 @@ namespace pr7s
 
     std::vector<int> Studio::findIdeaTracks (LineIdea::Part part, bool every) const
     {
+        // (0.263.0) Kept per what it reads: the lanes' names (the settings text), and every track's id, name, kind,
+        // frozen and disabled (ARCHITECT's lane headers asked for it on every paint).
+        juce::uint64 key = 1469598103934665603ull;
+        const auto mix = [&key] (juce::uint64 v) { key = (key ^ v) * 1099511628211ull; };
+        mix ((juce::uint64) part);
+        mix (every ? 1u : 0u);
+        mix ((juce::uint64) (settings != nullptr ? settings->getValue ("composerTracks").hashCode64() : 0));
+        for (const auto& t : project.tracks)
+        {
+            mix ((juce::uint64) t.id);
+            mix ((juce::uint64) t.name.hashCode64());
+            mix ((juce::uint64) t.kind);
+            mix ((t.frozen ? 1u : 0u) | (t.disabled ? 2u : 0u));
+        }
+        if (settings == nullptr)
+            for (const auto& lane : composerTracksHere)
+            {
+                mix (lane.every ? 1u : 0u);
+                for (const auto& n : lane.names)
+                    mix ((juce::uint64) n.hashCode64());
+            }
+        if (const auto found = ideaTracksKept.find (key); found != ideaTracksKept.end())
+            return found->second;
+        if (ideaTracksKept.size() > 64)
+            ideaTracksKept.clear();
+        return ideaTracksKept[key] = findIdeaTracksNow (part, every);
+    }
+
+    std::vector<int> Studio::findIdeaTracksNow (LineIdea::Part part, bool every) const
+    {
         // A track is the lane's when its whole name is one of the lane's names, or (0.192.0) when the words of one of
         // them are in its name and no other lane's names fit it as well ("Guitar" finds "Rhythm Guitar Left", but
         // "Lead Guitar" stays the lead's). Whole names first, then the closest; the track list's order between equals
@@ -13069,7 +13107,7 @@ namespace pr7s
         return used;
     }
 
-    void Studio::toneWrittenTracks (const std::vector<std::pair<int, const LineIdea*>>& plan)
+    void Studio::toneWrittenTracks (const std::vector<std::pair<int, const LineIdea*>>& plan, bool everySectionTone)
     {
         // (0.204.0) The guitar lanes' tracks get PR7-G with a tone (one already there is left alone).
         lastTones.clear();
@@ -13079,10 +13117,13 @@ namespace pr7s
         {
             if (! hasGuitarTones (idea->part) || ! toned.insert (trackId).second)
                 continue;
-            if (toneTrack (trackId, *idea, false))
+            const auto tonedNow = toneTrack (trackId, *idea, false);
+            if (tonedNow)
                 lastTones.addIfNotAlreadyThere (tonePartLabel (idea->part) + ": " + lastTone + " ON PR7-G");
             // (0.205.0) Its knobs follow the SECTIONS row (one undo step for every track, after the tone's).
-            if (getSectionTones() && getToneChoice (idea->part).kind != ToneChoice::Kind::off
+            // (0.263.0) A roll writes them only on a track that just got its PR7-G: they follow the blocks' names,
+            // not the music, and a roll left them as they were but asked PR7-G again and wrote the whole row anew.
+            if ((everySectionTone || tonedNow) && getSectionTones() && getToneChoice (idea->part).kind != ToneChoice::Kind::off
                 && writeSectionTones (trackId, nullptr, false))
                 ++sectionTonesWritten;
         }
@@ -16465,6 +16506,11 @@ namespace pr7s
         // cut or glued and still hold the same notes).
         std::vector<std::tuple<double, double, int, float>> notes;
         for (const auto& part : track->parts)
+        {
+            // (0.263.0) A part wholly outside the block holds no counted note (a counted note starts inside its part):
+            // its notes aren't walked.
+            if (part.start + part.length <= place.start - 1.0e-9)
+                continue;
             for (const auto& n : part.notes)
             {
                 const auto at = part.start + n.start;
@@ -16472,6 +16518,7 @@ namespace pr7s
                     notes.emplace_back (std::round ((at - place.start) * 960.0), std::round (juce::jmin (n.length, part.length - n.start) * 960.0),
                                         n.pitch, std::round (n.velocity * 127.0f));
             }
+        }
         std::sort (notes.begin(), notes.end());
         juce::int64 hash = (juce::int64) 1469598103934665603ll;
         const auto mix = [&hash] (juce::int64 v) { hash = (hash ^ v) * (juce::int64) 1099511628211ll; };
@@ -17120,7 +17167,7 @@ namespace pr7s
         std::vector<std::pair<int, const LineIdea*>> plan;
         for (const auto& [track, idea] : written)
             plan.emplace_back (track, &idea);
-        toneWrittenTracks (plan);
+        toneWrittenTracks (plan, false);
         return true;
     }
 

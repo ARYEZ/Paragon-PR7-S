@@ -2640,6 +2640,7 @@ void MainView::openComposer()
         composerWindow->getPage().startOverIfNewSong();   // (0.206.0: another song since: its own ARCHITECT)
         if (! composerWindow->isVisible())
         {
+            aimComposerAtArrangement();   // (0.263.0: the block chosen in the arrangement, else the one at the playhead)
             composerWindow->getPage().aimAtSectionsRow();   // (its block gone: the first not built, as a fresh one)
             composerWindow->setVisible (true);
         }
@@ -2667,9 +2668,30 @@ void MainView::openComposer()
                 safe->composerWindow->setVisible (false);
         });
     };
+    aimComposerAtArrangement();
     composerWindow->getPage().aimAtSectionsRow();   // (0.93.0: a song with a SECTIONS row: its first block not built yet)
     composerWindow->centreAroundComponent (this, composerWindow->getWidth(), composerWindow->getHeight());
     composerWindow->setVisible (true);
+}
+
+void MainView::aimComposerAtArrangement()
+{
+    // (0.263.0, the owner: working on the bridge, closing ARCHITECT and going to the verse opened it on the bridge
+    // again) Opening ARCHITECT: the SECTIONS block the playhead is in (a click on a block puts it at its start), else
+    // the block chosen. Neither: it stays where it was (or, the first time, the first block not built).
+    if (composerWindow == nullptr)
+        return;
+    const auto& blocks = studio.getSongSections().blocks;
+    if (blocks.empty())
+        return;
+    auto index = pr7s::sectionAt (studio.getSongSectionPlaces(), studio.getEngine().getPosition());
+    if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+        index = arrange.getSelectedSection();
+    if (! juce::isPositiveAndBelow (index, (int) blocks.size()))
+        return;
+    auto& page = composerWindow->getPage();
+    if (page.getTargetBlock() != blocks[(size_t) index].id)
+        page.targetSection (blocks[(size_t) index].id);
 }
 
 void MainView::openSectionInComposer (int index)

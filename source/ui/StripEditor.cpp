@@ -280,8 +280,12 @@ void StripEditor::timerCallback()
     {
         gateReduction = gate;
         compReduction = comp;
-        repaint (getModuleArea (0));
-        repaint (getModuleArea (2));
+        // (0.263.0) Only the bars and their GR text, not the whole modules with their knobs.
+        for (const auto m : { 0, 2 })
+        {
+            auto head = getModuleArea (m).reduced (10, 0).removeFromTop (titleHeight);
+            repaint (head.removeFromRight (head.getWidth() / 2).withTrimmedTop (-14).expanded (2, 0));
+        }
     }
 }
 

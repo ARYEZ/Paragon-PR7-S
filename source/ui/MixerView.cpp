@@ -22,6 +22,7 @@ namespace
 //==============================================================================
 MixerView::Strip::Strip (MixerView& ownerView, int id) : owner (ownerView), busId (id)
 {
+    setOpaque (true);   // (0.263.0: the meters' 30 Hz repaints no longer paint MainView and MixerView under it)
     for (int i = 0; i < (int) slots.size(); ++i)
     {
         auto& slot = slots[(size_t) i];
@@ -253,6 +254,8 @@ void MixerView::Strip::paint (juce::Graphics& g)
     g.fillRect (bounds.reduced (1.0f, 0.0f));
     g.setColour (juce::Colour (0xff050405));
     g.fillRect (bounds.withX (bounds.getRight() - 1.0f).withWidth (1.0f));
+    g.setColour (juce::Colour (0xff0d0a0e));   // (0.263.0: the left column as MixerView's fill showed it; the strip is opaque)
+    g.fillRect (bounds.withWidth (1.0f));
     ParagonColours::setFill (g, isMaster() ? ParagonColours::accent : track != nullptr ? track->colour : ParagonColours::textDim, bounds.withHeight (4.0f).reduced (1.0f, 0.0f));
     g.fillRect (bounds.withHeight (4.0f).reduced (1.0f, 0.0f));
     if (selected)

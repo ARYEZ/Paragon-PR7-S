@@ -2,6 +2,7 @@
 
 #include <atomic>
 #include <thread>
+#include <unordered_map>
 
 #include <juce_audio_utils/juce_audio_utils.h>
 
@@ -1899,7 +1900,7 @@ namespace pr7s
         struct GroovePick { int kick = 0, snare = 0; bool roll = false; juce::uint32 seed = 1; };
         bool writeSongSection (int index, ComposerState, const GroovePick&, std::vector<std::pair<int, LineIdea>>& written);
         ComposerState blockState (int index, const Blueprint*, juce::uint32 seed) const;
-        void toneWrittenTracks (const std::vector<std::pair<int, const LineIdea*>>&);
+        void toneWrittenTracks (const std::vector<std::pair<int, const LineIdea*>>&, bool everySectionTone = true);
 
         juce::int64 trackMark (const SectionPlace&, int trackId) const;
         void rewriteChangedSections();     // before syncLinkedSections in changed()
@@ -2182,6 +2183,11 @@ namespace pr7s
         int autoSaveMinutesHere = 0, autoSaveKeepHere = defaultAutoSaveKeep;
         bool askTypeChangeHere = false;
         OptionMemory optionMemoryHere;   // (0.156.0; without a settings file)
+        mutable OptionMemory optionMemoryKept;   // (0.263.0: getOptionMemory's parse, with the texts it came from)
+        mutable juce::String optionFavouritesRead, optionRecentRead;
+        mutable bool optionMemoryRead = false;
+        mutable std::unordered_map<juce::uint64, std::vector<int>> ideaTracksKept;   // (0.263.0: findIdeaTracks by what it reads)
+        std::vector<int> findIdeaTracksNow (LineIdea::Part, bool every) const;
         void saveOptionMemory (const OptionMemory&);
         std::array<TrackTypeLook, numTrackTypes> trackTypeLooksHere;   // (0.80.0; without a settings file)
         std::array<ComposerTracks, numComposerTrackLanes> readComposerTracks() const;

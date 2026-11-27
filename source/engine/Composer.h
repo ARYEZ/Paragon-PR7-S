@@ -219,6 +219,8 @@ namespace pr7s
     int composerStyleCount (ComposerLayer);
     // Every style of a layer for these chords, at the lane's variation (not humanized): the style menu.
     std::vector<LineIdea> composerChoices (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&);
+    // (0.263.0) The type's option `index` alone, as composerChoices' entry of that place when the type writes the lane.
+    LineIdea composerApproachChoice (ComposerLayer, const ComposerState&, const std::vector<ChordSpan>&, const ComposerContext&, int index);
     // (0.97.1) True when the section type's band writes this lane (DRONING's bass, keys, lead and drums; STACCATO /
     // SPLIT CHUG's bass and drums; CLEAN VERSE's guitar, bass, drums and keys; SYNC off): the lane's styles don't
     // change it then, its approaches do, so composerChoices gives one idea per approach (in sectionApproaches' order).

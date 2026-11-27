@@ -417,6 +417,21 @@ namespace pr7s
         for (auto& track : tracks)
             track->arrival = 0;
         masterArrival = 0;
+        if (! on)
+        {
+            // (0.263.0) Off: every path's delay is 0 (what the walk below works out then), without the walk and
+            // its track lookups.
+            for (auto& t : tracks)
+            {
+                auto& track = *t;
+                track.latencyIn = track.latencyPre = track.latencyOut = track.ownLatency = 0;
+                track.delayOut = 0;
+                track.delaySend.fill (0);
+            }
+            anyDelay = false;
+            totalLatency = 0;
+            return;
+        }
         for (int pass = 0; pass < deepestChannel + 2; ++pass)
         {
             const auto height = deepestChannel - (pass - 1);

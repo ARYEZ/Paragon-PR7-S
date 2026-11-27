@@ -125,6 +125,7 @@ public:
     ProgressionsWindow* getProgressionsWindow() noexcept { return progressionsWindow.get(); }
     void openComposer();   // (0.58.0) THE COMPOSER
     void openSectionInComposer (int index);   // (0.90.0) the SECTIONS row's block double-clicked: the composer on it
+    void aimComposerAtArrangement();   // (0.263.0) ARCHITECT opened: on the block at the playhead (else the one chosen)
     void openBandRecord();   // (0.82.0) LEARN MY BAND
     BandRecordWindow* getBandRecordWindow() noexcept { return bandRecordWindow.get(); }
     ComposerWindow* getComposerWindow() noexcept { return composerWindow.get(); }

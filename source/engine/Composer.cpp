@@ -41488,6 +41488,15 @@ namespace pr7s
         return false;
     }
 
+    LineIdea composerApproachChoice (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c, int index)
+    {
+        if (spans.empty())
+            return {};
+        auto each = s;
+        each.lane (l).approach = index;
+        return syncedLayer (l, each, spans, c);
+    }
+
     std::vector<LineIdea> composerChoices (ComposerLayer l, const ComposerState& s, const std::vector<ChordSpan>& spans, const ComposerContext& c)
     {
         std::vector<LineIdea> out;

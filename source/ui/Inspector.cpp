@@ -112,6 +112,10 @@ public:
 
     void refresh()
     {
+        const auto wasLit = lit, wasDisabled = disabled;
+        const auto wasColour = colour;
+        const auto wasName = box.getButtonText();
+        const auto wasShown = box.getToggleState();
         if (const auto* t = owner.studio.getProject().findTrack (trackId))
         {
             box.setButtonText (t->name);
@@ -121,10 +125,16 @@ public:
         }
         // (0.77.4, the owner: the track clicked in the track list lit here too)
         lit = owner.studio.isTrackSelected (trackId);
+        // (0.263.0) Laid out and drawn again only when something it shows changed (every row was, on every edit).
+        if (drawnOnce && lit == wasLit && disabled == wasDisabled && colour == wasColour && box.getButtonText() == wasName
+            && box.getToggleState() == wasShown)
+            return;
+        drawnOnce = true;
         box.setColour (juce::ToggleButton::textColourId, lit ? ParagonColours::accent : ParagonColours::text);
         resized();
         repaint();
     }
+    bool drawnOnce = false;
 
     void paint (juce::Graphics& g) override
     {

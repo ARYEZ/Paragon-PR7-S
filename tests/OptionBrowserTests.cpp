@@ -177,6 +177,7 @@ TEST_CASE ("0.156.0: a lane's short menu and its option browser", "[options][com
 
     // The browser: every option, groups, the feel and energy keys narrowing it.
     auto browser = page.makeOptionBrowser (L::drums);
+    browser->fillAllNow();   // (0.263.0: the type's options measured a few a frame, as the grooves)
     CHECK (browser->getChosen() == pick.id);
     CHECK (browser->getShown().size() == options.size());
     CHECK (browser->getGroups().contains (ComposerPage::songsGroup));

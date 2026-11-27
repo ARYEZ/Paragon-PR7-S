@@ -2,6 +2,39 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.263.0
+
+**ARCHITECT opens on the right section** (the owner: working on the bridge, closing ARCHITECT and going to the verse opened it on the bridge again):
+- Opening ARCHITECT again goes to the SECTIONS block the playhead is in. A click on a block puts the playhead at its start. With the playhead outside the row, it goes to the block chosen; with neither, it stays where it was. Before, the kept window always came back on the block it was last on.
+- A block that isn't built yet no longer takes the last built block's lanes. It starts from the lanes as they were before the built one's were loaded, with its own section, type and chords. A built block still opens with its own lanes, as it was built.
+
+Also a whole optimization pass. Three reviewers read the audio engine, the message thread (ARCHITECT, the blueprints, saving and opening) and the screen. Each finding was checked in the code before it was fixed. What changed:
+
+**ARCHITECT**
+- A lane's style menu and MORE OPTIONS list a section type's options by name at once. Before, every option's notes were worked out on each click (a hundred or more under a named type). The browser now makes each option's picture a few at a time, as the library grooves' already did. The parts are the same as before (tested note for note).
+- The section types' option lists are kept once worked out. They were built again from about a hundred names on every call, many times per compose.
+- The lane headers no longer search the track list for their tracks on every paint. The answer is kept until a track's name, kind, frozen or disabled state, or the lanes' names change.
+- ROLL MUSIC no longer asks PR7-G for its settings and rewrites the tone's section automation on every roll. Those follow the blocks' names, not the music, so a roll left them as they were. A track that just got its PR7-G still gets them.
+- Building a block's lanes skips the parts outside the block when checking what was edited by hand.
+
+**Screen**
+- Mixer strips are opaque: their meters' 30 Hz redraws no longer redraw the mixer and the window under them. The picture is the same.
+- The transport draws its badge and key labels only when a redraw reaches them. The screens' 30 Hz redraws drew and outlined the PR7-S mark each time, only to throw it away.
+- The Channel Strip window's gain-reduction bars redraw only themselves, not the whole gate and compressor modules with their knobs.
+- The Inspector's VISIBILITY rows are laid out and drawn again only when something they show changes. Before, every edit redid every row.
+- The pickers' favourites (blueprints, options) are read from the settings once, and again only when they change. Before, they were read for every row painted.
+
+**Audio**
+- With delay compensation off, the per-block latency plan is skipped (every delay is 0, as it was worked out to be).
+
+Not done, and why:
+- Multi-output instruments: one with 32 or more outputs switched on makes the audio buffer allocate memory each block. Narrowing them to stereo could change where a plug-in routes its sound, so that's the owner's call.
+- Moving delay compensation's copies onto the cores, and dropping a copy: measured as small.
+- Making a blueprint's tracks before writing its music, so Undo goes back in one step: it changes the build's order, so it's left for its own release.
+- Faster meters drawn from kept pictures, and a few smaller items.
+
+Nothing was timed on the owner's computer. The parts ARCHITECT makes are unchanged, and the sound is unchanged.
+
 ## 0.262.0
 
 Blueprints rebuilt, as you asked: many more of them, a proper picker, and every section filled with music the moment one loads.
