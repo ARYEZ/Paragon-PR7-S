@@ -274,3 +274,143 @@ TEST_CASE ("Channel strip: the window's knobs and keys are the studio's settings
         CHECK (c->getTooltip().isNotEmpty());
     }
 }
+
+namespace
+{
+    const StripPreset* factoryNamed (const juce::String& name)
+    {
+        for (const auto& p : factoryStripPresets())
+            if (p.name == name)
+                return &p;
+        return nullptr;
+    }
+}
+
+TEST_CASE ("STRIP PRESETS 0.249.0: PR7-C's factory presets as strips, what the strip hasn't named, EQ-only ones left out", "[strip][strippresets]")
+{
+    const auto& presets = factoryStripPresets();
+    CHECK (presets.size() > 100);
+    for (const auto& p : presets)
+    {
+        CHECK (p.strip.inUse());
+        CHECK (p.strip == p.strip.limited());
+        CHECK (stripPresetGroups().contains (p.group));
+        CHECK (p.slot.length() == 3);
+    }
+
+    // A01 Kick Punch: hpf (30) + gate (-30, 30, fast, 50, 150) + comp (fet, -14, 4, 15, 200, 2) + three EQ bells.
+    const auto* kick = factoryNamed ("Kick Punch");
+    REQUIRE (kick != nullptr);
+    CHECK (kick->slot == "A01");
+    CHECK (kick->group == "Drums");
+    CHECK (kick->strip.gate.on);
+    CHECK (kick->strip.gate.thresholdDb == -30.0f);
+    CHECK (kick->strip.gate.rangeDb == 30.0f);
+    CHECK (kick->strip.gate.attack == 0);
+    CHECK (kick->strip.gate.holdMs == 50.0f);
+    CHECK (kick->strip.gate.releaseMs == 150.0f);
+    CHECK (kick->strip.comp.on);
+    CHECK (kick->strip.comp.character == 2);
+    CHECK (kick->strip.comp.thresholdDb == -14.0f);
+    CHECK (kick->strip.comp.ratio == 4.0f);
+    CHECK (kick->strip.comp.attackMs == 15.0f);
+    CHECK (kick->strip.comp.releaseMs == 200.0f);
+    CHECK (kick->strip.comp.makeUpDb == 2.0f);
+    CHECK_FALSE (kick->strip.sat.on);
+    CHECK_FALSE (kick->strip.colour.on);
+    CHECK (kick->leftOut == "EQ, HPF");
+
+    // A09 Drum Bus Glue: the HPF on SC becomes the SC FILTER; saturation and colour carried.
+    const auto* glue = factoryNamed ("Drum Bus Glue");
+    REQUIRE (glue != nullptr);
+    CHECK (glue->strip.sc.on);
+    CHECK (glue->strip.sc.hpf == 60.0f);
+    CHECK (glue->strip.comp.autoRelease);
+    CHECK (glue->strip.sat.on);
+    CHECK (glue->strip.sat.driveDb == 6.0f);
+    CHECK (glue->strip.sat.harmonics == 50.0f);
+    CHECK (glue->strip.sat.mix == 70.0f);
+    CHECK (glue->strip.colour.on);
+    CHECK (glue->strip.colour.thd == 30.0f);
+    CHECK (glue->leftOut.isEmpty());
+
+    // Width and mono maker; the limiter named.
+    const auto* wide = factoryNamed ("Master Wide");
+    REQUIRE (wide != nullptr);
+    CHECK (wide->strip.stereo.monoOn);
+    CHECK (wide->strip.stereo.monoHz == 120.0f);
+    CHECK (wide->strip.stereo.widthOn);
+    CHECK (wide->strip.stereo.width == 120.0f);
+    CHECK (wide->leftOut == "LIMITER");
+
+    // Only a limiter: nothing the strip has, not listed. Filters, EQ and saturation: the saturation and width.
+    CHECK (factoryNamed ("Master Transparent Limit") == nullptr);
+    const auto* phone = factoryNamed ("Telephone Vocal");
+    REQUIRE (phone != nullptr);
+    CHECK (phone->strip.sat.vcaClip);
+    CHECK (phone->strip.stereo.widthOn);
+    CHECK (phone->strip.stereo.width == 0.0f);
+    CHECK (phone->leftOut == "EQ, HPF, LPF");
+    // Every name once.
+    std::set<juce::String> names;
+    for (const auto& p : presets)
+        CHECK (names.insert (p.name).second);
+}
+
+TEST_CASE ("STRIP PRESETS 0.249.0: applied as one undo step keeping the console channel; saved, listed, menu, deleted", "[strip][strippresets]")
+{
+    juce::TemporaryFile folderFile;
+    const auto folder = folderFile.getFile();
+    Studio studio (false);
+    studio.setStripPresetFolderForTests (folder);
+    const auto id = studio.getProject().tracks[0].id;
+
+    auto strip = *studio.getChannelStrip (id);
+    strip.colour.channel = 31;
+    strip.colour.digital = true;
+    studio.setChannelStrip (id, strip);
+    const auto before = studio.getHistoryPosition();
+
+    const auto* glue = factoryNamed ("Drum Bus Glue");
+    REQUIRE (glue != nullptr);
+    REQUIRE (studio.applyStripPreset (id, *glue));
+    const auto& now = *studio.getChannelStrip (id);
+    CHECK (now.comp.on);
+    CHECK (now.colour.on);
+    CHECK (now.colour.channel == 31);   // the channel's own
+    CHECK (now.colour.digital);
+    CHECK (studio.getHistoryPosition() == before + 1);
+    studio.undo();
+    CHECK_FALSE (studio.getChannelStrip (id)->comp.on);
+    studio.redo();
+
+    // Saved: a file in the folder, listed after ours, its settings back; a taken name gets " 2".
+    const auto file = studio.saveStripPreset (id, "My Bus");
+    REQUIRE (file.has_value());
+    CHECK (file->getFileName() == "My Bus.pr7strip");
+    CHECK (studio.saveStripPreset (id, "My Bus")->getFileName() == "My Bus 2.pr7strip");
+    auto presets = studio.getStripPresets();
+    CHECK (presets.size() == factoryStripPresets().size() + 2);
+    const auto& mine = presets[factoryStripPresets().size()];
+    CHECK_FALSE (mine.factory);
+    CHECK (mine.name == "My Bus");
+    CHECK (mine.strip == *studio.getChannelStrip (id));
+
+    // The menu: ours and yours chosen by their ids.
+    auto menu = StripEditor::makeMenu (studio, presets);
+    CHECK (menu.getNumItems() > 5);
+    studio.setChannelStrip (id, {});
+    const auto* kickIndex = factoryNamed ("Kick Punch");
+    const auto kickAt = (int) (kickIndex - factoryStripPresets().data());
+    StripEditor::menuChosen (studio, id, StripEditor::presetItems + kickAt, presets);
+    CHECK (studio.getChannelStrip (id)->gate.on);
+    CHECK (studio.getChannelStrip (id)->comp.character == 2);
+    StripEditor::menuChosen (studio, id, StripEditor::presetItems + (int) factoryStripPresets().size(), presets);
+    CHECK (studio.getChannelStrip (id)->sat.on);
+
+    // Deleted (only yours, only in the folder).
+    StripEditor::menuChosen (studio, id, StripEditor::deleteItems + (int) factoryStripPresets().size(), presets);
+    CHECK_FALSE (file->exists());
+    CHECK (studio.getStripPresets().size() == factoryStripPresets().size() + 1);
+    CHECK_FALSE (studio.deleteStripPreset (juce::File::getSpecialLocation (juce::File::tempDirectory).getChildFile ("x.pr7strip")));
+}

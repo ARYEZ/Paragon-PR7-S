@@ -33,6 +33,7 @@
 #include "Blueprints.h"
 #include "OptionFeel.h"
 #include "Mp3Writer.h"
+#include "StripPresets.h"
 
 #include <optional>
 #include <mutex>
@@ -149,6 +150,14 @@ namespace pr7s
         float getStripReductionDb (int busId, bool compressor) const;   // the gate's or compressor's, dB
         // RANDOM CH.: a bus's console channel to one no other strip uses, or (none) every strip whose colour is on.
         void randomiseConsoleChannels (std::optional<int> busId);
+        // (0.249.0) STRIP PRESETS (engine/StripPresets.h): ours (PR7-C's, converted) then yours (A to Z).
+        // Applying one is one undo step and keeps the strip's console channel and ANALOG / DIGITAL.
+        std::vector<StripPreset> getStripPresets() const;
+        juce::File getStripPresetFolder() const;
+        bool applyStripPreset (int busId, const StripPreset&);
+        std::optional<juce::File> saveStripPreset (int busId, const juce::String& name);
+        bool deleteStripPreset (const juce::File&);
+        void setStripPresetFolderForTests (const juce::File& f) { stripPresetFolder = f; }
         void setDelayCompensation (bool);
         bool getMultiCoreAudio() const;
         void setMultiCoreAudio (bool);
@@ -1872,6 +1881,7 @@ namespace pr7s
         std::map<int, std::pair<int, std::vector<ChordEvent>>> chordSnapshots;
         bool chordsReset = false;
         juce::File blueprintFolder;   // (tests; else defaultBlueprintFolder())
+        juce::File stripPresetFolder; // (tests; else defaultStripPresetFolder())
         std::vector<ChordEvent> sectionChords (const SectionPlace&) const;
         juce::int64 trackMark (const SectionPlace&, int trackId) const;
         void rewriteChangedSections();     // before syncLinkedSections in changed()

@@ -64,7 +64,9 @@ add_library(PR7SCore STATIC
     source/engine/Eq.cpp
     source/engine/ChannelStrip.cpp
     source/ui/StripEditor.cpp
+    source/engine/StripPresets.cpp
     source/engine/strip/ChannelEq.cpp
+    source/engine/strip/FactoryPresets.cpp
     source/engine/strip/Compressor.cpp
     source/engine/strip/ConsoleColour.cpp
     source/engine/strip/Gate.cpp

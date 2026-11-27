@@ -454,32 +454,87 @@ juce::Component* StripEditor::findControl (const juce::String& id) const
     return nullptr;
 }
 
-void StripEditor::showMenu (pr7s::Studio& studio, int busId, juce::Component* target)
+juce::PopupMenu StripEditor::makeMenu (pr7s::Studio& studio, const std::vector<pr7s::StripPreset>& presets)
 {
-    juce::PopupMenu menu;
+    // (0.249.0) PRESETS first: ours by PR7-C's banks (a preset's PR7-C slot before its name), then yours.
+    juce::PopupMenu menu, ours, yours, deleting;
+    for (const auto& group : pr7s::stripPresetGroups())
+    {
+        juce::PopupMenu bank;
+        for (size_t i = 0; i < presets.size(); ++i)
+            if (presets[i].factory && presets[i].group == group)
+                bank.addItem (presetItems + (int) i, presets[i].slot + "  " + presets[i].name);
+        if (bank.getNumItems() > 0)
+            ours.addSubMenu (group, bank);
+    }
+    for (size_t i = 0; i < presets.size(); ++i)
+        if (! presets[i].factory)
+        {
+            yours.addItem (presetItems + (int) i, presets[i].name);
+            deleting.addItem (deleteItems + (int) i, presets[i].name);
+        }
+    if (yours.getNumItems() == 0)
+        yours.addItem (-1, "(None Saved Yet)", false);
+    else
+    {
+        yours.addSeparator();
+        yours.addSubMenu ("Delete", deleting);
+    }
+    menu.addSectionHeader ("PRESETS");
+    menu.addSubMenu ("From PR7-C", ours);
+    menu.addSubMenu ("My Presets", yours);
+    menu.addItem (saveItem, "Save This Strip as a Preset...", studio.getStripPresetFolder() != juce::File());
+    menu.addSeparator();
     menu.addItem (1, "Every Module Off");
     menu.addItem (2, "Back to How It Starts");
     menu.addSeparator();
     menu.addItem (3, "Random Console Channel (This Strip)");
     menu.addItem (4, "Random Console Channels (Every Strip With Its Colour On)");
-    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target), [&studio, busId] (int chosen)
+    return menu;
+}
+
+void StripEditor::menuChosen (pr7s::Studio& studio, int busId, int chosen, const std::vector<pr7s::StripPreset>& presets)
+{
+    const auto* strip = studio.getChannelStrip (busId);
+    if (strip == nullptr || chosen <= 0)
+        return;
+    auto s = *strip;
+    if (chosen == 1)
     {
-        const auto* strip = studio.getChannelStrip (busId);
-        if (strip == nullptr || chosen <= 0)
-            return;
-        auto s = *strip;
-        if (chosen == 1)
+        s.gate.on = s.comp.on = s.sat.on = s.colour.on = s.stereo.monoOn = s.stereo.widthOn = s.sc.listen = false;
+        studio.setChannelStrip (busId, s);
+    }
+    else if (chosen == 2)
+        studio.setChannelStrip (busId, {});
+    else if (chosen == 3)
+        studio.randomiseConsoleChannels (busId);
+    else if (chosen == 4)
+        studio.randomiseConsoleChannels (std::nullopt);
+    else if (chosen == saveItem)
+    {
+        auto* box = new FamilyAlertWindow ("Save Strip Preset", "A name for this strip's settings.", juce::MessageBoxIconType::NoIcon);
+        box->addTextEditor ("name", {}, "NAME");
+        box->addButton ("SAVE", 1, juce::KeyPress (juce::KeyPress::returnKey));
+        box->addButton ("CANCEL", 0, juce::KeyPress (juce::KeyPress::escapeKey));
+        box->enterModalState (true, juce::ModalCallbackFunction::create ([box, &studio, busId] (int result)
         {
-            s.gate.on = s.comp.on = s.sat.on = s.colour.on = s.stereo.monoOn = s.stereo.widthOn = s.sc.listen = false;
-            studio.setChannelStrip (busId, s);
-        }
-        else if (chosen == 2)
-            studio.setChannelStrip (busId, {});
-        else if (chosen == 3)
-            studio.randomiseConsoleChannels (busId);
-        else if (chosen == 4)
-            studio.randomiseConsoleChannels (std::nullopt);
-    });
+            if (result == 1)
+                if (const auto name = box->getTextEditorContents ("name").trim(); name.isNotEmpty())
+                    studio.saveStripPreset (busId, name);
+        }), true);
+    }
+    else if (chosen >= presetItems && chosen < presetItems + (int) presets.size())
+        studio.applyStripPreset (busId, presets[(size_t) (chosen - presetItems)]);
+    else if (chosen >= deleteItems && chosen < deleteItems + (int) presets.size())
+        studio.deleteStripPreset (presets[(size_t) (chosen - deleteItems)].file);
+}
+
+void StripEditor::showMenu (pr7s::Studio& studio, int busId, juce::Component* target)
+{
+    auto presets = studio.getStripPresets();
+    auto menu = makeMenu (studio, presets);
+    menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (target),
+                        [&studio, busId, presets = std::move (presets)] (int chosen) { menuChosen (studio, busId, chosen, presets); });
 }
 
 //==============================================================================

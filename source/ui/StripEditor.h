@@ -36,8 +36,12 @@ public:
     juce::Rectangle<int> getModuleArea (int index) const;
     static constexpr int numModules = 6;   // GATE, SC FILTER, COMP, SATURATION, COLOUR, STEREO
 
-    // The strip's menu (also the Inspector's header): every module off, the console channel at random.
+    // The strip's menu (also the Inspector's header): PRESETS (ours from PR7-C, yours, save, delete), every
+    // module off, the console channel at random. makeMenu / menuChosen for tests (the ids below).
     static void showMenu (pr7s::Studio&, int busId, juce::Component* target);
+    static juce::PopupMenu makeMenu (pr7s::Studio&, const std::vector<pr7s::StripPreset>&);
+    static void menuChosen (pr7s::Studio&, int busId, int chosen, const std::vector<pr7s::StripPreset>&);
+    static constexpr int saveItem = 10, presetItems = 1000, deleteItems = 5000;   // + the preset's place
 
 private:
     struct Knob

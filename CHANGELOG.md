@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.249.0
+
+**STRIP PRESETS, and PR7-C's factory presets on the channel strip** (your answer: presets of the strip's own, PR7-C kept as a plug-in).
+
+- **The strip's menu** (STRIP in its window, or right-click the Inspector's CHANNEL STRIP title) now starts with **PRESETS**:
+  - **From PR7-C**: PR7-C's factory presets in its seven banks (Drums, Bass, Guitars, Synths & Keys, Vocals & Voice, Mix, Mastering), each with its PR7-C slot (A01 Kick Punch...), the genre and signature-sound sets included.
+  - **My Presets**: yours. **Save This Strip as a Preset...** asks for a name and keeps it as a file in Documents/Paragon PR7-S/Strip Presets (a name already there gets " 2"). **Delete** takes one away.
+- **What comes over from a PR7-C preset:** everything the strip has, exactly as PR7-C sets it: the gate / expander, the compressor (its character, distortion and every value), the SC filter, saturation, the console colour's THD and V GAIN, mono maker and width. PR7-C's HPF and LPF set to "SC" (on what the dynamics hear) become the strip's SC FILTER.
+- **What doesn't:** PR7-C's five-band EQ, its HPF / LPF on the sound, and its limiter. The strip doesn't have those (the studio's channel EQ and the BOOSTER do the first two, PR7-X the limiter), so a preset that was only those (Master Transparent Limit) isn't listed, and the rest leave those parts for you to set on the channel EQ if you want them.
+- **Applying a preset** is one undo step and **keeps your strip's console channel** and ANALOG / DIGITAL (each channel's own, as on a desk).
+- Track presets already carry the strip (0.248.0), so a track preset saved with a strip brings it back.
+
+The presets are PR7-C's own starting points (its notes: never tuned by ear); this only carries them across. Not checked here: how they sound.
+
 ## 0.248.0
 
 **The CHANNEL STRIP: PR7-C's console modules on every channel and the master** (your handoff and answers: compensation first, then these modules, in PR7-C's fixed order, in the Inspector and a window of its own). PR7-C stays a plug-in for your other DAWs.

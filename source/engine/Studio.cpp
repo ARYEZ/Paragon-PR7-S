@@ -5313,6 +5313,39 @@ namespace pr7s
         changed (true);
     }
 
+    std::vector<StripPreset> Studio::getStripPresets() const
+    {
+        auto list = factoryStripPresets();
+        for (auto& p : userStripPresets (getStripPresetFolder()))
+            list.push_back (std::move (p));
+        return list;
+    }
+
+    juce::File Studio::getStripPresetFolder() const
+    {
+        return stripPresetFolder != juce::File() ? stripPresetFolder : defaultStripPresetFolder();
+    }
+
+    bool Studio::applyStripPreset (int busId, const StripPreset& preset)
+    {
+        const auto* now = getChannelStrip (busId);
+        if (now == nullptr)
+            return false;
+        setChannelStrip (busId, appliedStripPreset (*now, preset.strip));
+        return true;
+    }
+
+    std::optional<juce::File> Studio::saveStripPreset (int busId, const juce::String& name)
+    {
+        const auto* now = getChannelStrip (busId);
+        return now == nullptr ? std::nullopt : pr7s::saveStripPreset (getStripPresetFolder(), name, *now);
+    }
+
+    bool Studio::deleteStripPreset (const juce::File& file)
+    {
+        return file.hasFileExtension ("pr7strip") && file.isAChildOf (getStripPresetFolder()) && file.deleteFile();
+    }
+
     double Studio::getEqResponseDb (int busId, double frequency, bool withPre) const
     {
         const auto* eq = getChannelEq (busId);
