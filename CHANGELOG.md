@@ -2,6 +2,40 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.254.0
+
+Round eleven's pre-choruses and post-choruses / interludes, from your songs (shapes only, our own names).
+
+**Pre-chorus** (13, after the pre-chorus's own types and before the verse types):
+
+- **BASS AND GUITAR TRADE BEATS IN SIXTEENTHS:** The bass on beats 1 and 3 in sixteenths, a high guitar note on beats 2 and 4, the kit building from hats to crash eighths.
+- **UNISON HITS ON ONE, ONE-AND, TWO, THREE, THREE-AND, FOUR-AND:** Guitars and bass held between unison hits, the kick and crash with them, the last bar toms in eighths.
+- **HELD HIGH NOTE OVER THE BASS CLIMB:** One fifth dyad held over the bass's sixteenth climb, a high answer every other bar, a sixteenth build at the end.
+- **MUTED CHORD EIGHTHS, THE CHANGE ON FOUR:** Muted power chords on every eighth, the last two already the next chord, a dotted line over them.
+- **ADD-NINE CHORDS HELD, SOFT CRASH QUARTERS:** Open add-nine chords held, a chord every two bars, over a half-time beat with soft crash quarters.
+- **SNARE ON EVERY BEAT, KICK ON THE ANDS, HELD CHORDS:** Big chords held two bars over the snare on every beat and the kick on every and, a root run into the chorus.
+- **SNARE QUARTERS ALONE UNDER A RISING HALF-STEP PAD:** A pad rising a half step a bar, the snare's quarters alone for a stretch with no kick or cymbals, then the beat back.
+- **THE BURSTS STAY, KICK ON ONE, THREE, THREE-AND:** Big strums on acoustic and distorted guitar in a pushed figure, the sidestick bursts kept, the kick on 1, 3 and 3-and.
+- **POWER-CHORD SIXTEENTHS UP TO THE FLAT FIVE AND BACK:** Power chords on every sixteenth climbing root, minor third, four, flat five and back down, a stop at the end.
+- **FLAT-TWO HITS, A TOM RUN UNDER THE SIXTEENTHS:** The flat two's power chord on 1 and 2, then six sixteenths through the flat seven and the root, a tom run under them.
+- **HALF-BAR CHANGES, THEN TWO BARS HELD OVER THE GALLOP:** A gallop on every beat, the chords changing each half bar, then the five held two bars.
+- **TWO BARS OF OCTAVE TREMOLO ON THE FLAT SIX:** The root and octave of the flat six on every sixteenth, the bass in sixteenths on the same note, one high keys note.
+- **HITS ON ONE, TWO, TWO-AND, FOUR, FOUR-AND, CRASH QUARTERS:** Heavy hits on 1, 2, 2-and, 4 and 4-and held to the next, the kick with them, the snare on 3, crash quarters.
+
+**Post-chorus / interlude** (9, after their own types, before the chorus or bridge types):
+
+- **LOW AND HIGH IN 3+3+2, UP A HALF STEP:** A low power chord, its high octave and low again in 3+3+2, rising a half step each half bar, a crash on every hit.
+- **PICKED MELODY FALLING BY HALF STEPS:** An acoustic picking one line in eighths, a top note falling by half steps in pairs to the chord, the verse's kit under it.
+- **KEYS CHORD EIGHTHS OVER A FALLING BASS, BAND OUT:** The band out but the keys: chords on every eighth with the bass note falling under them, a snare pickup at the end.
+- **HALF-NOTE DYADS, AN ORGAN ANSWER:** Root-fifth dyads on 1, 2-and and 4-and, an organ answering in the second half of every other bar, four on the floor.
+- **CHORD ON ONE, PUSHES ON THE A OF ONE AND THREE:** A chord on 1 then pushes on the a of 1 and 3 and their neighbours, the next bar the same a step down, crash quarters.
+- **UNISON STAB FIGURE ON ONE, SHAKER AFTER:** Every lane on one stab figure on 1 (1, 1-and, 1-a, 2-e), then only the shaker; a groove bar between.
+- **UNISON LINE, KICK AND CRASH ON EVERY NOTE:** Four bars: the hook over a held chord, a unison line down the scale with kick and crash on every note, the five held, a tom bar.
+- **SNARE OUT, TWIN TRILL OVER SIXTEENTH HATS:** Two guitars trilling root and the step above in sixteenths, the second a sixteenth late, over hats with no snare.
+- **THREE CHORD PAIRS, THEN A LEAD BAR:** A bar of three chord pairs on eighths, then a bar left to the lead with only a drum pickup.
+
+Next: round eleven's bridges, then breakdowns.
+
 ## 0.253.0
 
 The other 16 of round eleven's choruses, from your songs (shapes only, our own names). They go after part one's at the end of the Chorus list.

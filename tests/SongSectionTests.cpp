@@ -1984,7 +1984,7 @@ TEST_CASE ("0.102.0: a pre-chorus's own types, every lane's options a different 
                                             "CHUGS UNDER THE SHAPE", "STABS & GAPS", "RISING BASS" };
     // A pre-chorus lists them first, then the verse's types (a block typed as a verse keeps its type); a verse hasn't them.
     const auto pre = sectionTypesFor ("Pre-Chorus 2");
-    REQUIRE (pre.size() == names.size() + 3 + 6 + 7 + 6 + 6 + 5 + 1 + 4 + sectionTypesFor ("Verse").size());   // (0.196.0: five more)   // (0.183.0: six more)   // (0.123.0: six more after them)
+    REQUIRE (pre.size() == names.size() + 3 + 6 + 7 + 6 + 6 + 5 + 1 + 4 + 13 + sectionTypesFor ("Verse").size());   // (0.196.0: five more)   // (0.183.0: six more)   // (0.123.0: six more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (pre[i].name == names[i]);
     CHECK (sectionTypeNamed ("Pre-Chorus", "STACCATO CHUG").has_value());
@@ -2965,13 +2965,13 @@ TEST_CASE ("0.110.0: interlude and post-chorus types, every lane's options a dif
                                             "STAB & ANSWER", "TREMOLO OVER CHUGS", "CLEAN BREATH", "TRITONE AIR & BUILD", "CHROMATIC WOBBLE" };
     // A post-chorus: these, then the chorus's; an interlude or instrumental: these, then the bridge's.
     const auto post = sectionTypesFor ("Post-Chorus");
-    REQUIRE (post.size() == names.size() + 6 + 3 + 3 + 7 + 1 + 1 + sectionTypesFor ("Chorus").size());   // (0.196.0: seven more)
+    REQUIRE (post.size() == names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9 + sectionTypesFor ("Chorus").size());   // (0.196.0: seven more)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (post[i].name == names[i]);
-    CHECK (post[names.size() + 6 + 3 + 3 + 7 + 1 + 1].name == "DRIVING");   // (0.141.0: six more first)
+    CHECK (post[names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9].name == "DRIVING");   // (0.141.0: six more first)
     const auto interlude = sectionTypesFor ("Interlude 2");
-    REQUIRE (interlude.size() == names.size() + 6 + 3 + 3 + 7 + 1 + 1 + sectionTypesFor ("Bridge").size());   // (0.196.0: seven more)
-    CHECK (interlude[names.size() + 6 + 3 + 3 + 7 + 1 + 1].name == "HALF-TIME MELODIC");
+    REQUIRE (interlude.size() == names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9 + sectionTypesFor ("Bridge").size());   // (0.196.0: seven more)
+    CHECK (interlude[names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9].name == "HALF-TIME MELODIC");
     CHECK (sectionTypeNamed ("Instrumental", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Chorus", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Hook", "HOOK RIFF").has_value());
@@ -7189,7 +7189,7 @@ TEST_CASE ("0.183.0: round six's pre-chorus types, every lane's options a differ
                                             "KICK EIGHTHS, THEN SNARE EIGHTHS", "TRITONE CHORDS BETWEEN ROOT SINGLES, SNARE CLIMB",
                                             "DOTTED KICK, SNARE PAIRS, MUTED ROOT STABS", "SIXTEENTHS UP A HALF STEP AFTER SIX" };
     const auto pre = sectionTypesFor ("Pre-Chorus");
-    REQUIRE (pre.size() == 44 + sectionTypesFor ("Verse").size());   // (0.196.0: five more)
+    REQUIRE (pre.size() == 57 + sectionTypesFor ("Verse").size());   // (0.196.0: five more)
     const auto key = [] (const LineIdea& idea)
     {
         juce::String k;
@@ -8167,10 +8167,10 @@ TEST_CASE ("0.196.0: round seven's pre-chorus and post-chorus / interlude types,
     const auto pre = sectionTypesFor ("Pre-Chorus");
     const auto post = sectionTypesFor ("Post-Chorus");
     const auto interlude = sectionTypesFor ("Interlude");
-    REQUIRE (pre.size() == 44 + sectionTypesFor ("Verse").size());
+    REQUIRE (pre.size() == 57 + sectionTypesFor ("Verse").size());
     CHECK (pre[30].name == "SIXTEENTHS UP A HALF STEP AFTER SIX");
     CHECK (post[22].name == "HELD SECOND CLUSTER, SIXTEENTH PICKUP");
-    CHECK (post[32].name == "DRIVING");
+    CHECK (post[41].name == "DRIVING");
     const auto key = [] (const LineIdea& idea)
     {
         juce::String k;
@@ -11545,5 +11545,111 @@ TEST_CASE ("0.253.0: round eleven's chorus types, part two, every lane's options
         CHECK (! perStart.empty());
         for (const auto& [start, count] : perStart)
             CHECK (count == 1);
+    }
+}
+
+TEST_CASE ("0.254.0: round eleven's pre-chorus and post-chorus / interlude types, every lane's options a different part", "[sections][types][other254]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<juce::String> pres { "BASS AND GUITAR TRADE BEATS IN SIXTEENTHS",
+                                            "UNISON HITS ON ONE, ONE-AND, TWO, THREE, THREE-AND, FOUR-AND",
+                                            "HELD HIGH NOTE OVER THE BASS CLIMB",
+                                            "MUTED CHORD EIGHTHS, THE CHANGE ON FOUR",
+                                            "ADD-NINE CHORDS HELD, SOFT CRASH QUARTERS",
+                                            "SNARE ON EVERY BEAT, KICK ON THE ANDS, HELD CHORDS",
+                                            "SNARE QUARTERS ALONE UNDER A RISING HALF-STEP PAD",
+                                            "THE BURSTS STAY, KICK ON ONE, THREE, THREE-AND",
+                                            "POWER-CHORD SIXTEENTHS UP TO THE FLAT FIVE AND BACK",
+                                            "FLAT-TWO HITS, A TOM RUN UNDER THE SIXTEENTHS",
+                                            "HALF-BAR CHANGES, THEN TWO BARS HELD OVER THE GALLOP",
+                                            "TWO BARS OF OCTAVE TREMOLO ON THE FLAT SIX",
+                                            "HITS ON ONE, TWO, TWO-AND, FOUR, FOUR-AND, CRASH QUARTERS" };
+    const std::vector<juce::String> posts { "LOW AND HIGH IN 3+3+2, UP A HALF STEP",
+                                            "PICKED MELODY FALLING BY HALF STEPS",
+                                            "KEYS CHORD EIGHTHS OVER A FALLING BASS, BAND OUT",
+                                            "HALF-NOTE DYADS, AN ORGAN ANSWER",
+                                            "CHORD ON ONE, PUSHES ON THE A OF ONE AND THREE",
+                                            "UNISON STAB FIGURE ON ONE, SHAKER AFTER",
+                                            "UNISON LINE, KICK AND CRASH ON EVERY NOTE",
+                                            "SNARE OUT, TWIN TRILL OVER SIXTEENTH HATS",
+                                            "THREE CHORD PAIRS, THEN A LEAD BAR" };
+    const auto pre = sectionTypesFor ("Pre-Chorus");
+    const auto post = sectionTypesFor ("Post-Chorus");
+    const auto interlude = sectionTypesFor ("Interlude");
+    for (size_t i = 0; i < pres.size(); ++i)
+        CHECK (pre[44 + i].name == pres[i]);
+    for (size_t i = 0; i < posts.size(); ++i)
+    {
+        CHECK (post[32 + i].name == posts[i]);
+        CHECK (interlude[32 + i].name == posts[i]);
+    }
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << (n.harmony ? "h" : "") << ";";
+        return k;
+    };
+    std::vector<std::pair<juce::String, juce::String>> all;
+    for (const auto& n : pres) all.push_back ({ "Pre-Chorus", n });
+    for (const auto& n : posts) all.push_back ({ "Interlude", n });
+    for (const auto& [section, type] : all)
+    {
+        INFO (type);
+        REQUIRE (sectionTypeCalled (type).has_value());
+        ComposerState s;
+        applySectionType (s, section, type);
+        REQUIRE (s.sectionType == type);
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            if (options.isEmpty())
+                continue;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                const auto name = sectionApproaches (s, l)[(int) o];
+                INFO (composerLayerName (l) << " " << o << " " << name);
+                CHECK (seen.insert (key (choices[o])).second);
+                if (name != "OUT" && name != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+    }
+    const auto layersOf = [&] (const juce::String& section, const juce::String& type)
+    {
+        ComposerState s;
+        applySectionType (s, section, type);
+        return composeLayers (s, spans, c);
+    };
+    // Snare quarters alone: a stretch with no kick at all.
+    {
+        const auto layers = layersOf ("Pre-Chorus", "SNARE QUARTERS ALONE UNDER A RISING HALF-STEP PAD");
+        for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
+            if (n.beat >= 8.0 && n.beat < 24.0)
+                CHECK (n.pitch == GmDrum::snare);
+    }
+    // The band out: only the keys and a last-beat snare pickup.
+    {
+        const auto layers = layersOf ("Interlude", "KEYS CHORD EIGHTHS OVER A FALLING BASS, BAND OUT");
+        CHECK (layers[(size_t) ComposerLayer::guitar].notes.empty());
+        CHECK (layers[(size_t) ComposerLayer::bass].notes.empty());
+        CHECK (! layers[(size_t) ComposerLayer::chords].notes.empty());
+        for (const auto& n : layers[(size_t) ComposerLayer::drums].notes)
+            CHECK (n.beat >= 31.0 - 1.0e-6);
+    }
+    // The acoustic-led interlude: the acoustic lane on.
+    {
+        ComposerState s;
+        applySectionType (s, "Interlude", "PICKED MELODY FALLING BY HALF STEPS");
+        CHECK (s.lane (ComposerLayer::acoustic).on);
+        CHECK (! composeLayers (s, spans, c)[(size_t) ComposerLayer::acoustic].notes.empty());
     }
 }
