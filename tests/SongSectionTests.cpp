@@ -5142,10 +5142,10 @@ TEST_CASE ("0.145.0: the drums and keys options from the 61 songs under every na
     const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
     const auto drums = extraApproaches (ComposerLayer::drums);
     const auto keys = extraApproaches (ComposerLayer::chords);
-    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7 + 11 + 1 + 10 + 20 + 11 + 16);   // (0.218.0: twenty more)   // (0.199.0: ten more)   // (0.195.0: one more)   // (0.193.0: eleven more)   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
-    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6 + 5 + 1 + 8 + 9 + 9);   // (0.218.0: eight more)   // (0.199.0: one more)   // (0.193.0: five more)   // (0.186.0: six more)
-    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3 + 2 + 46 + 7 + 7);   // (0.217.0: 46 more)   // (0.193.0: two more)   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
-    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4 + 6 + 2 + 3);   // (0.218.0: six more)   // (0.193.0: four more)   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
+    CHECK (drums.size() == 9 + 11 + 12 + 7 + 7 + 11 + 1 + 10 + 20 + 11 + 16 + 25);   // (0.259.0: 25 more)   // (0.218.0: twenty more)   // (0.199.0: ten more)   // (0.195.0: one more)   // (0.193.0: eleven more)   // (0.186.0: seven more)   // (0.172.0: seven more)   // (0.155.0: eleven more drums, fifteen more keys)
+    CHECK (keys.size() == 5 + 15 + 12 + 2 + 6 + 5 + 1 + 8 + 9 + 9 + 13);   // (0.259.0: 13 more)   // (0.218.0: eight more)   // (0.199.0: one more)   // (0.193.0: five more)   // (0.186.0: six more)
+    CHECK (extraApproaches (ComposerLayer::guitar).size() == 27 + 12 + 3 + 2 + 46 + 7 + 7 + 11);   // (0.259.0: 11 more)   // (0.217.0: 46 more)   // (0.193.0: two more)   // (0.186.0: three more)   // (0.172.0: twelve more)   // (0.158.0: round four's riff kinds; 0.159.0: 21 more)
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4 + 6 + 2 + 3 + 11);   // (0.259.0: 11 more)   // (0.218.0: six more)   // (0.193.0: four more)   // (0.160.0: in front of LOCKED WITH THE KICK; 0.186.0: two more)
 
     // Under STANDARD (no named type) nothing is added.
     {
@@ -6272,7 +6272,7 @@ TEST_CASE ("0.160.0: round four's bass versions, in front of LOCKED WITH THE KIC
     const char* names[] = { "DOUBLES THE GUITAR'S HIGH NOTES, OCTAVES DOWN", "PLAYS ONLY THE HEAD", "KEEPS THE CHORUS RHYTHM", "CARVED SIXTEENTH LINE",
                             "EIGHTHS, PICKUP INTO EACH BAR", "A NOTE A BAR, FALLING FROM THE KEY'S NOTE", "CHROMATIC EIGHTHS AROUND THE ROOT",
                             "DOTTED FIGURE WITH THE KICK" };
-    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4 + 6 + 2 + 3);   // (0.218.0: six more)   // (0.186.0: two more; 0.193.0: four more)
+    CHECK (extraApproaches (ComposerLayer::bass).size() == 8 + 2 + 4 + 6 + 2 + 3 + 11);   // (0.259.0: 11 more)   // (0.218.0: six more)   // (0.186.0: two more; 0.193.0: four more)
     // Under every named type whose bass ends with LOCKED WITH THE KICK: there, just in front of it; else not at all.
     auto typed = 0;
     for (const auto* section : { "Verse", "Chorus", "Bridge", "Breakdown", "Intro", "Outro", "Pre-Chorus" })
@@ -12034,4 +12034,44 @@ TEST_CASE ("0.258.0: round eleven's transitions", "[sections][transitions][trans
             if (n.beat >= 28.0 - 1.0e-6)
                 CHECK ((std::abs (n.beat - 28.0) < 1.0e-6 || std::abs (n.beat - 31.0) < 1.0e-6));
     }
+}
+
+
+TEST_CASE ("0.259.0: round eleven's shared options, under every type", "[sections][types][shared259]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<std::pair<ComposerLayer, std::vector<juce::String>>> names {
+        { ComposerLayer::guitar, { "HIGH DYADS AROUND THE BEATS", "LOW OCTAVES ON THE EIGHTHS, A TWO-NOTE CLIMB", "ROOT, FIFTH, HELD OCTAVE, IN FOURS", "OCTAVE FLIPS IN FOURS", "QUIET MUTED CHUG RUNS ON THE ROOT", "PUSHED EIGHTH CHORDS, A REST ON THREE", "SIXTEENTH CHUG WITH ACCENTED PAIRS", "STABS ON ONE, TWO, TWO-AND, THREE, FOUR, FOUR-AND", "OCTAVE PICKUPS INTO EVERY BEAT", "CHORD PUSHED ON TWO-AND, RUNG TO THE BAR LINE", "MUTED FULL-CHORD STABS ON TWO, TWO-AND AND FOUR" } },
+        { ComposerLayer::drums, { "HATS ON THE EIGHTHS, RIDE ON TWO-AND AND FOUR-AND", "LAID-BACK LOOP, OPEN HAT ON THREE-AND AND FOUR-AND", "SNARE A SIXTEENTH BEFORE TWO AND FOUR", "TWO TOMS TOGETHER ON TWO AND FOUR", "ONE KICK EVERY TWO BARS, BACKBEAT, QUARTER HATS", "OPEN HAT AND CRASH EIGHTHS, CHINA ON TWO AND FOUR", "SYNCOPATED KICK, SNARE PAIRS AROUND THE BACKBEAT", "HAT KNOCKS ON ONE-A, TWO AND FOUR", "CONGA AND WOODBLOCK ON TWO AND FOUR", "FLOOR TOM WITH THE SNARE ON FOUR", "KICK BURST BAR, THEN KICKS ON THE ANDS", "KICK ON ONE AND THE A'S, RIDE", "CRASH WASH IN BROKEN SIXTEENTHS", "TOMS ON TWO, TWO-AND AND FOUR, NO SNARE", "SIDESTICK BURSTS OF FIVE ON ONE AND THREE", "BALLAD KICK, A PICKUP INTO THREE, SIXTEENTH HATS", "NO KICK, OPEN HATS SKIPPING TWO AND FOUR", "KICK PICKUPS INTO EVERY BEAT, SNARE ECHO", "DOUBLE-KICK PAIRS ON ONE AND THREE", "BACKBEAT, A TOM RUN EVERY SECOND BAR", "KICK ON ONE ONLY, BACKBEAT, SIXTEENTH HATS", "OPEN HAT ON THE A-AND-ONE PAIRS", "LAID-BACK KIT, SNARE ON TWO, ITS AND, AND FOUR", "DOUBLE KICK ON ONE, A TOM ON THREE-A", "CRASH ON NEARLY EVERY EIGHTH" } },
+        { ComposerLayer::bass, { "ROOT HELD, THREE-NOTE WALK DOWN ON FOUR", "ROOT AND TENTH SIXTEENTHS", "ROOT PAIR ON ONE, THREE NOTES INTO THE NEXT", "ON ONE AND TWO-AND, HELD", "TWO-BAR GROOVE, CHROMATIC LANDING ON THE ROOT", "TWO-CHORD WALKING PAIRS", "CHROMATIC SLIDE DOWN TO THE FIFTH AT THE END", "LOW ROOT AND HIGH OCTAVE IN THREES", "GALLOP ON ONE AND THREE, EIGHTHS BETWEEN", "ROOT HELD A BEAT, THEN EIGHTHS", "SIXTEENTH PEDAL, A RUN TO THE BAR LINE" } },
+        { ComposerLayer::chords, { "TWO-NOTE ROCK ON EACH BEAT AND ITS A", "ONE-NOTE STAB LINE, A NEW NOTE EACH BAR", "BROKEN CHORD FROM BEAT TWO", "QUARTER OCTAVES AND FIFTHS, A MELODY FROM TWO-A", "POUNDED QUARTER CHORDS OVER A BROKEN LEFT HAND", "PIZZICATO OCTAVE BOUNCE", "HIGH FLOURISH EVERY OTHER BAR", "LEADING-TONE GRACE ON TWO-A AND FOUR-A", "ONE HIGH SYNTH HIT ON EVERY FOUR", "BRASS LINE AROUND THE FIFTH", "OCTAVE ARPEGGIO, EVERY NOTE STRUCK TWICE", "TWO SIXTEENTH STABS ON ONE", "PIANO OCTAVES BROKEN ON THE SIXTEENTHS" } } };
+    // Under a round-two type with no tie to these (the verse's MACHINE LOOP), each is offered and plays.
+    ComposerState s;
+    applySectionType (s, "Verse", "MACHINE LOOP, BASS RIFF, GUITARS OUT");
+    for (const auto& [l, list] : names)
+    {
+        const auto options = sectionApproaches (s, l);
+        const auto choices = composerChoices (l, s, spans, c);
+        REQUIRE (choices.size() == (size_t) options.size());
+        std::set<juce::String> seen;
+        for (const auto& name : list)
+        {
+            INFO (composerLayerName (l) << ": " << name);
+            const auto at = options.indexOf (name);
+            REQUIRE (at >= 0);
+            const auto& idea = choices[(size_t) at];
+            CHECK (! idea.notes.empty());
+            juce::String k;
+            for (const auto& n : idea.notes)
+            {
+                k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << ";";
+                CHECK (n.beat < 32.0 - 1.0e-6);
+                CHECK (n.pitch > 0);
+            }
+            CHECK (seen.insert (k).second);
+        }
+    }
+    // The bass options stay in front of LOCKED WITH THE KICK.
+    CHECK (sectionApproaches (s, ComposerLayer::bass)[sectionApproaches (s, ComposerLayer::bass).size() - 1] == "LOCKED WITH THE KICK");
 }
