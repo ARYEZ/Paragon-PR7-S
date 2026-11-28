@@ -113,7 +113,10 @@ namespace pr7s
                      { "FLAT-TWO HITS, A TOM RUN UNDER THE SIXTEENTHS", "The flat two's power chord on 1 and 2, then six sixteenths through the flat seven and the root, a tom run under them", RiffFlavour::openChords, {}, pre },
                      { "HALF-BAR CHANGES, THEN TWO BARS HELD OVER THE GALLOP", "A gallop on every beat, the chords changing each half bar, then the five held two bars", RiffFlavour::openChords, {}, pre },
                      { "TWO BARS OF OCTAVE TREMOLO ON THE FLAT SIX", "The root and octave of the flat six on every sixteenth, the bass in sixteenths on the same note, one high keys note", RiffFlavour::openChords, {}, pre },
-                     { "HITS ON ONE, TWO, TWO-AND, FOUR, FOUR-AND, CRASH QUARTERS", "Heavy hits on 1, 2, 2-and, 4 and 4-and held to the next, the kick with them, the snare on 3, crash quarters", RiffFlavour::openChords, {}, pre } };
+                     { "HITS ON ONE, TWO, TWO-AND, FOUR, FOUR-AND, CRASH QUARTERS", "Heavy hits on 1, 2, 2-and, 4 and 4-and held to the next, the kick with them, the snare on 3, crash quarters", RiffFlavour::openChords, {}, pre },
+                     // (0.266.0) Round twelve (the owner's ten more songs; shapes only, our names).
+                     { "BASS FILLS THE GAP BARS, CHORDS WALK UP ON THE DOTS", "A bar left to the bass's sixteenth fill, then the chord on 1 and three chords climbing on 3, 3-a and 4-and, over double time", RiffFlavour::openChords, {}, pre },
+                     { "HALF-NOTE CHORDS A FIFTH APART, A SIXTEENTH LINE", "Power chords a half note each, the second a fifth above the first, a lead line in sixteenths over them", RiffFlavour::openChords, {}, pre } };
             for (auto& t : sectionTypesFor ("Verse"))   // (0.118.0: the whole verse list, its new types too)
                 types.push_back (std::move (t));
             return types;
@@ -173,7 +176,11 @@ namespace pr7s
                 { "UNISON STAB FIGURE ON ONE, SHAKER AFTER", "Every lane on one stab figure on 1 (1, 1-and, 1-a, 2-e), then only the shaker; a groove bar between", r, {}, i },
                 { "UNISON LINE, KICK AND CRASH ON EVERY NOTE", "Four bars: the hook over a held chord, a unison line down the scale with kick and crash on every note, the five held, a tom bar", r, {}, i },
                 { "SNARE OUT, TWIN TRILL OVER SIXTEENTH HATS", "Two guitars trilling root and the step above in sixteenths, the second a sixteenth late, over hats with no snare", r, {}, i },
-                { "THREE CHORD PAIRS, THEN A LEAD BAR", "A bar of three chord pairs on eighths, then a bar left to the lead with only a drum pickup", r, {}, i } };
+                { "THREE CHORD PAIRS, THEN A LEAD BAR", "A bar of three chord pairs on eighths, then a bar left to the lead with only a drum pickup", r, {}, i },
+                // (0.266.0) Round twelve.
+                { "TWIN LEADS IN SIXES OVER A DOUBLE-TIME BEAT", "Twin leads in six-sixteenth cells across the bar, a power chord rung each bar, the bass pumping root sixteenths, a double-time beat", r, {}, i },
+                { "GALLOP KICK, OCTAVE BURSTS, A PEDAL IN FIVES", "A low pedal under the fifth and sixth in runs of five, octave bursts, a gallop kick and clean double stops over them", r, {}, i },
+                { "CLEAN PENDULUM ARPEGGIO, STRINGS AND BRASS JOIN", "One clean guitar swinging through the chord in eighths, a strings line, brass from halfway, the drums out until then", r, {}, i } };
             const auto before = sectionTypesFor (base == "Post-Chorus" ? juce::String ("Chorus") : juce::String ("Bridge"));
             types.insert (types.end(), before.begin(), before.end());
             return types;
@@ -263,6 +270,14 @@ namespace pr7s
                          { "INNER LINE OVER A HELD ROOT, FOUR ON THE FLOOR", "A clean low root held while a second note moves in half notes, root quarters on the bass, four on the floor with open hats", r, {}, b },
                          { "PAD BAR, PIANO OCTAVE ANSWER BAR", "A sus chord held on a pad, then a bar of the piano in octaves falling through four notes, in turn", r, {}, b },
                          { "BRASS HOOK OVER HELD STRINGS, NO DRUMS", "Strings holding the chord a bar with a short hook on top, a bass pedal, the drums out but a tom pickup in the last bars", r, {}, b },
+                         // (0.267.0) Round twelve (the owner's ten new songs; shapes only, our names).
+                         { "DISSONANT DYAD SIXTEENTHS ALONE, THEN THE BAND", "One guitar alone in sixteenth dyads, the low note falling a half step a beat against a moving top, the band's pickup into the last bar", r, {}, b },
+                         { "CRASHING CHORD, FIVE CHROMATIC EIGHTHS, TOM ROLLS", "A power chord with the kick and crash, then five eighth chords by half steps round the root, a tom roll through the held part", r, {}, b },
+                         { "DOTTED MUSIC BOX OVER A CREEPING BASS", "A high music box on the dotted quarters over held bass roots that climb by half steps in the last bar, the guitars and drums out", r, {}, b },
+                         { "BASS FIGURE ALONE, THEN TWIN GUITARS", "The bass alone with a figure, then two guitars a third apart circling the chord over root bursts", r, {}, b },
+                         { "PEDAL RIFF, HITS, THEN KICK AND SNARE TRADING", "A sixteenth pedal riff with a second guitar a third up, the drums hitting its tops, then the kick and snare trading sixteenths", r, {}, b },
+                         { "SIXTEENTH BURSTS UNDER A CHROMATIC RIFF", "Root bursts in sixteenths on the beats with the kick, a lead falling chromatically then running up the chord in thirds", r, {}, b },
+                         { "BEATS IN 3+3+2 ACROSS TWO BARS, UNISON HITS", "Two three-beat cells and a two-beat cell over two bars, the snare and toms on the guitar's hits", r, {}, b },
                          droning, open };
             }
             case 1:
@@ -740,6 +755,10 @@ namespace pr7s
                          { "SNARE ON TWO ONLY, TOM PAIR ON THREE-AND AND FOUR", "The snare on 2 only, a floor tom pair on 3-and and 4, the band pushing each change in on the and of 4", r, {}, b },
                          { "EVERYTHING ON THREE-AND AND FOUR-AND", "The kick, the bass and the strings only on 3-and and 4-and, the snare on 2, sixteenth hats", r, {}, b },
                          { "A NOTE CLIMBING A STEP A BEAT OVER A HELD OCTAVE", "One guitar holding the key's fifth in octaves, a second climbing a scale step every beat in sixteenths", r, {}, b },
+                         // (0.266.0) Round twelve (the owner's ten more songs; shapes only, our names).
+                         { "ROOT IN THREES AND A REST UNDER A STRING LINE", "The low root in sixteenths, three and a rest, under string dyads on a 3+3+2 line, half time with crash quarters", r, {}, b },
+                         { "TWIN MELODY, THE BASS DOUBLING, A CHORD HELD", "Twin leads a third apart pushing into each half bar, the bass doubling the lower voice, the key's chord held under", r, {}, b },
+                         { "HALF TIME, TWO CHORDS, PIANO ROCKING OVER", "Power chords in halves and then quarters over half time, a piano rocking a moving top over a held root", r, {}, b },
                          creep, open, droning };
             }
             case 4:
@@ -811,6 +830,9 @@ namespace pr7s
                          { "SYNCOPATED CHUG, GHOST SNARES", "Held power chords one bar, root chugs from 1-and the next, a syncopated kick and the snare on 3 with ghost notes", r, {}, d },
                          { "FOUR-SIXTEENTH BURST ON ONE, THEN SILENCE", "Four sixteenths on the root and a chord on 2, then the bar left silent, pushed chords into the next every fourth bar", r, {}, d },
                          { "HOOK OVER HELD ROOTS, KICK ON ONE AND FOUR-AND", "The root on 1 and the fifth on 4-and held under a hook on the keys, the kick on 1 and 4-and, open hats, the backbeat in the second half", r, {}, d },
+                         // (0.266.0) Round twelve (the owner's ten more songs; shapes only, our names).
+                         { "DOUBLE KICK UNDER A SLIDING PEDAL RIFF", "Eighth power chords sliding down a half step from the octave with the muted pedal between, double kick, scattered snare and crash hits", r, {}, d },
+                         { "RING, RIDE, BURST IN THREE-BAR TURNS", "A chord rung and the ride, a bar of ride alone, then a burst of root sixteenths with kick and toms", r, {}, d },
                          heavy, staccato };
             }
             case 5:
@@ -876,6 +898,9 @@ namespace pr7s
                          { "GUITAR ALONE, THEN THREE HITS RUNG TWICE", "The guitar alone, then three band hits on 1, 3 and 4-and rung a bar, twice, the last chord held to the end", r, {}, b },
                          { "OCTAVE TREMOLO CREEPING UP", "Root octaves in sixteenths climbing a half step every two beats, kick sixteenths and crash quarters under them, a hit to end", r, {}, b },
                          { "SNARE QUARTERS, KICK ON THREE-AND AND FOUR-AND", "The snare on every quarter, the kick only on 3-and and 4-and, hats on the ands, a slap bass figure and a keys arpeggio", r, {}, b },
+                         // (0.267.0) Round twelve (the owner's ten new songs; shapes only, our names).
+                         { "CRASHING CHORD, FIVE CHROMATIC EIGHTHS, TOM ROLLS", "A power chord with the kick and crash, then five eighth chords by half steps round the root, a tom roll through the held part", r, {}, b },
+                         { "CLUSTER CHUGS, A PEDAL LEAD, DOUBLE KICK TO END", "Five-hit clusters under a high pedal lead, half time with crash eighths, double kick in the last quarter", r, {}, b },
                          droning, stabs };
             }
             case 6: return { driving, droning };
@@ -2416,6 +2441,46 @@ namespace pr7s
                   { "CHORDS UNDER ONE TOP NOTE, A PIANO FRAGMENT", "CHORDS UNDER ONE TOP NOTE" }, { "HAND PERCUSSION SIXTEENTHS, QUARTER HATS, A RIM TAP", "SHAKER SIXTEENTHS ONLY" }, {} },
                 { "HALF-NOTE CHORDS, KICK ON ONE AND TWO-AND", { "HALF-NOTE POWER CHORDS WITH THE THIRD", "HALF-NOTE POWER CHORDS WITH THE FOURTH" }, { "TWO HITS: ONE AND TWO-AND", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "HELD PADS", "SILENT" }, { "KICK ON ONE AND TWO-AND, OPEN HAT QUARTERS", "KICK ON ONE AND TWO-AND, RIDE QUARTERS" }, {} },
+                // (0.266.0) Round twelve's pre-choruses, interludes, bridges and breakdowns.
+                { "BASS FILLS THE GAP BARS, CHORDS WALK UP ON THE DOTS", { "OUT, THEN A CHORD AND THREE CLIMBING ON THE DOTS", "THE CHORD HELD, THEN THREE CLIMBING ON THE DOTS" }, { "A SIXTEENTH FILL IN THE GAP BARS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "DOUBLE TIME, THE CRASH ON ONE EVERY BAR", "DOUBLE TIME, THE CRASH WITH THE WALK" }, {} },
+                { "HALF-NOTE CHORDS A FIFTH APART, A SIXTEENTH LINE", { "HALF-NOTE CHORDS, THE SECOND A FIFTH ABOVE", "HALF-NOTE CHORDS, A UNISON EIGHTH FILL AT THE END" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, SNARE ON THREE, CRASH ON EACH CHORD", "BACKBEAT, OPEN QUARTERS, A ROLL INTO THE LAST BAR" }, { "A SIXTEENTH LINE OVER THE HALF NOTES", "SILENT" } },
+                { "TWIN LEADS IN SIXES OVER A DOUBLE-TIME BEAT", { "ONE POWER CHORD RUNG EACH BAR", "ROOT SIXTEENTHS PUMPING UNDER THE LEADS" }, { "ROOT SIXTEENTHS IN PUMPED PAIRS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "STRINGS HOLDING EACH BAR'S CHORD", "SILENT" }, { "DOUBLE TIME, KICK ON ONE, ONE-A AND TWO-AND", "DOUBLE TIME, NO OPEN HATS, A CRASH EVERY FOUR" }, { "TWIN LEADS IN SIX-SIXTEENTH CELLS", "ONE LEAD IN SIX-SIXTEENTH CELLS" } },
+                { "GALLOP KICK, OCTAVE BURSTS, A PEDAL IN FIVES", { "A LOW PEDAL UNDER THE FIFTH AND SIXTH, IN FIVES", "ROOT OCTAVE BURSTS ON ONE AND THREE, THE PEDAL BETWEEN" }, { "SIXTEENTH PAIRS WITH THE GALLOP KICK", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "GALLOP KICK, OPEN HATS ON THE ANDS, A CHINA EVERY TWO BARS", "GALLOP KICK, RIDE EIGHTHS" }, { "CLEAN DOUBLE STOPS, A RUN DOWN EVERY SECOND BAR", "SILENT" } },
+                { "CLEAN PENDULUM ARPEGGIO, STRINGS AND BRASS JOIN", { "CLEAN PENDULUM ARPEGGIO", "CLEAN PENDULUM, THE CHORD RUNG EVERY TWO BARS" }, { "OUT", "ROOTS FROM HALFWAY", "LOCKED WITH THE KICK" },
+                  { "STRINGS LINE, THEN BRASS QUARTERS", "A CHOIR FROM THE THIRD QUARTER", "SILENT" }, { "DRUMS OUT, THEN HALF TIME FROM HALFWAY", "THE RIDE ALONE FROM HALFWAY" }, {} },
+                { "ROOT IN THREES AND A REST UNDER A STRING LINE", { "THE LOW ROOT IN THREES AND A REST", "THE ROOT IN THREES, THEN WHOLE CHORDS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "STRING DYADS IN 3+3+2", "STRING DYADS, A CHOIR FROM HALFWAY" }, { "HALF TIME, KICK ONE, ONE-AND, TWO-AND, CRASH QUARTERS", "HALF TIME, SNARE ON THREE, RIDE QUARTERS" }, {} },
+                { "TWIN MELODY, THE BASS DOUBLING, A CHORD HELD", { "THE TONIC CHORD HELD TWO BARS AT A TIME", "EACH BAR'S CHORD HELD UNDER THE TWINS" }, { "DOUBLES THE LOWER VOICE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, KICK ON ONE AND FOUR, RIDE OFF ONE", "HALF-TIME SNARE, RIDE AND CRASH ON THREE" }, { "TWIN MELODY, PUSHED INTO EVERY HALF BAR", "ONE MELODY, PUSHED INTO EVERY HALF BAR" } },
+                { "HALF TIME, TWO CHORDS, PIANO ROCKING OVER", { "TWO CHORDS IN HALVES, THEN QUARTERS", "HALVES AND QUARTERS, A CHROMATIC CLIMB TO END" }, { "ROOTS HELD", "DOUBLES THE GUITAR", "LOCKED WITH THE KICK" },
+                  { "PIANO EIGHTHS, ROOT UNDER A MOVING TOP", "HELD PADS" }, { "HALF TIME, KICK ON ONE AND TWO-AND, SNARE AND CRASH ON THREE", "HALF TIME, RIDE ON THE QUARTERS" }, {} },
+                { "DOUBLE KICK UNDER A SLIDING PEDAL RIFF", { "EIGHTH CHORDS SLIDING DOWN FROM THE OCTAVE, THE PEDAL BETWEEN", "ROOT-DYAD EIGHTHS UNDER THE KICK" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "DOUBLE KICK, SCATTERED SNARE AND CRASH", "DOUBLE KICK, CRASH EIGHTHS, SNARE ON THREE" }, {} },
+                { "RING, RIDE, BURST IN THREE-BAR TURNS", { "RING, REST, THEN A ROOT BURST, THREE BARS A TURN", "RING ONE BAR, BURST THE NEXT" }, { "BURSTS THE ROOT WITH THE KICK", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK BURSTS WITH TOMS, RIDE BETWEEN", "KICK BURSTS, NO TOMS" }, {} },
+                // (0.267.0) Round twelve's intros and outros.
+                { "DISSONANT DYAD SIXTEENTHS ALONE, THEN THE BAND", { "SIXTEENTH DYADS OVER A FALLING BASS NOTE, ALONE", "THE DYADS ALONE, THEN POWER CHORDS IN THE LAST BAR" }, { "OUT, THEN THE ROOT IN THE LAST BAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT, A PICKUP ON FOUR AND FOUR-AND", "OUT, THEN DOUBLE TIME IN THE LAST BAR" }, {} },
+                { "CRASHING CHORD, FIVE CHROMATIC EIGHTHS, TOM ROLLS", { "A CHORD, THEN FIVE CHROMATIC EIGHTH CHORDS", "THE CHROMATIC CHORDS, A SECOND GUITAR AN OCTAVE UP" }, { "THE ROOT UNDER EACH CHORD", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND CRASH ON EVERY CHORD, TOM ROLLS BETWEEN", "KICK AND CRASH ON EVERY CHORD, NO TOMS" }, {} },
+                { "DOTTED MUSIC BOX OVER A CREEPING BASS", { "OUT", "ONE HELD NOTE A BAR" }, { "ROOTS HELD, THEN A HALF-STEP CLIMB", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "MUSIC BOX ON THE DOTTED QUARTERS", "MUSIC BOX, THE PIANO DOUBLING FROM HALFWAY" }, { "OUT", "OUT UNTIL THE LAST BAR'S FILL" }, {} },
+                { "BASS FIGURE ALONE, THEN TWIN GUITARS", { "OUT, THEN A NEIGHBOUR FIGURE IN THIRDS", "A NEIGHBOUR FIGURE IN THIRDS OVER ROOT BURSTS" }, { "A BASS FIGURE ALONE, THEN ROOT BURSTS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "OUT, THEN THE KICK WITH THE BURSTS, QUARTER HATS", "OUT" }, {} },
+                { "PEDAL RIFF, HITS, THEN KICK AND SNARE TRADING", { "A SIXTEENTH PEDAL RIFF, A SECOND GUITAR A THIRD UP", "THE PEDAL RIFF IN SIXTEENTHS, ONE GUITAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "UNISON BURSTS, THEN KICK AND SNARE TRADING SIXTEENTHS", "KICK AND SNARE TRADING SIXTEENTHS, RIDE SIXTEENTHS" }, {} },
+                { "SIXTEENTH BURSTS UNDER A CHROMATIC RIFF", { "SIXTEENTH BURSTS WITH THE ROOT", "THE BURSTS ON ONE AND THREE ONLY" }, { "THE BURSTS WITH THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ON THE BURSTS, SNARE AT EACH END, TOMS BETWEEN", "KICK ON THE BURSTS, SNARE ON THREE" },
+                  { "A CHROMATIC EIGHTH FALL, THEN AN ARPEGGIO UP, IN THIRDS", "THE CHROMATIC FALL AND THE ARPEGGIO, ONE LEAD" } },
+                { "BEATS IN 3+3+2 ACROSS TWO BARS, UNISON HITS", { "THREE-BEAT CELLS, THEN SIX SIXTEENTHS", "THREE-BEAT CELLS ACROSS THE BARS" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "CHOIR CHORDS" }, { "SNARE AND TOMS ON THE GUITAR'S HITS", "KICK ON THE GUITAR'S HITS, SNARE ON THE TWOS" }, {} },
+                { "CLUSTER CHUGS, A PEDAL LEAD, DOUBLE KICK TO END", { "FIVE-HIT CLUSTER", "FIVE-HIT CLUSTER, A STEP UP EVERY OTHER BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "HALF TIME, CRASH EIGHTHS, DOUBLE KICK THE LAST QUARTER", "HALF TIME, CRASH EIGHTHS, TWO UNISON HITS TO END" },
+                  { "A PEDAL LEAD OVER THE CHUGS, THE LAST BAR HELD", "SILENT" } },
                 // (0.265.0) Round twelve's choruses.
                 { "SNARE BURSTS IN THE CHUG GAPS", { "CHORD, FOUR ROOT SIXTEENTHS, CHORD, FOUR, TWO CHORDS", "STOP CHORDS ON ONE, TWO-AND AND FOUR-AND" }, { "ROOTS ON THE CHORDS ONLY", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "SILENT", "HELD PADS" }, { "KICK AND CRASH ON THE CHORDS, SNARE BURSTS IN THE GAPS", "STOP HITS, SNARE BURSTS, KICK SIXTEENTHS IN BARS THREE AND FOUR" }, {} },

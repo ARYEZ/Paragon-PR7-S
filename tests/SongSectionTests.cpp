@@ -1984,7 +1984,7 @@ TEST_CASE ("0.102.0: a pre-chorus's own types, every lane's options a different 
                                             "CHUGS UNDER THE SHAPE", "STABS & GAPS", "RISING BASS" };
     // A pre-chorus lists them first, then the verse's types (a block typed as a verse keeps its type); a verse hasn't them.
     const auto pre = sectionTypesFor ("Pre-Chorus 2");
-    REQUIRE (pre.size() == names.size() + 3 + 6 + 7 + 6 + 6 + 5 + 1 + 4 + 13 + sectionTypesFor ("Verse").size());   // (0.196.0: five more)   // (0.183.0: six more)   // (0.123.0: six more after them)
+    REQUIRE (pre.size() == names.size() + 3 + 6 + 7 + 6 + 6 + 5 + 1 + 4 + 13 + 2 + sectionTypesFor ("Verse").size());   // (0.196.0: five more)   // (0.183.0: six more)   // (0.123.0: six more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (pre[i].name == names[i]);
     CHECK (sectionTypeNamed ("Pre-Chorus", "STACCATO CHUG").has_value());
@@ -2597,10 +2597,10 @@ TEST_CASE ("0.105.0: a bridge's own types, every lane's options a different part
     const std::vector<juce::String> names { "HALF-TIME MELODIC", "HEAVY BUILD", "LATE-CHANGE CLIMB", "CLEAN BRIDGE",
                                             "SLIDING CHORDS", "GUITARS OUT, THEN BACK", "SLIDE OVER A HELD ROOT" };
     const auto bridge = sectionTypesFor ("Bridge");
-    REQUIRE (bridge.size() == names.size() + 1 + 9 + 11 + 14 + 1 + 6 + 8 + 9 + 12 + 3 + 6 + 22);   // (0.197.0: nine more)   // (0.184.0: eight more)   // (0.171.0: six more)   // (0.161.0: RISING BASS before the old three)   // (0.142.0: eleven more)   // (0.122.0: nine more after them)
+    REQUIRE (bridge.size() == names.size() + 1 + 9 + 11 + 14 + 1 + 6 + 8 + 9 + 12 + 3 + 6 + 22 + 3);   // (0.197.0: nine more)   // (0.184.0: eight more)   // (0.171.0: six more)   // (0.161.0: RISING BASS before the old three)   // (0.142.0: eleven more)   // (0.122.0: nine more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (bridge[i].name == names[i]);
-    CHECK (bridge[names.size() + 1 + 20 + 14 + 1 + 6 + 8 + 9 + 12 + 6 + 22].name == "CREEP");   // (the old three kept after them; 0.171.0: six more before it)
+    CHECK (bridge[names.size() + 1 + 20 + 14 + 1 + 6 + 8 + 9 + 12 + 6 + 22 + 3].name == "CREEP");   // (the old three kept after them; 0.171.0: six more before it)
     CHECK (sectionTypeNamed ("Middle 8", "CLEAN BRIDGE").has_value());
     CHECK_FALSE (sectionTypeNamed ("Verse", "HEAVY BUILD").has_value());
     CHECK (sectionTypeCalled ("SLIDING CHORDS")->band == SectionType::Band::bridge);
@@ -2775,11 +2775,11 @@ TEST_CASE ("0.109.0: a breakdown's own types, every lane's options a different p
     const std::vector<juce::String> names { "CHROMATIC CRAWL", "HIT & HOLD, THEN CARPET", "CHUG & SQUEAL", "DOTTED TRITONE PUSH", "TRIPLET CLUSTER",
                                             "GAPPED SIXTEENTHS", "THREES & TWOS", "CALL & CHUG", "HALF-TIME OPEN CHORDS", "OFF-BEAT GALLOPS" };
     const auto breakdown = sectionTypesFor ("Breakdown");
-    REQUIRE (breakdown.size() == names.size() + 6 + 4 + 5 + 4 + 3 + 5 + 2 + 2 + 3 + 12);   // (0.197.0: five more)   // (0.184.0: three more)   // (0.142.0: five more)   // (0.122.0: four more after them)
+    REQUIRE (breakdown.size() == names.size() + 6 + 4 + 5 + 4 + 3 + 5 + 2 + 2 + 3 + 12 + 2);   // (0.197.0: five more)   // (0.184.0: three more)   // (0.142.0: five more)   // (0.122.0: four more after them)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (breakdown[i].name == names[i]);
-    CHECK (breakdown[names.size() + 6 + 9 + 4 + 3 + 5 + 2 + 3 + 12].name == "HEAVY CHUG");   // (the old two kept after them)
-    CHECK (breakdown[names.size() + 6 + 10 + 4 + 3 + 5 + 2 + 3 + 12].name == "STACCATO CHUG");
+    CHECK (breakdown[names.size() + 6 + 9 + 4 + 3 + 5 + 2 + 3 + 12 + 2].name == "HEAVY CHUG");   // (the old two kept after them)
+    CHECK (breakdown[names.size() + 6 + 10 + 4 + 3 + 5 + 2 + 3 + 12 + 2].name == "STACCATO CHUG");
     CHECK_FALSE (sectionTypeNamed ("Verse", "CALL & CHUG").has_value());
     for (const auto& name : names)
         CHECK (sectionTypeCalled (name)->band == SectionType::Band::breakdown);
@@ -2965,13 +2965,13 @@ TEST_CASE ("0.110.0: interlude and post-chorus types, every lane's options a dif
                                             "STAB & ANSWER", "TREMOLO OVER CHUGS", "CLEAN BREATH", "TRITONE AIR & BUILD", "CHROMATIC WOBBLE" };
     // A post-chorus: these, then the chorus's; an interlude or instrumental: these, then the bridge's.
     const auto post = sectionTypesFor ("Post-Chorus");
-    REQUIRE (post.size() == names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9 + sectionTypesFor ("Chorus").size());   // (0.196.0: seven more)
+    REQUIRE (post.size() == names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9 + 3 + sectionTypesFor ("Chorus").size());   // (0.196.0: seven more)
     for (size_t i = 0; i < names.size(); ++i)
         CHECK (post[i].name == names[i]);
-    CHECK (post[names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9].name == "DRIVING");   // (0.141.0: six more first)
+    CHECK (post[names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9 + 3].name == "DRIVING");   // (0.141.0: six more first)
     const auto interlude = sectionTypesFor ("Interlude 2");
-    REQUIRE (interlude.size() == names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9 + sectionTypesFor ("Bridge").size());   // (0.196.0: seven more)
-    CHECK (interlude[names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9].name == "HALF-TIME MELODIC");
+    REQUIRE (interlude.size() == names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9 + 3 + sectionTypesFor ("Bridge").size());   // (0.196.0: seven more)
+    CHECK (interlude[names.size() + 6 + 3 + 3 + 7 + 1 + 1 + 9 + 3].name == "HALF-TIME MELODIC");
     CHECK (sectionTypeNamed ("Instrumental", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Chorus", "HOOK RIFF").has_value());
     CHECK_FALSE (sectionTypeNamed ("Hook", "HOOK RIFF").has_value());
@@ -3119,14 +3119,14 @@ TEST_CASE ("0.111.0: intro and outro types, every lane's options a different par
                                              "FALLING OCTAVE PEDAL",   // (0.117.0)
                                              "EVERY OTHER BAR EMPTY", "SINGLE-NOTE BAR, CHORD BAR" };   // (0.124.0)
     const auto intro = sectionTypesFor ("Intro");
-    REQUIRE (intro.size() == intros.size() + 3 + 8 + 8 + 6 + 7 + 2 + 2 + 6 + 13);   // (0.143.0: eight more; 0.151.0: eight; 0.185.0: six; 0.198.0: seven)
+    REQUIRE (intro.size() == intros.size() + 3 + 8 + 8 + 6 + 7 + 2 + 2 + 6 + 13 + 7);   // (0.143.0: eight more; 0.151.0: eight; 0.185.0: six; 0.198.0: seven)
     for (size_t i = 0; i < intros.size(); ++i)
         CHECK (intro[i].name == intros[i]);
-    CHECK (intro[intros.size() + 3 + 8 + 8 + 6 + 7 + 2 + 6 + 13].name == "DRONING");
+    CHECK (intro[intros.size() + 3 + 8 + 8 + 6 + 7 + 2 + 6 + 13 + 7].name == "DRONING");
     for (const auto* name : { "Outro", "Ending", "Coda", "Tag" })
     {
         const auto outro = sectionTypesFor (name);
-        REQUIRE (outro.size() == outros.size() + 2 + 8 + 4 + 2 + 5 + 2 + 11 + 6);   // (0.143.0: eight more; 0.151.0: four; 0.185.0: two; 0.198.0: five)
+        REQUIRE (outro.size() == outros.size() + 2 + 8 + 4 + 2 + 5 + 2 + 11 + 6 + 2);   // (0.143.0: eight more; 0.151.0: four; 0.185.0: two; 0.198.0: five)
         for (size_t i = 0; i < outros.size(); ++i)
             CHECK (outro[i].name == outros[i]);
     }
@@ -5931,8 +5931,8 @@ TEST_CASE ("0.185.0: round six's intro and outro types, every lane's options a d
     const std::vector<juce::String> outros { "HORN LINE ALONE, CRASH ON ONE", "TWO ROOTS AND A RUNG CHORD" };
     const auto intro = sectionTypesFor ("Intro");
     const auto outro = sectionTypesFor ("Outro");
-    REQUIRE (intro.size() == 31 + 3 + 6 + 7 + 2 + 2 + 6 + 13);   // (0.198.0: seven more)
-    REQUIRE (outro.size() == 24 + 2 + 2 + 5 + 2 + 11 + 6);   // (0.198.0: five more)
+    REQUIRE (intro.size() == 31 + 3 + 6 + 7 + 2 + 2 + 6 + 13 + 7);   // (0.198.0: seven more)
+    REQUIRE (outro.size() == 24 + 2 + 2 + 5 + 2 + 11 + 6 + 2);   // (0.198.0: five more)
     for (size_t i = 0; i < intros.size(); ++i)
     {
         CHECK (intro[31 + i].name == intros[i]);   // (after 0.151.0's)
@@ -6771,7 +6771,7 @@ TEST_CASE ("0.171.0: round five's bridge types, every lane's options a different
     for (size_t i = 0; i < names.size(); ++i)
     {
         INFO (names[i]);
-        CHECK (bridge[bridge.size() - 22 - 6 - 1 - 12 - 9 - 8 - 9 + i].name == names[i]);   // (0.184.0: eight more after them; 0.197.0: nine more)
+        CHECK (bridge[bridge.size() - 3 - 22 - 6 - 1 - 12 - 9 - 8 - 9 + i].name == names[i]);   // (0.184.0: eight more after them; 0.197.0: nine more)
         CHECK (sectionTypeCalled (names[i])->band == SectionType::Band::bridge);
         ComposerState s;
         applySectionType (s, "Bridge", names[i]);
@@ -7191,7 +7191,7 @@ TEST_CASE ("0.183.0: round six's pre-chorus types, every lane's options a differ
                                             "KICK EIGHTHS, THEN SNARE EIGHTHS", "TRITONE CHORDS BETWEEN ROOT SINGLES, SNARE CLIMB",
                                             "DOTTED KICK, SNARE PAIRS, MUTED ROOT STABS", "SIXTEENTHS UP A HALF STEP AFTER SIX" };
     const auto pre = sectionTypesFor ("Pre-Chorus");
-    REQUIRE (pre.size() == 57 + sectionTypesFor ("Verse").size());   // (0.196.0: five more)
+    REQUIRE (pre.size() == 59 + sectionTypesFor ("Verse").size());   // (0.196.0: five more)
     const auto key = [] (const LineIdea& idea)
     {
         juce::String k;
@@ -7362,12 +7362,12 @@ TEST_CASE ("0.184.0: round six's bridge and breakdown types, every lane's option
     };
     for (size_t i = 0; i < bridges.size(); ++i)
     {
-        CHECK (bridge[bridge.size() - 22 - 6 - 1 - 3 - 12 - 9 - bridges.size() + i].name == bridges[i]);   // (before 0.197.0's nine, then CREEP, OPEN CHORDS, DRONING)
+        CHECK (bridge[bridge.size() - 3 - 22 - 6 - 1 - 3 - 12 - 9 - bridges.size() + i].name == bridges[i]);   // (before 0.197.0's nine, then CREEP, OPEN CHORDS, DRONING)
         checkType ("Bridge", bridges[i], SectionType::Band::bridge);
     }
     for (size_t i = 0; i < breakdowns.size(); ++i)
     {
-        CHECK (breakdown[breakdown.size() - 12 - 3 - 6 - 2 - 2 - 5 - breakdowns.size() + i].name == breakdowns[i]);   // (before 0.197.0's five, then HEAVY CHUG, STACCATO CHUG)
+        CHECK (breakdown[breakdown.size() - 2 - 12 - 3 - 6 - 2 - 2 - 5 - breakdowns.size() + i].name == breakdowns[i]);   // (before 0.197.0's five, then HEAVY CHUG, STACCATO CHUG)
         checkType ("Breakdown", breakdowns[i], SectionType::Band::breakdown);
     }
 
@@ -8169,10 +8169,10 @@ TEST_CASE ("0.196.0: round seven's pre-chorus and post-chorus / interlude types,
     const auto pre = sectionTypesFor ("Pre-Chorus");
     const auto post = sectionTypesFor ("Post-Chorus");
     const auto interlude = sectionTypesFor ("Interlude");
-    REQUIRE (pre.size() == 57 + sectionTypesFor ("Verse").size());
+    REQUIRE (pre.size() == 59 + sectionTypesFor ("Verse").size());
     CHECK (pre[30].name == "SIXTEENTHS UP A HALF STEP AFTER SIX");
     CHECK (post[22].name == "HELD SECOND CLUSTER, SIXTEENTH PICKUP");
-    CHECK (post[41].name == "DRIVING");
+    CHECK (post[44].name == "DRIVING");
     const auto key = [] (const LineIdea& idea)
     {
         juce::String k;
@@ -8413,9 +8413,9 @@ TEST_CASE ("0.197.0: round seven's bridge and breakdown types, every lane's opti
     const std::set<juce::String> withLead { "REPEATED-NOTE LINE IN 3+3+2", "CHORDS UNDER A HELD HIGH THIRD" };
     const auto bridge = sectionTypesFor ("Bridge");
     const auto breakdown = sectionTypesFor ("Breakdown");
-    CHECK (bridge[bridge.size() - 22 - 6 - 1 - 3 - 12 - bridges.size() - 1].name == "RIDE AND BASS SIXTEENTHS UNDER A CLEAN ARPEGGIO");
+    CHECK (bridge[bridge.size() - 3 - 22 - 6 - 1 - 3 - 12 - bridges.size() - 1].name == "RIDE AND BASS SIXTEENTHS UNDER A CLEAN ARPEGGIO");
     CHECK (bridge[bridge.size() - 3].name == "CREEP");
-    CHECK (breakdown[breakdown.size() - 12 - 3 - 6 - 2 - 2 - breakdowns.size() - 1].name == "HALF-STEP FALL OVER THE OPEN ROOT");
+    CHECK (breakdown[breakdown.size() - 2 - 12 - 3 - 6 - 2 - 2 - breakdowns.size() - 1].name == "HALF-STEP FALL OVER THE OPEN ROOT");
     CHECK (breakdown[breakdown.size() - 2].name == "HEAVY CHUG");
     const auto key = [] (const LineIdea& idea)
     {
@@ -8427,12 +8427,12 @@ TEST_CASE ("0.197.0: round seven's bridge and breakdown types, every lane's opti
     std::vector<std::pair<juce::String, juce::String>> all;   // (section, type)
     for (size_t i = 0; i < bridges.size(); ++i)
     {
-        CHECK (bridge[bridge.size() - 22 - 6 - 1 - 3 - 12 - bridges.size() + i].name == bridges[i]);   // (before CREEP, OPEN CHORDS, DRONING)
+        CHECK (bridge[bridge.size() - 3 - 22 - 6 - 1 - 3 - 12 - bridges.size() + i].name == bridges[i]);   // (before CREEP, OPEN CHORDS, DRONING)
         all.push_back ({ "Bridge", bridges[i] });
     }
     for (size_t i = 0; i < breakdowns.size(); ++i)
     {
-        CHECK (breakdown[breakdown.size() - 12 - 3 - 6 - 2 - 2 - breakdowns.size() + i].name == breakdowns[i]);   // (before HEAVY CHUG, STACCATO CHUG)
+        CHECK (breakdown[breakdown.size() - 2 - 12 - 3 - 6 - 2 - 2 - breakdowns.size() + i].name == breakdowns[i]);   // (before HEAVY CHUG, STACCATO CHUG)
         all.push_back ({ "Breakdown", breakdowns[i] });
     }
     CHECK (sectionTypeNamed ("Middle 8", "TOM CARPET, SNARE ON THE OFF-BEATS").has_value());
@@ -8713,9 +8713,9 @@ TEST_CASE ("0.198.0: round seven's intro and outro types, every lane's options a
     const std::set<juce::String> withLead { "NYLON DOUBLES THE INTRO, THEN LEAVES" };
     const auto intro = sectionTypesFor ("Intro");
     const auto outro = sectionTypesFor ("Outro");
-    CHECK (intro[intro.size() - 13 - 6 - 3 - 2 - 2 - intros.size() - 1].name == "TWO ROOTS AND A RUNG CHORD");
+    CHECK (intro[intro.size() - 7 - 13 - 6 - 3 - 2 - 2 - intros.size() - 1].name == "TWO ROOTS AND A RUNG CHORD");
     CHECK (intro[intro.size() - 2].name == "DRONING");
-    CHECK (outro[outro.size() - 6 - 11 - 2 - 2 - outros.size() - 1].name == "TWO ROOTS AND A RUNG CHORD");
+    CHECK (outro[outro.size() - 2 - 6 - 11 - 2 - 2 - outros.size() - 1].name == "TWO ROOTS AND A RUNG CHORD");
     CHECK (outro[outro.size() - 2].name == "DRONING");
     const auto key = [] (const LineIdea& idea)
     {
@@ -8727,12 +8727,12 @@ TEST_CASE ("0.198.0: round seven's intro and outro types, every lane's options a
     std::vector<std::pair<juce::String, juce::String>> all;   // (section, type)
     for (size_t i = 0; i < intros.size(); ++i)
     {
-        CHECK (intro[intro.size() - 13 - 6 - 3 - 2 - 2 - intros.size() + i].name == intros[i]);   // (before 0.216.0's two, DRONING, OPEN CHORDS)
+        CHECK (intro[intro.size() - 7 - 13 - 6 - 3 - 2 - 2 - intros.size() + i].name == intros[i]);   // (before 0.216.0's two, DRONING, OPEN CHORDS)
         all.push_back ({ "Intro", intros[i] });
     }
     for (size_t i = 0; i < outros.size(); ++i)
     {
-        CHECK (outro[outro.size() - 6 - 11 - 2 - 2 - outros.size() + i].name == outros[i]);   // (before DRONING, STABS)
+        CHECK (outro[outro.size() - 2 - 6 - 11 - 2 - 2 - outros.size() + i].name == outros[i]);   // (before DRONING, STABS)
         all.push_back ({ "Outro", outros[i] });
     }
     CHECK (sectionTypeNamed ("Ending", "STRUM OFF THE ONE TO THE END").has_value());
@@ -10762,9 +10762,9 @@ TEST_CASE ("0.242.0: round ten's pre-choruses, post-chorus, bridges and breakdow
     CHECK (post[31].name == "ANTHEM HITS ON TWO, THREE-AND, FOUR-AND");
     CHECK (sectionTypesFor ("Interlude")[31].name == "ANTHEM HITS ON TWO, THREE-AND, FOUR-AND");
     for (size_t i = 0; i < bridges.size(); ++i)
-        CHECK (bridge[bridge.size() - 3 - 22 - bridges.size() + i].name == bridges[i]);
+        CHECK (bridge[bridge.size() - 3 - 3 - 22 - bridges.size() + i].name == bridges[i]);
     for (size_t i = 0; i < breakdowns.size(); ++i)
-        CHECK (breakdown[breakdown.size() - 2 - 12 - breakdowns.size() + i].name == breakdowns[i]);
+        CHECK (breakdown[breakdown.size() - 2 - 2 - 12 - breakdowns.size() + i].name == breakdowns[i]);
 
     const auto key = [] (const LineIdea& idea)
     {
@@ -10873,9 +10873,9 @@ TEST_CASE ("0.243.0: round ten's intros and outros", "[sections][types][bookend2
     const auto intro = sectionTypesFor ("Intro");
     const auto outro = sectionTypesFor ("Outro");
     for (size_t i = 0; i < intros.size(); ++i)
-        CHECK (intro[intro.size() - 2 - 13 - intros.size() + i].name == intros[i]);
+        CHECK (intro[intro.size() - 2 - 7 - 13 - intros.size() + i].name == intros[i]);
     for (size_t i = 0; i < outros.size(); ++i)
-        CHECK (outro[outro.size() - 2 - 6 - outros.size() + i].name == outros[i]);
+        CHECK (outro[outro.size() - 2 - 2 - 6 - outros.size() + i].name == outros[i]);
 
     const auto key = [] (const LineIdea& idea)
     {
@@ -11686,7 +11686,7 @@ TEST_CASE ("0.255.0: round eleven's bridges, every lane's options a different pa
                                                "A NOTE CLIMBING A STEP A BEAT OVER A HELD OCTAVE" };
     const auto bridge = sectionTypesFor ("Bridge");
     for (size_t i = 0; i < bridges.size(); ++i)
-        CHECK (bridge[bridge.size() - 3 - bridges.size() + i].name == bridges[i]);
+        CHECK (bridge[bridge.size() - 3 - 3 - bridges.size() + i].name == bridges[i]);
     CHECK (bridge[bridge.size() - 3].name == "CREEP");
     const auto key = [] (const LineIdea& idea)
     {
@@ -11775,7 +11775,7 @@ TEST_CASE ("0.256.0: round eleven's breakdowns, every lane's options a different
         "HOOK OVER HELD ROOTS, KICK ON ONE AND FOUR-AND" };
     const auto breakdown = sectionTypesFor ("Breakdown");
     for (size_t i = 0; i < breakdowns.size(); ++i)
-        CHECK (breakdown[breakdown.size() - 2 - breakdowns.size() + i].name == breakdowns[i]);
+        CHECK (breakdown[breakdown.size() - 2 - 2 - breakdowns.size() + i].name == breakdowns[i]);
     CHECK (breakdown[breakdown.size() - 2].name == "HEAVY CHUG");
     const auto key = [] (const LineIdea& idea)
     {
@@ -11869,9 +11869,9 @@ TEST_CASE ("0.257.0: round eleven's intros and outros, every lane's options a di
     const auto intro = sectionTypesFor ("Intro");
     const auto outro = sectionTypesFor ("Outro");
     for (size_t i = 0; i < intros.size(); ++i)
-        CHECK (intro[intro.size() - 2 - intros.size() + i].name == intros[i]);
+        CHECK (intro[intro.size() - 2 - 7 - intros.size() + i].name == intros[i]);
     for (size_t i = 0; i < outros.size(); ++i)
-        CHECK (outro[outro.size() - 2 - outros.size() + i].name == outros[i]);
+        CHECK (outro[outro.size() - 2 - 2 - outros.size() + i].name == outros[i]);
     CHECK (intro[intro.size() - 2].name == "DRONING");
     CHECK (outro[outro.size() - 2].name == "DRONING");
     const auto key = [] (const LineIdea& idea)
@@ -12271,5 +12271,124 @@ TEST_CASE ("0.265.0: round twelve's chorus types, every lane's options a differe
         for (const auto& n : l[(size_t) ComposerLayer::lead].notes)
             harmony += n.harmony ? 1 : 0;
         CHECK (harmony >= 16);
+    }
+}
+
+TEST_CASE ("0.266.0: round twelve's pre-chorus, interlude, bridge and breakdown types, every lane's options a different part", "[sections][types][other266]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<std::pair<juce::String, juce::String>> names {
+        { "Pre-Chorus", "BASS FILLS THE GAP BARS, CHORDS WALK UP ON THE DOTS" },
+        { "Pre-Chorus", "HALF-NOTE CHORDS A FIFTH APART, A SIXTEENTH LINE" },
+        { "Interlude", "TWIN LEADS IN SIXES OVER A DOUBLE-TIME BEAT" },
+        { "Interlude", "GALLOP KICK, OCTAVE BURSTS, A PEDAL IN FIVES" },
+        { "Interlude", "CLEAN PENDULUM ARPEGGIO, STRINGS AND BRASS JOIN" },
+        { "Bridge", "ROOT IN THREES AND A REST UNDER A STRING LINE" },
+        { "Bridge", "TWIN MELODY, THE BASS DOUBLING, A CHORD HELD" },
+        { "Bridge", "HALF TIME, TWO CHORDS, PIANO ROCKING OVER" },
+        { "Breakdown", "DOUBLE KICK UNDER A SLIDING PEDAL RIFF" },
+        { "Breakdown", "RING, RIDE, BURST IN THREE-BAR TURNS" } };
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << (n.harmony ? "h" : "") << ";";
+        return k;
+    };
+    for (const auto& [section, name] : names)
+    {
+        INFO (section << ": " << name);
+        bool listed = false;
+        for (const auto& t : sectionTypesFor (section))
+            listed = listed || t.name == name;
+        CHECK (listed);
+        REQUIRE (sectionTypeCalled (name).has_value());
+        ComposerState s;
+        applySectionType (s, section, name);
+        REQUIRE (s.sectionType == name);
+        int lanes = 0;
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            if (options.isEmpty())
+                continue;
+            ++lanes;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                const auto option = sectionApproaches (s, l)[(int) o];
+                INFO (composerLayerName (l) << " " << o << " " << option);
+                CHECK (seen.insert (key (choices[o])).second);
+                if (option != "OUT" && option != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+        CHECK (lanes >= 4);
+    }
+}
+
+TEST_CASE ("0.267.0: round twelve's intro and outro types, every lane's options a different part", "[sections][types][bookend267]")
+{
+    const ComposerContext c;
+    const auto spans = cleanSpans();   // (A minor: Am F C G, a bar each, 8 bars)
+    const std::vector<std::pair<juce::String, juce::String>> names {
+        { "Intro", "DISSONANT DYAD SIXTEENTHS ALONE, THEN THE BAND" },
+        { "Intro", "CRASHING CHORD, FIVE CHROMATIC EIGHTHS, TOM ROLLS" },
+        { "Outro", "CRASHING CHORD, FIVE CHROMATIC EIGHTHS, TOM ROLLS" },
+        { "Intro", "DOTTED MUSIC BOX OVER A CREEPING BASS" },
+        { "Intro", "BASS FIGURE ALONE, THEN TWIN GUITARS" },
+        { "Intro", "PEDAL RIFF, HITS, THEN KICK AND SNARE TRADING" },
+        { "Intro", "SIXTEENTH BURSTS UNDER A CHROMATIC RIFF" },
+        { "Intro", "BEATS IN 3+3+2 ACROSS TWO BARS, UNISON HITS" },
+        { "Outro", "CLUSTER CHUGS, A PEDAL LEAD, DOUBLE KICK TO END" } };
+    const auto key = [] (const LineIdea& idea)
+    {
+        juce::String k;
+        for (const auto& n : idea.notes)
+            k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << "/" << juce::roundToInt (n.length * 96.0) << (n.harmony ? "h" : "") << ";";
+        return k;
+    };
+    for (const auto& [section, name] : names)
+    {
+        INFO (section << ": " << name);
+        bool listed = false;
+        for (const auto& t : sectionTypesFor (section))
+            listed = listed || t.name == name;
+        CHECK (listed);
+        REQUIRE (sectionTypeCalled (name).has_value());
+        ComposerState s;
+        applySectionType (s, section, name);
+        REQUIRE (s.sectionType == name);
+        int lanes = 0;
+        for (const auto l : composerLayers())
+        {
+            const auto options = baseSectionApproaches (s, l);
+            if (options.isEmpty())
+                continue;
+            ++lanes;
+            if (l == ComposerLayer::bass)
+                CHECK (options[options.size() - 1] == "LOCKED WITH THE KICK");
+            const auto choices = composerChoices (l, s, spans, c);
+            REQUIRE (choices.size() == (size_t) sectionApproaches (s, l).size());
+            std::set<juce::String> seen;
+            for (size_t o = 0; o < choices.size(); ++o)
+            {
+                const auto option = sectionApproaches (s, l)[(int) o];
+                INFO (composerLayerName (l) << " " << o << " " << option);
+                CHECK (seen.insert (key (choices[o])).second);
+                if (option != "OUT" && option != "SILENT")
+                    CHECK (! choices[o].notes.empty());
+                for (const auto& n : choices[o].notes)
+                    CHECK (n.beat < 32.0 - 1.0e-6);
+            }
+        }
+        CHECK (lanes >= 4);
     }
 }

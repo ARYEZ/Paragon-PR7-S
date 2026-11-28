@@ -2,6 +2,34 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.267.0
+
+**Round twelve, part four: eight new intro and outro types** from the owner's new songs (shapes only, our own names), each with its own options per lane. This release also carries **0.266.0** (below), which was never published on its own.
+
+- **DISSONANT DYAD SIXTEENTHS ALONE, THEN THE BAND** (intro). One guitar alone in sixteenth dyads, the low note falling a half step each beat against a top a fourth, a tritone or a third above. The drums come in with a pickup on the last bar's 4 and 4-and, or with a bar of double time.
+- **CRASHING CHORD, FIVE CHROMATIC EIGHTHS, TOM ROLLS** (intro and outro). A power chord on 1 with the kick and crash, then five eighth chords moving by half steps round the root, the next bar a step lower. A tom roll fills the held part; a second guitar can double it an octave up.
+- **DOTTED MUSIC BOX OVER A CREEPING BASS** (intro). A high music box on the dotted quarters, the bass holding roots and climbing by half steps in the last bar, the guitars and drums out. A piano can double the music box from halfway.
+- **BASS FIGURE ALONE, THEN TWIN GUITARS** (intro). The bass alone with a figure, then two guitars a third apart circling the chord over root bursts, the kick with the bursts.
+- **PEDAL RIFF, HITS, THEN KICK AND SNARE TRADING** (intro). A sixteenth pedal riff with a second guitar a third up; the drums hit the riff's tops, then the kick and snare trade sixteenths under the ride.
+- **SIXTEENTH BURSTS UNDER A CHROMATIC RIFF** (intro). Root bursts in sixteenths with the kick, the snare on each burst's ends and toms between. With the lead lane on, a lead falls chromatically and runs up the chord in thirds. The songs' sextuplets are written as sixteenths, the owner's shortest note.
+- **BEATS IN 3+3+2 ACROSS TWO BARS, UNISON HITS** (intro). Two three-beat cells and a two-beat cell over two bars, in 4/4, the snare and toms on the guitar's hits.
+- **CLUSTER CHUGS, A PEDAL LEAD, DOUBLE KICK TO END** (outro). Five-hit clusters under a high pedal lead, half time with crash eighths, double kick in the last quarter or two unison hits to end.
+
+The second guitar and the twin lead's second voice go to their lane's second track, as before.
+
+Can't be checked here: how they sound. Next: round twelve's transitions.
+
+## 0.266.0
+
+**Round twelve, part three: ten new types for the pre-chorus, interlude, bridge and breakdown** from the owner's new songs (shapes only, our own names), each with its own options per lane:
+
+- Pre-chorus: **BASS FILLS THE GAP BARS, CHORDS WALK UP ON THE DOTS** (chords ring in turn with bars the bass fills, then chords climbing on the dotted quarters) and **HALF-NOTE CHORDS A FIFTH APART, A SIXTEENTH LINE** (two half-note chords a bar, the second a fifth higher, a sixteenth line over them).
+- Interlude / post-chorus: **TWIN LEADS IN SIXES OVER A DOUBLE-TIME BEAT** (two leads in six-sixteenth cells, the second voice for the lead lane's second track, root sixteenths pumping under), **GALLOP KICK, OCTAVE BURSTS, A PEDAL IN FIVES** (root-octave bursts on 1 and 3 with the pedal between, a gallop kick) and **CLEAN PENDULUM ARPEGGIO, STRINGS AND BRASS JOIN** (a clean arpeggio swinging between two notes, the strings and a brass line coming in over it).
+- Bridge: **ROOT IN THREES AND A REST UNDER A STRING LINE**, **TWIN MELODY, THE BASS DOUBLING, A CHORD HELD** and **HALF TIME, TWO CHORDS, PIANO ROCKING OVER**.
+- Breakdown: **DOUBLE KICK UNDER A SLIDING PEDAL RIFF** (eighth chords sliding down from the octave with the pedal between, over double kick) and **RING, RIDE, BURST IN THREE-BAR TURNS** (a chord rung, a bar of ride, then a root burst, three bars a turn).
+
+Can't be checked here: how they sound. (Published inside 0.267.0.)
+
 ## 0.265.0
 
 **Round twelve, part two: seven new chorus types** from the owner's new songs (shapes only, our own names), each with its own options per lane:
