@@ -22086,6 +22086,19 @@ namespace pr7s
             {
                 auto out = idea (LineIdea::Part::chords, n.toLowerCase(), {});
                 auto text = [&] (const char* t) { out.description = t; };
+                if (n == "FOUR-NOTE CELL FOLLOWING THE CHORDS")   // (0.269.0, a shared option)
+                {
+                    text ("A sixteenth cell of the chord's root, its third, the root and the fifth under, moved onto every chord");
+                    for (int b = 0; b * q < length - 1.0e-6; ++b)
+                    {
+                        const auto chord = chordAt (b * q);
+                        const auto r = pitchOfClassIn (chord.root, 60, 71);
+                        const int cell[4] { 0, chordThird (chord), 0, -5 };
+                        for (int k = 0; k < 4; ++k)
+                            add (out, b * q + k * s16, s16 * 0.9, r + cell[k], 0.56f);
+                    }
+                    return out;
+                }
                 if (n == "MUSIC BOX ON THE DOTTED QUARTERS" || n == "MUSIC BOX, THE PIANO DOUBLING FROM HALFWAY")
                 {
                     const auto piano = n != "MUSIC BOX ON THE DOTTED QUARTERS";
@@ -22278,6 +22291,12 @@ namespace pr7s
                     sortNotes (out);
                     return out;
                 }
+                if (n == "KICK AND RIDE ON TWO AND FOUR ONLY")   // (0.269.0, a shared option)
+                    return every ("Nothing in the kit but the kick and the ride, together on 2 and 4", [&] (int b)
+                    {
+                        play (b, backbeat, GmDrum::kick, 0.84f);
+                        play (b, backbeat, GmDrum::ride, 0.56f);
+                    });
                 if (n == "HALF TIME, CRASH EIGHTHS, DOUBLE KICK THE LAST QUARTER" || n == "HALF TIME, CRASH EIGHTHS, TWO UNISON HITS TO END")
                 {
                     const auto dbl = n == "HALF TIME, CRASH EIGHTHS, DOUBLE KICK THE LAST QUARTER";
@@ -38464,7 +38483,15 @@ namespace pr7s
                     "NO KICK, OPEN HATS SKIPPING TWO AND FOUR", "KICK ON ONE ONLY, BACKBEAT, SIXTEENTH HATS", "LAID-BACK KIT, SNARE ON TWO, ITS AND, AND FOUR",
                     "GALLOP ON ONE AND THREE, EIGHTHS BETWEEN", "ROOT HELD A BEAT, THEN EIGHTHS", "SIXTEENTH PEDAL, A RUN TO THE BAR LINE",
                     "PIANO OCTAVES BROKEN ON THE SIXTEENTHS", "QUIET MUTED CHUG RUNS ON THE ROOT", "CHORD PUSHED ON TWO-AND, RUNG TO THE BAR LINE",
-                    "MUTED FULL-CHORD STABS ON TWO, TWO-AND AND FOUR" };
+                    "MUTED FULL-CHORD STABS ON TWO, TWO-AND AND FOUR",
+                    // (0.269.0) Round twelve: its types' own options and two new ones, shared as their writers play them.
+                    "KICK AND RIDE ON TWO AND FOUR ONLY", "KICK AND CRASH ON THE CHORDS, SNARE BURSTS IN THE GAPS", "HALF TIME, TOMS ON ONE AND TWO BEFORE THE SNARE",
+                    "TRAIN BEAT, A THREE-TOM PICKUP EVERY EIGHT", "KICK ONE AND THREE, OPEN QUARTERS, A DOUBLE-KICK FOURTH BAR", "SNARE ON TWO-AND AND FOUR, OPEN QUARTERS",
+                    "DOUBLE KICK, RIDE BELL PAIRS", "KICK AND SNARE TRADING SIXTEENTHS, RIDE SIXTEENTHS",
+                    "A SIXTEENTH FILL IN THE GAP BARS", "ROOT EIGHTHS, OCTAVE POPS",
+                    "A LOW PEDAL UNDER THE FIFTH AND SIXTH, IN FIVES", "ROOT AND FLAT FIVE TREMOLO, HALF A BAR EACH", "THE LOW ROOT IN THREES AND A REST",
+                    "ROOT AND CHORD GRABS", "EIGHTH CHORDS, EVERY CHANGE TIED IN FROM FOUR-AND",
+                    "FOUR-NOTE CELL FOLLOWING THE CHORDS", "PIANO EIGHTHS, ROOT UNDER A MOVING TOP", "ROOT AND FLAT SEVEN ROCKING, A THIRD UP ON THREE-AND" };
                 if (round3Written.contains (n) || Round3::shared217().contains (n) || Round3::shared218 (l).contains (n) || Round3::shared237 (l).contains (n)
                     || Round3::shared245 (l).contains (n) || Round3::shared259 (l).contains (n))   // (0.217.0, 0.218.0: round eight's options)
                 {

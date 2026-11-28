@@ -2,6 +2,17 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.269.0
+
+**Round twelve, part six: eighteen shared lane options.** Every section type can now use these in its lane menus (after its own options; the bass ones stay in front of LOCKED WITH THE KICK). Sixteen are options of round twelve's own types, shared exactly as they play there; two are new:
+
+- **Guitar:** A LOW PEDAL UNDER THE FIFTH AND SIXTH, IN FIVES; ROOT AND FLAT FIVE TREMOLO, HALF A BAR EACH; THE LOW ROOT IN THREES AND A REST; ROOT AND CHORD GRABS; EIGHTH CHORDS, EVERY CHANGE TIED IN FROM FOUR-AND.
+- **Drums:** KICK AND RIDE ON TWO AND FOUR ONLY (new: nothing else in the kit); KICK AND CRASH ON THE CHORDS, SNARE BURSTS IN THE GAPS; HALF TIME, TOMS ON ONE AND TWO BEFORE THE SNARE; TRAIN BEAT, A THREE-TOM PICKUP EVERY EIGHT; KICK ONE AND THREE, OPEN QUARTERS, A DOUBLE-KICK FOURTH BAR; SNARE ON TWO-AND AND FOUR, OPEN QUARTERS; DOUBLE KICK, RIDE BELL PAIRS; KICK AND SNARE TRADING SIXTEENTHS, RIDE SIXTEENTHS.
+- **Bass:** A SIXTEENTH FILL IN THE GAP BARS; ROOT EIGHTHS, OCTAVE POPS.
+- **Keys:** FOUR-NOTE CELL FOLLOWING THE CHORDS (new: the chord's root, third, root and the fifth under in sixteenths, moved onto every chord); PIANO EIGHTHS, ROOT UNDER A MOVING TOP; ROOT AND FLAT SEVEN ROCKING, A THIRD UP ON THREE-AND.
+
+Not shared: the options that read the guitar lane (they'd be empty under a type whose guitar is out), and the acoustic part (shared acoustic options are styles of their own). Can't be checked here: how they sound. Next: round twelve's solos.
+
 ## 0.268.0
 
 **Round twelve, part five: twelve new transitions** (INTO THE NEXT on a SECTIONS block) from the owner's new songs, shapes only, our own names. Each changes only the block's last bar or two:
@@ -19,7 +30,7 @@ Each version's notes appear on its GitHub Release page.
 - **DOMINANT EIGHTHS, ONE HIT, SILENCE.** The key's five chord in eighths, then one band hit and silence.
 - **HELD HIT, A KICK PAIR ON THREE.** One hit held a bar, then a silent bar with just a kick pair and a snare on 3.
 
-Can't be checked here: how they sound. Next: round twelve's shared lane options.
+Can't be checked here: how they sound.
 
 ## 0.267.0
 
