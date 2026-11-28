@@ -283,6 +283,13 @@ namespace pr7s
         // (0.207.0) Round six's styles by what they are (their names would put several in the wrong place).
         switch (style)
         {
+            // (0.270.0) round twelve's styles
+            case SoloStyle::cellsTurnsSweepsBarByBar: case SoloStyle::runsThenASweepOnEveryChord: case SoloStyle::heldFlutterDiminishedCells:
+                return "FAST RUNS & CELLS";
+            case SoloStyle::twinPickupsChromaticTurns: case SoloStyle::cleanDoubleStopsThenTwinThirds:
+                return "MELODIC";
+            case SoloStyle::chromaticClimbsTwinTremolo:
+                return "TREMOLO & TRILLS";
             // (0.260.0) round eleven's styles
             case SoloStyle::fifthSeesawInThrees: case SoloStyle::chromaticSighsDown: case SoloStyle::tuneInQuartersFourTimes:
                 return "MELODIC";

@@ -73,7 +73,8 @@ namespace pr7s
                                  // (0.246.0) round ten's songs
                                  slideBluesCalls, twinMelodyInOctaves, cleanScoopedBallad, eighthHookOnTheChanges, tremoloThenFlurry, heldBendsAnsweredByBursts,
                                  // (0.260.0) round eleven's songs
-                                 fifthSeesawInThrees, chromaticSighsDown, tuneInQuartersFourTimes, unisonTwinRunsDown, stutterTrillClimb, repeatedNotesDownTheScale, dottedRepeatsWholeTone, triadCellsQuarterWalk };
+                                 fifthSeesawInThrees, chromaticSighsDown, tuneInQuartersFourTimes, unisonTwinRunsDown, stutterTrillClimb, repeatedNotesDownTheScale, dottedRepeatsWholeTone, triadCellsQuarterWalk,
+                                 cellsTurnsSweepsBarByBar, twinPickupsChromaticTurns, cleanDoubleStopsThenTwinThirds, runsThenASweepOnEveryChord, chromaticClimbsTwinTremolo, heldFlutterDiminishedCells };   // (0.270.0)
     const std::vector<SoloStyle>& soloStyles();      // automatic first
     juce::String soloStyleName (SoloStyle);          // "BY STYLE", "SOARING BENDS", "ROCK 'N' ROLL SWAGGER", "TAP & DIVE", "BLUES HAMMER",
                                                      // "SCREAM & DIVE", "THRASH FIRE", "PINCH SQUEAL", "PROG PRECISION",

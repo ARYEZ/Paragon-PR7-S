@@ -83,7 +83,8 @@ namespace pr7s
                             // (0.246.0, round ten's solos)
                             slideCalls, twinOctaves, scoopBallad, hookChanges, tremoloFlurry, bendsBursts,
                             // (0.260.0, round eleven's solos)
-                            fifthSeesaw, chromaticSighs, tuneInQuarters, unisonTwinRuns, stutterTrill, repeatedDown, dottedRepeats, triadCells };   // (0.136.0: sixteenth runs landing on held tension notes bent into the chord)   // (0.134.0: bent into the root and dived; a low dyad squealed up; tremolo dyads over a pedal)   // (0.133.0 round two: held notes stepping down the chord, each in a beat early)   // (0.133.0: harmonics dived stepping down; thirds climbing into a dived double stop)   // (0.129.0: trilled, then fallen off)
+                            fifthSeesaw, chromaticSighs, tuneInQuarters, unisonTwinRuns, stutterTrill, repeatedDown, dottedRepeats, triadCells,
+                            cellsTurnsSweeps, twinPickupsTurns, cleanStopsTwinThirds, runsThenSweeps, chromaticClimbsTwinTremolo, heldFlutterDimCells };   // (0.136.0: sixteenth runs landing on held tension notes bent into the chord)   // (0.134.0: bent into the root and dived; a low dyad squealed up; tremolo dyads over a pedal)   // (0.133.0 round two: held notes stepping down the chord, each in a beat early)   // (0.133.0: harmonics dived stepping down; thirds climbing into a dived double stop)   // (0.129.0: trilled, then fallen off)
         struct Profile
         {
             bool sixth = false, ninth = false, flatFive = false, majorOnMajor = false, curls = false;
@@ -1375,6 +1376,31 @@ namespace pr7s
                     p.writer = Writer::triadCells; p.lastAsWritten = true; p.legato = false;
                     p.description = "Five-note triad cells in sixteenths each half bar, a top line over a pedal, a line in eighths, four quarters walking down, a sixteenth line, every eight bars";
                     break;
+                // (0.270.0) Round twelve's songs' solos (shapes only; our names).
+                case SoloStyle::cellsTurnsSweepsBarByBar:
+                    p.writer = Writer::cellsTurnsSweeps; p.lastAsWritten = true; p.legato = false;
+                    p.description = "An eight-bar plan, each bar on its chord: falling four-note cells and a held note, a falling scale, climbing neighbour turns, the triad down, triad cells falling, chromatic turns round the fifth, an octave dyad";
+                    break;
+                case SoloStyle::twinPickupsChromaticTurns:
+                    p.writer = Writer::twinPickupsTurns; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Two leads a third apart: five eighths climbing from 2-and, four eighths round the octave on the next bar's 3 and 4, then held notes a half step apart and sixteenth turns";
+                    break;
+                case SoloStyle::cleanDoubleStopsThenTwinThirds:
+                    p.writer = Writer::cleanStopsTwinThirds; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Clean double stops slid into and held, a six-note run down every second bar, then eighth phrases round the chord tones, a second lead a third under for the last quarter";
+                    break;
+                case SoloStyle::runsThenASweepOnEveryChord:
+                    p.writer = Writer::runsThenSweeps; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Two calm bars, an arpeggio up and a chromatic fall, sixteenth climbs from the 1-e into held notes, then each chord's triad swept up and down to close";
+                    break;
+                case SoloStyle::chromaticClimbsTwinTremolo:
+                    p.writer = Writer::chromaticClimbsTwinTremolo; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Two leads: held notes and chromatic sixteenth climbs, a falling arpeggio, a motif doubled an octave down; then one note picked over and over and a jump up held, a step lower each bar";
+                    break;
+                case SoloStyle::heldFlutterDiminishedCells:
+                    p.writer = Writer::heldFlutterDimCells; p.lastAsWritten = true; p.legato = false;
+                    p.description = "Held notes on the root, octave and fifth, a bar of a two-note flutter, five-note diminished cells moved up the chord, then quarters climbing a step at a time to a held top";
+                    break;
                 case SoloStyle::automatic: break;
             }
             if (p.notesPerBeat <= 0.0f)
@@ -1573,7 +1599,8 @@ namespace pr7s
                                                   SoloStyle::pickupQuarterBreak, SoloStyle::unpluggedPentatonicStream, SoloStyle::tripletHammerFallingTune, SoloStyle::tuneAnOctaveDown,
                                                   SoloStyle::riffOnAWarpedBar, SoloStyle::sungTwiceTurned, SoloStyle::seesawAndRing, SoloStyle::fourBendsAndOut,
                                                   SoloStyle::slideBluesCalls, SoloStyle::twinMelodyInOctaves, SoloStyle::cleanScoopedBallad, SoloStyle::eighthHookOnTheChanges, SoloStyle::tremoloThenFlurry, SoloStyle::heldBendsAnsweredByBursts,
-                                                  SoloStyle::fifthSeesawInThrees, SoloStyle::chromaticSighsDown, SoloStyle::tuneInQuartersFourTimes, SoloStyle::unisonTwinRunsDown, SoloStyle::stutterTrillClimb, SoloStyle::repeatedNotesDownTheScale, SoloStyle::dottedRepeatsWholeTone, SoloStyle::triadCellsQuarterWalk };
+                                                  SoloStyle::fifthSeesawInThrees, SoloStyle::chromaticSighsDown, SoloStyle::tuneInQuartersFourTimes, SoloStyle::unisonTwinRunsDown, SoloStyle::stutterTrillClimb, SoloStyle::repeatedNotesDownTheScale, SoloStyle::dottedRepeatsWholeTone, SoloStyle::triadCellsQuarterWalk,
+                                                  SoloStyle::cellsTurnsSweepsBarByBar, SoloStyle::twinPickupsChromaticTurns, SoloStyle::cleanDoubleStopsThenTwinThirds, SoloStyle::runsThenASweepOnEveryChord, SoloStyle::chromaticClimbsTwinTremolo, SoloStyle::heldFlutterDiminishedCells };
         return all;
     }
 
@@ -1715,6 +1742,12 @@ namespace pr7s
             case SoloStyle::repeatedNotesDownTheScale: return "REPEATED NOTES DOWN THE SCALE, ROCKING ANSWER";
             case SoloStyle::dottedRepeatsWholeTone: return "DOTTED REPEATS, A WHOLE-TONE CLIMB";
             case SoloStyle::triadCellsQuarterWalk: return "TRIAD CELLS, A QUARTER WALK DOWN";
+            case SoloStyle::cellsTurnsSweepsBarByBar: return "FALLING CELLS, TURNS AND SWEEPS, BAR BY BAR";
+            case SoloStyle::twinPickupsChromaticTurns: return "TWIN PICKUPS, CHROMATIC TURNS";
+            case SoloStyle::cleanDoubleStopsThenTwinThirds: return "CLEAN DOUBLE STOPS, THEN TWIN THIRDS";
+            case SoloStyle::runsThenASweepOnEveryChord: return "RUNS, THEN A SWEEP ON EVERY CHORD";
+            case SoloStyle::chromaticClimbsTwinTremolo: return "CHROMATIC CLIMBS, TWIN TREMOLO";
+            case SoloStyle::heldFlutterDiminishedCells: return "HELD, FLUTTER, DIMINISHED CELLS, CLIMB";
         }
         return "BY STYLE";
     }
@@ -1907,6 +1940,12 @@ namespace pr7s
                 case SoloStyle::repeatedNotesDownTheScale: return "Repeated Notes Down The Scale, Rocking Answer";
                 case SoloStyle::dottedRepeatsWholeTone: return "Dotted Repeats, A Whole-Tone Climb";
                 case SoloStyle::triadCellsQuarterWalk: return "Triad Cells, A Quarter Walk Down";
+                case SoloStyle::cellsTurnsSweepsBarByBar: return "Falling Cells, Turns And Sweeps, Bar By Bar";
+                case SoloStyle::twinPickupsChromaticTurns: return "Twin Pickups, Chromatic Turns";
+                case SoloStyle::cleanDoubleStopsThenTwinThirds: return "Clean Double Stops, Then Twin Thirds";
+                case SoloStyle::runsThenASweepOnEveryChord: return "Runs, Then A Sweep On Every Chord";
+                case SoloStyle::chromaticClimbsTwinTremolo: return "Chromatic Climbs, Twin Tremolo";
+                case SoloStyle::heldFlutterDiminishedCells: return "Held, Flutter, Diminished Cells, Climb";
                 case SoloStyle::automatic: break;
             }
             return "By Style";
@@ -4666,6 +4705,12 @@ namespace pr7s
             case Writer::repeatedDown:
             case Writer::dottedRepeats:
             case Writer::triadCells:
+            case Writer::cellsTurnsSweeps:
+            case Writer::twinPickupsTurns:
+            case Writer::cleanStopsTwinThirds:
+            case Writer::runsThenSweeps:
+            case Writer::chromaticClimbsTwinTremolo:
+            case Writer::heldFlutterDimCells:
             {
                 using E = LineNote::Effect;
                 const auto bpb = beatsPerBar;
@@ -6469,6 +6514,294 @@ namespace pr7s
                             for (int k = 0; k < 16; ++k)
                                 plain (o + scaled (k * 0.25), 0.23, stepIn (pool, root, step == 6 ? (k < 8 ? k : 15 - k) : 6 - k / 2), k == 0);
                     }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                // (0.270.0) Round twelve's songs' solos (shapes only; our names).
+                else if (p.writer == Writer::cellsTurnsSweeps)
+                {
+                    // An eight-bar plan, each bar on its chord: falling four-note cells twice and a held note, a cell and a falling
+                    // scale, climbing neighbour turns, the triad down, three-note triad cells falling, chromatic turns round the fifth,
+                    // an octave dyad held.
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 14.0 + 2.0 * lift;
+                    for (int bar = 0; bar * bpb < endAt - 1.0e-6; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        const auto tones = triadOf (o);
+                        const auto root = nearPc (tones[0], mid);
+                        const auto fifth = nearPc (tones[2], (double) root + 4.0);
+                        const auto step = (bar + take) % 8;
+                        const auto cell = [&] (double at)
+                        {
+                            const int down[4] { 7, 6, (tones[1] - tones[0] + 12) % 12, 0 };
+                            for (int k = 0; k < 4; ++k)
+                                plain (at + k * 0.25, 0.23, root + down[k], k == 0);
+                        };
+                        if (step < 2)
+                        {
+                            cell (o);
+                            cell (o + scaled (1.0));
+                            held (o + scaled (3.0), scaled (1.0) - 0.05, root + 7, E::vibrato, p.vibrato);
+                        }
+                        else if (step == 2)
+                        {
+                            cell (o);
+                            for (int k = 0; k < 8; ++k)
+                                plain (o + scaled (1.0) + k * 0.25, 0.23, stepIn (pool, root + 7, -k), k == 0);
+                            held (o + scaled (3.0), scaled (1.0) - 0.05, stepIn (pool, root + 7, -8), E::vibrato, p.vibrato);
+                        }
+                        else if (step == 3)
+                            for (int b = 0; b < 4; ++b)
+                            {
+                                const auto n = stepIn (pool, root, b);
+                                const int turn[4] { 0, 1, 0, -1 };
+                                for (int k = 0; k < 4; ++k)
+                                    plain (o + scaled (b * 1.0) + k * 0.25, 0.23, stepIn (pool, n, turn[k]), k == 0);
+                            }
+                        else if (step == 4)
+                            for (int k = 0; k < 16; ++k)
+                                plain (o + scaled (k * 0.25), 0.23, nearPc (tones[(size_t) (2 - k % 3)], (double) root + 12.0 - 4.0 * (k / 3)), k % 4 == 0);
+                        else if (step == 5)
+                            for (int k = 0; k < 15; ++k)
+                            {
+                                const int cellTones[3] { 0, 2, 1 };
+                                plain (o + scaled (k * 0.25), 0.23, nearPc (tones[(size_t) cellTones[k % 3]], (double) root + 12.0 - 2.0 * (k / 3)), k % 3 == 0);
+                            }
+                        else if (step == 6)
+                            for (int k = 0; k < 16; ++k)
+                            {
+                                const int turn[4] { 0, 1, 0, -1 };
+                                plain (o + scaled (k * 0.25), 0.23, fifth + turn[k % 4], k % 4 == 0);
+                            }
+                        else
+                        {
+                            plain (o, scaled (4.0) - 0.05, root, true);
+                            plain (o, scaled (4.0) - 0.05, root + 12, false);
+                        }
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::twinPickupsTurns)
+                {
+                    // Two leads a third apart: two-bar phrases of five eighths climbing from 2-and, then four eighths on the next
+                    // bar's 3 and 4 round the octave; from two thirds in, held notes a half step apart, then sixteenth turns.
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 14.0 + 2.0 * lift;
+                    const auto lateAt = std::floor (bars * 2.0 / 3.0 + 1.0e-6) * bpb;
+                    const auto twin = [&] (double at, double length, int pitch, bool accent) { duet (at, length, pitch, stepIn (pool, pitch, -2), accent, E::none, 0.0f); };
+                    auto ph = 0;
+                    const auto twist = variationSeed % 7;   // (each take its own climb)
+                    const int climbs[7][5] { { 2, 3, 4, 5, 7 }, { 0, 2, 3, 4, 7 }, { 1, 2, 4, 5, 7 }, { 2, 4, 3, 5, 7 },
+                                             { 0, 1, 2, 4, 6 }, { 3, 2, 4, 5, 7 }, { 1, 3, 4, 6, 7 } };
+                    for (auto o = 0.0; o < juce::jmin (lateAt, endAt) - 1.0e-6; o += 2.0 * bpb, ++ph)
+                    {
+                        const auto root = nearPc (chordAt (o).chord.root, mid);
+                        const auto& climb = climbs[twist];
+                        for (int i = 0; i < 5; ++i)
+                            twin (o + scaled (1.5 + i * 0.5), 0.46, stepIn (pool, root, climb[i]), i == 0);
+                        const auto top = stepIn (pool, root, 7);
+                        const int answer[4] { 0, 1, 0, ph % 2 == 0 ? -2 : -1 };
+                        for (int i = 0; i < 4 && o + bpb < endAt; ++i)
+                            twin (o + bpb + scaled (2.0 + i * 0.5), 0.46, answer[i] == 1 ? top + 1 : stepIn (pool, top, answer[i]), i == 0);
+                    }
+                    auto x = lateAt;
+                    auto pitch = nearPc (chordAt (x).chord.root + 7, mid + 3.0);
+                    for (int i = 0; i < 2 && x < endAt - 1.0e-6; ++i, x += bpb)
+                    {
+                        duet (x, bpb - 0.05, pitch, pitch - 3, true, E::vibrato, p.vibrato);
+                        pitch += 1;
+                    }
+                    for (int k = 0; x < endAt - 1.0e-6; ++k, x += 0.25)
+                    {
+                        const int turn[4] { 0, 1, 0, -1 };
+                        twin (x, 0.23, stepIn (pool, pitch, turn[k % 4] - k / 8), k % 4 == 0);
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::cleanStopsTwinThirds)
+                {
+                    // The first half clean double stops (a third or a fourth) held a beat and a half and slid into, a six-note run
+                    // down every second bar; then eighth phrases round the chord tones with a sixteenth pickup, the last quarter
+                    // with a second lead a third under.
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    const auto halfAt = std::floor (bars / 2.0 + 1.0e-6) * bpb, twinAt = std::floor (bars * 3.0 / 4.0 + 1.0e-6) * bpb;
+                    for (int bar = 0; bar * bpb < endAt - 1.0e-6; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        const auto tones = triadOf (o);
+                        const auto top = nearPc (tones[(size_t) (bar % 2 == 0 ? 1 : 2)], mid + 3.0);
+                        if (o < halfAt - 1.0e-6)
+                        {
+                            const auto under = bar % 2 == 0 ? stepIn (pool, top, -2) : top - 5;
+                            put (o, scaled (1.5) - 0.05, top, tAt (o), true, E::slideIn, 2.0f, false);
+                            put (o, scaled (1.5) - 0.05, under, tAt (o), false, E::none, 0.0f, false);
+                            plain (o + scaled (1.5), scaled (1.0) - 0.05, stepIn (pool, top, -1), false);
+                            if (bar % 2 == 1)
+                                for (int k = 0; k < 6; ++k)
+                                    plain (o + scaled (2.5) + k * 0.25, 0.23, stepIn (pool, top + 12, -k - 1), k == 0);
+                            else
+                                held (o + scaled (2.5), scaled (1.5) - 0.05, top, E::vibrato, p.vibrato);
+                            continue;
+                        }
+                        const auto withTwin = o >= twinAt - 1.0e-6;
+                        const auto note = [&] (double at, double length, int pitch, bool accent)
+                        {
+                            if (withTwin)
+                                duet (at, length, pitch, stepIn (pool, pitch, -2), accent, E::none, 0.0f);
+                            else
+                                plain (at, length, pitch, accent);
+                        };
+                        note (o, 0.23, stepIn (pool, top, -1), false);
+                        note (o + 0.25, 0.23, top, true);
+                        for (int i = 1; i < 7; ++i)
+                            note (o + scaled (0.5 + (i - 1) * 0.5), 0.46, stepIn (pool, top, i % 3 == 0 ? -1 : (i % 2 == 0 ? 1 : 2)), false);
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::runsThenSweeps)
+                {
+                    // Two calm bars (a held note, a falling fragment), a bar of an arpeggio up and a chromatic fall, then phrases
+                    // from the 1-e climbing the scale into held notes; the last four bars each chord's triad swept up and down.
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    const auto sweepsAt = juce::jmax (3.0 * bpb, endAt - 4.0 * bpb);
+                    const auto twist = variationSeed % 7;   // (each take climbs from its own step)
+                    for (int bar = 0; bar * bpb < endAt - 1.0e-6; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        const auto tones = triadOf (o);
+                        const auto root = nearPc (tones[0], mid);
+                        if (o >= sweepsAt - 1.0e-6)
+                        {
+                            for (int k = 0; k < 16; ++k)
+                            {
+                                const auto rise = k < 8 ? k : 15 - k;
+                                plain (o + scaled (k * 0.25), 0.23, nearPc (tones[(size_t) (rise % 3)], (double) root + 4.0 * rise), k % 8 == 0);
+                            }
+                            continue;
+                        }
+                        if (bar < 2)
+                        {
+                            held (o, scaled (2.0) - 0.05, stepIn (pool, root, 4 - bar + twist % 3), E::vibrato, p.vibrato);
+                            for (int i = 0; i < 4; ++i)
+                                plain (o + scaled (2.0 + i * 0.5), 0.46, stepIn (pool, root, 3 - bar - i + twist % 3), i == 0);
+                        }
+                        else if (bar == 2)
+                        {
+                            for (int k = 0; k < 8; ++k)
+                                plain (o + k * 0.25, 0.23, nearPc (tones[(size_t) (k % 3)], (double) root + 3.0 * k), k == 0);
+                            const auto from = root + 19;
+                            for (int k = 0; k < 8; ++k)
+                                plain (o + scaled (2.0) + k * 0.25, 0.23, from - k, k == 0);
+                        }
+                        else
+                        {
+                            for (int k = 0; k < 7; ++k)
+                                plain (o + 0.25 + k * 0.25, 0.23, stepIn (pool, root, k + (bar + twist) % 3 - (twist % 2)), k == 0);
+                            held (o + scaled (2.0), scaled (1.5) - 0.05, stepIn (pool, root, 7 + (bar + twist) % 3 - (twist % 2)), E::vibrato, p.vibrato);
+                            for (int k = 0; k < 2; ++k)
+                                plain (o + scaled (3.5) + k * 0.25, 0.23, stepIn (pool, root, 6 - k), false);
+                        }
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::chromaticClimbsTwinTremolo)
+                {
+                    // Two leads. The first half four-bar blocks: a held note and a chromatic sixteenth climb, a falling arpeggio,
+                    // a motif doubled an octave down, a chromatic climb; the second half each bar one note picked in sixteenths
+                    // for two and a half beats, then a jump up held, the two a third apart, a scale step lower each bar.
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 12.0 + 2.0 * lift;
+                    const auto halfAt = std::floor (bars / 2.0 + 1.0e-6) * bpb;
+                    const auto twist = variationSeed % 7;   // (each take's tremolo from its own note)
+                    auto tremolo = stepIn (pool, nearPc (minorT + 7, mid + 7.0), twist % 4 - 1);
+                    for (int bar = 0; bar * bpb < endAt - 1.0e-6; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        const auto tones = triadOf (o);
+                        const auto root = nearPc (tones[0], mid);
+                        if (o >= halfAt - 1.0e-6)
+                        {
+                            for (int k = 0; k < 10; ++k)
+                                duet (o + scaled (k * 0.25), 0.23, tremolo, stepIn (pool, tremolo, -2), k == 0, E::none, 0.0f);
+                            const auto up = stepIn (pool, tremolo, 3);
+                            duet (o + scaled (2.5), scaled (1.5) - 0.05, up, stepIn (pool, up, -2), true, E::vibrato, p.vibrato);
+                            tremolo = stepIn (pool, tremolo, -1);
+                            continue;
+                        }
+                        const auto kind = bar % 4;
+                        if (kind == 0 || kind == 3)
+                        {
+                            const auto from = kind == 0 ? 2.5 : 2.0;
+                            if (kind == 0)
+                                duet (o, scaled (from) - 0.05, root + 7, root + 3, true, E::vibrato, p.vibrato);
+                            const auto start = kind == 0 ? root + 7 : root + (bar / 4 + twist) % 3;
+                            for (int k = 0; o + scaled (from) + k * 0.25 < o + bpb - 1.0e-6; ++k)
+                                duet (o + scaled (from) + k * 0.25, 0.23, start + k, start + k - 3, k == 0, E::none, 0.0f);
+                        }
+                        else if (kind == 1)
+                            for (int i = 0; i < 8; ++i)
+                            {
+                                const auto n = nearPc (tones[(size_t) (2 - i % 3)], (double) root + 12.0 - 2.5 * i);
+                                duet (o + scaled (i * 0.5), 0.46, n, stepIn (pool, n, -2), i == 0, E::none, 0.0f);
+                            }
+                        else
+                        {
+                            const double at[5] { 0.0, 0.75, 1.5, 2.0, 3.0 };
+                            const int steps[5] { 0, 2, 1, 4, 3 };
+                            for (int i = 0; i < 5; ++i)
+                            {
+                                const auto n = stepIn (pool, root, steps[i]);
+                                duet (o + scaled (at[i]), (i == 4 ? scaled (1.0) : 0.7) - 0.05, n, n - 12, i == 0, E::none, 0.0f);
+                            }
+                        }
+                    }
+                    endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
+                }
+                else if (p.writer == Writer::heldFlutterDimCells)
+                {
+                    // The first quarter held notes a bar each (the root, the octave, the fifth); a bar of a two-note flutter in
+                    // sixteenths; five-note diminished cells in sixteenths moved up the chord; the last quarter quarters climbing
+                    // a step at a time to a held top note.
+                    const auto pool = scaleOn (minorT, { 0, 2, 3, 5, 7, 8, 10 });
+                    const auto mid = (double) low + 10.0 + 2.0 * lift;
+                    const auto heldEnd = juce::jmax (1, bars / 4);
+                    const auto climbAt = std::floor (bars * 3.0 / 4.0 + 1.0e-6) * bpb;
+                    for (int bar = 0; bar * bpb < juce::jmin (climbAt, endAt) - 1.0e-6; ++bar)
+                    {
+                        const auto o = bar * bpb;
+                        const auto tones = triadOf (o);
+                        const auto root = nearPc (tones[0], mid);
+                        if (bar < heldEnd)
+                        {
+                            const int over[3] { 0, 12, 7 };
+                            held (o, bpb - 0.05, root + over[bar % 3], E::vibrato, p.vibrato);
+                        }
+                        else if (bar == heldEnd)
+                            for (int k = 0; k < 16; ++k)
+                                plain (o + scaled (k * 0.25), 0.23, k % 2 == 0 ? root + 7 : stepIn (pool, root + 7, 1), k % 4 == 0);
+                        else
+                        {
+                            const auto steps = (int) std::floor (bpb / 0.25 + 1.0e-6);
+                            for (int k = 0; k < steps; ++k)
+                            {
+                                const auto cell = k / 5, inCell = k % 5;
+                                const int dim[5] { 0, 3, 6, 9, 6 };
+                                const auto base = nearPc (tones[(size_t) (cell % 3)], (double) root + 2.0 * cell);
+                                plain (o + k * 0.25, 0.23, base + dim[inCell], inCell == 0);
+                            }
+                        }
+                    }
+                    auto pitch = nearPc (chordAt (climbAt).chord.root, mid);
+                    auto x = climbAt;
+                    for (; x < endAt - 2.0 - 1.0e-6; x += 1.0)
+                    {
+                        plain (x, 0.95, pitch, std::abs (std::fmod (x, bpb)) < 1.0e-6);
+                        pitch = stepIn (pool, pitch, 1);
+                    }
+                    if (x < endAt - 1.0e-6)
+                        held (x, endAt - x - 0.05, pitch, E::vibrato, p.vibrato);
                     endPitch = nearPc (chordAt (total - 0.5).chord.root, centreAt (endAt));
                 }
                 endAt = juce::jlimit (0.0, juce::jmax (0.0, total - 0.25), endAt);

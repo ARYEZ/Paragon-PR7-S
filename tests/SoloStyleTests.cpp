@@ -79,7 +79,7 @@ namespace
 
 TEST_CASE ("0.66.0: solo style names are ours, round trip, and never a player's", "[solo][solostyles]")
 {
-    REQUIRE (soloStyles().size() == 134);   // (0.207.0: twenty more; 0.162.0: eight more; 0.136.0: seven more) (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more; 0.135.0: twenty-one more)
+    REQUIRE (soloStyles().size() == 140);   // (0.207.0: twenty more; 0.162.0: eight more; 0.136.0: seven more) (0.116.0: ten more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more; 0.135.0: twenty-one more)
     CHECK (soloStyles().front() == SoloStyle::automatic);
     for (const auto s : soloStyles())
     {
@@ -123,7 +123,7 @@ TEST_CASE ("0.66.0: every solo style writes a whole solo that builds and ends on
                 && style != SoloStyle::bottomToTopClimb && style != SoloStyle::burstBarBurst
                 && style != SoloStyle::fixedHead && style != SoloStyle::slideInOutro
                 && style != SoloStyle::tremoloThenTalk && style != SoloStyle::riffStutterBreak && style != SoloStyle::swayingThirdsTheme
-                && style != SoloStyle::stillCellMovingChords && style != SoloStyle::riffDoubleStopUnison && style != SoloStyle::riffTalkCallStab
+                && style != SoloStyle::stillCellMovingChords && style != SoloStyle::cellsTurnsSweepsBarByBar && style != SoloStyle::riffDoubleStopUnison && style != SoloStyle::riffTalkCallStab
                 && ! busyFirstOrFlat207 (style))   // (0.162.0: flat or hot first, as the round-four songs' solos)   // (0.135.0: the same head every other bar: flat on purpose; 0.136.0: an even outro melody)   // (0.133.0: busy early on purpose, as the files)   // (no busy waves: flat on purpose; 0.128.0: busy first on purpose)
                 CHECK (busiest >= onsetsIn (solo, 0.0, 8.0));
             auto bends = 0, vibratos = 0;
@@ -524,7 +524,7 @@ namespace
 
 TEST_CASE ("0.116.0: the new solo styles are there, with our names", "[solo][solostyles][solo116]")
 {
-    REQUIRE (soloStyles().size() == 134);   // (0.207.0: twenty more; 0.162.0: eight more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
+    REQUIRE (soloStyles().size() == 140);   // (0.207.0: twenty more; 0.162.0: eight more; 0.128.0: four more; 0.129.0: seven more; 0.133.0: eleven more; 0.134.0: fifteen more)
     for (const auto* name : { "SINGING BENDS", "SHUFFLE CONVERSATION", "SLOW BUILD WITH RAKES", "FALLING MAJOR MELODY", "SUNG IN THE GAPS",
                               "ROLLING SEQUENCES", "LAID-BACK SWEET BENDS", "THEME EVERY ROUND", "TWO SPEEDS", "LICK TWICE TO END" })
         CHECK (soloStyleNamed (name) != SoloStyle::automatic);
@@ -2226,7 +2226,7 @@ namespace
 
 TEST_CASE ("0.207.0: round six's solo styles are there, with our names and BY STYLE's metalcore takes", "[solo][solostyles][solo207]")
 {
-    REQUIRE (soloStyles().size() == 134);
+    REQUIRE (soloStyles().size() == 140);
     for (const auto* name : { "HOLD, PEDAL, TWIN, STORM", "PANELS OVER THE CHUG", "SEQUENCE SOLO, THEN TWIN ARPEGGIOS", "TRILL, THEN HOLD",
                               "WAH WAVES", "MAJOR RUB OVER A MINOR RIFF", "OCTAVE LEAPS & CRIES", "LATE CALLS, BENT HOME",
                               "CELLS UP, SHAKE THE TOP", "STOP-TIME DOUBLE STOPS", "PICKUP INTO CHORD STABS, RUNS TO LAND",
@@ -2740,6 +2740,64 @@ TEST_CASE ("0.260.0: round eleven's solo styles", "[solo][solostyles][solo260]")
             for (size_t i = 1; i < climb.size(); ++i)
                 if (climb[i] - climb[i - 1] != 0)
                     CHECK (climb[i] - climb[i - 1] == 2);
+        }
+    }
+    for (const auto s : styles)
+    {
+        CHECK (soloStyleNamed (soloStyleName (s)) == s);
+        CHECK (soloGroupOrder().contains (soloGroupOf (s)));
+    }
+}
+
+TEST_CASE ("0.270.0: round twelve's solo styles", "[solo][solostyles][solo270]")
+{
+    const auto spans = amBars (16);
+    const auto& tuning = GuitarTuning::all()[0];
+    const SoloStyle styles[] { SoloStyle::cellsTurnsSweepsBarByBar, SoloStyle::twinPickupsChromaticTurns, SoloStyle::cleanDoubleStopsThenTwinThirds,
+                               SoloStyle::runsThenASweepOnEveryChord, SoloStyle::chromaticClimbsTwinTremolo, SoloStyle::heldFlutterDiminishedCells };
+    for (int variation = 0; variation < 3; ++variation)
+    {
+        INFO ("variation " << variation);
+        std::set<juce::String> seen;
+        for (const auto s : styles)
+        {
+            INFO (soloStyleName (s));
+            const auto solo = composeSolo (s, spans, 4.0, tuning, {}, variation);
+            REQUIRE (solo.notes.size() >= 24u);
+            juce::String k;
+            for (const auto& n : solo.notes)
+            {
+                CHECK (n.beat >= 0.0);
+                CHECK (n.beat + n.length <= 64.0 + 1.0e-6);
+                CHECK (n.length >= 0.2);
+                k << n.pitch << "@" << juce::roundToInt (n.beat * 96.0) << ";";
+            }
+            CHECK (seen.insert (k).second);
+        }
+        // The twin styles give the lane's second track its own notes.
+        for (const auto s : { SoloStyle::twinPickupsChromaticTurns, SoloStyle::chromaticClimbsTwinTremolo, SoloStyle::cleanDoubleStopsThenTwinThirds })
+        {
+            const auto solo = composeSolo (s, spans, 4.0, tuning, {}, variation);
+            CHECK (std::count_if (solo.notes.begin(), solo.notes.end(), [] (const LineNote& n) { return n.harmony; }) >= 8);
+        }
+        // The held opening: the first bar one note held.
+        {
+            const auto solo = composeSolo (SoloStyle::heldFlutterDiminishedCells, spans, 4.0, tuning, {}, variation);
+            int first = 0;
+            for (const auto& n : solo.notes)
+                first += n.beat < 4.0 - 1.0e-6 ? 1 : 0;
+            CHECK (first == 1);
+        }
+        // The closing sweeps: the four bars before the last each sixteen notes.
+        {
+            const auto solo = composeSolo (SoloStyle::runsThenASweepOnEveryChord, spans, 4.0, tuning, {}, variation);
+            for (int bar = 11; bar < 15; ++bar)
+            {
+                int count = 0;
+                for (const auto& n : solo.notes)
+                    count += n.beat >= bar * 4.0 - 1.0e-6 && n.beat < bar * 4.0 + 4.0 - 1.0e-6 ? 1 : 0;
+                CHECK (count == 16);
+            }
         }
     }
     for (const auto s : styles)

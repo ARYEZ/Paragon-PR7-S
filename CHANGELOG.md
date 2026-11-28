@@ -2,6 +2,19 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.270.0
+
+**Round twelve, part seven: six new solo styles** from the owner's new songs' solos (shapes only, our own names). With the lead lane on, pick them from its Solo Style menu:
+
+- **FALLING CELLS, TURNS AND SWEEPS, BAR BY BAR.** An eight-bar plan, each bar on its chord: falling four-note cells and a held note, a falling scale, climbing neighbour turns, the triad down, three-note triad cells falling, chromatic turns round the fifth, an octave dyad.
+- **TWIN PICKUPS, CHROMATIC TURNS.** Two leads a third apart: five eighths climbing from 2-and, four eighths round the octave on the next bar's 3 and 4, then held notes a half step apart and sixteenth turns.
+- **CLEAN DOUBLE STOPS, THEN TWIN THIRDS.** Double stops slid into and held, a six-note run down every second bar, then eighth phrases round the chord tones, a second lead a third under for the last quarter.
+- **RUNS, THEN A SWEEP ON EVERY CHORD.** Two calm bars, an arpeggio up and a chromatic fall, sixteenth climbs from the 1-e into held notes, then each chord's triad swept up and down to close.
+- **CHROMATIC CLIMBS, TWIN TREMOLO.** Two leads: held notes and chromatic sixteenth climbs, a falling arpeggio, a motif doubled an octave down; then one note picked over and over and a jump up held, a step lower each bar.
+- **HELD, FLUTTER, DIMINISHED CELLS, CLIMB.** Held notes on the root, octave and fifth, a bar of a two-note flutter, five-note diminished cells moved up the chord, then quarters climbing a step at a time to a held top.
+
+The songs' sextuplet runs and sweeps are written as sixteenths (the instruments' shortest note), and the twin leads' second voice goes to the lead lane's second track. That finishes round twelve. Can't be checked here: how they sound.
+
 ## 0.269.0
 
 **Round twelve, part six: eighteen shared lane options.** Every section type can now use these in its lane menus (after its own options; the bass ones stay in front of LOCKED WITH THE KICK). Sixteen are options of round twelve's own types, shared exactly as they play there; two are new:
@@ -11,7 +24,7 @@ Each version's notes appear on its GitHub Release page.
 - **Bass:** A SIXTEENTH FILL IN THE GAP BARS; ROOT EIGHTHS, OCTAVE POPS.
 - **Keys:** FOUR-NOTE CELL FOLLOWING THE CHORDS (new: the chord's root, third, root and the fifth under in sixteenths, moved onto every chord); PIANO EIGHTHS, ROOT UNDER A MOVING TOP; ROOT AND FLAT SEVEN ROCKING, A THIRD UP ON THREE-AND.
 
-Not shared: the options that read the guitar lane (they'd be empty under a type whose guitar is out), and the acoustic part (shared acoustic options are styles of their own). Can't be checked here: how they sound. Next: round twelve's solos.
+Not shared: the options that read the guitar lane (they'd be empty under a type whose guitar is out), and the acoustic part (shared acoustic options are styles of their own). Can't be checked here: how they sound.
 
 ## 0.268.0
 
