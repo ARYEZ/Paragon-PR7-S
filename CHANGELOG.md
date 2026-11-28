@@ -2,6 +2,22 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.264.0
+
+**Round twelve, part one: nine new verse types** from the owner's ten new songs. They were read for their shapes only (two readers), never copied; the names are our own. Each type has its own guitar, bass, keys and drums options, and a lead or acoustic part where the song had one. Odd meters in the files are written as groupings in 4/4.
+
+- **TREMOLO ROOT, THEN THE TRITONE, HALF A BAR EACH.** Sixteenth tremolo: half a bar on the low root, half on the flat five, then a bar of the root. In the second four bars the other note moves. A double-time beat, with a blast in the last two bars of every eight (or all the way).
+- **CHORDS CLIMB ON THE BEATS, A FOUR-NOTE CELL OVER.** Power chords on 1, 2 and 3 climbing scale steps, a flat-seven chug pair on 4. The lead plays a four-note sixteenth cell (root, third, root, the fifth under) moved onto every chord.
+- **TRAIN BEAT UNDER A PICKED ACOUSTIC WITH RUNS.** An acoustic picks chord tones, then runs up the scale into the next chord. The bass walks up and leads into each root. A train beat with the snare rolling round the backbeat, three toms into every ninth bar.
+- **STAB, PUSH, SIXTEENTH CHUGS, A FLURRY BAR.** A chord a minor third up stabbed on 1, the root's chord pushed on 2-and, root sixteenths from 3-and. Every fourth bar is a sixteenth flurry round the root over double kick.
+- **FALLING QUARTER LINE OVER DYAD EIGHTHS.** A lead falling a half step in quarters from the fifth, over eighths of the fifth dyad and the root.
+- **LOW ROOTS WITH CHORD GRABS.** A ballad verse: the low root on the beats, the chord grabbed on 3 and its and, a higher chord on 4-and. A ringing high dyad at each bar's end, a ballad kick with ride eighths.
+- **TWIN THIRDS OVER TIED EIGHTH CHORDS.** Power-chord eighths, every change struck early on 4-and and tied over the bar line. Twin leads in thirds; the second voice goes to the lead lane's second track.
+- **CHORD, CHUGS, THEN A FALLING LINE IN THIRDS.** A chord on 1 and 2-and with root sixteenths between, then sixteenth pairs falling in thirds. Crash eighths, and double kick in bars five and six of every eight.
+- **FIVE-HIT CLUSTER, THEN A PEDAL LEAD.** Five hits early in the bar, the rest left ringing, the kick on the same five. A high pedal lead from halfway, the crash on the eighths from there.
+
+Can't be checked here: how they sound. Next: round twelve's choruses.
+
 ## 0.263.0
 
 **ARCHITECT opens on the right section** (the owner: working on the bridge, closing ARCHITECT and going to the verse opened it on the bridge again):
