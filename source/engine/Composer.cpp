@@ -21868,6 +21868,375 @@ namespace pr7s
                 if (out.notes.size() > before)
                     out.notes.back().harmony = true;
             }
+            // (0.265.0) Round twelve's choruses (shapes only, our names).
+            std::optional<LineIdea> guitar265 (const juce::String& n) const
+            {
+                auto out = idea (LineIdea::Part::rhythm, n.toLowerCase(), {});
+                auto text = [&] (const char* t) { out.description = t; };
+                if (n == "CHORD, FOUR ROOT SIXTEENTHS, CHORD, FOUR, TWO CHORDS" || n == "STOP CHORDS ON ONE, TWO-AND AND FOUR-AND")
+                {
+                    const auto chugs = n == "CHORD, FOUR ROOT SIXTEENTHS, CHORD, FOUR, TWO CHORDS";
+                    text (chugs ? "A chord, four muted root sixteenths, a chord, four more, then two chords: the gaps left for the snare"
+                                : "Stop chords on 1, 2-and and 4-and, each held; every other bar only one, on 2-and");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        if (chugs)
+                        {
+                            each16 ("x-xxxxx-xxxxx-x-", bar * bpb, [&] (double t, int k)
+                            {
+                                if (k == 0 || k == 6 || k == 12 || k == 14) power (out, t, (k == 14 ? 2 : (k == 12 ? 2 : 2)) * s16 * 0.9, root, hard(), false);
+                                else add (out, t, s16 * 0.85, root, muted());
+                            });
+                            continue;
+                        }
+                        toNext213 (bar % 2 == 0 ? "x-----x-------x-" : "------x---------", bar, [&] (double t, double len, int) { power (out, t, len * 0.92, root, hard(), false); });
+                    }
+                    return out;
+                }
+                if (n == "PICKED ARPEGGIO ACROSS TWO OCTAVES" || n == "POWER-CHORD EIGHTHS UNDER THE CHANGES")
+                {
+                    const auto picked = n == "PICKED ARPEGGIO ACROSS TWO OCTAVES";
+                    text (picked ? "Picked eighths across two octaves of the chord: root, fifth, octave, fifth, tenth, octave, fifth, octave, a chord a bar"
+                                 : "Power chords on every eighth, a chord a bar");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar), third = chordThird (chordOfBar (bar));
+                        const int shape[8] { 0, 7, 12, 7, 12 + third + 12 - 12, 12, 7, 12 };
+                        for (int i = 0; i < 8; ++i)
+                        {
+                            if (picked)
+                                add (out, bar * bpb + i * e, e * 1.8, root + 12 + (i == 4 ? 12 + third : shape[i]), i == 0 ? open() : soft());
+                            else
+                                power (out, bar * bpb + i * e, e * 0.85, root, i == 0 ? hard() : open(), false);
+                        }
+                    }
+                    return out;
+                }
+                if (n == "CHORD ON ONE, TONES ON THREE AND FOUR, THEN THE WALK DOWN" || n == "CHORD ON ONE EVERY BAR, HELD")
+                {
+                    const auto walk = n == "CHORD ON ONE, TONES ON THREE AND FOUR, THEN THE WALK DOWN";
+                    text (walk ? "Two-bar cells: the chord on 1 and its tones on 3, 3-and, 4 and 4-and; then the chord on 1 and three low notes falling on 3, 3-and and 4 (the flat five, the four, the root)"
+                               : "The chord struck on 1 and held through the bar");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        if (! walk)
+                        {
+                            power (out, bar * bpb, bpb * 0.95, root, hard());
+                            continue;
+                        }
+                        power (out, bar * bpb, 2 * q * 0.92, root, hard());
+                        if (bar % 2 == 0)
+                        {
+                            const int tones[4] { 12, 7, 12 + chordThird (chordOfBar (bar)), 7 };
+                            for (int i = 0; i < 4; ++i)
+                                add (out, bar * bpb + 2 * q + i * e, e * 0.9, root + tones[i], open());
+                        }
+                        else
+                        {
+                            const int falling[3] { 6, 5, 0 };
+                            for (int i = 0; i < 3; ++i)
+                                add (out, bar * bpb + 2 * q + i * e, (i == 2 ? 2 : 1) * e * 0.9, root + falling[i], hard());
+                        }
+                    }
+                    return out;
+                }
+                if (n == "WHOLE-BAR POWER CHORDS" || n == "WHOLE-BAR CHORDS, A PICKUP ON FOUR-AND")
+                {
+                    const auto pickup = n != "WHOLE-BAR POWER CHORDS";
+                    text (pickup ? "A power chord rung through each bar, the next one picked up on 4-and" : "A power chord rung through each bar");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        power (out, bar * bpb, (pickup ? 14 : 16) * s16 * 0.95, root, hard());
+                        if (pickup)
+                            power (out, bar * bpb + 14 * s16, 2 * s16 * 0.9, barRoot (bar + 1 < bars ? bar + 1 : bar), open());
+                    }
+                    return out;
+                }
+                if (n == "DOTTED PUSH, CHORDS MOVING A HALF STEP" || n == "DOTTED PUSH ON THE ROOT")
+                {
+                    const auto moving = n == "DOTTED PUSH, CHORDS MOVING A HALF STEP";
+                    text (moving ? "Power chords on 1, 2-and, 3 and 4-and moving by half steps round the chord's fifth; the second two bars of every four a root figure"
+                                 : "Power chords on the root on 1, 2-and, 3 and 4-and");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        const auto figure = moving && bar % 4 >= 2;
+                        static constexpr int around[4] { 0, 7, 8, 7 };
+                        int h = 0;
+                        toNext213 (figure ? "x-x-x---x-----x-" : "x-----x-x-----x-", bar, [&] (double t, double len, int)
+                        {
+                            const auto p = moving && ! figure ? root + around[h % 4] : root;
+                            power (out, t, len * 0.92, p, h == 0 ? hard() : open(), false);
+                            ++h;
+                        });
+                    }
+                    return out;
+                }
+                if (n == "WHOLE CHORDS RUNG")
+                {
+                    text ("The chord rung through each bar, the third on top");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        add (out, bar * bpb, bpb * 0.96, root, open());
+                        add (out, bar * bpb, bpb * 0.96, root + 7, open());
+                        add (out, bar * bpb, bpb * 0.96, root + 12 + chordThird (chordOfBar (bar)), open());
+                    }
+                    return out;
+                }
+                if (n == "TWO-BAR PUSH, TIED INTO BAR TWO" || n == "THE PUSH EVERY BAR")
+                {
+                    const auto tied = n == "TWO-BAR PUSH, TIED INTO BAR TWO";
+                    text (tied ? "Two-bar cells: the chord on 1, a pair on 1-a and 2, the chord on 2-and, 3-and, 4 and 4-and, held into the second bar, which answers on 3-and and 4"
+                               : "The pushed figure every bar: the chord on 1, a pair on 1-a and 2, then 2-and, 3-and, 4 and 4-and");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto root = barRoot (bar);
+                        const auto answer = tied && bar % 2 == 1;
+                        toNext213 (answer ? "----------x-x---" : "x--xx-x---x-x-x-", bar, [&] (double t, double len, int k)
+                        {
+                            const auto last = ! answer && k == 14 && tied && bar + 1 < bars;
+                            power (out, t, (last ? len + 10 * s16 : len) * 0.92, root, k == 0 ? hard() : open(), false);
+                        });
+                    }
+                    return out;
+                }
+                return std::nullopt;
+            }
+            std::optional<LineIdea> bass265 (const juce::String& n) const
+            {
+                auto out = idea (LineIdea::Part::bass, n.toLowerCase(), {});
+                auto text = [&] (const char* t) { out.description = t; };
+                const auto v = 0.84f;
+                if (n == "ROOTS ON THE CHORDS ONLY")
+                {
+                    text ("The root only where the guitar strikes a chord: 1, 2-and, 3 and 3-and, out through the chugs");
+                    for (int bar = 0; bar < bars; ++bar)
+                        toNext213 ("x-----x-----x-x-", bar, [&] (double t, double len, int k) { add (out, t, (k == 0 || k == 6 ? 2 * s16 : len) * 0.9, bassRoot (bar * bpb), v); });
+                    return out;
+                }
+                if (n == "ROOT HALVES, A THREE-NOTE WALK ON THREE")
+                {
+                    text ("The root held through the first half, then a three-note walk on 3, 3-and and 4 into the next");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto r = bassRoot (bar * bpb), next = nextBass240 (bar);
+                        add (out, bar * bpb, 2 * q * 0.95, r, v);
+                        for (int i = 0; i < 3; ++i)
+                            add (out, bar * bpb + 2 * q + i * e, (i == 2 ? 3 : 1) * e * 0.9, scaleStep (key, next, i - 3), v * 0.86f);
+                    }
+                    return out;
+                }
+                if (n == "DOTTED QUARTERS, A PICKUP ON FOUR-AND")
+                {
+                    text ("The root on the dotted quarters (1, 2-and, 4) and a pickup on 4-and into the next");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto r = bassRoot (bar * bpb), next = nextBass240 (bar);
+                        toNext213 ("x-----x-----x-x-", bar, [&] (double t, double len, int k) { add (out, t, len * 0.92, k == 14 ? scaleStep (key, next, -1) : r, k == 0 ? v : v * 0.86f); });
+                    }
+                    return out;
+                }
+                if (n == "ROOT EIGHTHS, OCTAVE POPS")
+                {
+                    text ("Root eighths, the octave popped on 2 and the fifth on 2-and");
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto r = bassRoot (bar * bpb);
+                        for (int i = 0; i < 8; ++i)
+                            add (out, bar * bpb + i * e, e * 0.85, i == 2 ? r + 12 : (i == 3 ? r + 7 : r), i == 0 ? v : v * 0.84f);
+                    }
+                    return out;
+                }
+                return std::nullopt;
+            }
+            std::optional<LineIdea> keys265 (const juce::String& n) const
+            {
+                if (n != "PIANO: THE CHORD ON ONE, THEN ITS TONES IN EIGHTHS")
+                    return std::nullopt;
+                auto out = idea (LineIdea::Part::chords, n.toLowerCase(), "A piano chord on 1, then its tones broken in eighths through the bar");
+                for (int bar = 0; bar < bars; ++bar)
+                {
+                    const auto shape = shape240 (bar, 57);
+                    if (shape.empty())
+                        continue;
+                    for (const auto p : shape)
+                        add (out, bar * bpb, q * 0.95, p, 0.5f);
+                    static constexpr int order[6] { 0, 1, 2, 1, 2, 0 };
+                    for (int i = 0; i < 6; ++i)
+                        add (out, bar * bpb + q + i * e, e * 1.4, shape[(size_t) order[i] % shape.size()] + (i == 4 ? 12 : 0), 0.44f);
+                }
+                return out;
+            }
+            std::optional<LineIdea> lead265 (const juce::String& n) const
+            {
+                auto out = idea (LineIdea::Part::lead, n.toLowerCase(), {});
+                if (n == "TWIN HOOK IN THIRDS AFTER THE ONE")
+                {
+                    out.description = "Two-bar cells: five notes on 2, 2-and, 3, 3-and and 4-and, a second guitar a third under; then one note held from 3";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto r = pitchOfClassIn (chordOfBar (bar).root, 64, 75);
+                        if (bar % 2 == 0)
+                        {
+                            const int at[5] { 4, 6, 8, 10, 14 };
+                            const int steps[5] { 2, 1, 2, 3, 2 };
+                            for (int i = 0; i < 5; ++i)
+                            {
+                                const auto p = scaleStep (key, r, steps[i]);
+                                const auto len = (i == 4 ? 2 : at[i + 1] - at[i]) * s16 * 0.9;
+                                add (out, bar * bpb + at[i] * s16, len, p, 0.7f);
+                                harmony250 (out, bar * bpb + at[i] * s16, len, scaleStep (key, p, -2), 0.64f);
+                            }
+                        }
+                        else
+                        {
+                            add (out, bar * bpb + 2 * q, 2 * q * 0.92, r, 0.68f);
+                            harmony250 (out, bar * bpb + 2 * q, 2 * q * 0.92, scaleStep (key, r, -2), 0.62f);
+                        }
+                    }
+                    return out;
+                }
+                if (n == "WHOLE-NOTE MELODY, A SECOND VOICE A THIRD UNDER")
+                {
+                    out.description = "A slow melody of whole notes on the chords' tones, a second voice a third under";
+                    for (int bar = 0; bar < bars; ++bar)
+                    {
+                        const auto& chord = chordOfBar (bar);
+                        const auto r = pitchOfClassIn (chord.root, 64, 75);
+                        const auto p = bar % 2 == 0 ? r + chordThird (chord) : r + 7;
+                        add (out, bar * bpb, bpb * 0.94, p, 0.62f);
+                        harmony250 (out, bar * bpb, bpb * 0.94, scaleStep (key, p, -2), 0.56f);
+                    }
+                    return out;
+                }
+                return std::nullopt;
+            }
+            std::optional<LineIdea> drums265 (const juce::String& n) const
+            {
+                auto out = idea (LineIdea::Part::drums, n.toLowerCase(), {});
+                auto every = [&] (const char* t, auto&& bar)
+                {
+                    out.description = t;
+                    for (int b = 0; b < bars; ++b)
+                        bar (b);
+                    return std::optional<LineIdea> (out);
+                };
+                auto play = [&] (int b, const char* p, int note, float v) { each16 (p, b * bpb, [&] (double t, int k) { hit (out, t, note, k % 4 == 0 ? v : v * 0.82f); }); };
+                constexpr const char* all16 = "xxxxxxxxxxxxxxxx";
+                if (n == "KICK AND CRASH ON THE CHORDS, SNARE BURSTS IN THE GAPS" || n == "STOP HITS, SNARE BURSTS, KICK SIXTEENTHS IN BARS THREE AND FOUR")
+                {
+                    const auto gaps = n == "KICK AND CRASH ON THE CHORDS, SNARE BURSTS IN THE GAPS";
+                    return every (gaps ? "The kick and crash with every chord (1, 2-and, 4, 4-and), four-sixteenth snare bursts in the gaps, no hats; every fourth bar one burst"
+                                       : "The kick and crash on the stop chords, snare bursts between them; bars three and four of every four the kick on every sixteenth", [&] (int b)
+                    {
+                        if (gaps)
+                        {
+                            play (b, "x-----x-----x-x-", GmDrum::kick, 0.86f);
+                            play (b, "x-----x-----x-x-", GmDrum::crash, 0.72f);
+                            play (b, b % 4 == 3 ? "--xxxx------x---" : "--xxxx--xxxx----", GmDrum::snare, 0.74f);
+                            return;
+                        }
+                        play (b, b % 4 >= 2 ? all16 : "x-----x-------x-", GmDrum::kick, 0.82f);
+                        play (b, "x-----x-------x-", GmDrum::crash, 0.72f);
+                        play (b, b % 2 == 0 ? "--xxxx--xxxxxx--" : "xxxxxx--xxx-xxxx", GmDrum::snare, 0.72f);
+                    });
+                }
+                if (n == "HALF TIME, TOMS ON ONE AND TWO BEFORE THE SNARE" || n == "PLAIN HALF TIME, SNARE AND CRASH ON THREE")
+                {
+                    const auto toms = n == "HALF TIME, TOMS ON ONE AND TWO BEFORE THE SNARE";
+                    return every (toms ? "Half time: toms on 1, 1-and, 2 and 2-and, the kick on 1, 2 and 4, the snare and crash on 3; the last two bars snare sixteenths over kick eighths"
+                                       : "Half time: the kick on 1, 2 and 4, the snare and crash on 3, ride eighths", [&] (int b)
+                    {
+                        if (toms && b >= bars - 2)
+                        {
+                            play (b, eighths, GmDrum::kick, 0.8f);
+                            play (b, all16, GmDrum::snare, 0.72f);
+                            return;
+                        }
+                        play (b, "x---x-------x---", GmDrum::kick, 0.84f);
+                        play (b, "--------x-------", GmDrum::snare, 0.9f);
+                        play (b, "--------x-------", GmDrum::crash, 0.74f);
+                        if (toms)
+                            play (b, "x-x-x-x---------", GmDrum::tomFloor, 0.74f);
+                        else
+                            play (b, eighths, GmDrum::ride, 0.44f);
+                    });
+                }
+                if (n == "KICK ONE AND THREE, OPEN EIGHTHS, A CRASH EVERY BAR" || n == "KICK ON THREE-AND IN THE WALK BAR, RIDE EIGHTHS")
+                {
+                    const auto crash = n == "KICK ONE AND THREE, OPEN EIGHTHS, A CRASH EVERY BAR";
+                    return every (crash ? "The kick on 1 and 3 (and 3-and every other bar), the backbeat, open hat eighths, the crash on every 1"
+                                        : "The kick on 1 and 3, a third kick on 3-and every other bar with the walk, the backbeat, the ride on the eighths", [&] (int b)
+                    {
+                        play (b, b % 2 == 1 ? "x-------x-x-----" : "x-------x-------", GmDrum::kick, 0.84f);
+                        play (b, backbeat, GmDrum::snare, 0.88f);
+                        play (b, eighths, crash ? GmDrum::openHat : GmDrum::ride, crash ? 0.48f : 0.44f);
+                        if (crash)
+                            hit (out, b * bpb, GmDrum::crash, 0.78f);
+                    });
+                }
+                if (n == "DOUBLE KICK, RIDE BELL PAIRS" || n == "DOUBLE KICK, RIDE QUARTERS")
+                {
+                    const auto bell = n == "DOUBLE KICK, RIDE BELL PAIRS";
+                    return every (bell ? "The kick on every sixteenth, the backbeat, the ride bell in pairs every other bar (1, 2, 3, 3-and, 4, 4-and), every eighth bar the bell on three of each four"
+                                       : "The kick on every sixteenth, the backbeat, the ride on the quarters", [&] (int b)
+                    {
+                        play (b, all16, GmDrum::kick, 0.76f);
+                        play (b, backbeat, GmDrum::snare, 0.9f);
+                        if (! bell)
+                            play (b, quarters, GmDrum::ride, 0.5f);
+                        else if (b % 8 == 7)
+                            play (b, "xxx-xxx-xxx-xxx-", GmDrum::rideBell, 0.6f);
+                        else
+                            play (b, b % 2 == 1 ? "x---x---x-xx-xx-" : quarters, GmDrum::rideBell, 0.6f);
+                    });
+                }
+                if (n == "KICK WITH THE DOTTED PUSH, SNARE ON THREE, OPEN QUARTERS" || n == "THE PUSH, CRASH QUARTERS IN THE ROOT BARS")
+                {
+                    const auto open = n == "KICK WITH THE DOTTED PUSH, SNARE ON THREE, OPEN QUARTERS";
+                    return every (open ? "The kick on the guitar's dotted push (1, 2-and, 3, 4-and), the snare on 3 only, open hat quarters"
+                                       : "The kick on the push, the snare on 3; open hats in the moving bars, the crash on the quarters in the root bars", [&] (int b)
+                    {
+                        const auto figure = b % 4 >= 2;
+                        play (b, ! open && figure ? "x-x-x---x-----x-" : "x-----x-x-----x-", GmDrum::kick, 0.84f);
+                        play (b, "--------x-------", GmDrum::snare, 0.9f);
+                        play (b, quarters, ! open && figure ? GmDrum::crash : GmDrum::openHat, ! open && figure ? 0.64f : 0.5f);
+                    });
+                }
+                if (n == "SNARE ON TWO-AND AND FOUR, OPEN QUARTERS" || n == "SNARE ON TWO-AND AND FOUR, RIDE EIGHTHS")
+                {
+                    const auto open = n == "SNARE ON TWO-AND AND FOUR, OPEN QUARTERS";
+                    return every (open ? "The backbeat late on 2-and, the snare on 4, the kick on 1, 2-e, 3 and 3-and, open hat quarters, a tom pair at each bar's end"
+                                       : "The backbeat late on 2-and and on 4, the same kick, the ride on the eighths", [&] (int b)
+                    {
+                        play (b, "x----x---x-x----", GmDrum::kick, 0.8f);
+                        play (b, "------x-----x---", GmDrum::snare, 0.86f);
+                        if (open)
+                        {
+                            play (b, quarters, GmDrum::openHat, 0.48f);
+                            play (b, "--------------xx", GmDrum::tomFloor, 0.7f);
+                        }
+                        else
+                            play (b, eighths, GmDrum::ride, 0.44f);
+                    });
+                }
+                if (n == "SNARE ON TWO AND FOUR-AND, THEN TWO AND FOUR" || n == "THE PUSHED KICKS, A PLAIN BACKBEAT")
+                {
+                    const auto late = n == "SNARE ON TWO AND FOUR-AND, THEN TWO AND FOUR";
+                    return every (late ? "Two-bar cells: the kick on 1, 1-a, 2-and, 3-and and 4, the snare on 2 and 4-and; then the kick on 1-and, 3-and, 3-a, 4-and and 4-a, the snare on 2 and 4; ride eighths"
+                                       : "The same pushed kicks under a plain backbeat and the ride on the eighths", [&] (int b)
+                    {
+                        play (b, b % 2 == 0 ? "x--x--x---x-x---" : "--x-------xx-xx-", GmDrum::kick, 0.84f);
+                        play (b, late && b % 2 == 0 ? "----x---------x-" : backbeat, GmDrum::snare, 0.88f);
+                        play (b, eighths, GmDrum::ride, 0.46f);
+                    });
+                }
+                return std::nullopt;
+            }
             // (0.264.0) Round twelve's verses (the owner's ten more songs; shapes only, our names).
             // TREMOLO: the second half bar's note, as semitones over the root, by the bar and the variant.
             static int tremoloSecond264 (int bar, bool flatFive)
@@ -26960,6 +27329,8 @@ namespace pr7s
                 auto text = [&] (const char* t) { out.description = t; };
                 if (n == "OUT")
                     return silent (r, "guitar");
+                if (auto round12 = guitar265 (n))   // (0.265.0: round twelve's choruses)
+                    return *round12;
                 if (auto round12 = guitar264 (n))   // (0.264.0: round twelve's verses)
                     return *round12;
                 if (auto round11 = guitar259 (n))   // (0.259.0: round eleven's shared options)
@@ -31608,6 +31979,8 @@ namespace pr7s
                     return out;
                 };
                 if (n == "OUT") return silent (b, "bass");
+                if (auto round12 = bass265 (n))   // (0.265.0: round twelve's choruses)
+                    return *round12;
                 if (auto round12 = bass264 (n))   // (0.264.0: round twelve's verses)
                     return *round12;
                 if (auto round11 = bass259 (n))   // (0.259.0: round eleven's shared options)
@@ -33031,6 +33404,8 @@ namespace pr7s
                 const auto k = LineIdea::Part::chords;
                 if (n == "SILENT")
                     return silent (k, "keys");
+                if (auto round12 = keys265 (n))   // (0.265.0: round twelve's choruses)
+                    return *round12;
                 if (auto round12 = keys264 (n))   // (0.264.0: round twelve's verses)
                     return *round12;
                 if (auto round11 = keys259 (n))   // (0.259.0: round eleven's shared options)
@@ -33950,6 +34325,8 @@ namespace pr7s
                 const auto r = LineIdea::Part::lead;
                 if (n == "SILENT")
                     return silent (r, "lead");
+                if (auto round12 = lead265 (n))   // (0.265.0: round twelve's choruses)
+                    return *round12;
                 if (auto round12 = lead264 (n))   // (0.264.0: round twelve's verses)
                     return *round12;
                 // (0.198.0) Round seven's intros.
@@ -34022,6 +34399,8 @@ namespace pr7s
                         bar (b);
                     return out;
                 };
+                if (auto round12 = drums265 (n))   // (0.265.0: round twelve's choruses)
+                    return *round12;
                 if (auto round12 = drums264 (n))   // (0.264.0: round twelve's verses)
                     return *round12;
                 if (auto round11 = drums259 (n))   // (0.259.0: round eleven's shared options)

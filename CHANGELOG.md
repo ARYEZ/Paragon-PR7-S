@@ -2,6 +2,20 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.265.0
+
+**Round twelve, part two: seven new chorus types** from the owner's new songs (shapes only, our own names), each with its own options per lane:
+
+- **SNARE BURSTS IN THE CHUG GAPS.** A chord, four root sixteenths, a chord, four more, two chords. The kick and crash land with the chords, and four-sixteenth snare bursts fill the gaps. There's also a stop version.
+- **PICKED ARPEGGIO, TOM EIGHTHS BEFORE THE SNARE.** A chord picked across two octaves in eighths, over half time with toms on 1 and 2 before the snare on 3. The bass walks into each change.
+- **TWIN HOOK IN THIRDS AFTER THE ONE, A WALK-DOWN BAR.** A chord on 1, then twin leads in thirds on the beats after it. Every second bar three low notes walk down to the root. The second voice goes to the lead lane's second track.
+- **WHOLE CHORDS, 3+3+2 BASS, DOUBLE KICK.** Power chords rung a bar each, the bass on the dotted quarters, double kick under ride-bell pairs, a piano breaking the chords.
+- **HALF-STEP CHORDS ON A DOTTED PUSH.** Power chords on 1, 2-and, 3 and 4-and moving by half steps round the fifth, the kick with them, the snare on 3 only.
+- **BALLAD CHORUS, THE BACKBEAT LATE ON TWO.** The snare late on 2-and and on 4, root eighths with octave pops, a whole-note melody with a second voice.
+- **TWO-BAR PUSH, THE SNARE LATE IN BAR ONE.** A pushed figure tied into the next bar, which answers late. The snare is on 2 and 4-and in the first bar, on 2 and 4 in the second.
+
+Can't be checked here: how they sound. Next: round twelve's pre-chorus, interlude, bridges and breakdowns.
+
 ## 0.264.0
 
 **Round twelve, part one: nine new verse types** from the owner's ten new songs. They were read for their shapes only (two readers), never copied; the names are our own. Each type has its own guitar, bass, keys and drums options, and a lead or acoustic part where the song had one. Odd meters in the files are written as groupings in 4/4.

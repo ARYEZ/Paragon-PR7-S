@@ -607,7 +607,15 @@ namespace pr7s
                          { "GALLOP OVER A 3+3+2 KICK", "A gallop on every beat over a kick in threes and twos, strings holding the chord with a hook on top", r, {}, c },
                          { "HALF TIME, THE ONE LEFT OUT EVERY OTHER BAR", "Half time with the crash on every quarter: every other bar the band and the kick leave beat 1 out", r, {}, c },
                          { "KICK ON ONE, TWO-AND AND THREE-AND, ARPEGGIO ABOVE", "A kick on 1, 2-and and 3-and under a sixteenth synth arpeggio and a slap bass figure, two or three picked guitar notes a bar", r, {}, c },
-                         { "ROLLING PIANO OCTAVES UNDER CHOPPED STABS", "Piano octaves broken on the sixteenths under short muted chord stabs, a busy kick and a tambourine", r, {}, c } };
+                         { "ROLLING PIANO OCTAVES UNDER CHOPPED STABS", "Piano octaves broken on the sixteenths under short muted chord stabs, a busy kick and a tambourine", r, {}, c },
+                         // (0.265.0) Round twelve's choruses (shapes only, our names).
+                         { "SNARE BURSTS IN THE CHUG GAPS", "A chord, four root sixteenths, a chord, four more, two chords; the kick and crash with the chords and four-sixteenth snare bursts in the gaps", r, {}, c },
+                         { "PICKED ARPEGGIO, TOM EIGHTHS BEFORE THE SNARE", "A chord picked across two octaves in eighths, a chord a bar, over half time with toms on 1 and 2 before the snare on 3", r, {}, c },
+                         { "TWIN HOOK IN THIRDS AFTER THE ONE, A WALK-DOWN BAR", "A chord on 1, then twin leads in thirds on the beats after it; every second bar three low notes walk down to the root", r, {}, c },
+                         { "WHOLE CHORDS, 3+3+2 BASS, DOUBLE KICK", "Power chords rung a bar each, the bass on the dotted quarters, the kick on every sixteenth under ride bell pairs, a piano breaking the chords", r, {}, c },
+                         { "HALF-STEP CHORDS ON A DOTTED PUSH", "Power chords on a dotted push (1, 2-and, 3, 4-and) moving by half steps round the fifth, the kick with them, the snare on 3 only", r, {}, c },
+                         { "BALLAD CHORUS, THE BACKBEAT LATE ON TWO", "A ballad chorus: the snare late on 2-and and on 4, root eighths with octave pops, a whole-note melody with a second voice", r, {}, c },
+                         { "TWO-BAR PUSH, THE SNARE LATE IN BAR ONE", "A pushed figure tied into the next bar, which answers late; the snare on 2 and 4-and in the first bar, on 2 and 4 in the second", r, {}, c } };
             }
             case 3:
             {
@@ -2408,6 +2416,21 @@ namespace pr7s
                   { "CHORDS UNDER ONE TOP NOTE, A PIANO FRAGMENT", "CHORDS UNDER ONE TOP NOTE" }, { "HAND PERCUSSION SIXTEENTHS, QUARTER HATS, A RIM TAP", "SHAKER SIXTEENTHS ONLY" }, {} },
                 { "HALF-NOTE CHORDS, KICK ON ONE AND TWO-AND", { "HALF-NOTE POWER CHORDS WITH THE THIRD", "HALF-NOTE POWER CHORDS WITH THE FOURTH" }, { "TWO HITS: ONE AND TWO-AND", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "HELD PADS", "SILENT" }, { "KICK ON ONE AND TWO-AND, OPEN HAT QUARTERS", "KICK ON ONE AND TWO-AND, RIDE QUARTERS" }, {} },
+                // (0.265.0) Round twelve's choruses.
+                { "SNARE BURSTS IN THE CHUG GAPS", { "CHORD, FOUR ROOT SIXTEENTHS, CHORD, FOUR, TWO CHORDS", "STOP CHORDS ON ONE, TWO-AND AND FOUR-AND" }, { "ROOTS ON THE CHORDS ONLY", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK AND CRASH ON THE CHORDS, SNARE BURSTS IN THE GAPS", "STOP HITS, SNARE BURSTS, KICK SIXTEENTHS IN BARS THREE AND FOUR" }, {} },
+                { "PICKED ARPEGGIO, TOM EIGHTHS BEFORE THE SNARE", { "PICKED ARPEGGIO ACROSS TWO OCTAVES", "POWER-CHORD EIGHTHS UNDER THE CHANGES" }, { "ROOT HALVES, A THREE-NOTE WALK ON THREE", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "HALF TIME, TOMS ON ONE AND TWO BEFORE THE SNARE", "PLAIN HALF TIME, SNARE AND CRASH ON THREE" }, {} },
+                { "TWIN HOOK IN THIRDS AFTER THE ONE, A WALK-DOWN BAR", { "CHORD ON ONE, TONES ON THREE AND FOUR, THEN THE WALK DOWN", "CHORD ON ONE EVERY BAR, HELD" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "KICK ONE AND THREE, OPEN EIGHTHS, A CRASH EVERY BAR", "KICK ON THREE-AND IN THE WALK BAR, RIDE EIGHTHS" }, { "TWIN HOOK IN THIRDS AFTER THE ONE", "SILENT" } },
+                { "WHOLE CHORDS, 3+3+2 BASS, DOUBLE KICK", { "WHOLE-BAR POWER CHORDS", "WHOLE-BAR CHORDS, A PICKUP ON FOUR-AND" }, { "DOTTED QUARTERS, A PICKUP ON FOUR-AND", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "PIANO: THE CHORD ON ONE, THEN ITS TONES IN EIGHTHS", "HELD PADS" }, { "DOUBLE KICK, RIDE BELL PAIRS", "DOUBLE KICK, RIDE QUARTERS" }, {} },
+                { "HALF-STEP CHORDS ON A DOTTED PUSH", { "DOTTED PUSH, CHORDS MOVING A HALF STEP", "DOTTED PUSH ON THE ROOT" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "KICK WITH THE DOTTED PUSH, SNARE ON THREE, OPEN QUARTERS", "THE PUSH, CRASH QUARTERS IN THE ROOT BARS" }, {} },
+                { "BALLAD CHORUS, THE BACKBEAT LATE ON TWO", { "ROOT AND CHORD GRABS", "WHOLE CHORDS RUNG" }, { "ROOT EIGHTHS, OCTAVE POPS", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "HELD PADS", "SILENT" }, { "SNARE ON TWO-AND AND FOUR, OPEN QUARTERS", "SNARE ON TWO-AND AND FOUR, RIDE EIGHTHS" }, { "WHOLE-NOTE MELODY, A SECOND VOICE A THIRD UNDER", "SILENT" } },
+                { "TWO-BAR PUSH, THE SNARE LATE IN BAR ONE", { "TWO-BAR PUSH, TIED INTO BAR TWO", "THE PUSH EVERY BAR" }, { "DOUBLES THE GUITAR", "ROOTS HELD", "LOCKED WITH THE KICK" },
+                  { "SILENT", "HELD PADS" }, { "SNARE ON TWO AND FOUR-AND, THEN TWO AND FOUR", "THE PUSHED KICKS, A PLAIN BACKBEAT" }, {} },
                 // (0.264.0) Round twelve's verses.
                 { "TREMOLO ROOT, THEN THE TRITONE, HALF A BAR EACH", { "ROOT AND FLAT FIVE TREMOLO, HALF A BAR EACH", "ROOT AND FIFTH TREMOLO, HALF A BAR EACH" }, { "SIXTEENTHS WITH THE TREMOLO", "ROOTS HELD", "LOCKED WITH THE KICK" },
                   { "ROOT AND FLAT SEVEN ROCKING, A THIRD UP ON THREE-AND", "SILENT" }, { "DOUBLE TIME, A BLAST IN THE LAST TWO BARS", "BLAST ALL THE WAY" }, {} },
