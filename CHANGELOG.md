@@ -2,6 +2,25 @@
 
 Each version's notes appear on its GitHub Release page.
 
+## 0.268.0
+
+**Round twelve, part five: twelve new transitions** (INTO THE NEXT on a SECTIONS block) from the owner's new songs, shapes only, our own names. Each changes only the block's last bar or two:
+
+- **THREE FALLING DOTTED HITS, HALF A BAR SILENT.** Three chords falling on 1, 1-a and 2-and with the kick and crash, then silence.
+- **QUARTER-NOTE CHORD CLIMB, SNARE SIXTEENTHS ON THREE.** A chord on every beat climbing a half step at a time into the next section, snare sixteenths through beat 3.
+- **KICK SIXTEENTHS, SNARE IN THREES, CHORDS CLIMB HALF STEPS.** The kick on every sixteenth, the snare in threes with a tom after each, chords climbing on 1, 2 and 3.
+- **KICK AND TOM EIGHTHS IN UNISON, SNARE ON FOUR.** The kick and floor tom together on the eighths, the snare and crash on 4, three low notes falling under.
+- **CRASH EIGHTHS, KICK AND SNARE ANSWERING.** The crash on every eighth, the kick and snare trading, the band stabbing with the kick.
+- **SNARE AND CRASH ON EVERY BEAT, KICK PAIRS BETWEEN.** Two bars of the snare and crash on every beat with kick pairs between, two toms at the end.
+- **BAND OUT, HATS IN THREES UNDER AN ARPEGGIO.** One hit, then only hats in threes and the ride under a guitar arpeggio alone (a lead-in to a solo).
+- **DOTTED-HALF CLIMB BY HALF STEPS.** Three chords a dotted half apart over the last two bars, each a half step higher.
+- **UNISON SCALE RUN INTO A DIMINISHED ARPEGGIO.** The band in unison up the scale in sixteenths, then up a diminished arpeggio in eighths.
+- **SILENCE, THEN ONE CHINA.** The chord cut after a beat with a tom pair, then silence but for one china on the last 4.
+- **DOMINANT EIGHTHS, ONE HIT, SILENCE.** The key's five chord in eighths, then one band hit and silence.
+- **HELD HIT, A KICK PAIR ON THREE.** One hit held a bar, then a silent bar with just a kick pair and a snare on 3.
+
+Can't be checked here: how they sound. Next: round twelve's shared lane options.
+
 ## 0.267.0
 
 **Round twelve, part four: eight new intro and outro types** from the owner's new songs (shapes only, our own names), each with its own options per lane. This release also carries **0.266.0** (below), which was never published on its own.
@@ -17,7 +36,7 @@ Each version's notes appear on its GitHub Release page.
 
 The second guitar and the twin lead's second voice go to their lane's second track, as before.
 
-Can't be checked here: how they sound. Next: round twelve's transitions.
+Can't be checked here: how they sound.
 
 ## 0.266.0
 

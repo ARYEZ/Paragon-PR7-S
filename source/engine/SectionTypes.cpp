@@ -3387,6 +3387,19 @@ namespace pr7s
             { "CHORD PAIRS WITH THE SNARE, A SIXTEENTH RUN IN", "The last bar chord pairs with the kick, the snare on 1, 2-and and 4, then a sixteenth snare run into the next" },
             { "A BAR AND A HALF OF SNARE SIXTEENTHS", "Snare sixteenths for a bar and a half over the guitar's chugs, then the kick and crashes on 3, 4 and 4-and, the band on the next chord at 3" },
             { "ONE HELD HIT, THEN A HALF-BAR SNARE FILL", "One band hit with the kick and crash held two bars, hats counting the last bar, a snare fill in its second half" },
+            // (0.268.0) Round twelve (the owner's ten new songs; shapes only, our names).
+            { "THREE FALLING DOTTED HITS, HALF A BAR SILENT", "The last bar three chords falling on 1, 1-a and 2-and with the kick and crash, then half a bar of silence" },
+            { "QUARTER-NOTE CHORD CLIMB, SNARE SIXTEENTHS ON THREE", "The last bar a chord on every beat climbing a half step at a time into the next, the kick and crash on 1, 2 and 4, snare sixteenths on 3" },
+            { "KICK SIXTEENTHS, SNARE IN THREES, CHORDS CLIMB HALF STEPS", "The last bar the kick on every sixteenth, the snare in threes with a tom after each, chords climbing half steps on 1, 2 and 3" },
+            { "KICK AND TOM EIGHTHS IN UNISON, SNARE ON FOUR", "The last bar the kick and floor tom together on the eighths from 1-and, the snare and crash on 4, three low notes falling under" },
+            { "CRASH EIGHTHS, KICK AND SNARE ANSWERING", "The last bar the crash on every eighth, the kick and snare answering each other, the band stabbing with the kick" },
+            { "SNARE AND CRASH ON EVERY BEAT, KICK PAIRS BETWEEN", "The last two bars the snare and crash on every beat with kick pairs between, the band on the quarters, two toms at the end" },
+            { "BAND OUT, HATS IN THREES UNDER AN ARPEGGIO", "The last bar one snare-and-tom hit, then only hats in threes and the ride while a guitar arpeggio plays alone" },
+            { "DOTTED-HALF CLIMB BY HALF STEPS", "The last two bars three chords a dotted half apart, each a half step higher into the next, with the kick and crash" },
+            { "UNISON SCALE RUN INTO A DIMINISHED ARPEGGIO", "The last bar the band in unison up the scale in sixteenths, then up a diminished arpeggio from the fifth in eighths" },
+            { "SILENCE, THEN ONE CHINA", "The chord cut after a beat with a tom pair, then silence but for one china on the last bar's 4" },
+            { "DOMINANT EIGHTHS, ONE HIT, SILENCE", "The bar before the last the key's five chord in eighths, then one band hit on the last bar's 1 and silence" },
+            { "HELD HIT, A KICK PAIR ON THREE", "One band hit held a bar, then a silent bar but for a kick on 3 and 3-e and a snare on 3-e" },
         };
         return list;
     }

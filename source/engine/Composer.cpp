@@ -46395,6 +46395,247 @@ namespace pr7s
                             band (from2, (end - from2) * 0.97, true, chordAt (from2));
                     }
                 }
+                // (0.268.0) Round twelve (the owner's ten new songs; shapes only). A chain of its own (MSVC's nesting limit).
+                {
+                    const auto s16 = bar / 16.0, e8 = bar / 8.0, q4 = bar / 4.0, from2 = juce::jmax (0.0, end - 2.0 * bar);
+                    const auto drums = l == ComposerLayer::drums;
+                    const auto lowLane = l == ComposerLayer::guitar || l == ComposerLayer::bass;
+                    const auto key = spans.front().key;
+                    auto put = [&] (double at, double len, int pitch, float v)
+                    {
+                        if (playing && at < end - 1.0e-6)
+                            add (idea, at, juce::jmax (0.02, juce::jmin (len, end - at)), pitch, v);
+                    };
+                    auto pat = [&] (const char* p, double from, int note, float v)
+                    {
+                        for (int k = 0; k < 16; ++k)
+                            if (p[k] == 'x')
+                                put (from + k * s16, s16 * 0.9, note, v);
+                    };
+                    auto band = [&] (double at, double len, bool first, const Chord& ch)
+                    {
+                        if (playing && ! drums && at < end - 1.0e-6)
+                            bandHit (l, idea, ch, at, juce::jmax (0.02, juce::jmin (len, end - at)), first);
+                    };
+                    auto shifted = [] (Chord ch, int semitones) { ch.root = ((ch.root + semitones) % 12 + 12) % 12; ch.bass = -1; return ch; };
+                    auto rootOf = [&] (int pc) { return l == ComposerLayer::bass ? bassRoot (pc) : guitarRoot (pc); };
+                    // Each hit of a pattern, the band's chord rung to the next hit.
+                    auto bandOn = [&] (const char* p, double from, double until, const Chord& ch)
+                    {
+                        std::vector<int> ks;
+                        for (int k = 0; k < 16; ++k)
+                            if (p[k] == 'x')
+                                ks.push_back (k);
+                        for (size_t i = 0; i < ks.size(); ++i)
+                        {
+                            const auto at = from + ks[i] * s16;
+                            const auto to = i + 1 < ks.size() ? from + ks[i + 1] * s16 : until;
+                            band (at, (to - at) * 0.92, i == 0, ch);
+                        }
+                    };
+                    const char* all16 = "xxxxxxxxxxxxxxxx";
+                    const char* all8 = "x-x-x-x-x-x-x-x-";
+                    const char* quarters4 = "x---x---x---x---";
+                    if (name == "THREE FALLING DOTTED HITS, HALF A BAR SILENT")
+                    {
+                        cutAt (idea, lastBar);
+                        const auto here = chordAt (lastBar);
+                        const int at[3] { 0, 3, 6 }, down[3] { 0, -2, -3 };
+                        for (int i = 0; i < 3; ++i)
+                        {
+                            const auto t = lastBar + at[i] * s16;
+                            if (drums)
+                            {
+                                put (t, s16, 36, 0.9f);
+                                put (t, s16, 49, 0.82f);
+                            }
+                            else
+                                band (t, (i == 2 ? 2 : 3) * s16 * 0.92, i == 0, shifted (here, down[i]));
+                        }
+                    }
+                    else if (name == "QUARTER-NOTE CHORD CLIMB, SNARE SIXTEENTHS ON THREE")
+                    {
+                        cutAt (idea, lastBar);
+                        if (drums)
+                        {
+                            pat ("x---x-------x---", lastBar, 36, 0.88f);
+                            pat ("x---x-------x---", lastBar, 49, 0.78f);
+                            pat ("--------xxxx----", lastBar, 38, 0.8f);
+                        }
+                        else
+                            for (int b = 0; b < 4; ++b)
+                                band (lastBar + b * q4, q4 * 0.9, b == 0, shifted (next(), b - 4));
+                    }
+                    else if (name == "KICK SIXTEENTHS, SNARE IN THREES, CHORDS CLIMB HALF STEPS")
+                    {
+                        cutAt (idea, lastBar);
+                        if (drums)
+                        {
+                            pat (all16, lastBar, 36, 0.82f);
+                            pat ("xxx-xxx-xxx-xxx-", lastBar, 38, 0.78f);
+                            pat ("---x---x---x---x", lastBar, 41, 0.78f);
+                        }
+                        else
+                            for (int b = 0; b < 3; ++b)
+                                band (lastBar + b * q4, q4 * 0.9, b == 0, shifted (next(), b - 3));
+                    }
+                    else if (name == "KICK AND TOM EIGHTHS IN UNISON, SNARE ON FOUR")
+                    {
+                        if (drums)
+                        {
+                            cutAt (idea, lastBar);
+                            pat ("--x-x-x-x-x-x---", lastBar, 36, 0.84f);
+                            pat ("--x-x-x-x-x-x---", lastBar, 41, 0.78f);
+                            put (lastBar + 12 * s16, s16, 38, 0.92f);
+                            put (lastBar + 12 * s16, s16, 49, 0.84f);
+                        }
+                        else if (lowLane)
+                        {
+                            cutAt (idea, lastBar + 8 * s16);
+                            const auto r = rootOf (chordAt (lastBar).root);
+                            const int fall[3] { 6, 5, 0 };
+                            for (int i = 0; i < 3; ++i)
+                                put (lastBar + (8 + 2 * i) * s16, 2 * s16 * 0.9, r + fall[i], open());
+                        }
+                        else
+                            cutAt (idea, lastBar);
+                    }
+                    else if (name == "CRASH EIGHTHS, KICK AND SNARE ANSWERING")
+                    {
+                        cutAt (idea, lastBar);
+                        if (drums)
+                        {
+                            pat (all8, lastBar, 49, 0.66f);
+                            pat ("x-----x-x-----x-", lastBar, 36, 0.88f);
+                            pat ("--x-x-----x-x---", lastBar, 38, 0.86f);
+                        }
+                        else
+                            bandOn ("x-----x-x-----x-", lastBar, end, chordAt (lastBar));
+                    }
+                    else if (name == "SNARE AND CRASH ON EVERY BEAT, KICK PAIRS BETWEEN")
+                    {
+                        cutAt (idea, from2);
+                        if (drums)
+                        {
+                            pat (quarters4, from2, 38, 0.86f);
+                            pat (quarters4, from2, 49, 0.74f);
+                            pat ("--xx--xx--xx--xx", from2, 36, 0.8f);
+                            pat ("--xx----x-xx----", lastBar, 36, 0.82f);
+                            pat ("x---x-xx--------", lastBar, 38, 0.84f);
+                            pat ("--------------xx", lastBar, 45, 0.8f);
+                        }
+                        else if (l == ComposerLayer::bass)
+                        {
+                            for (const auto from : { from2, lastBar })
+                                for (int k = 0; k < 16; k += 2)
+                                    if (k % 4 == 2 || k == 0)
+                                        put (from + k * s16, e8 * 0.9, rootOf (chordAt (from).root), 0.84f);
+                        }
+                        else
+                            for (const auto from : { from2, lastBar })
+                                for (int b = 0; b < 4; ++b)
+                                    band (from + b * q4, q4 * 0.85, b == 0, chordAt (from + b * q4));
+                    }
+                    else if (name == "BAND OUT, HATS IN THREES UNDER AN ARPEGGIO")
+                    {
+                        cutAt (idea, lastBar);
+                        if (drums)
+                        {
+                            put (lastBar, s16, 38, 0.88f);
+                            put (lastBar, s16, 45, 0.82f);
+                            pat ("-xx-xxx-xxx-xxx-", lastBar, 42, 0.5f);
+                            pat ("--x---x---x---x-", lastBar, 51, 0.44f);
+                        }
+                        else if (l == ComposerLayer::guitar)
+                        {
+                            const auto ch = chordAt (lastBar);
+                            const auto r = guitarRoot (ch.root) + 12;
+                            const auto third = ch.type == Chord::Type::minor || ch.type == Chord::Type::diminished ? 3 : 4;
+                            const int arp[8] { 0, third, 7, 12, 7 + 12, 12, 7, third };
+                            for (int k = 0; k < 16; ++k)
+                                put (lastBar + k * s16, s16 * 0.9, r + arp[k % 8], open());
+                        }
+                    }
+                    else if (name == "DOTTED-HALF CLIMB BY HALF STEPS")
+                    {
+                        cutAt (idea, from2);
+                        for (int i = 0; i < 3; ++i)
+                        {
+                            const auto t = from2 + i * 3 * q4;
+                            if (drums)
+                            {
+                                put (t, s16, 36, 0.9f);
+                                put (t, s16, 49, 0.82f);
+                            }
+                            else
+                                band (t, (i == 2 ? 2 : 3) * q4 * 0.95, i == 0, shifted (next(), i - 3));
+                        }
+                    }
+                    else if (name == "UNISON SCALE RUN INTO A DIMINISHED ARPEGGIO")
+                    {
+                        cutAt (idea, lastBar);
+                        const auto ch = chordAt (lastBar);
+                        if (drums)
+                        {
+                            pat ("xxxxxxxx--------", lastBar, 36, 0.8f);
+                            pat ("--------x-x-x-x-", lastBar, 38, 0.86f);
+                            put (lastBar + 8 * s16, s16, 49, 0.8f);
+                        }
+                        else if (playing)
+                        {
+                            const auto r = lowLane ? rootOf (ch.root) : pitchOfClassIn (ch.root, 55, 66);
+                            for (int k = 0; k < 8; ++k)
+                                put (lastBar + k * s16, s16 * 0.9, scaleStep (key, r, k), lowLane ? open() : 0.6f);
+                            for (int i = 0; i < 4; ++i)
+                                put (lastBar + (8 + 2 * i) * s16, e8 * 0.9, r + 7 + 3 * i, lowLane ? open() : 0.6f);
+                        }
+                    }
+                    else if (name == "SILENCE, THEN ONE CHINA")
+                    {
+                        cutAt (idea, from2);
+                        if (drums)
+                        {
+                            put (from2, s16, 36, 0.9f);
+                            put (from2, s16, 49, 0.82f);
+                            pat ("----xx----------", from2, 45, 0.8f);
+                            put (lastBar + 3 * q4, s16, 52, 0.86f);
+                        }
+                        else
+                            band (from2, q4 * 0.95, true, chordAt (from2));
+                    }
+                    else if (name == "DOMINANT EIGHTHS, ONE HIT, SILENCE")
+                    {
+                        cutAt (idea, from2);
+                        Chord five;
+                        five.root = (key.pitchClass() + 7) % 12;
+                        five.type = Chord::Type::major;
+                        if (drums)
+                        {
+                            pat ("x-x-x---x-x---x-", from2, 36, 0.86f);
+                            pat ("----x-------x---", from2, 38, 0.86f);
+                            put (lastBar, s16, 36, 0.92f);
+                            put (lastBar, s16, 49, 0.86f);
+                        }
+                        else
+                        {
+                            bandOn (all8, from2, lastBar, five);
+                            band (lastBar, q4 * 0.95, true, chordAt (lastBar));
+                        }
+                    }
+                    else if (name == "HELD HIT, A KICK PAIR ON THREE")
+                    {
+                        cutAt (idea, from2);
+                        if (drums)
+                        {
+                            put (from2, s16, 36, 0.92f);
+                            put (from2, s16, 49, 0.86f);
+                            pat ("--------xx------", lastBar, 36, 0.86f);
+                            pat ("---------x------", lastBar, 38, 0.84f);
+                        }
+                        else
+                            band (from2, bar * 0.97, true, chordAt (from2));
+                    }
+                }
                 std::stable_sort (idea.notes.begin(), idea.notes.end(), [] (const LineNote& a, const LineNote& b) { return a.beat < b.beat; });
             }
         };
